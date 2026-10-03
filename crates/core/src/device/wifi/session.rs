@@ -6,10 +6,10 @@ use crate::input::DeviceEvent;
 use crate::lease::{Lease, LeaseName, LeaseObserver, LeaseTracker, WeakLeaseTracker};
 use crate::settings::WifiMode;
 use crate::view::{Event, Hub};
-use std::sync::mpsc::Sender;
-use std::sync::{Arc, Condvar, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use thiserror::Error;
+use tokio::sync::Notify;
 
 /// Default wait for association / DHCP after enabling the radio.
 pub const DEFAULT_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(60);
@@ -39,8 +39,12 @@ struct SessionState {
     online: bool,
     /// Whether the radio was last successfully enabled (cleared by [`WifiSession::disable_radio`]).
     radio_on: bool,
+    /// Hardware target under the radio lock; last writer wins across racing spawns.
+    desired_radio_on: bool,
     idle_since: Option<Instant>,
-    idle_wake: Option<Sender<()>>,
+    /// Fired when the last lease is released into idle, so the idle-disable
+    /// check can run without waiting for the next poll tick.
+    idle_wake: Arc<Notify>,
     hub: Option<Hub>,
     inhibitor: Option<Arc<Inhibitor>>,
     inhibitor_lease: Option<InhibitorGuard>,
@@ -97,9 +101,7 @@ impl LeaseObserver for IdleArmer {
             sync_inhibitor_lease(&mut state, has_holders);
             if !has_holders && state.mode == WifiMode::Auto {
                 state.idle_since = Some(Instant::now());
-                if let Some(idle_wake) = state.idle_wake.as_ref() {
-                    idle_wake.send(()).ok();
-                }
+                state.idle_wake.notify_one();
             }
         }
     }
@@ -110,26 +112,139 @@ pub struct WifiSession {
     tracker: LeaseTracker,
     wifi: Arc<dyn WifiManager>,
     state: Arc<Mutex<SessionState>>,
-    online_cv: Condvar,
+    /// Wakes [`WifiSession::acquire`] waiters to re-read [`SessionState::online`].
+    ///
+    /// `notify_waiters` runs after online flips to `true` ([`Self::notify_online`],
+    /// enable bookkeeping) and after it flips to `false` while waiters may still
+    /// be parked ([`Self::mark_offline_pending`], disable bookkeeping). Waiters
+    /// loop until `online` is `true` or their acquire timeout expires; the notify
+    /// is not an "online only" signal, it means session connectivity state changed.
+    ///
+    /// Tokio [`Notify`] replaces the old `std::sync::Condvar`: waiters
+    /// `.await` without parking an OS thread, and `notify_waiters` fans
+    /// out to every pending acquire. A Condvar still needs a Mutex and
+    /// a blocking wait, which does not fit the async lease path.
+    online: Arc<Notify>,
+    /// Serialises radio transitions.
+    ///
+    /// Enable and disable can be requested from different tasks (a resume
+    /// spawn and a suspend path, say). Without this, a disable can interleave
+    /// with an enable and leave the interface up with no `wpa_supplicant`,
+    /// after which `is_enabled()` reports true and every lease times out.
+    ///
+    /// Shared so the *spawned* transition can hold it. A caller-held guard
+    /// would be dropped when that caller is cancelled, releasing the lock while
+    /// the hardware sequence is still mid-flight.
+    radio: Arc<tokio::sync::Mutex<()>>,
+}
+
+/// Applies [`SessionState::desired_radio_on`] under the radio lock.
+///
+/// Bookkeeping runs inside the detached task so a cancelled caller cannot skip
+/// `radio_on` / online state updates while the hardware transition still
+/// finishes. The desired flag is re-read after acquiring the lock so a quick
+/// enable→disable sequence applies the latest intent, not spawn order.
+///
+/// Returns the state that was actually applied: `true` if the radio was enabled,
+/// `false` if it was disabled. Callers use this instead of assuming their request
+/// won, because a concurrently recorded intent is what gets applied.
+async fn apply_desired_radio_power(session: &WifiSession) -> Result<bool, WifiError> {
+    let radio = Arc::clone(&session.radio);
+    let state = Arc::clone(&session.state);
+    let tracker = session.tracker.clone();
+    let wifi = Arc::clone(&session.wifi);
+    let online = session.online.clone();
+    let task = tokio::spawn(async move {
+        let _held = radio.lock().await;
+        let desired = state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .desired_radio_on;
+        let result = if desired {
+            wifi.enable().await
+        } else {
+            wifi.disable().await
+        };
+        if result.is_ok() {
+            if desired {
+                finish_enable_bookkeeping(&state, &tracker, &wifi, &online).await;
+            } else {
+                finish_disable_bookkeeping(&state, &tracker, &online);
+            }
+        }
+        result.map(|()| desired)
+    });
+    match task.await {
+        Ok(result) => result,
+        Err(join) => {
+            tracing::error!(error = %join, "wifi radio transition task panicked");
+            Err(WifiError::Ioctl(join.to_string()))
+        }
+    }
+}
+
+/// Session bookkeeping after a successful radio enable.
+///
+/// When the manager already reports an association, sets `online` and wakes
+/// [`WifiSession::acquire`] loops awaiting [`Notify::notified`].
+async fn finish_enable_bookkeeping(
+    state: &Arc<Mutex<SessionState>>,
+    tracker: &LeaseTracker,
+    wifi: &Arc<dyn WifiManager>,
+    online: &Arc<Notify>,
+) {
+    {
+        let mut locked = state.lock().unwrap_or_else(|e| e.into_inner());
+        locked.radio_on = true;
+        sync_inhibitor_lease(&mut locked, !tracker.is_empty());
+    }
+    if wifi.is_enabled().await && matches!(wifi.network_info().await, Ok(Some(_))) {
+        {
+            let mut locked = state.lock().unwrap_or_else(|e| e.into_inner());
+            locked.online = true;
+            if locked.mode == WifiMode::Auto && tracker.is_empty() {
+                locked.idle_since = Some(Instant::now());
+            } else {
+                locked.idle_since = None;
+            }
+        }
+        online.notify_waiters();
+    }
+}
+
+fn finish_disable_bookkeeping(
+    state: &Arc<Mutex<SessionState>>,
+    tracker: &LeaseTracker,
+    online: &Arc<Notify>,
+) {
+    {
+        let mut locked = state.lock().unwrap_or_else(|e| e.into_inner());
+        locked.radio_on = false;
+        sync_inhibitor_lease(&mut locked, !tracker.is_empty());
+        locked.online = false;
+        locked.idle_since = None;
+    }
+    online.notify_waiters();
 }
 
 /// Fallback manager when the device cannot provide WiFi.
 struct UnavailableWifi;
 
+#[async_trait::async_trait]
 impl WifiManager for UnavailableWifi {
-    fn enable(&self) -> Result<(), WifiError> {
+    async fn enable(&self) -> Result<(), WifiError> {
         Err(WifiError::Disabled)
     }
 
-    fn disable(&self) -> Result<(), WifiError> {
+    async fn disable(&self) -> Result<(), WifiError> {
         Ok(())
     }
 
-    fn is_enabled(&self) -> bool {
+    async fn is_enabled(&self) -> bool {
         false
     }
 
-    fn network_info(&self) -> Result<Option<crate::device::wifi::NetworkInfo>, WifiError> {
+    async fn network_info(&self) -> Result<Option<crate::device::wifi::NetworkInfo>, WifiError> {
         Err(WifiError::Disabled)
     }
 }
@@ -156,8 +271,9 @@ impl WifiSession {
             mode,
             online: false,
             radio_on: false,
+            desired_radio_on: mode.wants_radio_at_rest(),
             idle_since: None,
-            idle_wake: None,
+            idle_wake: Arc::new(Notify::new()),
             hub: None,
             inhibitor: None,
             inhibitor_lease: None,
@@ -175,16 +291,26 @@ impl WifiSession {
             tracker,
             wifi,
             state,
-            online_cv: Condvar::new(),
+            online: Arc::new(Notify::new()),
+            radio: Arc::new(tokio::sync::Mutex::new(())),
         })
     }
 
-    /// Wakes the idle poller so an idle-disable check can run immediately.
-    pub fn set_idle_wake_sender(&self, sender: Sender<()>) {
-        self.state
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .idle_wake = Some(sender);
+    /// Handle that fires when the last lease is released into idle, so the
+    /// Kobo idle poller can check without waiting for the next tick.
+    ///
+    /// Returns the shared [`Notify`] rather than a future so a repeating poller
+    /// can re-arm it each pass; [`Notify::notified`] borrows, and a resolved
+    /// future cannot be reused.
+    #[cfg(feature = "kobo")]
+    pub(crate) fn idle_wake_notify(&self) -> Arc<Notify> {
+        Arc::clone(
+            &self
+                .state
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .idle_wake,
+        )
     }
 
     /// Stores the app event hub for emitting device events from lease paths.
@@ -199,6 +325,20 @@ impl WifiSession {
         sync_inhibitor_lease(&mut state, !self.tracker.is_empty());
     }
 
+    /// Records the radio state the session should settle on.
+    ///
+    /// Call this before handing the transition to a detached task, so the
+    /// recorded intent follows call order rather than task start order.
+    /// [`apply_desired_radio_power`] re-reads the flag under the radio lock, so
+    /// a later call wins even if an earlier transition is still in flight.
+    pub fn set_desired_radio_on(&self, desired: bool) {
+        let mut locked = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if locked.desired_radio_on != desired {
+            tracing::debug!(desired, "recorded desired wifi radio state");
+        }
+        locked.desired_radio_on = desired;
+    }
+
     /// Updates the configured WiFi mode (from settings).
     #[cfg_attr(
         feature = "tracing",
@@ -208,6 +348,8 @@ impl WifiSession {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         let previous = state.mode;
         state.mode = mode;
+        state.desired_radio_on =
+            mode.wants_radio_at_rest() || (mode != WifiMode::Off && !self.tracker.is_empty());
         if mode != WifiMode::Auto {
             state.idle_since = None;
         } else if self.tracker.is_empty() && state.online {
@@ -254,7 +396,7 @@ impl WifiSession {
                 "wifi session online"
             );
         }
-        self.online_cv.notify_all();
+        self.online.notify_waiters();
     }
 
     /// Marks the session offline without clearing the idle timer (pending disable).
@@ -272,7 +414,7 @@ impl WifiSession {
                 "wifi session marked offline pending disable"
             );
         }
-        self.online_cv.notify_all();
+        self.online.notify_waiters();
     }
 
     /// Marks the session offline (after disable / suspend).
@@ -299,6 +441,18 @@ impl WifiSession {
     /// Returns whether any lease is held.
     pub fn has_holders(&self) -> bool {
         !self.tracker.is_empty()
+    }
+
+    /// Whether the radio is up, according to this session's own bookkeeping.
+    ///
+    /// Read without touching the device, so it is safe from the synchronous
+    /// event handlers. Use [`WifiManager::is_enabled`] when a fresh probe of the
+    /// kernel module and interface is required.
+    pub fn is_radio_on(&self) -> bool {
+        self.state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .radio_on
     }
 
     /// Instant when idle started after the last Auto-mode lease dropped.
@@ -332,11 +486,12 @@ impl WifiSession {
             level = tracing::Level::TRACE,
         )
     )]
-    pub fn acquire(&self, name: impl Into<LeaseName>) -> Result<WifiLease, WifiSessionError> {
+    pub async fn acquire(&self, name: impl Into<LeaseName>) -> Result<WifiLease, WifiSessionError> {
         let name = name.into();
         #[cfg(feature = "tracing")]
         tracing::Span::current().record("name", tracing::field::display(&name));
         self.acquire_with_timeout(name, DEFAULT_ACQUIRE_TIMEOUT)
+            .await
     }
 
     /// Acquires a named lease, enabling WiFi and waiting until online if needed.
@@ -353,7 +508,7 @@ impl WifiSession {
             level = tracing::Level::TRACE,
         )
     )]
-    pub fn acquire_with_timeout(
+    pub async fn acquire_with_timeout(
         &self,
         name: impl Into<LeaseName>,
         timeout: Duration,
@@ -394,21 +549,32 @@ impl WifiSession {
         #[cfg(feature = "tracing")]
         tracing::Span::current().record("already_online", false);
 
-        if !self.wifi.is_enabled() {
-            tracing::info!(name = %name, "enabling wifi radio for lease");
-            if let Err(error) = self.wifi.enable() {
-                tracing::error!(name = %name, error = %error, "failed to enable wifi radio");
-                return Err(error.into());
+        {
+            let mut locked = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            if locked.mode != WifiMode::Off {
+                locked.desired_radio_on = true;
             }
         }
+        let applied_on = if !self.is_radio_on() {
+            tracing::info!(name = %name, "enabling wifi radio for lease");
+            match apply_desired_radio_power(self).await {
+                Ok(applied_on) => applied_on,
+                Err(error) => {
+                    tracing::error!(name = %name, error = %error, "failed to enable wifi radio");
+                    return Err(error.into());
+                }
+            }
+        } else {
+            true
+        };
 
         {
             let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            state.radio_on = true;
+            state.radio_on = applied_on;
             sync_inhibitor_lease(&mut state, !self.tracker.is_empty());
         }
 
-        if matches!(self.wifi.network_info(), Ok(Some(_))) {
+        if matches!(self.wifi.network_info().await, Ok(Some(_))) {
             tracing::debug!(name = %name, "wifi lease acquired; already associated");
             self.notify_online();
             if let Some(hub) = self
@@ -424,32 +590,32 @@ impl WifiSession {
         }
 
         let deadline = Instant::now() + timeout;
-        let mut state = self.state.lock().map_err(|_| WifiSessionError::Lock)?;
-        while !state.online {
-            let now = Instant::now();
-            if now >= deadline {
-                tracing::warn!(
-                    name = %name,
-                    timeout_secs = timeout.as_secs_f32(),
-                    "timed out waiting for wifi online"
-                );
-                drop(state);
-                drop(inner);
-                return Err(WifiSessionError::Timeout);
+        loop {
+            let notified = self.online.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+            if self
+                .state
+                .lock()
+                .map_err(|_| WifiSessionError::Lock)?
+                .online
+            {
+                break;
             }
-            let wait = deadline - now;
-            let (guard, wait_result) = self
-                .online_cv
-                .wait_timeout(state, wait)
-                .map_err(|_| WifiSessionError::Lock)?;
-            state = guard;
-            if wait_result.timed_out() && !state.online {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            let timed_out =
+                remaining.is_zero() || tokio::time::timeout(remaining, notified).await.is_err();
+            let online = self
+                .state
+                .lock()
+                .map_err(|_| WifiSessionError::Lock)?
+                .online;
+            if timed_out && !online {
                 tracing::warn!(
                     name = %name,
                     timeout_secs = timeout.as_secs_f32(),
                     "timed out waiting for wifi online"
                 );
-                drop(state);
                 drop(inner);
                 return Err(WifiSessionError::Timeout);
             }
@@ -459,53 +625,30 @@ impl WifiSession {
         Ok(WifiLease { inner: Some(inner) })
     }
 
-    /// Runs `f` while holding a named WiFi lease.
-    #[cfg_attr(
-        feature = "tracing",
-        tracing::instrument(
-            skip(self, name, f),
-            fields(name = tracing::field::Empty),
-            err,
-            level = tracing::Level::TRACE,
-        )
-    )]
-    pub fn with<R>(
-        &self,
-        name: impl Into<LeaseName>,
-        f: impl FnOnce() -> R,
-    ) -> Result<R, WifiSessionError> {
-        let name = name.into();
-        #[cfg(feature = "tracing")]
-        tracing::Span::current().record("name", tracing::field::display(&name));
-        let _lease = self.acquire(name)?;
-        Ok(f())
-    }
-
     /// Enables the radio without taking a lease (AlwaysOn / resume).
     ///
     /// Returns `Ok(true)` when the radio is enabled and
     /// [`WifiManager::network_info`] already reports an association (so the
     /// caller can emit [`crate::input::DeviceEvent::NetUp`] without waiting for
     /// a dhcpcd signal).
+    ///
+    /// Records `true` as the desired state before applying it. A detached caller
+    /// that can race another transition must record the intent itself and call
+    /// [`Self::apply_radio`] instead, or a late task start would clobber a newer
+    /// intent.
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(skip(self), err, level = tracing::Level::TRACE)
     )]
-    pub fn enable_radio(&self) -> Result<bool, WifiError> {
+    pub async fn enable_radio(&self) -> Result<bool, WifiError> {
         tracing::info!("enabling wifi radio");
-        match self.wifi.enable() {
-            Ok(()) => {
-                {
-                    let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-                    state.radio_on = true;
-                    sync_inhibitor_lease(&mut state, !self.tracker.is_empty());
-                }
-                let connected =
-                    self.wifi.is_enabled() && matches!(self.wifi.network_info(), Ok(Some(_)));
+        self.set_desired_radio_on(true);
+        let enabled = apply_desired_radio_power(self).await;
+        match enabled {
+            Ok(_) => {
+                let connected = self.wifi.is_enabled().await
+                    && matches!(self.wifi.network_info().await, Ok(Some(_)));
                 tracing::debug!(connected, "wifi radio enabled");
-                if connected {
-                    self.notify_online();
-                }
                 Ok(connected)
             }
             Err(error) => {
@@ -515,25 +658,39 @@ impl WifiSession {
         }
     }
 
-    /// Disables the radio and marks the session offline.
+    /// Applies the recorded radio intent without recording a new one.
+    ///
+    /// Detached transitions call this after their caller records the intent, so
+    /// a task that starts late applies the latest intent instead of overwriting
+    /// it. Returns whether the radio is enabled and associated, matching
+    /// [`Self::enable_radio`].
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(skip(self), err, level = tracing::Level::TRACE)
     )]
-    pub fn disable_radio(&self) -> Result<(), WifiError> {
+    pub async fn apply_radio(&self) -> Result<bool, WifiError> {
+        apply_desired_radio_power(self).await?;
+        Ok(self.wifi.is_enabled().await && matches!(self.wifi.network_info().await, Ok(Some(_))))
+    }
+
+    /// Disables the radio and marks the session offline.
+    ///
+    /// Records `false` as the desired state before applying it. A detached
+    /// caller that can race another transition must record the intent itself and
+    /// call [`Self::apply_radio`] instead, so a late task start cannot clobber a
+    /// newer intent.
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self), err, level = tracing::Level::TRACE)
+    )]
+    pub async fn disable_radio(&self) -> Result<(), WifiError> {
         tracing::info!("disabling wifi radio");
-        let result = self.wifi.disable();
+        self.set_desired_radio_on(false);
+        let result = apply_desired_radio_power(self).await.map(|_| ());
         if let Err(error) = &result {
             tracing::error!(error = %error, "failed to disable wifi radio");
         } else {
             tracing::debug!("wifi radio disabled");
-            {
-                let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-                state.radio_on = false;
-                sync_inhibitor_lease(&mut state, !self.tracker.is_empty());
-            }
-            self.notify_offline();
-            self.clear_idle();
         }
         result
     }
@@ -572,95 +729,403 @@ mod tests {
     }
 
     #[test]
-    fn off_rejects_acquire() {
-        let (session, _) = session(WifiMode::Off);
-        let err = session.acquire("x").unwrap_err();
-        assert!(matches!(err, WifiSessionError::ModeOff));
+    fn set_mode_records_the_radio_intent_it_implies() {
+        for (mode, expected) in [
+            (WifiMode::AlwaysOn, true),
+            (WifiMode::Auto, false),
+            (WifiMode::Off, false),
+        ] {
+            let (session, _wifi) = session(mode);
+            session.set_mode(mode);
+            let recorded = session
+                .state
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .desired_radio_on;
+            assert_eq!(recorded, expected, "mode {mode:?}");
+        }
     }
 
     #[test]
-    fn acquire_when_already_online() {
+    fn later_intent_wins_regardless_of_transition_order() {
+        let (session, _wifi) = session(WifiMode::AlwaysOn);
+        session.set_desired_radio_on(true);
+        session.set_desired_radio_on(false);
+        let recorded = session
+            .state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .desired_radio_on;
+        assert!(!recorded, "a disable recorded after an enable must win");
+    }
+
+    /// A manager whose `enable` blocks until released, so a test can record a
+    /// newer intent while an older transition is still mid-flight.
+    struct BlockingEnableWifi {
+        gate: tokio::sync::Notify,
+        enabled: std::sync::atomic::AtomicBool,
+    }
+
+    #[async_trait::async_trait]
+    impl WifiManager for BlockingEnableWifi {
+        async fn enable(&self) -> Result<(), WifiError> {
+            self.gate.notified().await;
+            self.enabled
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
+        }
+
+        async fn disable(&self) -> Result<(), WifiError> {
+            self.enabled
+                .store(false, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
+        }
+
+        async fn is_enabled(&self) -> bool {
+            self.enabled.load(std::sync::atomic::Ordering::SeqCst)
+        }
+
+        async fn network_info(
+            &self,
+        ) -> Result<Option<crate::device::wifi::NetworkInfo>, WifiError> {
+            Ok(None)
+        }
+    }
+
+    /// A detached transition that starts late must apply the latest intent, not
+    /// the one its task was spawned with.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_late_transition_applies_the_latest_intent() {
+        let wifi = Arc::new(BlockingEnableWifi {
+            gate: tokio::sync::Notify::new(),
+            enabled: std::sync::atomic::AtomicBool::new(false),
+        });
+        let session = WifiSession::new(wifi.clone(), WifiMode::AlwaysOn);
+        session.set_desired_radio_on(true);
+
+        let first = {
+            let session = Arc::clone(&session);
+            tokio::spawn(async move { session.apply_radio().await })
+        };
+        tokio::time::sleep(Duration::from_millis(20)).await;
+
+        session.set_desired_radio_on(false);
+        let second = {
+            let session = Arc::clone(&session);
+            tokio::spawn(async move { session.apply_radio().await })
+        };
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        wifi.gate.notify_one();
+
+        let _ = first.await;
+        let _ = second.await;
+
+        assert!(
+            !session.is_radio_on() && !wifi.is_enabled().await,
+            "the latest recorded intent (off) must win over the enqueued enable"
+        );
+    }
+
+    /// A manager that finishes `enable` only after `release` is signalled, so a
+    /// test can drop the caller while the sequence is still in flight.
+    struct SlowWifi {
+        finished: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        gate: tokio::sync::Notify,
+    }
+
+    #[async_trait::async_trait]
+    impl WifiManager for SlowWifi {
+        async fn enable(&self) -> Result<(), WifiError> {
+            self.gate.notified().await;
+            self.finished
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
+        }
+
+        async fn disable(&self) -> Result<(), WifiError> {
+            Ok(())
+        }
+
+        async fn is_enabled(&self) -> bool {
+            self.finished.load(std::sync::atomic::Ordering::SeqCst)
+        }
+
+        async fn network_info(
+            &self,
+        ) -> Result<Option<crate::device::wifi::NetworkInfo>, WifiError> {
+            Ok(None)
+        }
+    }
+
+    /// Slow disable used to test bookkeeping when the caller is cancelled.
+    struct SlowDisableWifi {
+        gate: tokio::sync::Notify,
+        enabled: std::sync::atomic::AtomicBool,
+    }
+
+    #[async_trait::async_trait]
+    impl WifiManager for SlowDisableWifi {
+        async fn enable(&self) -> Result<(), WifiError> {
+            self.enabled
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
+        }
+
+        async fn disable(&self) -> Result<(), WifiError> {
+            self.gate.notified().await;
+            self.enabled
+                .store(false, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
+        }
+
+        async fn is_enabled(&self) -> bool {
+            self.enabled.load(std::sync::atomic::Ordering::SeqCst)
+        }
+
+        async fn network_info(
+            &self,
+        ) -> Result<Option<crate::device::wifi::NetworkInfo>, WifiError> {
+            Ok(None)
+        }
+    }
+
+    /// A cancelled disable caller must still clear online/radio bookkeeping once
+    /// the detached hardware transition finishes.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn cancelled_disable_still_updates_session_state() {
+        let wifi = Arc::new(SlowDisableWifi {
+            gate: tokio::sync::Notify::new(),
+            enabled: std::sync::atomic::AtomicBool::new(true),
+        });
+        let session = WifiSession::new(wifi.clone(), WifiMode::AlwaysOn);
+        session.enable_radio().await.expect("enable radio");
+        session.notify_online();
+        assert!(session.is_online());
+        assert!(session.is_radio_on());
+
+        let caller = {
+            let session = Arc::clone(&session);
+            tokio::spawn(async move { session.disable_radio().await })
+        };
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        caller.abort();
+        let _ = caller.await;
+        wifi.gate.notify_one();
+
+        for _ in 0..200 {
+            if !session.is_online() && !session.is_radio_on() {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        panic!("session state must reflect a completed disable after caller cancellation");
+    }
+
+    /// A dropped caller must detach the enable sequence, not abort it halfway.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn dropping_the_caller_does_not_abort_the_enable_sequence() {
+        let finished = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let wifi = Arc::new(SlowWifi {
+            finished: std::sync::Arc::clone(&finished),
+            gate: tokio::sync::Notify::new(),
+        });
+        let session = WifiSession::new(wifi.clone(), WifiMode::AlwaysOn);
+
+        let caller = {
+            let session = Arc::clone(&session);
+            tokio::spawn(async move { session.enable_radio().await })
+        };
+        // Let the spawned sequence reach its gate, then drop the caller.
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        caller.abort();
+        let _ = caller.await;
+
+        wifi.gate.notify_one();
+        for _ in 0..200 {
+            if finished.load(std::sync::atomic::Ordering::SeqCst) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        assert!(
+            finished.load(std::sync::atomic::Ordering::SeqCst),
+            "the enable sequence must complete even though its caller was dropped"
+        );
+    }
+
+    /// A caller-held lock would be released when that caller is dropped, letting
+    /// a disable interleave with an enable that is still mid-sequence. The lock
+    /// must belong to the sequence, not the caller.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_dropped_caller_does_not_release_the_transition_lock() {
+        use std::sync::atomic::AtomicBool;
+
+        let finished = Arc::new(AtomicBool::new(false));
+        let wifi = Arc::new(SlowWifi {
+            finished: Arc::clone(&finished),
+            gate: tokio::sync::Notify::new(),
+        });
+        let session = WifiSession::new(wifi.clone(), WifiMode::AlwaysOn);
+
+        let caller = {
+            let session = Arc::clone(&session);
+            tokio::spawn(async move { session.enable_radio().await })
+        };
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        caller.abort();
+        let _ = caller.await;
+
+        // The detached enable still holds the lock, so a disable must wait.
+        let disable = {
+            let session = Arc::clone(&session);
+            tokio::spawn(async move { session.disable_radio().await })
+        };
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        assert!(
+            !disable.is_finished(),
+            "disable must not interleave with an enable that is still running"
+        );
+
+        wifi.gate.notify_one();
+        let _ = disable.await;
+    }
+
+    /// Enable and disable are serialised, so they cannot interleave.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn enable_and_disable_are_serialised() {
+        let (session, wifi) = session(WifiMode::AlwaysOn);
+        let (up, down) = tokio::join!(session.enable_radio(), session.disable_radio());
+        assert!(up.is_ok() && down.is_ok());
+        assert_eq!(
+            wifi.enable_call_count() + wifi.disable_call_count(),
+            2,
+            "both transitions must run, one after the other"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn off_rejects_acquire() {
+        let (session, _) = session(WifiMode::Off);
+        let err = session.acquire("x").await.unwrap_err();
+        assert!(matches!(err, WifiSessionError::ModeOff));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn acquire_when_already_online() {
         let (session, _) = session(WifiMode::Auto);
         session.notify_online();
-        let lease = session.acquire("a").unwrap();
+        let lease = session.acquire("a").await.unwrap();
         assert!(session.has_holders());
         drop(lease);
         assert!(!session.has_holders());
         assert!(session.idle_since().is_some());
     }
 
-    #[test]
-    fn two_holders_idle_only_after_last() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn two_holders_idle_only_after_last() {
         let (session, _) = session(WifiMode::Auto);
         session.notify_online();
-        let a = session.acquire("a").unwrap();
-        let b = session.acquire("b").unwrap();
+        let a = session.acquire("a").await.unwrap();
+        let b = session.acquire("b").await.unwrap();
         drop(a);
         assert!(session.idle_since().is_none());
         drop(b);
         assert!(session.idle_since().is_some());
     }
 
-    #[test]
-    fn always_on_does_not_arm_idle() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn always_on_does_not_arm_idle() {
         let (session, _) = session(WifiMode::AlwaysOn);
         session.notify_online();
-        let lease = session.acquire("a").unwrap();
+        let lease = session.acquire("a").await.unwrap();
         drop(lease);
         assert!(session.idle_since().is_none());
     }
 
-    #[test]
-    fn notify_online_unblocks_waiter() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn set_mode_auto_keeps_radio_intent_while_a_lease_is_held() {
+        let (session, _wifi) = session(WifiMode::AlwaysOn);
+        session.notify_online();
+        let lease = session.acquire("hold").await.unwrap();
+        assert!(session.has_holders());
+
+        session.set_mode(WifiMode::Auto);
+        let recorded = session
+            .state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .desired_radio_on;
+        assert!(
+            recorded,
+            "a held lease must keep the radio intent on in Auto mode"
+        );
+
+        drop(lease);
+        session.set_mode(WifiMode::Auto);
+        let recorded = session
+            .state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .desired_radio_on;
+        assert!(!recorded, "Auto with no holders must drop the radio intent");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn notify_online_unblocks_waiter() {
         let (session, wifi) = session(WifiMode::Auto);
         wifi.set_network_info(Ok(None));
         let session2 = Arc::clone(&session);
-        let handle =
-            thread::spawn(move || session2.acquire_with_timeout("wait", Duration::from_secs(2)));
+        let runtime = tokio::runtime::Handle::current();
+        let handle = thread::spawn(move || {
+            runtime.block_on(session2.acquire_with_timeout("wait", Duration::from_secs(2)))
+        });
         thread::sleep(Duration::from_millis(50));
         session.notify_online();
         let lease = handle.join().unwrap().unwrap();
         drop(lease);
     }
 
-    #[test]
-    fn acquire_enables_radio_when_disabled() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn acquire_enables_radio_when_disabled() {
         let (session, wifi) = session(WifiMode::Auto);
-        assert!(!wifi.is_enabled());
+        assert!(!wifi.is_enabled().await);
         let session2 = Arc::clone(&session);
-        let handle =
-            thread::spawn(move || session2.acquire_with_timeout("en", Duration::from_millis(200)));
+        let runtime = tokio::runtime::Handle::current();
+        let handle = thread::spawn(move || {
+            runtime.block_on(session2.acquire_with_timeout("en", Duration::from_millis(200)))
+        });
         thread::sleep(Duration::from_millis(30));
-        assert!(wifi.is_enabled() || handle.is_finished());
+        assert!(wifi.is_enabled().await || handle.is_finished());
         session.notify_online();
         let _ = handle.join().unwrap();
     }
 
-    #[test]
-    fn acquire_timeout_releases_lease_without_deadlock() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn acquire_timeout_releases_lease_without_deadlock() {
         let (session, wifi) = session(WifiMode::Auto);
         wifi.set_network_info(Ok(None));
         let err = session
             .acquire_with_timeout("t", Duration::from_millis(100))
+            .await
             .unwrap_err();
         assert!(matches!(err, WifiSessionError::Timeout));
         assert!(!session.has_holders());
         assert!(session.idle_since().is_some());
     }
 
-    #[test]
-    fn enable_radio_reports_connected_when_associated() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn enable_radio_reports_connected_when_associated() {
         let (session, wifi) = session(WifiMode::AlwaysOn);
         wifi.set_network_info(Ok(Some(crate::device::wifi::NetworkInfo {
             ip: "192.168.1.1".parse().unwrap(),
             essid: crate::device::wifi::Essid::new("test"),
         })));
-        assert!(session.enable_radio().unwrap());
+        assert!(session.enable_radio().await.unwrap());
         assert!(session.is_online());
     }
 
-    #[test]
-    fn acquire_skips_wait_when_already_associated() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn acquire_skips_wait_when_already_associated() {
         let (session, wifi) = session(WifiMode::Auto);
         wifi.set_network_info(Ok(Some(crate::device::wifi::NetworkInfo {
             ip: "192.168.1.1".parse().unwrap(),
@@ -668,6 +1133,7 @@ mod tests {
         })));
         let lease = session
             .acquire_with_timeout("fast", Duration::from_millis(50))
+            .await
             .unwrap();
         assert!(session.is_online());
         drop(lease);
@@ -684,8 +1150,8 @@ mod tests {
         (dir, inhibitor)
     }
 
-    #[test]
-    fn always_on_holds_soft_suspend_only_while_radio_on() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn always_on_holds_soft_suspend_only_while_radio_on() {
         let (_dir, soft) = soft_suspend_inhibitor();
         let (session, _) = session(WifiMode::Auto);
         session.set_inhibitor(Arc::clone(&soft));
@@ -697,10 +1163,10 @@ mod tests {
             "AlwaysOn without radio must not pin soft-suspend"
         );
 
-        session.enable_radio().unwrap();
+        session.enable_radio().await.unwrap();
         assert!(!soft.is_empty());
 
-        session.disable_radio().unwrap();
+        session.disable_radio().await.unwrap();
         assert!(
             soft.is_empty(),
             "disable_radio must drop soft-suspend wifi lease"
@@ -710,29 +1176,29 @@ mod tests {
         assert!(soft.is_empty());
     }
 
-    #[test]
-    fn always_on_keeps_soft_suspend_after_last_wifi_holder() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn always_on_keeps_soft_suspend_after_last_wifi_holder() {
         let (_dir, soft) = soft_suspend_inhibitor();
         let (session, _) = session(WifiMode::AlwaysOn);
         session.set_inhibitor(Arc::clone(&soft));
-        session.enable_radio().unwrap();
+        session.enable_radio().await.unwrap();
         session.notify_online();
         assert!(!soft.is_empty());
 
-        let lease = session.acquire("a").unwrap();
+        let lease = session.acquire("a").await.unwrap();
         drop(lease);
         assert!(!soft.is_empty());
         assert!(!session.has_holders());
     }
 
-    #[test]
-    fn leaving_always_on_keeps_soft_suspend_while_holders_remain() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn leaving_always_on_keeps_soft_suspend_while_holders_remain() {
         let (_dir, soft) = soft_suspend_inhibitor();
         let (session, _) = session(WifiMode::AlwaysOn);
         session.set_inhibitor(Arc::clone(&soft));
-        session.enable_radio().unwrap();
+        session.enable_radio().await.unwrap();
         session.notify_online();
-        let lease = session.acquire("a").unwrap();
+        let lease = session.acquire("a").await.unwrap();
 
         session.set_mode(WifiMode::Auto);
         assert!(!soft.is_empty());
@@ -741,31 +1207,31 @@ mod tests {
         assert!(soft.is_empty());
     }
 
-    #[test]
-    fn disable_radio_drops_always_on_soft_suspend_lease() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn disable_radio_drops_always_on_soft_suspend_lease() {
         let (_dir, soft) = soft_suspend_inhibitor();
         let (session, _) = session(WifiMode::AlwaysOn);
         session.set_inhibitor(Arc::clone(&soft));
-        session.enable_radio().unwrap();
+        session.enable_radio().await.unwrap();
         assert!(!soft.is_empty());
 
-        session.disable_radio().unwrap();
+        session.disable_radio().await.unwrap();
         assert!(soft.is_empty());
         assert_eq!(session.mode(), WifiMode::AlwaysOn);
 
-        session.enable_radio().unwrap();
+        session.enable_radio().await.unwrap();
         assert!(!soft.is_empty());
     }
 
-    #[test]
-    fn auto_holder_pins_soft_suspend_while_radio_on() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn auto_holder_pins_soft_suspend_while_radio_on() {
         let (_dir, soft) = soft_suspend_inhibitor();
         let (session, _) = session(WifiMode::Auto);
         session.set_inhibitor(Arc::clone(&soft));
-        session.enable_radio().unwrap();
+        session.enable_radio().await.unwrap();
         session.notify_online();
 
-        let lease = session.acquire("ntp").unwrap();
+        let lease = session.acquire("ntp").await.unwrap();
         assert!(
             !soft.is_empty(),
             "Auto-mode WiFi holder must pin soft-suspend while radio is on"
@@ -774,28 +1240,32 @@ mod tests {
         assert!(soft.is_empty());
     }
 
-    #[test]
-    fn soft_suspend_stays_pinned_while_holder_active_under_churn() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn soft_suspend_stays_pinned_while_holder_active_under_churn() {
         use std::sync::atomic::{AtomicBool, Ordering};
 
         let (_dir, soft) = soft_suspend_inhibitor();
         let (session, _) = session(WifiMode::Auto);
         session.set_inhibitor(Arc::clone(&soft));
-        session.enable_radio().unwrap();
+        session.enable_radio().await.unwrap();
         session.notify_online();
 
         let failed = Arc::new(AtomicBool::new(false));
+        let runtime = tokio::runtime::Handle::current();
         let handles: Vec<_> = (0..4)
             .map(|i| {
                 let session = Arc::clone(&session);
                 let soft = Arc::clone(&soft);
                 let failed = Arc::clone(&failed);
+                let runtime = runtime.clone();
                 thread::spawn(move || {
                     for n in 0..250 {
                         if failed.load(Ordering::Relaxed) {
                             break;
                         }
-                        let lease = session.acquire(format!("t{i}-{n}")).unwrap();
+                        let lease = runtime
+                            .block_on(session.acquire(format!("t{i}-{n}")))
+                            .unwrap();
                         if session.has_holders() && soft.is_empty() {
                             failed.store(true, Ordering::Relaxed);
                             break;

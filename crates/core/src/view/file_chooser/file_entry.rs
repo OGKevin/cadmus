@@ -148,6 +148,7 @@ impl FileEntry {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for FileEntry {
     /// Handles events for the file entry.
     ///
@@ -168,7 +169,7 @@ impl View for FileEntry {
     ///
     /// `true` if the event was handled, `false` otherwise.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, _rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,

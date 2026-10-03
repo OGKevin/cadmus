@@ -260,9 +260,10 @@ impl ToggleableKeyboard {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for ToggleableKeyboard {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,
@@ -275,7 +276,7 @@ impl View for ToggleableKeyboard {
         }
 
         for child in &mut self.children {
-            if child.handle_event(evt, hub, bus, rq, context) {
+            if child.handle_event(evt, hub, bus, rq, context).await {
                 return true;
             }
         }
@@ -318,17 +319,16 @@ impl View for ToggleableKeyboard {
 mod tests {
     use super::*;
     use crate::context::test_helpers::create_test_context;
-    use std::sync::mpsc::channel;
 
     fn create_test_keyboard() -> ToggleableKeyboard {
         let parent_rect = rect![0, 0, 600, 800];
         ToggleableKeyboard::new(parent_rect, false)
     }
 
-    fn create_test_context_with_keyboard_data() -> AppContext {
-        let mut context = create_test_context();
-        context.load_keyboard_layouts();
-        context.load_dictionaries();
+    async fn create_test_context_with_keyboard_data() -> AppContext {
+        let mut context = create_test_context().await;
+        context.load_keyboard_layouts().await;
+        context.load_dictionaries().await;
         context
     }
 
@@ -421,10 +421,10 @@ mod tests {
         assert!(keyboard.has_bottom_bar);
     }
 
-    #[test]
-    fn test_keyboard_height_with_bottom_bar() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_keyboard_height_with_bottom_bar() {
         let parent_rect = rect![0, 0, 600, 800];
-        let context = create_test_context();
+        let context = create_test_context().await;
         let keyboard_with_bar = ToggleableKeyboard::new(parent_rect, false).with_bottom_bar(true);
         let keyboard_without_bar =
             ToggleableKeyboard::new(parent_rect, false).with_bottom_bar(false);
@@ -448,12 +448,12 @@ mod tests {
         assert!(!keyboard.has_bottom_bar);
     }
 
-    #[test]
-    fn test_toggle_from_hidden_shows_keyboard() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_toggle_from_hidden_shows_keyboard() {
         let mut keyboard = create_test_keyboard();
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut rq = RenderQueue::new();
-        let mut context = create_test_context_with_keyboard_data();
+        let mut context = create_test_context_with_keyboard_data().await;
 
         assert!(!keyboard.is_visible());
         assert!(keyboard.children.is_empty());
@@ -466,12 +466,12 @@ mod tests {
         assert_eq!(rq.len(), 1);
     }
 
-    #[test]
-    fn test_toggle_from_visible_hides_keyboard() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_toggle_from_visible_hides_keyboard() {
         let mut keyboard = create_test_keyboard();
-        let (hub, receiver) = channel();
+        let (hub, mut receiver) = crate::view::hub_channel();
         let mut rq = RenderQueue::new();
-        let mut context = create_test_context_with_keyboard_data();
+        let mut context = create_test_context_with_keyboard_data().await;
 
         keyboard.toggle(&hub, &mut rq, &mut context);
         assert!(keyboard.is_visible());
@@ -489,12 +489,12 @@ mod tests {
         assert!(matches!(focus_event.event, Event::Focus(None)));
     }
 
-    #[test]
-    fn test_toggle_twice_returns_to_original_state() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_toggle_twice_returns_to_original_state() {
         let mut keyboard = create_test_keyboard();
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut rq = RenderQueue::new();
-        let mut context = create_test_context_with_keyboard_data();
+        let mut context = create_test_context_with_keyboard_data().await;
 
         keyboard.toggle(&hub, &mut rq, &mut context);
         keyboard.toggle(&hub, &mut rq, &mut context);
@@ -503,11 +503,11 @@ mod tests {
         assert!(keyboard.children.is_empty());
     }
 
-    #[test]
-    fn test_toggle_adds_render_data_each_time() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_toggle_adds_render_data_each_time() {
         let mut keyboard = create_test_keyboard();
-        let (hub, _receiver) = channel();
-        let mut context = create_test_context_with_keyboard_data();
+        let (hub, _receiver) = crate::view::hub_channel();
+        let mut context = create_test_context_with_keyboard_data().await;
 
         let mut rq = RenderQueue::new();
         keyboard.toggle(&hub, &mut rq, &mut context);
@@ -518,12 +518,12 @@ mod tests {
         assert_eq!(rq.len(), 1);
     }
 
-    #[test]
-    fn test_set_visible_true_shows_keyboard() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_set_visible_true_shows_keyboard() {
         let mut keyboard = create_test_keyboard();
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut rq = RenderQueue::new();
-        let mut context = create_test_context_with_keyboard_data();
+        let mut context = create_test_context_with_keyboard_data().await;
 
         assert!(!keyboard.is_visible());
         assert!(keyboard.children.is_empty());
@@ -535,12 +535,12 @@ mod tests {
         assert_eq!(rq.len(), 1);
     }
 
-    #[test]
-    fn test_set_visible_false_hides_keyboard() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_set_visible_false_hides_keyboard() {
         let mut keyboard = create_test_keyboard();
-        let (hub, receiver) = channel();
+        let (hub, mut receiver) = crate::view::hub_channel();
         let mut rq = RenderQueue::new();
-        let mut context = create_test_context_with_keyboard_data();
+        let mut context = create_test_context_with_keyboard_data().await;
 
         keyboard.set_visible(true, &hub, &mut rq, &mut context);
         assert!(keyboard.is_visible());
@@ -558,12 +558,12 @@ mod tests {
         assert!(matches!(focus_event.event, Event::Focus(None)));
     }
 
-    #[test]
-    fn test_set_visible_noop_when_already_visible() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_set_visible_noop_when_already_visible() {
         let mut keyboard = create_test_keyboard();
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut rq = RenderQueue::new();
-        let mut context = create_test_context_with_keyboard_data();
+        let mut context = create_test_context_with_keyboard_data().await;
 
         keyboard.set_visible(true, &hub, &mut rq, &mut context);
         assert!(keyboard.is_visible());
@@ -575,12 +575,12 @@ mod tests {
         assert!(rq.is_empty());
     }
 
-    #[test]
-    fn test_set_visible_noop_when_already_hidden() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_set_visible_noop_when_already_hidden() {
         let mut keyboard = create_test_keyboard();
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut rq = RenderQueue::new();
-        let mut context = create_test_context_with_keyboard_data();
+        let mut context = create_test_context_with_keyboard_data().await;
 
         assert!(!keyboard.is_visible());
 

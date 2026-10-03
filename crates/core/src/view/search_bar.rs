@@ -95,13 +95,14 @@ impl SearchBar {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for SearchBar {
     #[cfg_attr(feature = "tracing", tracing::instrument(
         skip(self, _hub, _bus, _rq, _context),
         fields(event = ?evt),
         ret(level=tracing::Level::TRACE)
     ))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,

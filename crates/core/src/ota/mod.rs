@@ -13,4 +13,4 @@ mod client;
 pub use crate::github::OtaProgress;
 pub use crate::http::{CancelFlag, CancelFunc};
 pub use cleanup::{clean_bundled_files, cleanup_ota_artifacts, cleanup_ota_cancel};
-pub use client::{ArtifactSource, DeployOutcome, OtaClient, OtaError};
+pub use client::{ArtifactSource, DeployOutcome, DownloadedArtifact, OtaClient, OtaError};

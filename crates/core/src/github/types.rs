@@ -1,11 +1,12 @@
 use secrecy::SecretString;
 use serde::Deserialize;
-use std::path::PathBuf;
 
 #[derive(Debug, thiserror::Error)]
 pub enum GithubError {
     #[error(transparent)]
     Http(#[from] crate::http::HttpError),
+    #[error(transparent)]
+    Request(#[from] crate::github::GithubRequestError),
     #[error("GitHub API error: {0}")]
     Api(String),
 }
@@ -63,9 +64,26 @@ pub enum VerifyScopesError {
     #[error("scope check request failed: {0}")]
     Request(#[from] reqwest::Error),
 
+    /// The HTTP request failed in middleware that did not carry a reqwest error.
+    #[error("scope check request failed: {0}")]
+    Transport(String),
+
+    /// GitHub returned a non-success status for the scope check.
+    #[error("scope check request failed: HTTP {status}")]
+    HttpStatus { status: http::StatusCode },
+
     /// The token was accepted but lacks one or more required OAuth scopes.
     #[error(transparent)]
     InsufficientScopes(#[from] ScopeError),
+}
+
+impl From<reqwest_middleware::Error> for VerifyScopesError {
+    fn from(error: reqwest_middleware::Error) -> Self {
+        match crate::http::reqwest_error(error) {
+            Ok(error) => Self::Request(error),
+            Err(message) => Self::Transport(message),
+        }
+    }
 }
 
 // ── GitHub REST API response types ───────────────────────────────────────────
@@ -181,6 +199,6 @@ pub enum OtaProgress {
     FindingWorkflow,
     /// Actively downloading the artifact with optional progress tracking.
     DownloadingArtifact { downloaded: u64, total: u64 },
-    /// Download completed successfully, artifact saved to disk.
-    Complete { path: PathBuf },
+    /// Download completed successfully.
+    Complete,
 }

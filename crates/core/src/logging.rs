@@ -50,6 +50,7 @@
 //! # Example Usage
 //!
 //! ```no_run
+//! # async fn example() -> Result<(), anyhow::Error> {
 //! use cadmus_core::settings::LoggingSettings;
 //! use cadmus_core::logging::{init_logging, shutdown_logging, get_run_id};
 //!
@@ -66,17 +67,20 @@
 //!
 //! // Initialize at application startup
 //! let log_dir = std::path::PathBuf::from("/mnt/onboard/logs");
-//! init_logging(&settings, log_dir)?;
+//! init_logging(&settings, log_dir).await?;
 //! eprintln!("Started with run ID: {}", get_run_id());
 //!
 //! // Use tracing macros throughout the application
 //! tracing::info!("Application started");
 //!
 //! // Shutdown at application exit (flushes buffers)
-//! shutdown_logging();
-//! # Ok::<(), anyhow::Error>(())
+//! shutdown_logging().await;
+//! # Ok(())
+//! # }
 //! ```
 
+#[cfg(feature = "test")]
+use crate::runtime::Job;
 use crate::settings::LoggingSettings;
 #[cfg(feature = "tracing")]
 use crate::telemetry;
@@ -101,6 +105,8 @@ const LOG_FILE_PREFIX: &str = "cadmus-";
 const LOG_FILE_SUFFIX: &str = "json";
 
 static LOG_GUARD: OnceLock<Mutex<Option<WorkerGuard>>> = OnceLock::new();
+#[cfg(feature = "test")]
+static KERN_LOG_JOB: OnceLock<Mutex<Option<Job>>> = OnceLock::new();
 static RUN_ID: OnceLock<String> = OnceLock::new();
 static WRITER_INNER: OnceLock<ArcSwap<NonBlocking>> = OnceLock::new();
 
@@ -259,7 +265,7 @@ fn is_run_log_entry(entry: &DirEntry) -> bool {
 ///   retention settings.
 /// * `log_dir` - Absolute path to the directory where log files are written.
 ///   The caller is responsible for computing this from
-///   [`Device::data_path`](crate::device::Device::data_path) so that logs land
+///   [`DevicePaths::data_path`](crate::device::DevicePaths::data_path) so that logs land
 ///   on the SD card when one is present.
 ///
 /// # Returns
@@ -278,6 +284,7 @@ fn is_run_log_entry(entry: &DirEntry) -> bool {
 /// # Example
 ///
 /// ```no_run
+/// # async fn example() -> Result<(), anyhow::Error> {
 /// use cadmus_core::settings::LoggingSettings;
 /// use cadmus_core::logging::init_logging;
 ///
@@ -293,10 +300,14 @@ fn is_run_log_entry(entry: &DirEntry) -> bool {
 /// };
 ///
 /// let log_dir = std::path::PathBuf::from("/mnt/onboard/logs");
-/// init_logging(&settings, log_dir)?;
-/// # Ok::<(), anyhow::Error>(())
+/// init_logging(&settings, log_dir).await?;
+/// # Ok(())
+/// # }
 /// ```
-pub fn init_logging(settings: &LoggingSettings, log_dir: std::path::PathBuf) -> Result<(), Error> {
+pub async fn init_logging(
+    settings: &LoggingSettings,
+    log_dir: std::path::PathBuf,
+) -> Result<(), Error> {
     if !settings.enabled {
         return Ok(());
     }
@@ -363,8 +374,10 @@ pub fn init_logging(settings: &LoggingSettings, log_dir: std::path::PathBuf) -> 
     );
 
     #[cfg(feature = "test")]
-    if settings.enable_kern_log {
-        kern::spawn_kern_log_thread();
+    if settings.enable_kern_log
+        && let Some(job) = kern::spawn_kern_log_thread().await
+    {
+        let _ = KERN_LOG_JOB.set(Mutex::new(Some(job)));
     }
 
     Ok(())
@@ -374,6 +387,7 @@ pub fn init_logging(settings: &LoggingSettings, log_dir: std::path::PathBuf) -> 
 ///
 /// This function ensures all buffered log data is written to disk and, if enabled,
 /// exported to OpenTelemetry endpoints before the application exits. It:
+/// - Stops kernel log capture so its blocking task can finish
 /// - Flushes the file appender buffer (happens automatically via `LOG_GUARD` drop)
 /// - Shuts down OpenTelemetry providers (when `otel` feature is enabled)
 /// - Ensures no log data is lost on exit
@@ -383,39 +397,58 @@ pub fn init_logging(settings: &LoggingSettings, log_dir: std::path::PathBuf) -> 
 /// # Example
 ///
 /// ```no_run
+/// # async fn example() -> Result<(), anyhow::Error> {
 /// use cadmus_core::logging::{init_logging, shutdown_logging};
 /// use cadmus_core::settings::LoggingSettings;
 ///
 /// // At application start
 /// let settings = LoggingSettings::default();
 /// let log_dir = std::path::PathBuf::from("/mnt/onboard/logs");
-/// init_logging(&settings, log_dir)?;
+/// init_logging(&settings, log_dir).await?;
 ///
 /// // ... application runs ...
 ///
 /// // At application exit
-/// shutdown_logging();
-/// # Ok::<(), anyhow::Error>(())
+/// shutdown_logging().await;
+/// # Ok(())
+/// # }
 /// ```
-pub fn shutdown_logging() {
-    if let Some(mutex) = LOG_GUARD.get() {
-        if let Ok(mut guard_opt) = mutex.lock() {
-            if let Some(guard) = guard_opt.take() {
-                let (tx, rx) = mpsc::channel();
+pub async fn shutdown_logging() {
+    #[cfg(feature = "test")]
+    if let Some(job) = take_kern_log_job() {
+        job.cancel();
+        let _ = job.join(crate::runtime::SHUTDOWN_DEADLINE).await;
+    }
 
-                thread::spawn(move || {
-                    drop(guard);
-                    let _ = tx.send(());
-                });
+    if let Some(mutex) = LOG_GUARD.get()
+        && let Ok(mut guard_opt) = mutex.lock()
+        && let Some(guard) = guard_opt.take()
+    {
+        let (tx, rx) = mpsc::channel();
 
-                let _ = rx.recv_timeout(Duration::from_secs(5));
-                eprintln!("Logging shutdown complete.");
-            }
-        }
+        thread::spawn(move || {
+            drop(guard);
+            let _ = tx.send(());
+        });
+
+        let _ = rx.recv_timeout(Duration::from_secs(5));
+        eprintln!("Logging shutdown complete.");
     }
 
     #[cfg(feature = "tracing")]
     telemetry::tracing::shutdown_telemetry();
+}
+
+/// Takes the kernel-log job out of its slot.
+///
+/// The lock is released before the caller joins, so the job's `await` never
+/// runs while the slot is held.
+#[cfg(feature = "test")]
+fn take_kern_log_job() -> Option<crate::runtime::Job> {
+    KERN_LOG_JOB
+        .get()
+        .and_then(|slot| slot.lock().ok())
+        .and_then(|mut slot| slot.take())
 }
 
 /// Redirects log output to `dir`, flushing the current file first.
@@ -511,7 +544,6 @@ fn build_filter(settings: &LoggingSettings) -> Result<EnvFilter, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::OnceLock;
     use tempfile::TempDir;
 
     /// Guard that ensures `init_logging` is called at most once per test binary.
@@ -519,15 +551,20 @@ mod tests {
     /// `init_logging` registers a global tracing subscriber via `try_init()`, which
     /// panics (or returns an error) on a second call within the same process. All
     /// tests that need the logging statics populated must go through this helper.
-    static LOGGING_INIT: OnceLock<TempDir> = OnceLock::new();
-
+    ///
     /// Initialise logging once for the whole test binary and return the log dir.
     ///
     /// Subsequent calls return the already-initialised directory, so the test can
     /// be run together with other tests without conflicts.
-    fn ensure_logging_init() -> &'static std::path::Path {
+    ///
+    /// `init_logging` is async (it starts the cancellable kernel-log task), so
+    /// the `OnceLock` holds the directory and the first caller awaits the init.
+    static LOGGING_DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+    static LOGGING_INIT: tokio::sync::OnceCell<()> = tokio::sync::OnceCell::const_new();
+
+    async fn ensure_logging_init() -> &'static std::path::Path {
         LOGGING_INIT
-            .get_or_init(|| {
+            .get_or_init(|| async {
                 crate::crypto::init_crypto_provider();
                 let dir = TempDir::new().expect("failed to create temp dir for logging init");
                 let settings = LoggingSettings {
@@ -541,10 +578,18 @@ mod tests {
                     enable_dbus_log: false,
                 };
                 init_logging(&settings, dir.path().to_path_buf())
+                    .await
                     .expect("failed to initialize logging for tests");
-                dir
+                // The `TempDir` is intentionally leaked for the process lifetime:
+                // the global appender keeps writing into it.
+                let dir: &'static TempDir = Box::leak(Box::new(dir));
+                let _ = LOGGING_DIR.set(dir.path().to_path_buf());
             })
-            .path()
+            .await;
+        LOGGING_DIR
+            .get()
+            .expect("logging initialised above")
+            .as_path()
     }
 
     fn create_log_file(dir: &std::path::Path, index: usize) -> Result<(), Error> {
@@ -612,9 +657,9 @@ mod tests {
     /// path. The `ensure_logging_init` helper uses a `OnceLock` so that the global
     /// tracing subscriber is registered at most once per test binary, avoiding the
     /// "subscriber already set" error that `try_init()` would otherwise produce.
-    #[test]
-    fn test_redirect_log_to_dir_creates_log_file_in_new_dir() -> Result<(), Error> {
-        ensure_logging_init();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_redirect_log_to_dir_creates_log_file_in_new_dir() -> Result<(), Error> {
+        ensure_logging_init().await;
 
         let redirect_dir = TempDir::new()?;
 

@@ -48,6 +48,12 @@ notification-timezone-detection-failed = Timezone detection failed
 cancel = Cancel
 delete = Delete
 
+# GitHub device authorization
+device-auth-connecting = Connecting to GitHub…
+device-auth-go-to-uri = Go to: { $uri }
+device-auth-enter-code = Enter code: { $code }
+device-auth-cancelled-on-github = Authorization cancelled
+
 # Top Menu Strings
 top-menu-exit = Exit
 top-menu-reboot-device = Reboot Device
@@ -70,6 +76,7 @@ ota-check-updates-failed = Failed to check for updates
 ota-client-build-failed = Failed to create client
 ota-deployment-failed = Deployment failed
 ota-download-cancel = {cancel}
+ota-download-canceling = Canceling…
 ota-download-failed = Download failed
 ota-downloading-default-branch = Downloading main branch build… { $percent }%
 ota-downloading-pr = Downloading PR #{ $pr_number } build… { $percent }%

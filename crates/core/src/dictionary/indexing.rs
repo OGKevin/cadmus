@@ -10,9 +10,18 @@ pub struct Entry {
     pub original: Option<String>,
 }
 
+/// Database-backed and other dictionary index sources implement this trait.
+///
+/// Lookups are async so callers on the runtime never need `block_on` for SQL.
+#[async_trait::async_trait]
 pub trait IndexReader {
-    fn load_and_find(&mut self, headword: &str, fuzzy: bool, metadata: &Metadata) -> Vec<Entry>;
-    fn find(&self, headword: &str, fuzzy: bool) -> Vec<Entry>;
+    async fn load_and_find(
+        &mut self,
+        headword: &str,
+        fuzzy: bool,
+        metadata: &Metadata,
+    ) -> Vec<Entry>;
+    async fn find(&self, headword: &str, fuzzy: bool) -> Vec<Entry>;
 }
 
 /// Applies case and character normalization to a headword.

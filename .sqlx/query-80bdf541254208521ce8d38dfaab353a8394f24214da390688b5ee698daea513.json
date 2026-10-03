@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT dict_path, index_mtime, index_size FROM dictionary_index_meta WHERE dict_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "dict_path",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "dictionary_index_meta",
+            "name": "dict_path"
+          }
+        }
+      },
+      {
+        "name": "index_mtime",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dictionary_index_meta",
+            "name": "index_mtime"
+          }
+        }
+      },
+      {
+        "name": "index_size",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dictionary_index_meta",
+            "name": "index_size"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "80bdf541254208521ce8d38dfaab353a8394f24214da390688b5ee698daea513"
+}

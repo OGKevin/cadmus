@@ -1,10 +1,27 @@
-//! Filesystem helpers for unpublished files and directories.
+//! Filesystem helpers.
 
 use std::fs;
 use std::io;
 use std::path::PathBuf;
 
-#[derive(Debug)]
+/// Returns the next directory entry, skipping read errors.
+///
+/// Mirrors the `flatten()` behaviour the synchronous directory listings had, so
+/// one unreadable entry does not hide every later one.
+pub(crate) async fn next_dir_entry(
+    read_dir: &mut tokio::fs::ReadDir,
+) -> Option<tokio::fs::DirEntry> {
+    loop {
+        match read_dir.next_entry().await {
+            Ok(entry) => return entry,
+            Err(error) => {
+                tracing::warn!(error = %error, "failed to read directory entry");
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
 enum UnpublishedKind {
     File,
     Dir,
@@ -48,6 +65,62 @@ impl RemovePathOnDrop {
     )]
     pub(crate) fn disarm(&mut self) {
         self.armed = false;
+    }
+
+    /// Removes the guarded path without blocking the async runtime.
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self), fields(path = %self.path.display()))
+    )]
+    pub(crate) async fn remove_if_armed(mut self) {
+        if !self.armed {
+            return;
+        }
+        self.armed = false;
+        let path = self.path.clone();
+        let result = match self.kind {
+            UnpublishedKind::File => tokio::fs::remove_file(&path).await,
+            UnpublishedKind::Dir => tokio::fs::remove_dir_all(&path).await,
+        };
+        match result {
+            Ok(()) => {
+                tracing::debug!(
+                    path = %path.display(),
+                    "removed unpublished path"
+                );
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => {
+                tracing::warn!(
+                    path = %path.display(),
+                    error = %error,
+                    "failed to remove unpublished path"
+                );
+            }
+        }
+    }
+}
+
+fn remove_unpublished_sync(path: &PathBuf, kind: UnpublishedKind) {
+    let result = match kind {
+        UnpublishedKind::File => fs::remove_file(path),
+        UnpublishedKind::Dir => fs::remove_dir_all(path),
+    };
+    match result {
+        Ok(()) => {
+            tracing::debug!(
+                path = %path.display(),
+                "removed unpublished path"
+            );
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => {
+            tracing::warn!(
+                path = %path.display(),
+                error = %error,
+                "failed to remove unpublished path"
+            );
+        }
     }
 }
 
@@ -122,27 +195,10 @@ impl Drop for RemovePathOnDrop {
             return;
         }
 
-        let result = match self.kind {
-            UnpublishedKind::File => fs::remove_file(&self.path),
-            UnpublishedKind::Dir => fs::remove_dir_all(&self.path),
-        };
-
-        match result {
-            Ok(()) => {
-                tracing::debug!(
-                    path = %self.path.display(),
-                    "removed unpublished path"
-                );
-            }
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(error) => {
-                tracing::warn!(
-                    path = %self.path.display(),
-                    error = %error,
-                    "failed to remove unpublished path"
-                );
-            }
-        }
+        let path = self.path.clone();
+        let kind = self.kind;
+        self.armed = false;
+        remove_unpublished_sync(&path, kind);
     }
 }
 
@@ -192,6 +248,21 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         RemovePathOnDrop::file(dir.path().join("absent.bin"));
         RemovePathOnDrop::dir(dir.path().join("absent-dir"));
+    }
+
+    #[tokio::test]
+    async fn next_dir_entry_returns_every_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        File::create(dir.path().join("a")).unwrap();
+        tokio::fs::create_dir(dir.path().join("b")).await.unwrap();
+
+        let mut read_dir = tokio::fs::read_dir(dir.path()).await.unwrap();
+        let mut names = Vec::new();
+        while let Some(entry) = next_dir_entry(&mut read_dir).await {
+            names.push(entry.file_name().to_string_lossy().into_owned());
+        }
+        names.sort();
+        assert_eq!(names, ["a", "b"]);
     }
 
     #[test]

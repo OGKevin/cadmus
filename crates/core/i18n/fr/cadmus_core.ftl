@@ -38,6 +38,13 @@ top-menu-power-off = Éteindre
 top-menu-switch-to = Changer pour la version { $build }
 top-menu-sync-time = Synchroniser l'horloge
 top-menu-wifi = Wifi
+
+# GitHub device authorization
+device-auth-connecting = Connexion à GitHub…
+device-auth-go-to-uri = Ouvrir : { $uri }
+device-auth-enter-code = Saisir le code : { $code }
+device-auth-cancelled-on-github = Autorisation annulée
+
 # Settings - Button Scheme
 settings-button-scheme-natural = Naturel
 settings-button-scheme-inverted = Inversé

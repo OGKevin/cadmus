@@ -56,29 +56,29 @@ mod tests {
     use crate::chrono::Duration as ChronoDuration;
     use crate::device::test_harness::DeviceRuntimeHarness;
 
-    #[test]
-    fn has_task_empty() {
-        let harness = DeviceRuntimeHarness::new();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn has_task_empty() {
+        let harness = DeviceRuntimeHarness::new().await;
         assert!(!has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
     }
 
-    #[test]
-    fn has_task_present() {
-        let mut harness = DeviceRuntimeHarness::new();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn has_task_present() {
+        let mut harness = DeviceRuntimeHarness::new().await;
         harness.push_task(DeviceTaskId::PrepareSuspend);
         assert!(has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
     }
 
-    #[test]
-    fn is_suspend_active_prepare() {
-        let mut harness = DeviceRuntimeHarness::new();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn is_suspend_active_prepare() {
+        let mut harness = DeviceRuntimeHarness::new().await;
         harness.push_task(DeviceTaskId::PrepareSuspend);
         assert!(is_suspend_active(&harness.context, &harness.tasks));
     }
 
-    #[test]
-    fn is_suspend_active_suspend_rtc() {
-        let harness = DeviceRuntimeHarness::new();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn is_suspend_active_suspend_rtc() {
+        let harness = DeviceRuntimeHarness::new().await;
         {
             let mut alarms = harness
                 .context
@@ -94,15 +94,15 @@ mod tests {
         assert!(is_suspend_active(&harness.context, &harness.tasks));
     }
 
-    #[test]
-    fn is_suspend_active_false() {
-        let harness = DeviceRuntimeHarness::new();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn is_suspend_active_false() {
+        let harness = DeviceRuntimeHarness::new().await;
         assert!(!is_suspend_active(&harness.context, &harness.tasks));
     }
 
-    #[test]
-    fn is_suspend_active_past_due_suspend_rtc() {
-        let harness = DeviceRuntimeHarness::new();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn is_suspend_active_past_due_suspend_rtc() {
+        let harness = DeviceRuntimeHarness::new().await;
         {
             let mut alarms = harness
                 .context
@@ -120,16 +120,16 @@ mod tests {
         assert!(is_suspend_active(&harness.context, &harness.tasks));
     }
 
-    #[test]
-    fn is_suspend_active_cycle_without_rtc() {
-        let mut harness = DeviceRuntimeHarness::new();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn is_suspend_active_cycle_without_rtc() {
+        let mut harness = DeviceRuntimeHarness::new().await;
         harness.context.suspend = Some(SuspendCycle::new(SuspendKind::Classic));
         assert!(is_suspend_active(&harness.context, &harness.tasks));
     }
 
-    #[test]
-    fn cancel_suspend_if_pending_prepare() {
-        let mut harness = DeviceRuntimeHarness::new();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn cancel_suspend_if_pending_prepare() {
+        let mut harness = DeviceRuntimeHarness::new().await;
         harness.push_task(DeviceTaskId::PrepareSuspend);
         cancel_suspend_if_pending(
             &mut harness.context,
@@ -141,9 +141,9 @@ mod tests {
         assert!(!has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
     }
 
-    #[test]
-    fn cancel_suspend_if_pending_suspend_rtc() {
-        let mut harness = DeviceRuntimeHarness::new();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn cancel_suspend_if_pending_suspend_rtc() {
+        let mut harness = DeviceRuntimeHarness::new().await;
         {
             let mut alarms = harness
                 .context
@@ -173,9 +173,9 @@ mod tests {
         assert!(!alarms.has_alarm(AlarmType::Suspend));
     }
 
-    #[test]
-    fn cancel_suspend_if_pending_wake_debounce() {
-        let mut harness = DeviceRuntimeHarness::new();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn cancel_suspend_if_pending_wake_debounce() {
+        let mut harness = DeviceRuntimeHarness::new().await;
         harness.context.settings.auto_suspend = 30.0;
         {
             let mut alarms = harness
@@ -207,9 +207,9 @@ mod tests {
         assert!(alarms.is_alarm_scheduled(AlarmType::AutoSuspend));
     }
 
-    #[test]
-    fn cancel_suspend_if_pending_noop() {
-        let mut harness = DeviceRuntimeHarness::new();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn cancel_suspend_if_pending_noop() {
+        let mut harness = DeviceRuntimeHarness::new().await;
         cancel_suspend_if_pending(
             &mut harness.context,
             &mut harness.tasks,
@@ -220,9 +220,9 @@ mod tests {
         assert!(harness.tasks.is_empty());
     }
 
-    #[test]
-    fn cancel_suspend_if_pending_past_due_suspend_rtc() {
-        let mut harness = DeviceRuntimeHarness::new();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn cancel_suspend_if_pending_past_due_suspend_rtc() {
+        let mut harness = DeviceRuntimeHarness::new().await;
         harness.context.settings.auto_suspend = 30.0;
         harness.context.suspend = Some(SuspendCycle::new(SuspendKind::Classic));
         {
@@ -256,9 +256,9 @@ mod tests {
         assert!(alarms.is_alarm_scheduled(AlarmType::AutoSuspend));
     }
 
-    #[test]
-    fn cancel_suspend_if_pending_after_claim_uses_cycle() {
-        let mut harness = DeviceRuntimeHarness::new();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn cancel_suspend_if_pending_after_claim_uses_cycle() {
+        let mut harness = DeviceRuntimeHarness::new().await;
         harness.context.settings.auto_suspend = 30.0;
         harness.context.suspend = Some(SuspendCycle::new(SuspendKind::Classic));
         assert!(!is_suspend_rtc_pending(&harness.context));

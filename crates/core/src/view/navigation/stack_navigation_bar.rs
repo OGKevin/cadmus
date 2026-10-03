@@ -14,6 +14,10 @@ use std::path::Path;
 
 /// Domain adapter for [`StackNavigationBar`].
 ///
+/// Implemented with [`async_trait::async_trait(?Send)`] because navigation
+/// bars run on the main thread with view state. The trait is not used as
+/// `dyn NavigationProvider`; each screen owns a concrete provider type.
+///
 /// A `NavigationProvider` tells the container how to traverse hierarchical levels
 /// (e.g. directory parents), and how to populate each bar with pre-fetched data.
 /// This trait abstracts the domain-specific logic from the navigation bar's layout
@@ -24,6 +28,7 @@ use std::path::Path;
 /// When implementing `resize_bar_by()`, ensure the bar respects minimum height
 /// constraints (typically `SMALL_BAR_HEIGHT - THICKNESS_MEDIUM` scaled by DPI).
 /// The method should return the actual resize amount after applying constraints.
+#[async_trait::async_trait(?Send)]
 pub trait NavigationProvider {
     /// Key that identifies a level in the stack.
     type LevelKey: Eq + Ord + Clone + Debug;
@@ -46,7 +51,7 @@ pub trait NavigationProvider {
     /// This may differ from `selected` when the selected level is empty.
     /// For example, if a directory has no subdirectories, this might return
     /// the parent directory to start the bar hierarchy from there.
-    fn leaf_for_bar_traversal(
+    async fn leaf_for_bar_traversal(
         &self,
         selected: &Self::LevelKey,
         _context: &AppContext,
@@ -64,7 +69,11 @@ pub trait NavigationProvider {
     fn is_root(&self, key: &Self::LevelKey, context: &AppContext) -> bool;
 
     /// Fetch the data for a level.
-    fn fetch_level_data(&self, key: &Self::LevelKey, context: &mut AppContext) -> Self::LevelData;
+    async fn fetch_level_data(
+        &self,
+        key: &Self::LevelKey,
+        context: &mut AppContext,
+    ) -> Self::LevelData;
 
     /// Estimates how many visual lines (rows) the bar will need to display its content.
     ///
@@ -349,7 +358,7 @@ impl<P: NavigationProvider + 'static> StackNavigationBar<P> {
     /// * `rq` - Render queue for scheduling redraws
     /// * `context` - Application context with fonts and other resources
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, rq, context)))]
-    pub fn set_selected(
+    pub async fn set_selected(
         &mut self,
         selected: P::LevelKey,
         rq: &mut RenderQueue,
@@ -362,8 +371,11 @@ impl<P: NavigationProvider + 'static> StackNavigationBar<P> {
 
         self.trim_trailing_children(&selected, &mut last_key);
 
-        let data_by_level = self.prefetch_needed_levels(&selected, context);
-        let leaf = self.provider.leaf_for_bar_traversal(&selected, context);
+        let data_by_level = self.prefetch_needed_levels(&selected, context).await;
+        let leaf = self
+            .provider
+            .leaf_for_bar_traversal(&selected, context)
+            .await;
 
         let mut levels = 1usize;
         let mut index = self.children.len();
@@ -487,7 +499,7 @@ impl<P: NavigationProvider + 'static> StackNavigationBar<P> {
     }
 
     #[inline]
-    fn prefetch_needed_levels(
+    async fn prefetch_needed_levels(
         &self,
         selected: &P::LevelKey,
         context: &mut AppContext,
@@ -497,7 +509,7 @@ impl<P: NavigationProvider + 'static> StackNavigationBar<P> {
         let mut current = leaf_key.clone();
 
         loop {
-            let data = self.provider.fetch_level_data(&current, context);
+            let data = self.provider.fetch_level_data(&current, context).await;
             data_by_level.insert(current.clone(), data);
 
             if data_by_level.len() >= self.max_levels {
@@ -1030,9 +1042,10 @@ fn find_closest_ancestor_by_provider<P: NavigationProvider>(
     None
 }
 
+#[async_trait::async_trait(?Send)]
 impl<P: NavigationProvider + 'static> View for StackNavigationBar<P> {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, _rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
@@ -1107,6 +1120,7 @@ mod tests {
 
     struct Provider;
 
+    #[async_trait::async_trait(?Send)]
     impl NavigationProvider for Provider {
         type LevelKey = Key;
         type LevelData = usize;
@@ -1128,7 +1142,7 @@ mod tests {
             key.0 == 0
         }
 
-        fn fetch_level_data(
+        async fn fetch_level_data(
             &self,
             key: &Self::LevelKey,
             _context: &mut AppContext,
@@ -1207,25 +1221,25 @@ mod tests {
         assert!(find_closest_ancestor_by_provider(&provider, &last, &selected).is_none());
     }
 
-    #[test]
-    fn set_selected_with_single_child_no_panic() {
-        let mut context = create_test_context();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn set_selected_with_single_child_no_panic() {
+        let mut context = create_test_context().await;
 
         let provider = Provider;
         let rect = rect![0, 0, 600, 100];
         let mut nav_bar = StackNavigationBar::new(rect, rect.max.y, 5, provider, Key(0));
         let mut rq = RenderQueue::new();
 
-        nav_bar.set_selected(Key(0), &mut rq, &mut context);
+        nav_bar.set_selected(Key(0), &mut rq, &mut context).await;
         assert!(!nav_bar.children.is_empty());
 
-        nav_bar.set_selected(Key(1), &mut rq, &mut context);
+        nav_bar.set_selected(Key(1), &mut rq, &mut context).await;
         assert!(!nav_bar.children.is_empty());
     }
 
-    #[test]
-    fn set_selected_from_empty_state() {
-        let mut context = create_test_context();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn set_selected_from_empty_state() {
+        let mut context = create_test_context().await;
 
         let provider = Provider;
         let rect = rect![0, 0, 600, 100];
@@ -1234,51 +1248,51 @@ mod tests {
 
         assert!(nav_bar.children.is_empty());
 
-        nav_bar.set_selected(Key(3), &mut rq, &mut context);
+        nav_bar.set_selected(Key(3), &mut rq, &mut context).await;
 
         assert!(!nav_bar.children.is_empty());
         assert_eq!(nav_bar.selected, Key(3));
     }
 
-    #[test]
-    fn set_selected_reuses_existing_bars() {
-        let mut context = create_test_context();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn set_selected_reuses_existing_bars() {
+        let mut context = create_test_context().await;
 
         let provider = Provider;
         let rect = rect![0, 0, 600, 200];
         let mut nav_bar = StackNavigationBar::new(rect, rect.max.y, 5, provider, Key(0));
         let mut rq = RenderQueue::new();
 
-        nav_bar.set_selected(Key(2), &mut rq, &mut context);
+        nav_bar.set_selected(Key(2), &mut rq, &mut context).await;
         assert!(!nav_bar.children.is_empty());
 
-        nav_bar.set_selected(Key(3), &mut rq, &mut context);
+        nav_bar.set_selected(Key(3), &mut rq, &mut context).await;
 
         assert!(!nav_bar.children.is_empty());
         assert_eq!(nav_bar.selected, Key(3));
     }
 
-    #[test]
-    fn set_selected_to_parent_reduces_bars() {
-        let mut context = create_test_context();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn set_selected_to_parent_reduces_bars() {
+        let mut context = create_test_context().await;
 
         let provider = Provider;
         let rect = rect![0, 0, 600, 200];
         let mut nav_bar = StackNavigationBar::new(rect, rect.max.y, 5, provider, Key(0));
         let mut rq = RenderQueue::new();
 
-        nav_bar.set_selected(Key(5), &mut rq, &mut context);
+        nav_bar.set_selected(Key(5), &mut rq, &mut context).await;
         assert!(!nav_bar.children.is_empty());
 
-        nav_bar.set_selected(Key(2), &mut rq, &mut context);
+        nav_bar.set_selected(Key(2), &mut rq, &mut context).await;
 
         assert!(!nav_bar.children.is_empty());
         assert_eq!(nav_bar.selected, Key(2));
     }
 
-    #[test]
-    fn set_selected_handles_max_levels() {
-        let mut context = create_test_context();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn set_selected_handles_max_levels() {
+        let mut context = create_test_context().await;
 
         let provider = Provider;
         let rect = rect![0, 0, 600, 200];
@@ -1286,14 +1300,14 @@ mod tests {
         let mut nav_bar = StackNavigationBar::new(rect, rect.max.y, max_levels, provider, Key(0));
         let mut rq = RenderQueue::new();
 
-        nav_bar.set_selected(Key(10), &mut rq, &mut context);
+        nav_bar.set_selected(Key(10), &mut rq, &mut context).await;
 
         assert!(!nav_bar.children.is_empty());
     }
 
-    #[test]
-    fn resize_child_with_aggressive_north_swipe_maintains_minimum_height() {
-        let mut context = create_test_context();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn resize_child_with_aggressive_north_swipe_maintains_minimum_height() {
+        let mut context = create_test_context().await;
 
         let provider = Provider;
         let rect = rect![0, 68, 600, 590];
@@ -1301,7 +1315,7 @@ mod tests {
         let mut nav_bar = StackNavigationBar::new(rect, vertical_limit, 1, provider, Key(0));
         let mut rq = RenderQueue::new();
 
-        nav_bar.set_selected(Key(0), &mut rq, &mut context);
+        nav_bar.set_selected(Key(0), &mut rq, &mut context).await;
         assert_eq!(nav_bar.children.len(), 1);
 
         let initial_rect = *nav_bar.children[0].rect();
@@ -1345,16 +1359,16 @@ mod tests {
         );
     }
 
-    #[test]
-    fn shrink_proportionally_distributes_across_multiple_bars() {
-        let mut context = create_test_context();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn shrink_proportionally_distributes_across_multiple_bars() {
+        let mut context = create_test_context().await;
 
         let provider = Provider;
         let rect = rect![0, 0, 600, 400];
         let mut nav_bar = StackNavigationBar::new(rect, rect.max.y, 5, provider, Key(0));
         let mut rq = RenderQueue::new();
 
-        nav_bar.set_selected(Key(3), &mut rq, &mut context);
+        nav_bar.set_selected(Key(3), &mut rq, &mut context).await;
 
         let initial_heights: Vec<i32> = (0..nav_bar.children.len())
             .step_by(2)
@@ -1390,16 +1404,16 @@ mod tests {
         }
     }
 
-    #[test]
-    fn shrink_removes_bars_when_exceeding_available_space() {
-        let mut context = create_test_context();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn shrink_removes_bars_when_exceeding_available_space() {
+        let mut context = create_test_context().await;
 
         let provider = Provider;
         let rect = rect![0, 0, 600, 300];
         let mut nav_bar = StackNavigationBar::new(rect, rect.max.y, 5, provider, Key(0));
         let mut rq = RenderQueue::new();
 
-        nav_bar.set_selected(Key(3), &mut rq, &mut context);
+        nav_bar.set_selected(Key(3), &mut rq, &mut context).await;
 
         let initial_bar_count = nav_bar.children.len().div_ceil(2);
 
@@ -1420,16 +1434,16 @@ mod tests {
         assert!(final_bar_count >= 1, "Should always keep at least one bar");
     }
 
-    #[test]
-    fn shrink_handles_all_bars_at_minimum_height() {
-        let mut context = create_test_context();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn shrink_handles_all_bars_at_minimum_height() {
+        let mut context = create_test_context().await;
 
         let provider = Provider;
         let rect = rect![0, 0, 600, 100];
         let mut nav_bar = StackNavigationBar::new(rect, rect.max.y, 2, provider, Key(0));
         let mut rq = RenderQueue::new();
 
-        nav_bar.set_selected(Key(1), &mut rq, &mut context);
+        nav_bar.set_selected(Key(1), &mut rq, &mut context).await;
 
         let dpi = context.device.dpi();
         let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
@@ -1454,9 +1468,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn resize_child_expansion_respects_vertical_limit() {
-        let mut context = create_test_context();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn resize_child_expansion_respects_vertical_limit() {
+        let mut context = create_test_context().await;
 
         let provider = Provider;
         let rect = rect![0, 0, 600, 200];
@@ -1464,7 +1478,7 @@ mod tests {
         let mut nav_bar = StackNavigationBar::new(rect, vertical_limit, 3, provider, Key(0));
         let mut rq = RenderQueue::new();
 
-        nav_bar.set_selected(Key(2), &mut rq, &mut context);
+        nav_bar.set_selected(Key(2), &mut rq, &mut context).await;
 
         let last_bar_index = ((nav_bar.children.len() - 1) / 2) * 2;
         let initial_container_max = nav_bar.rect.max.y;
@@ -1494,16 +1508,16 @@ mod tests {
         );
     }
 
-    #[test]
-    fn resize_child_expansion_shifts_subsequent_children() {
-        let mut context = create_test_context();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn resize_child_expansion_shifts_subsequent_children() {
+        let mut context = create_test_context().await;
 
         let provider = Provider;
         let rect = rect![0, 0, 600, 300];
         let mut nav_bar = StackNavigationBar::new(rect, rect.max.y, 5, provider, Key(0));
         let mut rq = RenderQueue::new();
 
-        nav_bar.set_selected(Key(3), &mut rq, &mut context);
+        nav_bar.set_selected(Key(3), &mut rq, &mut context).await;
 
         if nav_bar.children.len() < 4 {
             return;
@@ -1542,16 +1556,16 @@ mod tests {
         }
     }
 
-    #[test]
-    fn shift_moves_all_children_and_container() {
-        let mut context = create_test_context();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn shift_moves_all_children_and_container() {
+        let mut context = create_test_context().await;
 
         let provider = Provider;
         let rect = rect![0, 0, 600, 200];
         let mut nav_bar = StackNavigationBar::new(rect, rect.max.y, 3, provider, Key(0));
         let mut rq = RenderQueue::new();
 
-        nav_bar.set_selected(Key(2), &mut rq, &mut context);
+        nav_bar.set_selected(Key(2), &mut rq, &mut context).await;
 
         let initial_container = nav_bar.rect;
         let initial_child_rects: Vec<Rectangle> =
@@ -1577,20 +1591,20 @@ mod tests {
         }
     }
 
-    #[test]
-    fn handle_event_north_swipe_resizes_bar() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_north_swipe_resizes_bar() {
         use crate::gesture::GestureEvent;
 
-        let mut context = create_test_context();
+        let mut context = create_test_context().await;
 
         let provider = Provider;
         let rect = rect![0, 100, 600, 300];
         let mut nav_bar = StackNavigationBar::new(rect, rect.max.y, 3, provider, Key(0));
         let mut rq = RenderQueue::new();
 
-        nav_bar.set_selected(Key(2), &mut rq, &mut context);
+        nav_bar.set_selected(Key(2), &mut rq, &mut context).await;
 
-        let (tx, _rx) = std::sync::mpsc::channel();
+        let (tx, _rx) = crate::view::hub_channel();
         let hub = tx;
         let mut bus = std::collections::VecDeque::new();
 
@@ -1603,7 +1617,9 @@ mod tests {
             end,
         });
 
-        let handled = nav_bar.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = nav_bar
+            .handle_event(&event, &hub, &mut bus, &mut rq, &mut context)
+            .await;
 
         assert!(handled, "North swipe should be handled");
 
@@ -1616,20 +1632,20 @@ mod tests {
         );
     }
 
-    #[test]
-    fn handle_event_south_swipe_resizes_bar() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_south_swipe_resizes_bar() {
         use crate::gesture::GestureEvent;
 
-        let mut context = create_test_context();
+        let mut context = create_test_context().await;
 
         let provider = Provider;
         let rect = rect![0, 100, 600, 300];
         let mut nav_bar = StackNavigationBar::new(rect, rect.max.y, 3, provider, Key(0));
         let mut rq = RenderQueue::new();
 
-        nav_bar.set_selected(Key(2), &mut rq, &mut context);
+        nav_bar.set_selected(Key(2), &mut rq, &mut context).await;
 
-        let (tx, _rx) = std::sync::mpsc::channel();
+        let (tx, _rx) = crate::view::hub_channel();
         let hub = tx;
         let mut bus = std::collections::VecDeque::new();
 
@@ -1642,7 +1658,9 @@ mod tests {
             end,
         });
 
-        let handled = nav_bar.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = nav_bar
+            .handle_event(&event, &hub, &mut bus, &mut rq, &mut context)
+            .await;
 
         assert!(handled, "South swipe should be handled");
 
@@ -1655,20 +1673,20 @@ mod tests {
         );
     }
 
-    #[test]
-    fn handle_event_ignores_swipe_outside_rect() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_ignores_swipe_outside_rect() {
         use crate::gesture::GestureEvent;
 
-        let mut context = create_test_context();
+        let mut context = create_test_context().await;
 
         let provider = Provider;
         let rect = rect![0, 100, 600, 300];
         let mut nav_bar = StackNavigationBar::new(rect, rect.max.y, 3, provider, Key(0));
         let mut rq = RenderQueue::new();
 
-        nav_bar.set_selected(Key(2), &mut rq, &mut context);
+        nav_bar.set_selected(Key(2), &mut rq, &mut context).await;
 
-        let (tx, _rx) = std::sync::mpsc::channel();
+        let (tx, _rx) = crate::view::hub_channel();
         let hub = tx;
         let mut bus = std::collections::VecDeque::new();
 
@@ -1681,7 +1699,9 @@ mod tests {
             end,
         });
 
-        let handled = nav_bar.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = nav_bar
+            .handle_event(&event, &hub, &mut bus, &mut rq, &mut context)
+            .await;
 
         assert!(
             !handled,
@@ -1689,20 +1709,20 @@ mod tests {
         );
     }
 
-    #[test]
-    fn handle_event_ignores_horizontal_swipe() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_ignores_horizontal_swipe() {
         use crate::gesture::GestureEvent;
 
-        let mut context = create_test_context();
+        let mut context = create_test_context().await;
 
         let provider = Provider;
         let rect = rect![0, 100, 600, 300];
         let mut nav_bar = StackNavigationBar::new(rect, rect.max.y, 3, provider, Key(0));
         let mut rq = RenderQueue::new();
 
-        nav_bar.set_selected(Key(2), &mut rq, &mut context);
+        nav_bar.set_selected(Key(2), &mut rq, &mut context).await;
 
-        let (tx, _rx) = std::sync::mpsc::channel();
+        let (tx, _rx) = crate::view::hub_channel();
         let hub = tx;
         let mut bus = std::collections::VecDeque::new();
 
@@ -1715,14 +1735,16 @@ mod tests {
             end,
         });
 
-        let handled = nav_bar.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = nav_bar
+            .handle_event(&event, &hub, &mut bus, &mut rq, &mut context)
+            .await;
 
         assert!(!handled, "Horizontal swipe should not be handled");
     }
 
-    #[test]
-    fn set_selected_handles_vertical_limit_constraint() {
-        let mut context = create_test_context();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn set_selected_handles_vertical_limit_constraint() {
+        let mut context = create_test_context().await;
 
         let provider = Provider;
         let rect = rect![0, 0, 600, 50];
@@ -1730,7 +1752,7 @@ mod tests {
         let mut nav_bar = StackNavigationBar::new(rect, vertical_limit, 10, provider, Key(0));
         let mut rq = RenderQueue::new();
 
-        nav_bar.set_selected(Key(10), &mut rq, &mut context);
+        nav_bar.set_selected(Key(10), &mut rq, &mut context).await;
 
         assert!(
             nav_bar.rect.max.y <= vertical_limit,

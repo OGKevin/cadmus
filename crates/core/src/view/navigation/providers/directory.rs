@@ -6,7 +6,6 @@ use crate::view::home::directories_bar::DirectoriesBar;
 use crate::view::navigation::stack_navigation_bar::NavigationProvider;
 use crate::view::{SMALL_BAR_HEIGHT, THICKNESS_MEDIUM, View};
 use std::collections::BTreeSet;
-use std::fs;
 use std::path::{Path, PathBuf};
 
 /// The source of directory listings.
@@ -98,32 +97,28 @@ impl DirectoryNavigationProvider {
 
     /// Lists directories using the configured source.
     #[inline]
-    fn list_directories(&self, path: &Path, context: &AppContext) -> BTreeSet<PathBuf> {
+    async fn list_directories(&self, path: &Path, context: &AppContext) -> BTreeSet<PathBuf> {
         match self.source_type {
-            SourceType::Filesystem => self.list_filesystem_dirs(path),
-            SourceType::Library => self.list_library_dirs(path, context),
+            SourceType::Filesystem => self.list_filesystem_dirs(path).await,
+            SourceType::Library => self.list_library_dirs(path, context).await,
         }
     }
 
     /// Lists directories from the filesystem without filtering.
     #[inline]
-    fn list_filesystem_dirs(&self, path: &Path) -> BTreeSet<PathBuf> {
+    async fn list_filesystem_dirs(&self, path: &Path) -> BTreeSet<PathBuf> {
         let mut dirs = BTreeSet::new();
 
-        if !path.is_dir() {
-            return dirs;
-        }
-
-        let read_dir = match fs::read_dir(path) {
+        let mut read_dir = match tokio::fs::read_dir(path).await {
             Ok(rd) => rd,
             Err(_) => return dirs,
         };
 
-        for entry in read_dir.flatten() {
-            if let Ok(metadata) = entry.metadata() {
-                if metadata.is_dir() {
-                    dirs.insert(entry.path());
-                }
+        while let Some(entry) = crate::fs::next_dir_entry(&mut read_dir).await {
+            if let Ok(metadata) = entry.metadata().await
+                && metadata.is_dir()
+            {
+                dirs.insert(entry.path());
             }
         }
 
@@ -132,8 +127,8 @@ impl DirectoryNavigationProvider {
 
     /// Lists directories using the library's filtering rules.
     #[inline]
-    fn list_library_dirs(&self, path: &Path, context: &AppContext) -> BTreeSet<PathBuf> {
-        context.library.list(path, None, true).1
+    async fn list_library_dirs(&self, path: &Path, context: &AppContext) -> BTreeSet<PathBuf> {
+        context.library.list(path, None, true).await.1
     }
 
     #[inline]
@@ -142,6 +137,7 @@ impl DirectoryNavigationProvider {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl NavigationProvider for DirectoryNavigationProvider {
     type LevelKey = PathBuf;
     type LevelData = BTreeSet<PathBuf>;
@@ -151,12 +147,12 @@ impl NavigationProvider for DirectoryNavigationProvider {
         selected.clone()
     }
 
-    fn leaf_for_bar_traversal(
+    async fn leaf_for_bar_traversal(
         &self,
         selected: &Self::LevelKey,
         context: &AppContext,
     ) -> Self::LevelKey {
-        let dirs = self.list_directories(selected, context);
+        let dirs = self.list_directories(selected, context).await;
 
         if dirs.is_empty() && *selected != self.root {
             selected
@@ -180,8 +176,12 @@ impl NavigationProvider for DirectoryNavigationProvider {
         *key == self.root
     }
 
-    fn fetch_level_data(&self, key: &Self::LevelKey, context: &mut AppContext) -> Self::LevelData {
-        self.list_directories(key, context)
+    async fn fetch_level_data(
+        &self,
+        key: &Self::LevelKey,
+        context: &mut AppContext,
+    ) -> Self::LevelData {
+        self.list_directories(key, context).await
     }
 
     fn estimate_line_count(&self, _key: &Self::LevelKey, data: &Self::LevelData) -> usize {
@@ -245,6 +245,7 @@ impl NavigationProvider for DirectoryNavigationProvider {
 mod tests {
     use super::*;
     use crate::context::test_helpers::create_test_context;
+    use std::fs;
     use std::io::Write;
     use tempfile::TempDir;
 
@@ -263,14 +264,14 @@ mod tests {
         temp_dir
     }
 
-    #[test]
-    fn filesystem_source_lists_all_directories() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn filesystem_source_lists_all_directories() {
         let temp_dir = create_test_directory_structure();
         let root = temp_dir.path().to_path_buf();
         let provider = DirectoryNavigationProvider::filesystem(root.clone());
-        let context = create_test_context();
+        let context = create_test_context().await;
 
-        let dirs = provider.list_directories(&root, &context);
+        let dirs = provider.list_directories(&root, &context).await;
 
         assert_eq!(dirs.len(), 3);
         assert!(dirs.contains(&root.join("dir_a")));
@@ -278,90 +279,100 @@ mod tests {
         assert!(dirs.contains(&root.join("dir_c")));
     }
 
-    #[test]
-    fn filesystem_source_returns_empty_for_nonexistent_path() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn filesystem_source_returns_empty_for_nonexistent_path() {
         let root = PathBuf::from("/nonexistent/path");
         let provider = DirectoryNavigationProvider::filesystem(root.clone());
-        let context = create_test_context();
+        let context = create_test_context().await;
 
-        let dirs = provider.list_directories(&root, &context);
-
-        assert!(dirs.is_empty());
-    }
-
-    #[test]
-    fn filesystem_source_returns_empty_for_file() {
-        let temp_dir = create_test_directory_structure();
-        let root = temp_dir.path().to_path_buf();
-        let provider = DirectoryNavigationProvider::filesystem(root.clone());
-        let context = create_test_context();
-
-        let dirs = provider.list_directories(&root.join("file.txt"), &context);
+        let dirs = provider.list_directories(&root, &context).await;
 
         assert!(dirs.is_empty());
     }
 
-    #[test]
-    fn is_root_returns_true_for_root() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn filesystem_source_returns_empty_for_file() {
+        let temp_dir = create_test_directory_structure();
+        let root = temp_dir.path().to_path_buf();
+        let provider = DirectoryNavigationProvider::filesystem(root.clone());
+        let context = create_test_context().await;
+
+        let dirs = provider
+            .list_directories(&root.join("file.txt"), &context)
+            .await;
+
+        assert!(dirs.is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn is_root_returns_true_for_root() {
         let temp_dir = create_test_directory_structure();
         let root = temp_dir.path().to_path_buf();
         let provider = DirectoryNavigationProvider::filesystem(root.clone());
 
-        assert!(provider.is_root(&root, &create_test_context()));
+        assert!(provider.is_root(&root, &create_test_context().await));
     }
 
-    #[test]
-    fn is_root_returns_false_for_non_root() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn is_root_returns_false_for_non_root() {
         let temp_dir = create_test_directory_structure();
         let root = temp_dir.path().to_path_buf();
         let provider = DirectoryNavigationProvider::filesystem(root.clone());
 
         let subdir = root.join("dir_a");
-        assert!(!provider.is_root(&subdir, &create_test_context()));
+        assert!(!provider.is_root(&subdir, &create_test_context().await));
     }
 
-    #[test]
-    fn fetch_level_data_returns_directories() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn fetch_level_data_returns_directories() {
         let temp_dir = create_test_directory_structure();
         let root = temp_dir.path().to_path_buf();
         let provider = DirectoryNavigationProvider::filesystem(root.clone());
 
-        let dirs = provider.fetch_level_data(&root, &mut create_test_context());
+        let dirs = provider
+            .fetch_level_data(&root, &mut create_test_context().await)
+            .await;
 
         assert_eq!(dirs.len(), 3);
     }
 
-    #[test]
-    fn leaf_for_bar_traversal_returns_selected_when_has_subdirs() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn leaf_for_bar_traversal_returns_selected_when_has_subdirs() {
         let temp_dir = create_test_directory_structure();
         let root = temp_dir.path().to_path_buf();
         let provider = DirectoryNavigationProvider::filesystem(root.clone());
 
         let selected = root.join("dir_a");
-        let result = provider.leaf_for_bar_traversal(&selected, &create_test_context());
+        let result = provider
+            .leaf_for_bar_traversal(&selected, &create_test_context().await)
+            .await;
 
         assert_eq!(result, selected);
     }
 
-    #[test]
-    fn leaf_for_bar_traversal_returns_parent_when_empty() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn leaf_for_bar_traversal_returns_parent_when_empty() {
         let temp_dir = create_test_directory_structure();
         let root = temp_dir.path().to_path_buf();
         let provider = DirectoryNavigationProvider::filesystem(root.clone());
 
         let selected = root.join("dir_a").join("nested");
-        let result = provider.leaf_for_bar_traversal(&selected, &create_test_context());
+        let result = provider
+            .leaf_for_bar_traversal(&selected, &create_test_context().await)
+            .await;
 
         assert_eq!(result, root.join("dir_a"));
     }
 
-    #[test]
-    fn leaf_for_bar_traversal_returns_root_when_root_is_empty() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn leaf_for_bar_traversal_returns_root_when_root_is_empty() {
         let temp_dir = tempfile::tempdir().unwrap();
         let root = temp_dir.path().to_path_buf();
         let provider = DirectoryNavigationProvider::filesystem(root.clone());
 
-        let result = provider.leaf_for_bar_traversal(&root, &create_test_context());
+        let result = provider
+            .leaf_for_bar_traversal(&root, &create_test_context().await)
+            .await;
 
         assert_eq!(result, root);
     }

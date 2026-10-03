@@ -5,9 +5,9 @@ use crate::settings::ButtonScheme;
 use crate::view::Event;
 use std::path::Path;
 use std::sync::Arc;
-use std::sync::mpsc::{self, Sender};
-use std::thread;
 use std::time::Duration;
+use tokio::sync::mpsc::UnboundedSender;
+use tokio_util::sync::CancellationToken;
 
 pub(crate) const CLOCK_REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 pub(crate) const BATTERY_REFRESH_INTERVAL: Duration = Duration::from_secs(299);
@@ -34,7 +34,9 @@ fn touch_input_path() -> Option<String> {
 pub struct InputSource {
     pub(super) info: crate::input::DeviceInputInfo,
     pub(super) dpi: u16,
-    pub(super) raw_sender: Option<Sender<InputEvent>>,
+    pub(super) raw_sender: Option<UnboundedSender<InputEvent>>,
+    pub(super) pipeline_cancel: Option<CancellationToken>,
+    pub(super) gesture_job: Option<crate::runtime::Job<()>>,
 }
 
 impl Default for InputSource {
@@ -51,6 +53,16 @@ impl Default for InputSource {
             },
             dpi: 300,
             raw_sender: None,
+            pipeline_cancel: None,
+            gesture_job: None,
+        }
+    }
+}
+
+impl Drop for InputSource {
+    fn drop(&mut self) {
+        if let Some(cancel) = &self.pipeline_cancel {
+            cancel.cancel();
         }
     }
 }
@@ -69,10 +81,7 @@ impl crate::device::InputSource for InputSource {
         display: Display,
         button_scheme: ButtonScheme,
         inhibitor: Arc<Inhibitor>,
-    ) -> (
-        crate::view::Hub,
-        std::sync::mpsc::Receiver<crate::view::HubMessage>,
-    ) {
+    ) -> (crate::view::Hub, crate::view::HubReceiver) {
         let mut paths = Vec::new();
         let touch_path = touch_input_path();
         if let Some(path) = touch_path.as_ref() {
@@ -116,46 +125,87 @@ impl crate::device::InputSource for InputSource {
 
         let (raw_sender, raw_receiver) = raw_events(paths);
         self.raw_sender = Some(raw_sender.clone());
-        let touch_screen = crate::gesture::gesture_events(
+        if let Some(job) = self.gesture_job.take() {
+            job.cancel();
+        }
+        let (touch_screen, gesture_job) = crate::gesture::GesturePipeline::start(
             device_events(raw_receiver, display, button_scheme, self.info),
             self.dpi,
-        );
+        )
+        .into_parts();
+        self.gesture_job = Some(gesture_job);
         let usb_port = usb_events();
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = crate::view::hub_channel();
+
+        if let Some(cancel) = &self.pipeline_cancel {
+            cancel.cancel();
+        }
+        let pipeline_cancel = CancellationToken::new();
+        self.pipeline_cancel = Some(pipeline_cancel.clone());
 
         let tx2 = tx.clone();
         let inhibitor2 = Arc::clone(&inhibitor);
-        thread::spawn(move || {
-            while let Ok(evt) = touch_screen.recv() {
-                crate::view::hub_message::send_input_hub_message(&tx2, &inhibitor2, evt);
+        let touch_cancel = pipeline_cancel.clone();
+        crate::runtime::current_handle().spawn(async move {
+            let mut touch_screen = touch_screen;
+            loop {
+                tokio::select! {
+                    () = touch_cancel.cancelled() => break,
+                    evt = touch_screen.recv() => match evt {
+                        Some(evt) => {
+                            crate::view::hub_message::send_input_hub_message(&tx2, &inhibitor2, evt);
+                        }
+                        None => break,
+                    },
+                }
             }
         });
 
         let tx3 = tx.clone();
         let inhibitor3 = Arc::clone(&inhibitor);
-        thread::spawn(move || {
-            while let Ok(evt) = usb_port.recv() {
-                crate::view::hub_message::send_input_hub_message(
-                    &tx3,
-                    &inhibitor3,
-                    Event::Device(evt),
-                );
+        let usb_cancel = pipeline_cancel.clone();
+        crate::runtime::current_handle().spawn(async move {
+            let mut usb_port = usb_port;
+            loop {
+                tokio::select! {
+                    () = usb_cancel.cancelled() => break,
+                    evt = usb_port.recv() => match evt {
+                        Some(evt) => {
+                            crate::view::hub_message::send_input_hub_message(
+                                &tx3,
+                                &inhibitor3,
+                                Event::Device(evt),
+                            );
+                        }
+                        None => break,
+                    },
+                }
             }
         });
 
         let tx4 = tx.clone();
-        thread::spawn(move || {
+        let clock_cancel = pipeline_cancel.clone();
+        crate::runtime::current_handle().spawn(async move {
             loop {
-                thread::sleep(CLOCK_REFRESH_INTERVAL);
-                tx4.send(Event::ClockTick.into()).ok();
+                tokio::select! {
+                    () = clock_cancel.cancelled() => break,
+                    () = tokio::time::sleep(CLOCK_REFRESH_INTERVAL) => {
+                        tx4.send(Event::ClockTick.into()).ok();
+                    }
+                }
             }
         });
 
         let tx5 = tx.clone();
-        thread::spawn(move || {
+        let battery_cancel = pipeline_cancel.clone();
+        crate::runtime::current_handle().spawn(async move {
             loop {
-                thread::sleep(BATTERY_REFRESH_INTERVAL);
-                tx5.send(Event::BatteryTick.into()).ok();
+                tokio::select! {
+                    () = battery_cancel.cancelled() => break,
+                    () = tokio::time::sleep(BATTERY_REFRESH_INTERVAL) => {
+                        tx5.send(Event::BatteryTick.into()).ok();
+                    }
+                }
             }
         });
 

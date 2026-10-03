@@ -73,10 +73,11 @@ impl Slider {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for Slider {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, rq, _context), fields(event = ?evt
     ), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
@@ -287,10 +288,11 @@ impl SliderWithButtons {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for SliderWithButtons {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, rq, _context), fields(event = ?evt
     ), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
@@ -344,7 +346,6 @@ mod tests {
     use crate::geom::Point;
     use crate::gesture::GestureEvent;
     use std::collections::VecDeque;
-    use std::sync::mpsc::channel;
 
     #[test]
     fn test_slider_cannot_update_above_max() {
@@ -359,15 +360,15 @@ mod tests {
         assert_eq!(slider.value, slider.min_value);
     }
 
-    #[test]
-    fn test_tap_decrements_value_and_emits_event() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_tap_decrements_value_and_emits_event() {
         let bounds = rect![0, 0, 200, 50];
         let mut slider = SliderWithButtons::new(bounds, SliderId::LightIntensity, 7.0, 5.0, 6.0);
 
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
-        let mut context = create_test_context();
+        let mut context = create_test_context().await;
 
         let dec_bounds = slider.child(slider.decrement_index).rect();
         let point = Point::new(
@@ -382,7 +383,8 @@ mod tests {
             &mut bus,
             &mut rq,
             &mut context,
-        );
+        )
+        .await;
         assert_eq!(bus.len(), 1);
         let increment_event = bus.pop_front().unwrap();
 
@@ -393,7 +395,8 @@ mod tests {
             &mut bus,
             &mut rq,
             &mut context,
-        );
+        )
+        .await;
         assert_eq!(bus.len(), 1);
         let update_event = bus.pop_front();
         assert!(matches!(

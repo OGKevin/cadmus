@@ -15,6 +15,7 @@ use std::path::Path;
 #[derive(Default)]
 pub struct SettingsCategoryProvider;
 
+#[async_trait::async_trait(?Send)]
 impl NavigationProvider for SettingsCategoryProvider {
     type LevelKey = Category;
     type LevelData = ();
@@ -32,7 +33,7 @@ impl NavigationProvider for SettingsCategoryProvider {
         true
     }
 
-    fn fetch_level_data(
+    async fn fetch_level_data(
         &self,
         _key: &Self::LevelKey,
         _context: &mut AppContext,

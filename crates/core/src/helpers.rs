@@ -12,7 +12,10 @@ use std::io::{self, BufReader, BufWriter};
 use std::ops::Deref;
 use std::path::{Component, Path, PathBuf};
 use std::str::FromStr;
+use std::time::UNIX_EPOCH;
 use walkdir::DirEntry;
+
+use crate::db::types::{FileSize, UnixTimestamp};
 
 lazy_static! {
     pub static ref CHARACTER_ENTITIES: FxHashMap<&'static str, &'static str> = {
@@ -156,23 +159,116 @@ where
 ///   single-threaded memory-mapped hashing. Avoids buffered-read overhead for
 ///   large files while keeping CPU usage on a single core.
 pub trait Fingerprint {
-    fn fingerprint(&self) -> io::Result<Fp>;
+    /// BLAKE3 of the whole file.
+    ///
+    /// Reads and hashes the entire file, so implementations must keep it off
+    /// the runtime worker pool. Spelled as an explicit `Send` future rather than
+    /// `async fn` so the bound is visible to callers; the trait is never used as
+    /// `dyn`.
+    fn fingerprint(&self) -> impl std::future::Future<Output = io::Result<Fp>> + Send;
+
+    /// Cheap on-disk state used to decide whether [`Self::fingerprint`] is
+    /// needed at all.
+    fn stamp(&self) -> io::Result<FingerprintStamp>;
+
+    /// Whether `stored` still describes the file, i.e. the content cannot have
+    /// changed and the hash can be reused.
+    ///
+    /// Answers only what the filesystem says. A failed stat reports a change, so
+    /// the caller rehashes rather than trusting a fingerprint it could not
+    /// validate. Policy such as "always rehash" or "this file is known pending"
+    /// belongs to the caller.
+    fn stamp_changed(&self, stored: &FingerprintStamp) -> bool;
+}
+
+/// Size and mtime of a file, cheap enough to read for every scanned entry.
+///
+/// A matching [`FingerprintStamp`] means the file's content hash is still
+/// valid, so a reload can skip hashing entirely.
+///
+/// `mtime` is rounded to [`MTIME_GRANULARITY_SECS`] on both the read and the
+/// stored side. Filesystem mtime precision varies (1 s on FAT, 2 s on some
+/// ext filesystems), and comparing a raw value against a rounded one would
+/// report a spurious change for every entry. Rounding lives here so the writer
+/// and the reader cannot disagree.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct FingerprintStamp {
+    /// Last modification time, or `None` when the filesystem does not report
+    /// one. A `None` mtime can never match, so those files always rehash.
+    pub mtime: Option<UnixTimestamp>,
+    /// Size in bytes.
+    pub size: FileSize,
+}
+
+/// mtime rounding applied to every [`FingerprintStamp`], in seconds.
+const MTIME_GRANULARITY_SECS: i64 = 2;
+
+impl FingerprintStamp {
+    /// Reads size and rounded mtime for a filesystem entry.
+    pub(crate) fn from_metadata(meta: &std::fs::Metadata) -> Self {
+        Self {
+            mtime: meta
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                .map(|d| {
+                    UnixTimestamp::from(
+                        (d.as_secs().div_ceil(MTIME_GRANULARITY_SECS as u64)
+                            * MTIME_GRANULARITY_SECS as u64) as i64,
+                    )
+                }),
+            size: FileSize::from(meta.len() as i64),
+        }
+    }
+
+    /// The single comparison used to decide whether a file still matches a
+    /// previously stored stamp.
+    ///
+    /// A file whose mtime the filesystem does not report can never match, so
+    /// it is always rehashed.
+    pub fn is_unchanged_from(&self, stored: &Self) -> bool {
+        self.mtime == stored.mtime && self.mtime.is_some() && self.size == stored.size
+    }
 }
 
 const MMAP_THRESHOLD: u64 = 10 * 1024 * 1024;
 
 impl Fingerprint for Path {
     #[cfg_attr(feature = "tracing", tracing::instrument(ret(level=tracing::Level::TRACE)))]
-    fn fingerprint(&self) -> io::Result<Fp> {
+    async fn fingerprint(&self) -> io::Result<Fp> {
+        hash_path(self).await
+    }
+
+    fn stamp(&self) -> io::Result<FingerprintStamp> {
+        Ok(FingerprintStamp::from_metadata(&std::fs::metadata(self)?))
+    }
+
+    fn stamp_changed(&self, stored: &FingerprintStamp) -> bool {
+        match self.stamp() {
+            Ok(current) => !current.is_unchanged_from(stored),
+            Err(_) => true,
+        }
+    }
+}
+
+/// BLAKE3 of a file's contents, hashed on the blocking pool.
+///
+/// Reads the whole file, so it must not run on a runtime worker. Callers reach
+/// it through [`Fingerprint::fingerprint`], which is where the async boundary
+/// belongs.
+async fn hash_path(path: &Path) -> io::Result<Fp> {
+    let path = path.to_path_buf();
+    crate::runtime::spawn_blocking(move || {
         let mut hasher = blake3::Hasher::new();
-        if std::fs::metadata(self)?.len() >= MMAP_THRESHOLD {
-            hasher.update_mmap(self)?;
+        if std::fs::metadata(&path)?.len() >= MMAP_THRESHOLD {
+            hasher.update_mmap(&path)?;
         } else {
-            let file = std::fs::File::open(self)?;
+            let file = std::fs::File::open(&path)?;
             hasher.update_reader(file)?;
         }
         Ok(Fp(*hasher.finalize().as_bytes()))
-    }
+    })
+    .await?
 }
 
 /// A 32-byte BLAKE3 content fingerprint used as the primary key for books.
@@ -416,6 +512,20 @@ mod tests {
         assert_eq!(decode_entities("a &#x003E; b"), "a > b");
         assert_eq!(decode_entities("a &#38; b"), "a & b");
         assert_eq!(decode_entities("a &lt; b &gt; c"), "a < b > c");
+    }
+
+    #[test]
+    fn stamp_changed_reports_a_change_when_the_path_is_missing() {
+        let missing = std::path::Path::new("/nonexistent/cadmus-stamp-test");
+        let stored = FingerprintStamp {
+            mtime: Some(UnixTimestamp::from(0)),
+            size: FileSize::from(0),
+        };
+
+        assert!(
+            missing.stamp_changed(&stored),
+            "a failed stat must report a change so the caller rehashes"
+        );
     }
 
     #[test]

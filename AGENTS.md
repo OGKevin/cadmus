@@ -6,9 +6,41 @@ The emulator code path should **panic on errors** to catch issues early during
 development. The app code path should **handle errors gracefully** for a smooth
 user experience.
 
+## Nested instruction files
+
+Scope-specific conventions live next to the code they govern:
+
+- [`crates/core/AGENTS.md`](crates/core/AGENTS.md) — core crate: runtime, Jobs, async traits, views, SQL, test context.
+- [`crates/core/src/device/AGENTS.md`](crates/core/src/device/AGENTS.md) — device handlers and the test harness.
+- [`crates/core/src/device/wifi/AGENTS.md`](crates/core/src/device/wifi/AGENTS.md) — WiFi leases.
+- [`crates/core/src/task/AGENTS.md`](crates/core/src/task/AGENTS.md) — background task stop/join.
+- [`crates/core/i18n/AGENTS.md`](crates/core/i18n/AGENTS.md) — translations.
+- [`crates/cadmus/AGENTS.md`](crates/cadmus/AGENTS.md) — binary entry, event loop, shutdown.
+- [`build-scripts/AGENTS.md`](build-scripts/AGENTS.md) — thirdparty patch tiers.
+- [`docs/AGENTS.md`](docs/AGENTS.md) — documentation.
+- [`.github/workflows/AGENTS.md`](.github/workflows/AGENTS.md) — CI workflows.
+- [`thirdparty/AGENTS.md`](thirdparty/AGENTS.md) — thirdparty submodules.
+
 ## Rust Conventions
 
 - Prefer `?` over `unwrap()` / `expect()` in library and app code.
+- In async code paths, use the async API when one exists: `tokio::fs`,
+  `tokio::process::Command`, `tokio::net`, `tokio::time::sleep`. Reach for
+  `spawn_blocking` only for work with no async equivalent — subprocess I/O,
+  ioctls, hashing, large parses.
+- Never call a blocking function (`std::fs`, `Path::exists`, `std::thread::sleep`,
+  a sync `Mutex` guard held across an `.await`) from an `async fn` on the Tokio
+  worker pool, and never block the main thread. Details of the runtime's cost
+  model live in [`crates/core/AGENTS.md`](crates/core/AGENTS.md).
+- Work that outlives the current call must be a
+  [`Job`](crates/core/src/runtime.rs) owned by the subsystem that started it,
+  not a bare `runtime::current_handle().spawn`. See
+  [`crates/core/AGENTS.md`](crates/core/AGENTS.md) for the ownership rule and
+  [`crates/core/src/device/AGENTS.md`](crates/core/src/device/AGENTS.md) for the
+  device-handler test harness.
+- Async methods on a **public** trait must state their future's auto-trait
+  bounds; prefer the stable RPITIT form. The decision tree lives in
+  [`crates/core/AGENTS.md`](crates/core/AGENTS.md).
 - Use `thiserror` for custom error types and `anyhow` for ad-hoc errors.
 - Use iterators over index-based loops.
 - Use `&str` over `String` in function parameters when ownership is not needed.
@@ -103,6 +135,15 @@ tracing::debug!("[OTA] Found {} artifacts for PR #{}", count, pr_number);
 - **Structured fields only** — data goes in fields, not format strings.
 - **No prefixes** — no `[Module]` tags; instrumentation scope provides context.
 - **No mixing** — don't combine structured fields with format args.
+
+### Async spans across `.await`
+
+On Tokio worker tasks, do not hold a [`tracing::Span::enter()`](https://docs.rs/tracing/latest/tracing/struct.Span.html#method.enter)
+guard across an `.await`: the guard is not `Send` and the span can leak into
+unrelated work while the task is parked. Prefer
+[`.instrument(span)`](https://docs.rs/tracing/latest/tracing/trait.Instrument.html)
+on the future (or `#[tracing::instrument]` on the async fn) so the span is
+active only while that future polls.
 
 ### Field formatters
 

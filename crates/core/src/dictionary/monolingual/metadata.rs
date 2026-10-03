@@ -86,32 +86,32 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_download_url_english() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_download_url_english() {
         assert_eq!(
             download_url("en"),
             "https://www.reader-dict.com/file/en/dictorg-en-en.zip"
         );
     }
 
-    #[test]
-    fn test_download_url_no_etym_english() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_download_url_no_etym_english() {
         assert_eq!(
             download_url_no_etym("en"),
             "https://www.reader-dict.com/file/en/dictorg-en-en-noetym.zip"
         );
     }
 
-    #[test]
-    fn test_download_url_french() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_download_url_french() {
         assert_eq!(
             download_url("fr"),
             "https://www.reader-dict.com/file/fr/dictorg-fr-fr.zip"
         );
     }
 
-    #[test]
-    fn test_deserialize_response() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_deserialize_response() {
         let json = r#"{
             "en": {
                 "en": { "formats": "df,dic,dictorg,kobo,mobi,stardict", "updated": "2026-04-01", "words": 1381375 },
@@ -137,8 +137,8 @@ mod tests {
         assert_eq!(*en_entry, make_entry());
     }
 
-    #[test]
-    fn test_monolingual_filter() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_monolingual_filter() {
         let json = r#"{
             "en": {
                 "en": { "formats": "df,dic,dictorg,kobo,mobi,stardict", "updated": "2026-04-01", "words": 1381375 },

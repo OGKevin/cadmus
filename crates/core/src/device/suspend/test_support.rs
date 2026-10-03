@@ -53,7 +53,7 @@ pub(crate) fn install_armed_soft_suspend(
     (dir, paths)
 }
 
-pub(crate) fn pump_deep_idle_wake(harness: &mut DeviceRuntimeHarness) {
+pub(crate) async fn pump_deep_idle_wake(harness: &mut DeviceRuntimeHarness) {
     assert!(
         harness
             .context
@@ -63,7 +63,7 @@ pub(crate) fn pump_deep_idle_wake(harness: &mut DeviceRuntimeHarness) {
             .is_some(),
         "deep-idle wait must be armed before pump"
     );
-    let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
+    let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
         handle_event(&Event::PollDeepIdleWait, hub, bus, rq, context, runtime)
     });
     assert_eq!(outcome, EventOutcome::Handled);

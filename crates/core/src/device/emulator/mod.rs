@@ -18,8 +18,9 @@ use crate::device::reschedule_auto_suspend_alarm;
 use crate::device::types::FrontlightKind;
 use crate::device::{AppContext, Model};
 use crate::device::{
-    DeviceCapabilities, DeviceIdentity, DeviceInput, DeviceLifecycle, DevicePaths, DeviceRotation,
-    DeviceRuntime, EventOutcome, ExitStatus, InputSource,
+    AppDevice, DeviceCapabilities, DeviceIdentity, DeviceInput, DeviceLifecycle, DevicePaths,
+    DeviceRotation, DeviceRuntime, DeviceTask, EventOutcome, ExitStatus, InputSource,
+    ShutdownContext,
 };
 use crate::framebuffer::{Framebuffer, UpdateMode};
 use crate::frontlight::LightLevels;
@@ -42,8 +43,8 @@ use sdl3::render::{BlendMode, WindowCanvas, create_renderer};
 use std::fs::File;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::Duration;
+use tokio::sync::mpsc::UnboundedSender;
 
 const CLOCK_REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 const DEFAULT_ROTATION: i8 = 1;
@@ -75,8 +76,15 @@ impl std::ops::DerefMut for SendableEventPump {
 
 pub struct EmulatorInputSource {
     dpi: u16,
-    sender: Option<Sender<DeviceEvent>>,
+    sender: Option<UnboundedSender<DeviceEvent>>,
     sdl_context: Option<SendableSdl>,
+    /// Owns the input-side work started by [`InputSource::start`].
+    ///
+    /// Held so `Drop` cancels it. The SDL pump is a blocking-pool loop that
+    /// would otherwise be a thread the process waits for at exit; the plan is
+    /// for the device (not `TaskManager`) to own it, since it outlives every
+    /// view.
+    jobs: Vec<crate::runtime::Job>,
 }
 
 impl EmulatorInputSource {
@@ -85,6 +93,7 @@ impl EmulatorInputSource {
             dpi,
             sender: None,
             sdl_context: None,
+            jobs: Vec::new(),
         }
     }
 
@@ -93,6 +102,164 @@ impl EmulatorInputSource {
             dpi,
             sender: None,
             sdl_context: Some(SendableSdl(sdl_context)),
+            jobs: Vec::new(),
+        }
+    }
+}
+
+/// Polls SDL and forwards device events until `cancel` is tripped.
+///
+/// A 1 ms poll loop on the blocking pool, because `poll_event` is a blocking
+/// C call. It re-reads `cancel` every iteration so dropping the owning
+/// [`EmulatorInputSource`] releases the thread at once instead of at process
+/// exit's shutdown deadline.
+fn run_sdl_event_pump_blocking(
+    mut event_pump: SendableEventPump,
+    sender: UnboundedSender<DeviceEvent>,
+    hub: crate::view::Hub,
+    inhibitor: Arc<Inhibitor>,
+    cancel: tokio_util::sync::CancellationToken,
+) {
+    'outer: loop {
+        if cancel.is_cancelled() {
+            break;
+        }
+        while let Some(sdl_evt) = event_pump.poll_event() {
+            #[cfg(feature = "tracing")]
+            let span = tracing::trace_span!("sdl-event-loop", event = ?sdl_evt);
+            #[cfg(feature = "tracing")]
+            let _enter = span.enter();
+            #[cfg(feature = "tracing")]
+            tracing::trace!(event = ?sdl_evt, "handling event");
+
+            match sdl_evt {
+                SdlEvent::Quit { .. }
+                | SdlEvent::KeyDown {
+                    keycode: Some(Keycode::Escape),
+                    keymod: Mod::NOMOD,
+                    ..
+                } => {
+                    hub.send(Event::Select(EntryId::Quit).into()).ok();
+                    break 'outer;
+                }
+                SdlEvent::KeyUp {
+                    scancode: Some(scancode),
+                    keymod: Mod::NOMOD,
+                    timestamp,
+                    ..
+                } => {
+                    if let Some(code) = code_from_key(scancode) {
+                        sender
+                            .send(DeviceEvent::Button {
+                                time: seconds(timestamp),
+                                code,
+                                status: ButtonStatus::Released,
+                            })
+                            .ok();
+                    }
+                }
+                SdlEvent::KeyDown {
+                    scancode: Some(scancode),
+                    keymod,
+                    timestamp,
+                    repeat,
+                    ..
+                } => match keymod {
+                    Mod::NOMOD => match scancode {
+                        Scancode::S => {
+                            hub.send(Event::Select(EntryId::TakeScreenshot).into()).ok();
+                        }
+                        Scancode::B
+                        | Scancode::F
+                        | Scancode::P
+                        | Scancode::L
+                        | Scancode::H
+                        | Scancode::E
+                        | Scancode::G => {
+                            if let Some(code) = code_from_key(scancode) {
+                                let status = if repeat {
+                                    ButtonStatus::Repeated
+                                } else {
+                                    ButtonStatus::Pressed
+                                };
+                                sender
+                                    .send(DeviceEvent::Button {
+                                        time: seconds(timestamp),
+                                        code,
+                                        status,
+                                    })
+                                    .ok();
+                            }
+                        }
+                        Scancode::I | Scancode::O => {
+                            let mouse_state = event_pump.mouse_state();
+                            let x = mouse_state.x() as i32;
+                            let y = mouse_state.y() as i32;
+                            let center = pt!(x, y);
+                            if scancode == Scancode::I {
+                                crate::view::hub_message::send_input_hub_message(
+                                    &hub,
+                                    &inhibitor,
+                                    Event::Gesture(GestureEvent::Spread {
+                                        center,
+                                        factor: 2.0,
+                                        axis: Axis::Diagonal,
+                                    }),
+                                );
+                            } else {
+                                crate::view::hub_message::send_input_hub_message(
+                                    &hub,
+                                    &inhibitor,
+                                    Event::Gesture(GestureEvent::Pinch {
+                                        center,
+                                        factor: 0.5,
+                                        axis: Axis::Diagonal,
+                                    }),
+                                );
+                            }
+                        }
+                        _ => (),
+                    },
+                    Mod::LSHIFTMOD | Mod::RSHIFTMOD => match scancode {
+                        Scancode::S => {
+                            hub.send(
+                                Event::Select(EntryId::ShowIntermission(IntermKind::Suspend))
+                                    .into(),
+                            )
+                            .ok();
+                        }
+                        Scancode::P => {
+                            hub.send(
+                                Event::Select(EntryId::ShowIntermission(IntermKind::PowerOff))
+                                    .into(),
+                            )
+                            .ok();
+                        }
+                        Scancode::C => {
+                            hub.send(
+                                Event::Select(EntryId::ShowIntermission(IntermKind::Share)).into(),
+                            )
+                            .ok();
+                        }
+                        _ => (),
+                    },
+                    _ => (),
+                },
+                _ => {
+                    if let Some(dev_evt) = device_event(sdl_evt) {
+                        sender.send(dev_evt).ok();
+                    }
+                }
+            }
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+}
+
+impl Drop for EmulatorInputSource {
+    fn drop(&mut self) {
+        for job in self.jobs.drain(..) {
+            job.cancel();
         }
     }
 }
@@ -106,181 +273,67 @@ impl InputSource for EmulatorInputSource {
         _display: crate::framebuffer::Display,
         _button_scheme: crate::settings::ButtonScheme,
         inhibitor: Arc<Inhibitor>,
-    ) -> (Hub, Receiver<crate::view::HubMessage>) {
-        let (hub, rx) = mpsc::channel();
-        let (device_tx, device_rx) = mpsc::channel();
+    ) -> (Hub, crate::view::HubReceiver) {
+        let (hub, rx) = crate::view::hub_channel();
+        let (device_tx, device_rx) = tokio::sync::mpsc::unbounded_channel();
         self.sender = Some(device_tx.clone());
 
-        let gesture_rx = crate::gesture::gesture_events(device_rx, self.dpi);
+        let (gesture_rx, gesture_job) =
+            crate::gesture::GesturePipeline::start(device_rx, self.dpi).into_parts();
+        self.jobs.push(gesture_job);
         let hub_clone = hub.clone();
         let gesture_inhibitor = Arc::clone(&inhibitor);
 
-        std::thread::spawn(move || {
-            while let Ok(event) = gesture_rx.recv() {
-                crate::view::hub_message::send_input_hub_message(
-                    &hub_clone,
-                    &gesture_inhibitor,
-                    event,
-                );
-            }
-        });
+        self.jobs
+            .push(crate::runtime::Job::spawn(move |cancel| async move {
+                let mut gesture_rx = gesture_rx;
+                while !cancel.is_cancelled() {
+                    match gesture_rx.recv().await {
+                        Some(event) => crate::view::hub_message::send_input_hub_message(
+                            &hub_clone,
+                            &gesture_inhibitor,
+                            event,
+                        ),
+                        None => break,
+                    }
+                }
+            }));
 
         if let Some(sendable_sdl) = self.sdl_context.take() {
             let hub = hub.clone();
             let sdl_inhibitor = Arc::clone(&inhibitor);
             let sender = device_tx;
-            let mut event_pump =
+            let event_pump =
                 SendableEventPump(sendable_sdl.0.event_pump().expect("SDL3 event pump failed"));
-            std::thread::spawn(move || {
-                'outer: loop {
-                    while let Some(sdl_evt) = event_pump.poll_event() {
-                        #[cfg(feature = "tracing")]
-                        let span = tracing::trace_span!("sdl-event-loop", event = ?sdl_evt);
-                        #[cfg(feature = "tracing")]
-                        let _enter = span.enter();
-                        #[cfg(feature = "tracing")]
-                        tracing::trace!(event = ?sdl_evt, "handling event");
-
-                        match sdl_evt {
-                            SdlEvent::Quit { .. }
-                            | SdlEvent::KeyDown {
-                                keycode: Some(Keycode::Escape),
-                                keymod: Mod::NOMOD,
-                                ..
-                            } => {
-                                hub.send(Event::Select(EntryId::Quit).into()).ok();
-                                break 'outer;
-                            }
-                            SdlEvent::KeyUp {
-                                scancode: Some(scancode),
-                                keymod: Mod::NOMOD,
-                                timestamp,
-                                ..
-                            } => {
-                                if let Some(code) = code_from_key(scancode) {
-                                    sender
-                                        .send(DeviceEvent::Button {
-                                            time: seconds(timestamp),
-                                            code,
-                                            status: ButtonStatus::Released,
-                                        })
-                                        .ok();
-                                }
-                            }
-                            SdlEvent::KeyDown {
-                                scancode: Some(scancode),
-                                keymod,
-                                timestamp,
-                                repeat,
-                                ..
-                            } => match keymod {
-                                Mod::NOMOD => match scancode {
-                                    Scancode::S => {
-                                        hub.send(Event::Select(EntryId::TakeScreenshot).into())
-                                            .ok();
-                                    }
-                                    Scancode::B
-                                    | Scancode::F
-                                    | Scancode::P
-                                    | Scancode::L
-                                    | Scancode::H
-                                    | Scancode::E
-                                    | Scancode::G => {
-                                        if let Some(code) = code_from_key(scancode) {
-                                            let status = if repeat {
-                                                ButtonStatus::Repeated
-                                            } else {
-                                                ButtonStatus::Pressed
-                                            };
-                                            sender
-                                                .send(DeviceEvent::Button {
-                                                    time: seconds(timestamp),
-                                                    code,
-                                                    status,
-                                                })
-                                                .ok();
-                                        }
-                                    }
-                                    Scancode::I | Scancode::O => {
-                                        let mouse_state = event_pump.mouse_state();
-                                        let x = mouse_state.x() as i32;
-                                        let y = mouse_state.y() as i32;
-                                        let center = pt!(x, y);
-                                        if scancode == Scancode::I {
-                                            crate::view::hub_message::send_input_hub_message(
-                                                &hub,
-                                                &sdl_inhibitor,
-                                                Event::Gesture(GestureEvent::Spread {
-                                                    center,
-                                                    factor: 2.0,
-                                                    axis: Axis::Diagonal,
-                                                }),
-                                            );
-                                        } else {
-                                            crate::view::hub_message::send_input_hub_message(
-                                                &hub,
-                                                &sdl_inhibitor,
-                                                Event::Gesture(GestureEvent::Pinch {
-                                                    center,
-                                                    factor: 0.5,
-                                                    axis: Axis::Diagonal,
-                                                }),
-                                            );
-                                        }
-                                    }
-                                    _ => (),
-                                },
-                                Mod::LSHIFTMOD | Mod::RSHIFTMOD => match scancode {
-                                    Scancode::S => {
-                                        hub.send(
-                                            Event::Select(EntryId::ShowIntermission(
-                                                IntermKind::Suspend,
-                                            ))
-                                            .into(),
-                                        )
-                                        .ok();
-                                    }
-                                    Scancode::P => {
-                                        hub.send(
-                                            Event::Select(EntryId::ShowIntermission(
-                                                IntermKind::PowerOff,
-                                            ))
-                                            .into(),
-                                        )
-                                        .ok();
-                                    }
-                                    Scancode::C => {
-                                        hub.send(
-                                            Event::Select(EntryId::ShowIntermission(
-                                                IntermKind::Share,
-                                            ))
-                                            .into(),
-                                        )
-                                        .ok();
-                                    }
-                                    _ => (),
-                                },
-                                _ => (),
-                            },
-                            _ => {
-                                if let Some(dev_evt) = device_event(sdl_evt) {
-                                    sender.send(dev_evt).ok();
-                                }
-                            }
-                        }
+            self.jobs
+                .push(crate::runtime::Job::spawn(move |cancel| async move {
+                    let handle = crate::runtime::spawn_blocking(move || {
+                        run_sdl_event_pump_blocking(
+                            event_pump,
+                            sender,
+                            hub.clone(),
+                            sdl_inhibitor.clone(),
+                            cancel,
+                        );
+                    });
+                    if let Err(error) = handle.await {
+                        tracing::warn!(error = %error, "SDL event pump task join failed");
                     }
-                    std::thread::sleep(Duration::from_millis(1));
-                }
-            });
+                }));
         }
 
         let hub_clone = hub.clone();
-        std::thread::spawn(move || {
-            loop {
-                std::thread::sleep(CLOCK_REFRESH_INTERVAL);
-                hub_clone.send(Event::ClockTick.into()).ok();
-            }
-        });
+        self.jobs
+            .push(crate::runtime::Job::spawn(move |cancel| async move {
+                loop {
+                    tokio::select! {
+                        () = tokio::time::sleep(CLOCK_REFRESH_INTERVAL) => {
+                            hub_clone.send(Event::ClockTick.into()).ok();
+                        }
+                        () = cancel.cancelled() => break,
+                    }
+                }
+            }));
 
         (hub, rx)
     }
@@ -564,8 +617,8 @@ fn handle_set_wifi_mode(
     match mode {
         crate::settings::WifiMode::AlwaysOn => {
             let hub = hub.clone();
-            std::thread::spawn(move || {
-                std::thread::sleep(std::time::Duration::from_secs(2));
+            crate::runtime::current_handle().spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                 hub.send((Event::Device(DeviceEvent::NetUp)).into()).ok();
             });
         }
@@ -590,7 +643,7 @@ fn handle_toggle_frontlight(context: &mut AppContext) {
     context.set_frontlight(!context.settings.frontlight);
 }
 
-fn show_suspend_intermission(
+async fn show_suspend_intermission(
     hub: &Hub,
     bus: &mut Bus,
     rq: &mut RenderQueue,
@@ -599,12 +652,14 @@ fn show_suspend_intermission(
 ) {
     runtime
         .view
-        .handle_event(&Event::Suspend, hub, bus, rq, context);
+        .handle_event(&Event::Suspend, hub, bus, rq, context)
+        .await;
     let interm = Intermission::new(
         context.device.framebuffer().rect(),
         IntermKind::Suspend,
         context,
-    );
+    )
+    .await;
     rq.add(RenderData::new(
         interm.id(),
         *interm.rect(),
@@ -614,7 +669,15 @@ fn show_suspend_intermission(
 }
 
 impl DeviceLifecycle for EmulatorDevice {
-    fn on_startup(
+    async fn on_shutdown(
+        _context: &mut ShutdownContext<'_, AppDevice>,
+        _status: ExitStatus,
+        _tasks: &[DeviceTask],
+    ) -> Result<(), anyhow::Error> {
+        Ok(())
+    }
+
+    async fn on_startup(
         context: &mut AppContext,
         hub: &Hub,
         _runtime: &mut DeviceRuntime<'_>,
@@ -638,7 +701,7 @@ impl DeviceLifecycle for EmulatorDevice {
         Ok(())
     }
 
-    fn handle_event(
+    async fn handle_event(
         event: &Event,
         hub: &Hub,
         bus: &mut Bus,
@@ -660,9 +723,11 @@ impl DeviceLifecycle for EmulatorDevice {
                 } else {
                     runtime
                         .view
-                        .handle_event(&Event::Suspend, hub, bus, rq, context);
+                        .handle_event(&Event::Suspend, hub, bus, rq, context)
+                        .await;
                     let interm =
-                        Intermission::new(context.device.framebuffer().rect(), *kind, context);
+                        Intermission::new(context.device.framebuffer().rect(), *kind, context)
+                            .await;
                     rq.add(RenderData::new(
                         interm.id(),
                         *interm.rect(),
@@ -679,11 +744,11 @@ impl DeviceLifecycle for EmulatorDevice {
             Event::Select(EntryId::Restart) => EventOutcome::Exit(ExitStatus::Restart),
             Event::Select(EntryId::PowerOff) => EventOutcome::Exit(ExitStatus::PowerOff),
             Event::Select(EntryId::Suspend) => {
-                show_suspend_intermission(hub, bus, rq, context, runtime);
+                show_suspend_intermission(hub, bus, rq, context, runtime).await;
                 EventOutcome::Handled
             }
             Event::RtcAlarmFired(crate::AlarmType::AutoSuspend) => {
-                show_suspend_intermission(hub, bus, rq, context, runtime);
+                show_suspend_intermission(hub, bus, rq, context, runtime).await;
                 EventOutcome::Handled
             }
             Event::RtcAlarmFired(crate::AlarmType::Suspend | crate::AlarmType::WakeDebounce) => {
@@ -805,29 +870,29 @@ mod wifi_tests {
     use crate::device::wifi::WifiSession;
     use crate::settings::WifiMode;
     use std::sync::Arc;
-    use std::sync::mpsc;
 
-    #[test]
-    fn ota_download_lease_acquire_succeeds_for_auto_and_always_on() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn ota_download_lease_acquire_succeeds_for_auto_and_always_on() {
         for mode in [WifiMode::Auto, WifiMode::AlwaysOn] {
             let wifi = Arc::new(NoopWifiManager::default());
-            assert!(!wifi.is_enabled());
-            wifi.enable().expect("startup enable");
-            assert!(wifi.is_enabled());
-            wifi.disable().expect("return to idle before acquire");
-            assert!(!wifi.is_enabled());
+            assert!(!wifi.is_enabled().await);
+            wifi.enable().await.expect("startup enable");
+            assert!(wifi.is_enabled().await);
+            wifi.disable().await.expect("return to idle before acquire");
+            assert!(!wifi.is_enabled().await);
 
             let session = WifiSession::new(wifi, mode);
             let _ = session
                 .acquire("ota-download")
+                .await
                 .expect("acquire should succeed without panic");
         }
     }
 
-    #[test]
-    fn handle_set_wifi_enable_does_not_set_online_immediately() {
-        let mut context = create_test_context();
-        let (hub, _rx) = mpsc::channel();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_set_wifi_enable_does_not_set_online_immediately() {
+        let mut context = create_test_context().await;
+        let (hub, _rx) = crate::view::hub_channel();
         assert_eq!(context.settings.wifi, WifiMode::Off);
         assert!(!context.online);
 
@@ -837,10 +902,10 @@ mod wifi_tests {
         assert!(!context.online);
     }
 
-    #[test]
-    fn handle_set_wifi_disable_clears_online() {
-        let mut context = create_test_context();
-        let (hub, _rx) = mpsc::channel();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_set_wifi_disable_clears_online() {
+        let mut context = create_test_context().await;
+        let (hub, _rx) = crate::view::hub_channel();
         context.settings.wifi = WifiMode::AlwaysOn;
         context.online = true;
 
@@ -850,9 +915,9 @@ mod wifi_tests {
         assert!(!context.online);
     }
 
-    #[test]
-    fn handle_net_up_sets_online() {
-        let mut context = create_test_context();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_net_up_sets_online() {
+        let mut context = create_test_context().await;
         assert!(!context.online);
 
         let outcome = handle_net_up(&mut context);
@@ -861,10 +926,10 @@ mod wifi_tests {
         assert!(context.wifi_session.is_online());
     }
 
-    #[test]
-    fn toggle_wifi_enables_wifi_without_setting_online() {
-        let mut context = create_test_context();
-        let (hub, _rx) = mpsc::channel();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn toggle_wifi_enables_wifi_without_setting_online() {
+        let mut context = create_test_context().await;
+        let (hub, _rx) = crate::view::hub_channel();
         assert_eq!(context.settings.wifi, WifiMode::Off);
 
         let outcome = handle_set_wifi_mode(WifiMode::AlwaysOn, &mut context, &hub);
@@ -877,66 +942,34 @@ mod wifi_tests {
 #[cfg(all(test, feature = "emulator"))]
 mod lifecycle {
     use super::{EmulatorDevice, handle_toggle_frontlight};
-    use crate::color::WHITE;
     use crate::context::test_helpers::create_test_context;
-    use crate::device::DeviceHardware as _;
     use crate::device::DeviceLifecycle as _;
-    use crate::device::{DeviceRuntime, EventOutcome, ExitStatus, HistoryItem};
-    use crate::framebuffer::Framebuffer as _;
-    use crate::view::filler::Filler;
-    use crate::view::{Bus, EntryId, Event, RenderQueue, View};
-    use std::sync::mpsc;
+    use crate::device::test_harness::DeviceRuntimeHarness;
+    use crate::device::{EventOutcome, ExitStatus};
+    use crate::view::{EntryId, Event};
 
-    fn with_runtime<R>(
-        f: impl FnOnce(
-            &crate::view::Hub,
-            &mut Bus,
-            &mut RenderQueue,
-            &mut crate::device::AppContext,
-            &mut DeviceRuntime<'_>,
-        ) -> R,
-    ) -> R {
-        let (hub, _rx) = mpsc::channel();
-        let mut context = create_test_context();
-        let rect = context.device.framebuffer().rect();
-        let mut view: Box<dyn View> = Box::new(Filler::new(rect, WHITE));
-        let mut bus = Bus::new();
-        let mut rq = RenderQueue::new();
-        let mut tasks = Vec::new();
-        let mut history = Vec::<HistoryItem>::new();
-        let mut updating = Vec::new();
-        let mut runtime = DeviceRuntime {
-            view: &mut view,
-            history: &mut history,
-            tasks: &mut tasks,
-            updating: &mut updating,
-            settings_manager: None,
-            startup_cwd: None,
-            background_tasks: None,
-        };
-        f(&hub, &mut bus, &mut rq, &mut context, &mut runtime)
-    }
-
-    #[test]
-    fn handle_toggle_frontlight_updates_settings() {
-        let mut context = create_test_context();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_toggle_frontlight_updates_settings() {
+        let mut context = create_test_context().await;
         context.settings.frontlight = false;
         handle_toggle_frontlight(&mut context);
         assert!(context.settings.frontlight);
     }
 
-    #[test]
-    fn handle_event_toggle_frontlight_continues() {
-        let outcome = with_runtime(|hub, bus, rq, context, runtime| {
-            context.settings.frontlight = false;
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_toggle_frontlight_continues() {
+        let mut harness = DeviceRuntimeHarness::new().await;
+        harness.context.settings.frontlight = false;
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
             EmulatorDevice::handle_event(&Event::ToggleFrontlight, hub, bus, rq, context, runtime)
         });
         assert_eq!(outcome, EventOutcome::Continue);
     }
 
-    #[test]
-    fn handle_event_restart_exits() {
-        let outcome = with_runtime(|hub, bus, rq, context, runtime| {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_restart_exits() {
+        let mut harness = DeviceRuntimeHarness::new().await;
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
             EmulatorDevice::handle_event(
                 &Event::Select(EntryId::Restart),
                 hub,
@@ -949,9 +982,10 @@ mod lifecycle {
         assert_eq!(outcome, EventOutcome::Exit(ExitStatus::Restart));
     }
 
-    #[test]
-    fn handle_event_power_off_exits() {
-        let outcome = with_runtime(|hub, bus, rq, context, runtime| {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_power_off_exits() {
+        let mut harness = DeviceRuntimeHarness::new().await;
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
             EmulatorDevice::handle_event(
                 &Event::Select(EntryId::PowerOff),
                 hub,

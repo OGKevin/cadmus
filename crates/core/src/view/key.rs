@@ -229,10 +229,11 @@ impl Key {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for Key {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, bus, rq, _context), fields(event = ?evt
     ), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,

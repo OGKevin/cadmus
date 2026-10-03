@@ -1,3 +1,15 @@
+# `terminate-after` belongs inside `slow-timeout`, not beside it: as a
+# profile-level key nextest rejects it as unknown and silently ignores it.
+#
+# Ten seconds is the point at which a test is genuinely slow rather than merely
+# noisy, so it is reported from there. Six further periods puts the kill at one
+# minute, which no real test reaches and a deadlocked await cannot outlive.
+[profile.default]
+slow-timeout = { period = "10s", terminate-after = 6 }
+
+[profile.ci]
+slow-timeout = { period = "10s", terminate-after = 6 }
+
 [profile.ci.junit]
 path = "junit.xml"
 report-name = "cadmus"

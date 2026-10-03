@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                SELECT\n                    b.fingerprint,\n                    (\n                        SELECT lb.absolute_path\n                        FROM library_books lb\n                        WHERE lb.book_fingerprint = b.fingerprint\n                          AND lb.absolute_path != ''\n                        ORDER BY lb.absolute_path ASC, lb.library_id ASC\n                        LIMIT 1\n                    ) AS \"absolute_path?: String\"\n                FROM books b\n                ",
+  "describe": {
+    "columns": [
+      {
+        "name": "fingerprint",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "books",
+            "name": "fingerprint"
+          }
+        }
+      },
+      {
+        "name": "absolute_path?: String",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "library_books",
+            "name": "absolute_path"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "b16c62c1a7053f942ee43de392f25a6d7c69a672cbf74c369547d14579b8e99e"
+}

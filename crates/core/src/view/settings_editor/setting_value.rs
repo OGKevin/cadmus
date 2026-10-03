@@ -188,6 +188,7 @@ impl SettingValue {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for SettingValue {
     /// Handles events in three passes.
     ///
@@ -206,7 +207,7 @@ impl View for SettingValue {
     /// [`NamedInput`]: crate::view::named_input::NamedInput
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, bus, rq, context), fields(event = ?evt
     ), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,
@@ -240,7 +241,8 @@ impl View for SettingValue {
                 hub,
                 rq,
                 context,
-            );
+            )
+            .await;
             rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
             self.children.push(Box::new(file_chooser));
             self.active_file_chooser = true;
@@ -373,11 +375,10 @@ mod tests {
     use crate::view::{EntryId, RenderQueue};
     use std::collections::VecDeque;
     use std::path::PathBuf;
-    use std::sync::mpsc::channel;
 
-    #[test]
-    fn test_file_chooser_closed_updates_all_intermission_values() {
-        let mut context = create_test_context();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_file_chooser_closed_updates_all_intermission_values() {
+        let mut context = create_test_context().await;
         let settings = Settings::default();
         let rect = rect![0, 0, 200, 50];
 
@@ -406,7 +407,7 @@ mod tests {
             &context.device.install_dir(),
         );
 
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
@@ -416,18 +417,24 @@ mod tests {
 
         let event = Event::FileChooserClosed(None);
 
-        suspend_value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
-        power_off_value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
-        share_value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        suspend_value
+            .handle_event(&event, &hub, &mut bus, &mut rq, &mut context)
+            .await;
+        power_off_value
+            .handle_event(&event, &hub, &mut bus, &mut rq, &mut context)
+            .await;
+        share_value
+            .handle_event(&event, &hub, &mut bus, &mut rq, &mut context)
+            .await;
 
         assert_eq!(suspend_value.value(), initial_suspend);
         assert_eq!(power_off_value.value(), initial_power_off);
         assert_eq!(share_value.value(), initial_share);
     }
 
-    #[test]
-    fn test_intermission_values_update_via_update_value_event() {
-        let mut context = create_test_context();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_intermission_values_update_via_update_value_event() {
+        let mut context = create_test_context().await;
         let settings = Settings::default();
         let rect = rect![0, 0, 200, 50];
 
@@ -456,40 +463,46 @@ mod tests {
             &context.device.install_dir(),
         );
 
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
-        let handled_suspend = suspend_value.handle_event(
-            &Event::Settings(SettingsEvent::UpdateValue {
-                kind: SettingIdentity::IntermissionSuspend,
-                value: "suspend_image.png".to_string(),
-            }),
-            &hub,
-            &mut bus,
-            &mut rq,
-            &mut context,
-        );
-        let handled_power_off = power_off_value.handle_event(
-            &Event::Settings(SettingsEvent::UpdateValue {
-                kind: SettingIdentity::IntermissionPowerOff,
-                value: "poweroff_image.png".to_string(),
-            }),
-            &hub,
-            &mut bus,
-            &mut rq,
-            &mut context,
-        );
-        let handled_share = share_value.handle_event(
-            &Event::Settings(SettingsEvent::UpdateValue {
-                kind: SettingIdentity::IntermissionShare,
-                value: "share_image.png".to_string(),
-            }),
-            &hub,
-            &mut bus,
-            &mut rq,
-            &mut context,
-        );
+        let handled_suspend = suspend_value
+            .handle_event(
+                &Event::Settings(SettingsEvent::UpdateValue {
+                    kind: SettingIdentity::IntermissionSuspend,
+                    value: "suspend_image.png".to_string(),
+                }),
+                &hub,
+                &mut bus,
+                &mut rq,
+                &mut context,
+            )
+            .await;
+        let handled_power_off = power_off_value
+            .handle_event(
+                &Event::Settings(SettingsEvent::UpdateValue {
+                    kind: SettingIdentity::IntermissionPowerOff,
+                    value: "poweroff_image.png".to_string(),
+                }),
+                &hub,
+                &mut bus,
+                &mut rq,
+                &mut context,
+            )
+            .await;
+        let handled_share = share_value
+            .handle_event(
+                &Event::Settings(SettingsEvent::UpdateValue {
+                    kind: SettingIdentity::IntermissionShare,
+                    value: "share_image.png".to_string(),
+                }),
+                &hub,
+                &mut bus,
+                &mut rq,
+                &mut context,
+            )
+            .await;
 
         assert!(handled_suspend);
         assert!(handled_power_off);
@@ -499,9 +512,9 @@ mod tests {
         assert_eq!(share_value.value(), "share_image.png");
     }
 
-    #[test]
-    fn test_keyboard_layout_select_updates_value() {
-        let mut context = create_test_context();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_keyboard_layout_select_updates_value() {
+        let mut context = create_test_context().await;
         let settings = Settings {
             keyboard_layout: "English".to_string(),
             ..Default::default()
@@ -522,21 +535,23 @@ mod tests {
             kind: SettingIdentity::KeyboardLayout,
             value: "French".to_string(),
         });
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
-        value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
+        value
+            .handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context)
+            .await;
 
         assert_eq!(value.value(), "French");
         assert!(!rq.is_empty());
     }
 
-    #[test]
-    fn test_auto_suspend_submit_updates_value() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_auto_suspend_submit_updates_value() {
         use crate::AlarmType;
         use crate::view::{EntryId, ViewId};
         use std::time::Duration;
 
-        let mut context = create_test_context();
+        let mut context = create_test_context().await;
         context.settings.auto_suspend = 30.0;
         reschedule_auto_suspend_alarm(&mut context);
         let first = context
@@ -560,24 +575,28 @@ mod tests {
             &context.device.install_dir(),
         );
         let mut rq = RenderQueue::new();
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
 
-        value.handle_event(
-            &Event::Select(EntryId::EditAutoSuspend),
-            &hub,
-            &mut bus,
-            &mut rq,
-            &mut context,
-        );
+        value
+            .handle_event(
+                &Event::Select(EntryId::EditAutoSuspend),
+                &hub,
+                &mut bus,
+                &mut rq,
+                &mut context,
+            )
+            .await;
         std::thread::sleep(Duration::from_millis(20));
-        value.handle_event(
-            &Event::Submit(ViewId::AutoSuspendInput, "15.0".to_string()),
-            &hub,
-            &mut bus,
-            &mut rq,
-            &mut context,
-        );
+        value
+            .handle_event(
+                &Event::Submit(ViewId::AutoSuspendInput, "15.0".to_string()),
+                &hub,
+                &mut bus,
+                &mut rq,
+                &mut context,
+            )
+            .await;
 
         assert_eq!(context.settings.auto_suspend, 15.0);
         assert_eq!(value.value(), "15.0");
@@ -593,12 +612,12 @@ mod tests {
         assert!(second < first);
     }
 
-    #[test]
-    fn test_auto_suspend_submit_zero_cancels_alarm() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_auto_suspend_submit_zero_cancels_alarm() {
         use crate::AlarmType;
         use crate::view::{EntryId, ViewId};
 
-        let mut context = create_test_context();
+        let mut context = create_test_context().await;
         context.settings.auto_suspend = 30.0;
         reschedule_auto_suspend_alarm(&mut context);
         assert!(
@@ -622,23 +641,27 @@ mod tests {
             &context.device.install_dir(),
         );
         let mut rq = RenderQueue::new();
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
 
-        value.handle_event(
-            &Event::Select(EntryId::EditAutoSuspend),
-            &hub,
-            &mut bus,
-            &mut rq,
-            &mut context,
-        );
-        value.handle_event(
-            &Event::Submit(ViewId::AutoSuspendInput, "0".to_string()),
-            &hub,
-            &mut bus,
-            &mut rq,
-            &mut context,
-        );
+        value
+            .handle_event(
+                &Event::Select(EntryId::EditAutoSuspend),
+                &hub,
+                &mut bus,
+                &mut rq,
+                &mut context,
+            )
+            .await;
+        value
+            .handle_event(
+                &Event::Submit(ViewId::AutoSuspendInput, "0".to_string()),
+                &hub,
+                &mut bus,
+                &mut rq,
+                &mut context,
+            )
+            .await;
 
         assert_eq!(context.settings.auto_suspend, 0.0);
         assert!(
@@ -652,9 +675,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_auto_power_off_submit_updates_value() {
-        let mut context = create_test_context();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_auto_power_off_submit_updates_value() {
+        let mut context = create_test_context().await;
         let settings = Settings::default();
         let rect = rect![0, 0, 200, 50];
 
@@ -667,21 +690,23 @@ mod tests {
             &context.device.install_dir(),
         );
         let mut rq = RenderQueue::new();
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
 
         let update_event = Event::Settings(SettingsEvent::UpdateValue {
             kind: SettingIdentity::AutoPowerOff,
             value: "7.0".to_string(),
         });
-        value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
+        value
+            .handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context)
+            .await;
 
         assert_eq!(value.value(), "7.0");
         assert!(!rq.is_empty());
     }
 
-    #[test]
-    fn test_library_name_submit_updates_value() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_library_name_submit_updates_value() {
         use crate::settings::LibrarySettings;
         let mut settings = Settings::default();
         settings.libraries.push(LibrarySettings {
@@ -691,7 +716,7 @@ mod tests {
         });
         let rect = rect![0, 0, 200, 50];
 
-        let mut context = create_test_context();
+        let mut context = create_test_context().await;
         let mut value = SettingValue::new(
             LibraryName(0),
             rect,
@@ -701,21 +726,23 @@ mod tests {
             &context.device.install_dir(),
         );
         let mut rq = RenderQueue::new();
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
 
         let update_event = Event::Settings(SettingsEvent::UpdateValue {
             kind: SettingIdentity::LibraryName(0),
             value: "New Name".to_string(),
         });
-        value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
+        value
+            .handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context)
+            .await;
 
         assert_eq!(value.value(), "New Name");
         assert!(!rq.is_empty());
     }
 
-    #[test]
-    fn test_library_path_file_chooser_closed_updates_value() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_library_path_file_chooser_closed_updates_value() {
         use crate::settings::LibrarySettings;
         let mut settings = Settings::default();
         settings.libraries.push(LibrarySettings {
@@ -725,7 +752,7 @@ mod tests {
         });
         let rect = rect![0, 0, 200, 50];
 
-        let mut context = create_test_context();
+        let mut context = create_test_context().await;
         let mut value = SettingValue::new(
             LibraryPath(0),
             rect,
@@ -735,7 +762,7 @@ mod tests {
             &context.device.install_dir(),
         );
         let mut rq = RenderQueue::new();
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
 
         let new_path = PathBuf::from("/mnt/onboard/new_library");
@@ -743,14 +770,16 @@ mod tests {
             kind: SettingIdentity::LibraryPath(0),
             value: new_path.display().to_string(),
         });
-        value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
+        value
+            .handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context)
+            .await;
 
         assert_eq!(value.value(), new_path.display().to_string());
         assert!(!rq.is_empty());
     }
 
-    #[test]
-    fn test_tap_gesture_on_library_info_emits_edit_event() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_tap_gesture_on_library_info_emits_edit_event() {
         use crate::settings::LibrarySettings;
         let mut settings = Settings::default();
         settings.libraries.push(LibrarySettings {
@@ -760,7 +789,7 @@ mod tests {
         });
         let rect = rect![0, 0, 200, 50];
 
-        let mut context = create_test_context();
+        let mut context = create_test_context().await;
         let value = SettingValue::new(
             LibraryInfo(0),
             rect,
@@ -769,7 +798,7 @@ mod tests {
             context.device.dpi(),
             &context.device.install_dir(),
         );
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
@@ -784,7 +813,8 @@ mod tests {
             &mut bus,
             &mut rq,
             &mut context,
-        );
+        )
+        .await;
 
         assert_eq!(bus.len(), 1);
         if let Some(Event::EditLibrary(index)) = bus.pop_front() {
@@ -794,10 +824,10 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_update_value_event_updates_library_name_display() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_update_value_event_updates_library_name_display() {
         use crate::settings::LibrarySettings;
-        let mut context = create_test_context();
+        let mut context = create_test_context().await;
         context.settings.libraries.clear();
         context.settings.libraries.push(LibrarySettings {
             name: "Old Name".to_string(),
@@ -814,7 +844,7 @@ mod tests {
             context.device.dpi(),
             &context.device.install_dir(),
         );
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
@@ -824,7 +854,9 @@ mod tests {
             kind: SettingIdentity::LibraryName(0),
             value: "New Name".to_string(),
         });
-        let handled = value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = value
+            .handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context)
+            .await;
 
         assert!(
             handled,
@@ -833,10 +865,10 @@ mod tests {
         assert_eq!(value.value(), "New Name");
     }
 
-    #[test]
-    fn test_update_value_event_updates_library_path_display() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_update_value_event_updates_library_path_display() {
         use crate::settings::LibrarySettings;
-        let mut context = create_test_context();
+        let mut context = create_test_context().await;
         context.settings.libraries.clear();
         context.settings.libraries.push(LibrarySettings {
             name: "Test Library".to_string(),
@@ -853,7 +885,7 @@ mod tests {
             context.device.dpi(),
             &context.device.install_dir(),
         );
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
@@ -863,7 +895,9 @@ mod tests {
             kind: SettingIdentity::LibraryPath(0),
             value: "/new/path".to_string(),
         });
-        let handled = value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = value
+            .handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context)
+            .await;
 
         assert!(
             handled,
@@ -872,10 +906,10 @@ mod tests {
         assert_eq!(value.value(), "/new/path");
     }
 
-    #[test]
-    fn test_update_value_event_ignores_wrong_kind() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_update_value_event_ignores_wrong_kind() {
         use crate::settings::LibrarySettings;
-        let mut context = create_test_context();
+        let mut context = create_test_context().await;
         context.settings.libraries.clear();
         context.settings.libraries.push(LibrarySettings {
             name: "Test Library".to_string(),
@@ -892,7 +926,7 @@ mod tests {
             context.device.dpi(),
             &context.device.install_dir(),
         );
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
@@ -902,7 +936,9 @@ mod tests {
             kind: SettingIdentity::LibraryPath(0),
             value: "Some Path".to_string(),
         });
-        let handled = value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = value
+            .handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context)
+            .await;
 
         assert!(
             !handled,
@@ -915,10 +951,10 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_update_value_event_ignores_wrong_index() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_update_value_event_ignores_wrong_index() {
         use crate::settings::LibrarySettings;
-        let mut context = create_test_context();
+        let mut context = create_test_context().await;
         context.settings.libraries.clear();
         context.settings.libraries.push(LibrarySettings {
             name: "Library 0".to_string(),
@@ -940,7 +976,7 @@ mod tests {
             context.device.dpi(),
             &context.device.install_dir(),
         );
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
@@ -950,7 +986,9 @@ mod tests {
             kind: SettingIdentity::LibraryName(1),
             value: "Updated Library 1".to_string(),
         });
-        let handled = value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = value
+            .handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context)
+            .await;
 
         assert!(
             !handled,
@@ -963,10 +1001,10 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_update_value_event_updates_auto_suspend() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_update_value_event_updates_auto_suspend() {
         let rect = rect![0, 0, 200, 50];
-        let mut context = create_test_context();
+        let mut context = create_test_context().await;
         let mut value = SettingValue::new(
             &AutoSuspend,
             rect,
@@ -975,7 +1013,7 @@ mod tests {
             context.device.dpi(),
             &context.device.install_dir(),
         );
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
@@ -985,7 +1023,9 @@ mod tests {
             kind: SettingIdentity::AutoSuspend,
             value: "60.0".to_string(),
         });
-        let handled = value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = value
+            .handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context)
+            .await;
 
         assert!(
             handled,
@@ -994,10 +1034,10 @@ mod tests {
         assert_eq!(value.value(), "60.0");
     }
 
-    #[test]
-    fn test_update_value_event_updates_auto_power_off() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_update_value_event_updates_auto_power_off() {
         let rect = rect![0, 0, 200, 50];
-        let mut context = create_test_context();
+        let mut context = create_test_context().await;
         let mut value = SettingValue::new(
             &AutoPowerOff,
             rect,
@@ -1006,7 +1046,7 @@ mod tests {
             context.device.dpi(),
             &context.device.install_dir(),
         );
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
@@ -1016,7 +1056,9 @@ mod tests {
             kind: SettingIdentity::AutoPowerOff,
             value: "60.0".to_string(),
         });
-        let handled = value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = value
+            .handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context)
+            .await;
 
         assert!(
             handled,
@@ -1025,10 +1067,10 @@ mod tests {
         assert_eq!(value.value(), "60.0");
     }
 
-    #[test]
-    fn test_update_value_event_updates_settings_retention() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_update_value_event_updates_settings_retention() {
         let rect = rect![0, 0, 200, 50];
-        let mut context = create_test_context();
+        let mut context = create_test_context().await;
         let mut value = SettingValue::new(
             &SettingsRetention,
             rect,
@@ -1037,7 +1079,7 @@ mod tests {
             context.device.dpi(),
             &context.device.install_dir(),
         );
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
@@ -1047,7 +1089,9 @@ mod tests {
             kind: SettingIdentity::SettingsRetention,
             value: "5".to_string(),
         });
-        let handled = value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = value
+            .handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context)
+            .await;
 
         assert!(
             handled,
@@ -1056,10 +1100,10 @@ mod tests {
         assert_eq!(value.value(), "5");
     }
 
-    #[test]
-    fn test_update_value_event_regenerates_log_level_radio_buttons() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_update_value_event_regenerates_log_level_radio_buttons() {
         let rect = rect![0, 0, 200, 50];
-        let mut context = create_test_context();
+        let mut context = create_test_context().await;
         context.settings.logging.level = "INFO".to_string();
 
         let mut value = SettingValue::new(
@@ -1070,7 +1114,7 @@ mod tests {
             context.device.dpi(),
             &context.device.install_dir(),
         );
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
@@ -1094,7 +1138,9 @@ mod tests {
             kind: SettingIdentity::LogLevel,
             value: "DEBUG".to_string(),
         });
-        let handled = value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = value
+            .handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context)
+            .await;
 
         assert!(
             handled,
@@ -1103,12 +1149,12 @@ mod tests {
         assert_eq!(value.value(), "DEBUG");
     }
 
-    #[test]
-    fn test_keep_open_submenu_does_not_queue_menu_close() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_keep_open_submenu_does_not_queue_menu_close() {
         use crate::document::file_extension::FileExtension;
 
         let rect = rect![0, 0, 200, 50];
-        let mut context = create_test_context();
+        let mut context = create_test_context().await;
         let mut value = SettingValue::new(
             &AllowedKindsSetting,
             rect,
@@ -1117,17 +1163,19 @@ mod tests {
             context.device.dpi(),
             &context.device.install_dir(),
         );
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
-        let handled = value.handle_event(
-            &Event::Select(EntryId::ToggleAllowedKind(FileExtension::Cbr)),
-            &hub,
-            &mut bus,
-            &mut rq,
-            &mut context,
-        );
+        let handled = value
+            .handle_event(
+                &Event::Select(EntryId::ToggleAllowedKind(FileExtension::Cbr)),
+                &hub,
+                &mut bus,
+                &mut rq,
+                &mut context,
+            )
+            .await;
 
         assert!(handled);
         assert!(

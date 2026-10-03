@@ -3,12 +3,11 @@ use crate::input::{ButtonCode, ButtonStatus, DeviceEvent, FingerStatus};
 use crate::unit::mm_to_px;
 use crate::view::Event;
 use rustc_hash::FxHashMap;
-use std::f64;
 use std::fmt;
-use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
-use std::thread;
 use std::time::Duration;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio_util::sync::CancellationToken;
 
 pub const TAP_JITTER_MM: f32 = 6.0;
 pub const HOLD_JITTER_MM: f32 = 1.5;
@@ -117,19 +116,41 @@ impl fmt::Display for GestureEvent {
 }
 
 #[derive(Debug)]
-pub struct TouchState {
+struct TouchState {
     time: f64,
     held: bool,
     positions: Vec<Point>,
 }
 
-pub fn gesture_events(rx: Receiver<DeviceEvent>, dpi: u16) -> Receiver<Event> {
-    let (ty, ry) = mpsc::channel();
-    thread::spawn(move || parse_gesture_events(&rx, &ty, dpi));
-    ry
+/// Gesture recognition output plus the [`crate::runtime::Job`] that owns the parser.
+///
+/// Hold timers are subtasks of that job; they are cancelled when a contact ends,
+/// when the pipeline [`CancellationToken`] fires, or when the job is dropped.
+pub struct GesturePipeline {
+    pub events: UnboundedReceiver<Event>,
+    job: crate::runtime::Job<()>,
 }
 
-pub fn parse_gesture_events(rx: &Receiver<DeviceEvent>, ty: &Sender<Event>, dpi: u16) {
+impl GesturePipeline {
+    pub fn start(rx: UnboundedReceiver<DeviceEvent>, dpi: u16) -> Self {
+        let (ty, events) = tokio::sync::mpsc::unbounded_channel();
+        let job = crate::runtime::Job::spawn(move |cancel| async move {
+            parse_gesture_events(rx, ty, dpi, cancel).await;
+        });
+        Self { events, job }
+    }
+
+    pub fn into_parts(self) -> (UnboundedReceiver<Event>, crate::runtime::Job<()>) {
+        (self.events, self.job)
+    }
+}
+
+async fn parse_gesture_events(
+    mut rx: UnboundedReceiver<DeviceEvent>,
+    ty: UnboundedSender<Event>,
+    dpi: u16,
+    cancel: CancellationToken,
+) {
     let contacts: Arc<Mutex<FxHashMap<i32, TouchState>>> =
         Arc::new(Mutex::new(FxHashMap::default()));
     let buttons: Arc<Mutex<FxHashMap<ButtonCode, f64>>> =
@@ -137,8 +158,18 @@ pub fn parse_gesture_events(rx: &Receiver<DeviceEvent>, ty: &Sender<Event>, dpi:
     let segments: Arc<Mutex<Vec<Vec<Point>>>> = Arc::new(Mutex::new(Vec::new()));
     let tap_jitter = mm_to_px(TAP_JITTER_MM, dpi);
     let hold_jitter = mm_to_px(HOLD_JITTER_MM, dpi);
+    let mut finger_holds: FxHashMap<i32, CancellationToken> = FxHashMap::default();
+    let mut button_holds: FxHashMap<ButtonCode, CancellationToken> = FxHashMap::default();
 
-    while let Ok(evt) = rx.recv() {
+    loop {
+        let evt = tokio::select! {
+            () = cancel.cancelled() => break,
+            recv = rx.recv() => match recv {
+                Some(evt) => evt,
+                None => break,
+            },
+        };
+
         ty.send(Event::Device(evt)).ok();
         match evt {
             DeviceEvent::Finger {
@@ -164,110 +195,24 @@ pub fn parse_gesture_events(rx: &Receiver<DeviceEvent>, ty: &Sender<Event>, dpi:
                     long_ms = HOLD_DELAY_LONG.as_millis(),
                     "finger hold timer armed"
                 );
+                disarm_hold(&mut finger_holds, id);
+                let hold_cancel = CancellationToken::new();
+                finger_holds.insert(id, hold_cancel.clone());
                 let ty = ty.clone();
                 let contacts = contacts.clone();
                 let segments = segments.clone();
-                thread::spawn(move || {
-                    let mut held = false;
-                    thread::sleep(HOLD_DELAY_SHORT);
-                    {
-                        let mut ct = contacts.lock().unwrap();
-                        let sg = segments.lock().unwrap();
-                        if ct.len() > 1 || !sg.is_empty() {
-                            tracing::trace!(
-                                id,
-                                contacts = ct.len(),
-                                segments = sg.len(),
-                                "hold finger short cancelled"
-                            );
-                            return;
-                        }
-                        if let Some(ts) = ct.get(&id) {
-                            let tp = &ts.positions;
-                            if (ts.time - time).abs() < f64::EPSILON
-                                && (tp[tp.len() - 1] - position).length() < hold_jitter
-                                && (tp[tp.len() / 2] - position).length() < hold_jitter
-                            {
-                                held = true;
-                                tracing::debug!(
-                                    id,
-                                    position = ?position,
-                                    time,
-                                    "hold finger short fired"
-                                );
-                                ty.send(Event::Gesture(GestureEvent::HoldFingerShort(
-                                    position, id,
-                                )))
-                                .ok();
-                            } else {
-                                tracing::trace!(
-                                    id,
-                                    position = ?position,
-                                    time,
-                                    "hold finger short cancelled"
-                                );
-                            }
-                        } else {
-                            tracing::trace!(
-                                id,
-                                position = ?position,
-                                time,
-                                "hold finger short cancelled"
-                            );
-                        }
-                        if held {
-                            if let Some(ts) = ct.get_mut(&id) {
-                                ts.held = true;
-                            }
-                        } else {
-                            return;
-                        }
-                    }
-                    thread::sleep(HOLD_DELAY_LONG - HOLD_DELAY_SHORT);
-                    {
-                        let mut ct = contacts.lock().unwrap();
-                        let sg = segments.lock().unwrap();
-                        if ct.len() > 1 || !sg.is_empty() {
-                            tracing::trace!(
-                                id,
-                                contacts = ct.len(),
-                                segments = sg.len(),
-                                "hold finger long cancelled"
-                            );
-                            return;
-                        }
-                        if let Some(ts) = ct.get_mut(&id) {
-                            let tp = &ts.positions;
-                            if (ts.time - time).abs() < f64::EPSILON
-                                && (tp[tp.len() - 1] - position).length() < hold_jitter
-                                && (tp[tp.len() / 2] - position).length() < hold_jitter
-                            {
-                                tracing::debug!(
-                                    id,
-                                    position = ?position,
-                                    time,
-                                    "hold finger long fired"
-                                );
-                                ty.send(Event::Gesture(GestureEvent::HoldFingerLong(position, id)))
-                                    .ok();
-                            } else {
-                                tracing::trace!(
-                                    id,
-                                    position = ?position,
-                                    time,
-                                    "hold finger long cancelled"
-                                );
-                            }
-                        } else {
-                            tracing::trace!(
-                                id,
-                                position = ?position,
-                                time,
-                                "hold finger long cancelled"
-                            );
-                        }
-                    }
-                });
+                tokio::spawn(run_finger_hold(
+                    ty,
+                    contacts,
+                    segments,
+                    hold_cancel,
+                    FingerHoldArm {
+                        id,
+                        position,
+                        time,
+                        hold_jitter,
+                    },
+                ));
             }
             DeviceEvent::Finger {
                 status: FingerStatus::Motion,
@@ -286,6 +231,7 @@ pub fn parse_gesture_events(rx: &Receiver<DeviceEvent>, ty: &Sender<Event>, dpi:
                 id,
                 ..
             } => {
+                disarm_hold(&mut finger_holds, id);
                 let mut ct = contacts.lock().unwrap();
                 let mut sg = segments.lock().unwrap();
                 if let Some(mut ts) = ct.remove(&id) {
@@ -574,81 +520,222 @@ pub fn parse_gesture_events(rx: &Receiver<DeviceEvent>, ty: &Sender<Event>, dpi:
                     long_ms = HOLD_DELAY_LONG.as_millis(),
                     "button hold timer armed"
                 );
+                disarm_hold(&mut button_holds, code);
+                let hold_cancel = CancellationToken::new();
+                button_holds.insert(code, hold_cancel.clone());
                 let ty = ty.clone();
                 let buttons = buttons.clone();
-                thread::spawn(move || {
-                    thread::sleep(HOLD_DELAY_SHORT);
-                    {
-                        let bt = buttons.lock().unwrap();
-                        match bt.get(&code) {
-                            Some(&initial_time) if (initial_time - time).abs() < f64::EPSILON => {
-                                tracing::debug!(
-                                    code = ?code,
-                                    time,
-                                    "hold button short fired"
-                                );
-                                ty.send(Event::Gesture(GestureEvent::HoldButtonShort(code)))
-                                    .ok();
-                            }
-                            Some(&initial_time) => {
-                                tracing::trace!(
-                                    code = ?code,
-                                    time,
-                                    initial_time,
-                                    "hold button short cancelled"
-                                );
-                            }
-                            None => {
-                                tracing::trace!(
-                                    code = ?code,
-                                    time,
-                                    "hold button short cancelled"
-                                );
-                            }
-                        }
-                    }
-                    thread::sleep(HOLD_DELAY_LONG - HOLD_DELAY_SHORT);
-                    {
-                        let bt = buttons.lock().unwrap();
-                        match bt.get(&code) {
-                            Some(&initial_time) if (initial_time - time).abs() < f64::EPSILON => {
-                                tracing::debug!(
-                                    code = ?code,
-                                    time,
-                                    "hold button long fired"
-                                );
-                                ty.send(Event::Gesture(GestureEvent::HoldButtonLong(code)))
-                                    .ok();
-                            }
-                            Some(&initial_time) => {
-                                tracing::trace!(
-                                    code = ?code,
-                                    time,
-                                    initial_time,
-                                    "hold button long cancelled"
-                                );
-                            }
-                            None => {
-                                tracing::trace!(
-                                    code = ?code,
-                                    time,
-                                    "hold button long cancelled"
-                                );
-                            }
-                        }
-                    }
-                });
+                tokio::spawn(run_button_hold(ty, buttons, hold_cancel, code, time));
             }
             DeviceEvent::Button {
                 status: ButtonStatus::Released,
                 code,
                 ..
             } => {
+                disarm_hold(&mut button_holds, code);
                 let mut bt = buttons.lock().unwrap();
                 let cleared = bt.remove(&code).is_some();
                 tracing::debug!(code = ?code, cleared, "button hold cleared on release");
             }
             _ => (),
+        }
+    }
+
+    disarm_all_holds(&mut finger_holds);
+    disarm_all_holds(&mut button_holds);
+}
+
+fn disarm_hold<K: std::hash::Hash + Eq>(holds: &mut FxHashMap<K, CancellationToken>, key: K) {
+    if let Some(token) = holds.remove(&key) {
+        token.cancel();
+    }
+}
+
+fn disarm_all_holds<K: std::hash::Hash + Eq>(holds: &mut FxHashMap<K, CancellationToken>) {
+    for (_, token) in holds.drain() {
+        token.cancel();
+    }
+}
+
+async fn sleep_hold(cancel: &CancellationToken, duration: Duration) -> bool {
+    tokio::select! {
+        () = cancel.cancelled() => false,
+        () = tokio::time::sleep(duration) => true,
+    }
+}
+
+struct FingerHoldArm {
+    id: i32,
+    position: Point,
+    time: f64,
+    hold_jitter: f32,
+}
+
+async fn run_finger_hold(
+    ty: UnboundedSender<Event>,
+    contacts: Arc<Mutex<FxHashMap<i32, TouchState>>>,
+    segments: Arc<Mutex<Vec<Vec<Point>>>>,
+    cancel: CancellationToken,
+    arm: FingerHoldArm,
+) {
+    let FingerHoldArm {
+        id,
+        position,
+        time,
+        hold_jitter,
+    } = arm;
+    if !sleep_hold(&cancel, HOLD_DELAY_SHORT).await {
+        return;
+    }
+    let mut held = false;
+    {
+        let mut ct = contacts.lock().unwrap();
+        let sg = segments.lock().unwrap();
+        if ct.len() > 1 || !sg.is_empty() {
+            tracing::trace!(
+                id,
+                contacts = ct.len(),
+                segments = sg.len(),
+                "hold finger short cancelled"
+            );
+            return;
+        }
+        if let Some(ts) = ct.get(&id) {
+            let tp = &ts.positions;
+            if ts.time == time
+                && (tp[tp.len() - 1] - position).length() < hold_jitter
+                && (tp[tp.len() / 2] - position).length() < hold_jitter
+            {
+                held = true;
+                tracing::debug!(
+                    id,
+                    position = ?position,
+                    time,
+                    "hold finger short fired"
+                );
+                ty.send(Event::Gesture(GestureEvent::HoldFingerShort(position, id)))
+                    .ok();
+            } else {
+                tracing::trace!(
+                    id,
+                    position = ?position,
+                    time,
+                    "hold finger short cancelled"
+                );
+            }
+        } else {
+            tracing::trace!(
+                id,
+                position = ?position,
+                time,
+                "hold finger short cancelled"
+            );
+        }
+        if held {
+            if let Some(ts) = ct.get_mut(&id) {
+                ts.held = true;
+            }
+        } else {
+            return;
+        }
+    }
+    if !sleep_hold(&cancel, HOLD_DELAY_LONG - HOLD_DELAY_SHORT).await {
+        return;
+    }
+    let mut ct = contacts.lock().unwrap();
+    let sg = segments.lock().unwrap();
+    if ct.len() > 1 || !sg.is_empty() {
+        tracing::trace!(
+            id,
+            contacts = ct.len(),
+            segments = sg.len(),
+            "hold finger long cancelled"
+        );
+        return;
+    }
+    if let Some(ts) = ct.get_mut(&id) {
+        let tp = &ts.positions;
+        if ts.time == time
+            && (tp[tp.len() - 1] - position).length() < hold_jitter
+            && (tp[tp.len() / 2] - position).length() < hold_jitter
+        {
+            tracing::debug!(
+                id,
+                position = ?position,
+                time,
+                "hold finger long fired"
+            );
+            ty.send(Event::Gesture(GestureEvent::HoldFingerLong(position, id)))
+                .ok();
+        } else {
+            tracing::trace!(
+                id,
+                position = ?position,
+                time,
+                "hold finger long cancelled"
+            );
+        }
+    } else {
+        tracing::trace!(
+            id,
+            position = ?position,
+            time,
+            "hold finger long cancelled"
+        );
+    }
+}
+
+async fn run_button_hold(
+    ty: UnboundedSender<Event>,
+    buttons: Arc<Mutex<FxHashMap<ButtonCode, f64>>>,
+    cancel: CancellationToken,
+    code: ButtonCode,
+    time: f64,
+) {
+    if !sleep_hold(&cancel, HOLD_DELAY_SHORT).await {
+        return;
+    }
+    {
+        let bt = buttons.lock().unwrap();
+        match bt.get(&code) {
+            Some(&initial_time) if initial_time == time => {
+                tracing::debug!(code = ?code, time, "hold button short fired");
+                ty.send(Event::Gesture(GestureEvent::HoldButtonShort(code)))
+                    .ok();
+            }
+            Some(&initial_time) => {
+                tracing::trace!(
+                    code = ?code,
+                    time,
+                    initial_time,
+                    "hold button short cancelled"
+                );
+            }
+            None => {
+                tracing::trace!(code = ?code, time, "hold button short cancelled");
+            }
+        }
+    }
+    if !sleep_hold(&cancel, HOLD_DELAY_LONG - HOLD_DELAY_SHORT).await {
+        return;
+    }
+    let bt = buttons.lock().unwrap();
+    match bt.get(&code) {
+        Some(&initial_time) if initial_time == time => {
+            tracing::debug!(code = ?code, time, "hold button long fired");
+            ty.send(Event::Gesture(GestureEvent::HoldButtonLong(code)))
+                .ok();
+        }
+        Some(&initial_time) => {
+            tracing::trace!(
+                code = ?code,
+                time,
+                initial_time,
+                "hold button long cancelled"
+            );
+        }
+        None => {
+            tracing::trace!(code = ?code, time, "hold button long cancelled");
         }
     }
 }
@@ -700,5 +787,131 @@ fn interpret_segment(sp: &[Point], tap_jitter: f32) -> GestureEvent {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::geom::Point;
+    use crate::input::{DeviceEvent, FingerStatus};
+    use std::time::Duration;
+    use tokio::sync::mpsc;
+
+    async fn next_gesture(
+        events: &mut UnboundedReceiver<Event>,
+        within: Duration,
+    ) -> Option<GestureEvent> {
+        let deadline = tokio::time::Instant::now() + within;
+        while tokio::time::Instant::now() < deadline {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            match tokio::time::timeout(remaining, events.recv()).await {
+                Ok(Some(Event::Gesture(gesture))) => return Some(gesture),
+                Ok(Some(_)) => {}
+                Ok(None) | Err(_) => return None,
+            }
+        }
+        None
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn finger_hold_short_fires_when_contact_timestamp_unchanged() {
+        let (device_tx, device_rx) = mpsc::unbounded_channel();
+        let pipeline = GesturePipeline::start(device_rx, 300);
+        let mut events = pipeline.events;
+        let position = Point::new(10, 10);
+        let down_time = 42.0;
+
+        device_tx
+            .send(DeviceEvent::Finger {
+                id: 1,
+                time: down_time,
+                status: FingerStatus::Down,
+                position,
+            })
+            .unwrap();
+
+        let gesture =
+            next_gesture(&mut events, HOLD_DELAY_SHORT + Duration::from_millis(250)).await;
+
+        assert!(matches!(
+            gesture,
+            Some(GestureEvent::HoldFingerShort(pt, 1)) if pt == position
+        ));
+
+        drop(device_tx);
+        let _ = pipeline.job.join(Duration::from_secs(1)).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn finger_hold_short_not_fired_after_release() {
+        let (device_tx, device_rx) = mpsc::unbounded_channel();
+        let pipeline = GesturePipeline::start(device_rx, 300);
+        let mut events = pipeline.events;
+        let position = Point::new(5, 5);
+
+        device_tx
+            .send(DeviceEvent::Finger {
+                id: 2,
+                time: 1.0,
+                status: FingerStatus::Down,
+                position,
+            })
+            .unwrap();
+        device_tx
+            .send(DeviceEvent::Finger {
+                id: 2,
+                time: 1.1,
+                status: FingerStatus::Up,
+                position,
+            })
+            .unwrap();
+
+        let gesture =
+            next_gesture(&mut events, HOLD_DELAY_SHORT + Duration::from_millis(250)).await;
+
+        assert!(!matches!(
+            gesture,
+            Some(GestureEvent::HoldFingerShort(_, 2))
+        ));
+
+        drop(device_tx);
+        let _ = pipeline.job.join(Duration::from_secs(1)).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn finger_hold_short_uses_latest_down_timestamp() {
+        let (device_tx, device_rx) = mpsc::unbounded_channel();
+        let pipeline = GesturePipeline::start(device_rx, 300);
+        let mut events = pipeline.events;
+        let position = Point::new(0, 0);
+
+        device_tx
+            .send(DeviceEvent::Finger {
+                id: 3,
+                time: 1.0,
+                status: FingerStatus::Down,
+                position,
+            })
+            .unwrap();
+        device_tx
+            .send(DeviceEvent::Finger {
+                id: 3,
+                time: 9.0,
+                status: FingerStatus::Down,
+                position,
+            })
+            .unwrap();
+
+        let gesture =
+            next_gesture(&mut events, HOLD_DELAY_SHORT + Duration::from_millis(250)).await;
+
+        assert!(matches!(
+            gesture,
+            Some(GestureEvent::HoldFingerShort(pt, 3)) if pt == position
+        ));
+
+        drop(device_tx);
+        let _ = pipeline.job.join(Duration::from_secs(1)).await;
     }
 }

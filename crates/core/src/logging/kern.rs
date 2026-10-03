@@ -23,6 +23,9 @@
 //! Mar 16 18:31:51 kernel: [ 3856.636842] -(0)[0:swapper/0][wlan] In HIF ISR.
 //! ```
 
+#[cfg(feature = "test")]
+use crate::runtime::Job;
+
 /// Parsed kernel log entry with extracted fields.
 #[derive(Debug, PartialEq)]
 #[cfg(all(feature = "kobo", feature = "test"))]
@@ -97,7 +100,12 @@ fn parse_kern_log(line: &str) -> Option<ParsedKernelLog> {
     None
 }
 
-/// Spawns a background thread that captures kernel logs.
+/// Captures kernel logs until the returned [`Job`] is cancelled and joined.
+///
+/// The `logread` child is owned by the job body, so cancelling drops it and
+/// `kill_on_drop` reaps it; the reader's pending read then ends and the job
+/// finishes. Callers must join the job during shutdown — the runtime otherwise
+/// waits on that blocked read during process exit.
 ///
 /// # Platform-specific behavior
 ///
@@ -121,34 +129,37 @@ fn parse_kern_log(line: &str) -> Option<ParsedKernelLog> {
 /// - `subsystem`: Kernel subsystem (e.g., "wlan") - may be empty
 /// - `message`: The actual log message
 #[cfg(all(feature = "kobo", feature = "test"))]
-pub fn spawn_kern_log_thread() {
-    use std::io::{BufRead, BufReader};
-    use std::process::{Command, Stdio};
-    use std::thread;
+pub async fn spawn_kern_log_thread() -> Option<Job> {
+    use std::process::Stdio;
+    use tokio::io::{AsyncBufReadExt, BufReader};
 
-    fn is_process_running(name: &str) -> bool {
-        Command::new("pgrep")
+    async fn is_process_running(name: &str) -> bool {
+        tokio::process::Command::new("pgrep")
             .arg("-x")
             .arg(name)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
-            .spawn()
-            .and_then(|mut child| child.wait().map(|status| status.success()))
+            .status()
+            .await
+            .map(|status| status.success())
             .unwrap_or(false)
     }
 
-    let klogd_running = is_process_running("klogd");
+    let klogd_running = is_process_running("klogd").await;
     if klogd_running {
         tracing::info!("klogd already running, reusing existing process");
     }
 
-    thread::spawn(move || {
-        tracing::info!("Starting kernel log capture thread");
+    Some(Job::spawn(move |cancel| async move {
+        tracing::info!("Starting kernel log capture task");
 
         let klogd = if klogd_running {
             None
         } else {
-            match Command::new("klogd").spawn() {
+            match tokio::process::Command::new("klogd")
+                .kill_on_drop(true)
+                .spawn()
+            {
                 Ok(child) => Some(child),
                 Err(e) => {
                     tracing::warn!(error = %e, "Failed to start klogd");
@@ -157,8 +168,9 @@ pub fn spawn_kern_log_thread() {
             }
         };
 
-        let mut child = match Command::new("logread")
+        let mut child = match tokio::process::Command::new("logread")
             .arg("-F")
+            .kill_on_drop(true)
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()
@@ -170,54 +182,50 @@ pub fn spawn_kern_log_thread() {
             }
         };
 
-        let stdout = match child.stdout.take() {
-            Some(stdout) => stdout,
-            None => {
-                tracing::warn!("Failed to capture logread stdout");
-                return;
-            }
+        let Some(stdout) = child.stdout.take() else {
+            tracing::warn!("Failed to capture logread stdout");
+            return;
         };
 
-        let reader = BufReader::new(stdout);
-
-        for line in reader.lines() {
-            match line {
-                Ok(line) => {
-                    if let Some(parsed) = parse_kern_log(&line) {
-                        tracing::debug!(
-                            body = %line,
-                            timestamp = %parsed.timestamp,
-                            uptime = %parsed.uptime,
-                            pid = %parsed.pid,
-                            thread_id = %parsed.thread_id,
-                            thread = %parsed.thread,
-                            subsystem = %parsed.subsystem,
-                            message = %parsed.message,
-                        );
-                    } else {
-                        tracing::debug!("{}", line);
+        let mut lines = BufReader::new(stdout).lines();
+        loop {
+            let line = tokio::select! {
+                () = cancel.cancelled() => break,
+                line = lines.next_line() => match line {
+                    Ok(Some(line)) => line,
+                    Ok(None) => break,
+                    Err(e) => {
+                        tracing::warn!(error = %e, "Kernel log capture read failed");
+                        break;
                     }
-                }
-                Err(e) => {
-                    tracing::warn!(error = %e, "Error reading from logread");
-                    break;
-                }
+                },
+            };
+
+            if let Some(parsed) = parse_kern_log(&line) {
+                tracing::debug!(
+                    body = %line,
+                    timestamp = %parsed.timestamp,
+                    uptime = %parsed.uptime,
+                    pid = %parsed.pid,
+                    thread_id = %parsed.thread_id,
+                    thread = %parsed.thread,
+                    subsystem = %parsed.subsystem,
+                    message = %parsed.message,
+                );
+            } else {
+                tracing::debug!(body = %line);
             }
         }
 
-        tracing::info!("Kernel log capture thread ending");
-
-        let _ = child.wait();
-        if let Some(mut klogd) = klogd {
-            let _ = klogd.kill();
-            let _ = klogd.wait();
-        }
-    });
+        tracing::info!("Kernel log capture task ending");
+        drop(klogd);
+    }))
 }
 
 #[cfg(all(not(feature = "kobo"), feature = "test"))]
-pub fn spawn_kern_log_thread() {
+pub async fn spawn_kern_log_thread() -> Option<Job> {
     tracing::debug!("Kernel log capture is a no-op on non-Kobo platforms");
+    None
 }
 
 #[cfg(test)]
@@ -321,5 +329,35 @@ mod tests {
         assert_eq!(parsed.thread, "GenericService");
         assert_eq!(parsed.subsystem, "");
         assert!(parsed.message.contains("connectivity check"));
+    }
+}
+
+#[cfg(test)]
+mod stop_tests {
+    use std::io::{BufRead, BufReader};
+    use std::process::{Command, Stdio};
+    use std::time::Duration;
+
+    #[test]
+    fn killing_the_child_unblocks_its_stdout_reader() {
+        let mut child = Command::new("sleep")
+            .arg("60")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("sleep");
+        let stdout = child.stdout.take().expect("stdout");
+        let (tx, rx) = std::sync::mpsc::channel();
+        let reader = std::thread::spawn(move || {
+            for _line in BufReader::new(stdout).lines() {}
+            let _ = tx.send(());
+        });
+
+        let _ = child.kill();
+        let _ = child.wait();
+
+        rx.recv_timeout(Duration::from_secs(2))
+            .expect("reader unblocked");
+        reader.join().expect("reader thread");
     }
 }

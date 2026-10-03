@@ -52,8 +52,8 @@ flowchart TB
     subgraph MainLoop["Main Loop"]
         rx["rx.recv()"]
         match["match evt { ... }"]
-        handle["handle_event(root, &evt, &tx, &bus, ...)"]
-        Hub["Hub (tx)"]
+        handle["handle_event(root, &evt, &hub, &bus, ...)"]
+        Hub["Hub (sender)"]
         Bus["Bus (VecDeque)"]
 
         rx --> match
@@ -64,9 +64,12 @@ flowchart TB
     end
 ```
 
-### Hub (`Sender<Event>`)
+### Hub (`Hub` / `UnboundedSender<HubMessage>`)
 
-The hub is an `mpsc::Sender<Event>` — a global channel that sends events to the **main loop**.
+The hub is a Tokio `UnboundedSender<HubMessage>` — a global channel that sends
+events to the **main loop**. It was unbounded before the async migration and
+remains unbounded on purpose so device and background threads never block on a
+full queue.
 Events sent to the hub are processed in the **next iteration** of the main loop, not immediately.
 
 **Use the hub when:**
@@ -78,13 +81,13 @@ Events sent to the hub are processed in the **next iteration** of the main loop,
 
 ```rust
 // Close a view — handled by the main loop's match statement
-hub.send(Event::Close(self.view_id)).ok();
+hub.send(Event::Close(self.view_id).into()).ok();
 
 // Show a notification — main loop creates the Notification view
-hub.send(Event::Notification(NotificationEvent::Show(msg))).ok();
+hub.send(Event::Notification(NotificationEvent::Show(msg)).into()).ok();
 
 // Set focus — dispatched to all views in the next loop iteration
-hub.send(Event::Focus(Some(ViewId::SearchInput))).ok();
+hub.send(Event::Focus(Some(ViewId::SearchInput)).into()).ok();
 ```
 
 ### Bus (`VecDeque<Event>`)
@@ -115,7 +118,7 @@ to the hub** for processing in the next main loop iteration:
 ```rust
 // End of main loop iteration — unhandled bus events become hub events
 while let Some(ce) = bus.pop_front() {
-    tx.send(ce).ok();
+    tx.send(ce.into()).ok();
 }
 ```
 
@@ -294,7 +297,7 @@ flowchart TD
     Root --> OtaView
     OtaView --> Dialog
 
-    Note["hub.send(Event::Close(ViewId::Ota(Main)))<br/>→ Removes OtaView + Dialog"]
+    Note["hub.send((Event::Close(ViewId::Ota(Main))).into())<br/>→ Removes OtaView + Dialog"]
 ```
 
 To close just the nested view without affecting siblings, use the **bus** instead (see below).
@@ -333,7 +336,7 @@ sequenceDiagram
 
 ```rust
 impl View for Dialog {
-    fn handle_event(&mut self, evt: &Event, hub: &Sender<Event>, bus: &mut Bus, ...) -> bool {
+    async fn handle_event(&mut self, evt: &Event, _hub: &Hub, _bus: &mut Bus, _rq: &mut RenderQueue, _context: &mut AppContext) -> bool {
         match *evt {
             // Return false to bubble up so grandparent removes us
             Event::Close(ViewId::Dialog) => false,
@@ -345,13 +348,13 @@ impl View for Dialog {
 
 ## Summary
 
-| Aspect           | Hub                            | Bus                             |
-| ---------------- | ------------------------------ | ------------------------------- |
-| Type             | `mpsc::Sender<Event>`          | `VecDeque<Event>`               |
-| Scope            | Global (main loop)             | Local (parent-child)            |
-| Timing           | Next loop iteration            | Current dispatch cycle          |
-| Direction        | View → Main loop               | Child → Parent                  |
-| Unhandled events | Processed by main loop `match` | Forwarded to hub                |
-| Use for          | Close, Focus, Notifications    | Submit, child-to-parent signals |
+| Aspect           | Hub                                   | Bus                             |
+| ---------------- | ------------------------------------- | ------------------------------- |
+| Type             | `Hub` (`UnboundedSender<HubMessage>`) | `VecDeque<Event>`               |
+| Scope            | Global (main loop)                    | Local (parent-child)            |
+| Timing           | Next loop iteration                   | Current dispatch cycle          |
+| Direction        | View → Main loop                      | Child → Parent                  |
+| Unhandled events | Processed by main loop `match`        | Forwarded to hub                |
+| Use for          | Close, Focus, Notifications           | Submit, child-to-parent signals |
 
 <!-- i18n:skip-end -->

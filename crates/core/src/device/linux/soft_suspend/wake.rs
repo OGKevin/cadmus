@@ -35,7 +35,6 @@ use crate::lease::{Lease, LeaseName, LeaseObserver, LeaseTracker};
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
-use std::thread;
 use std::time::{Duration, Instant};
 
 fn write_sysfs_applied(path: &Path, value: &str) -> bool {
@@ -81,10 +80,16 @@ impl UnlockInner {
             pins: AtomicUsize::new(0),
         });
         let worker = Arc::clone(&inner);
-        thread::spawn(move || worker.run());
+        crate::runtime::spawn_blocking(move || worker.run());
         inner
     }
 
+    /// Waits for the release grace to elapse, then unlocks.
+    ///
+    /// The state mutex is never held across a sysfs write. Every other writer
+    /// in this file releases it first, because a write that blocks while
+    /// holding the lock would serialise every other wake-lock operation behind
+    /// it.
     fn run(self: &Arc<Self>) {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         loop {
@@ -119,7 +124,9 @@ impl UnlockInner {
                     wake_lock = WAKE_LOCK_NAME,
                     "soft-suspend release grace elapsed; unlocking"
                 );
+                drop(state);
                 let unlocked = write_sysfs_applied(&paths.wake_unlock, WAKE_LOCK_NAME);
+                state = self.state.lock().unwrap_or_else(|e| e.into_inner());
                 if self.pins.load(Ordering::SeqCst) != 0 {
                     tracing::debug!(
                         wake_lock = WAKE_LOCK_NAME,

@@ -24,11 +24,10 @@ use crate::view::{Bus, Event, Hub, RenderData, RenderQueue, View};
 use crate::view::{EntryId, EntryKind, ID_FEEDER, Id, ViewId};
 use anyhow::{Error, format_err};
 use std::collections::VecDeque;
-use std::io::Write;
-use std::io::{BufRead, BufReader};
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
-use std::thread;
+use std::process::Stdio;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::process::{Child, Command};
 use tracing::error;
 
 const APP_DIR: &str = "bin/ivy";
@@ -68,16 +67,17 @@ pub enum LineOrigin {
 }
 
 impl Calculator {
-    pub fn new(
+    pub async fn new(
         rect: Rectangle,
         hub: &Hub,
         rq: &mut RenderQueue,
         context: &mut AppContext,
     ) -> Result<Calculator, Error> {
         let id = ID_FEEDER.next();
-        let path = Path::new(APP_DIR).join(APP_NAME).canonicalize()?;
+        let path = tokio::fs::canonicalize(Path::new(APP_DIR).join(APP_NAME)).await?;
         let mut process = Command::new(path)
             .current_dir(APP_DIR)
+            .kill_on_drop(true)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -92,35 +92,32 @@ impl Calculator {
             .ok_or_else(|| format_err!("can't take stderr"))?;
 
         let hub2 = hub.clone();
-        thread::spawn(move || {
-            let reader = BufReader::new(stdout);
-            for line_res in reader.lines() {
-                if let Ok(line) = line_res {
-                    hub2.send((Event::ProcessLine(LineOrigin::Output, line.clone())).into())
-                        .ok();
-                } else {
-                    break;
-                }
+        crate::runtime::current_handle().spawn(async move {
+            let mut lines = BufReader::new(stdout).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                hub2.send((Event::ProcessLine(LineOrigin::Output, line)).into())
+                    .ok();
             }
         });
 
         let hub3 = hub.clone();
-        thread::spawn(move || {
-            let reader = BufReader::new(stderr);
-            for line_res in reader.lines() {
-                if let Ok(line) = line_res {
-                    hub3.send((Event::ProcessLine(LineOrigin::Error, line.clone())).into())
-                        .ok();
-                } else {
-                    break;
-                }
+        crate::runtime::current_handle().spawn(async move {
+            let mut lines = BufReader::new(stderr).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                hub3.send((Event::ProcessLine(LineOrigin::Error, line)).into())
+                    .ok();
             }
         });
 
-        if Path::new(APP_DIR).join(LIB_NAME).exists() {
-            if let Some(stdin) = process.stdin.as_mut() {
-                writeln!(stdin, ")get '{}'", LIB_NAME).ok();
-            }
+        if tokio::fs::try_exists(Path::new(APP_DIR).join(LIB_NAME))
+            .await
+            .unwrap_or(false)
+            && let Some(stdin) = process.stdin.as_mut()
+        {
+            stdin
+                .write_all(format!(")get '{LIB_NAME}'\n").as_bytes())
+                .await
+                .ok();
         }
 
         let mut children = Vec::new();
@@ -652,21 +649,23 @@ impl Calculator {
         rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
     }
 
-    fn quit(&mut self, context: &mut AppContext) {
-        unsafe { libc::kill(self.process.id() as libc::pid_t, libc::SIGTERM) };
-        self.process
-            .wait()
-            .map_err(|e| error!("Can't wait for child process: {:#}.", e))
-            .ok();
+    async fn quit(&mut self, context: &mut AppContext) {
+        if let Err(error) = self.process.start_kill() {
+            error!(%error, "Can't terminate child process");
+        }
+        if let Err(error) = self.process.wait().await {
+            error!(%error, "Can't wait for child process");
+        }
         context.settings.calculator.font_size = self.font_size;
         context.settings.calculator.margin_width = self.margin_width;
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for Calculator {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt
     ), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,
@@ -687,7 +686,7 @@ impl View for Calculator {
                     input_bar.set_text("", true, rq, context);
                 }
                 if let Some(stdin) = self.process.stdin.as_mut() {
-                    writeln!(stdin, "{}", line).ok();
+                    stdin.write_all(format!("{line}\n").as_bytes()).await.ok();
                 }
                 true
             }
@@ -755,7 +754,7 @@ impl View for Calculator {
                 true
             }
             Event::Back | Event::Select(EntryId::Quit) => {
-                self.quit(context);
+                self.quit(context).await;
                 hub.send((Event::Back).into()).ok();
                 true
             }

@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT dict_path, fingerprint AS \"fingerprint: Fp\", index_mtime, index_size\n           FROM dictionary_index_meta",
+  "describe": {
+    "columns": [
+      {
+        "name": "dict_path",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "dictionary_index_meta",
+            "name": "dict_path"
+          }
+        }
+      },
+      {
+        "name": "fingerprint: Fp",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "dictionary_index_meta",
+            "name": "fingerprint"
+          }
+        }
+      },
+      {
+        "name": "index_mtime",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dictionary_index_meta",
+            "name": "index_mtime"
+          }
+        }
+      },
+      {
+        "name": "index_size",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dictionary_index_meta",
+            "name": "index_size"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "7bd0c94ead4442fcf18e36eaddd21638c11e68ee0f12c1fd72021c4b4b06e839"
+}

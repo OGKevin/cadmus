@@ -22,7 +22,7 @@ use crate::chrono::{Duration as ChronoDuration, Local, Timelike};
 use crate::device::DeviceHardware as _;
 use crate::device::inhibitor::{Kind, SoftSuspendName};
 use crate::device::power::PowerManager;
-use crate::device::rtc::{EnsureAlarmOutcome, PastDueAction};
+use crate::device::rtc::{AlarmManager, EnsureAlarmOutcome, PastDueAction, Rtc};
 use crate::device::soft_suspend::SoftSuspendBackend as _;
 use crate::device::soft_suspend::mode::AutosleepMode;
 use crate::device::{
@@ -36,7 +36,6 @@ use crate::settings::IntermKind;
 use crate::view::common::locate;
 use crate::view::intermission::Intermission;
 use crate::view::{Event, Hub, RenderData, RenderQueue, View, wait_for_all};
-use std::sync::mpsc;
 use std::time::Duration;
 
 const DEEP_IDLE_POLL_INTERVAL: Duration = Duration::from_millis(100);
@@ -157,8 +156,8 @@ fn cancel_wake_debounce_alarm(context: &mut AppContext) {
 }
 
 /// Returns whether WakeDebounce is still armed on the RTC.
-fn is_wake_debounce_scheduled(context: &AppContext) -> bool {
-    let Some(alarm_manager) = context.alarm_manager.as_ref() else {
+fn is_wake_debounce_scheduled<R: Rtc>(alarm_manager: Option<&AlarmArcs<R>>) -> bool {
+    let Some(alarm_manager) = alarm_manager else {
         return false;
     };
     let alarm_manager = alarm_manager.lock().unwrap_or_else(|e| e.into_inner());
@@ -189,8 +188,8 @@ fn cancel_suspend_alarm(context: &mut AppContext) {
 }
 
 /// Returns whether [`AlarmType::Suspend`] is still armed on the RTC.
-fn is_suspend_alarm_scheduled(context: &AppContext) -> bool {
-    let Some(alarm_manager) = context.alarm_manager.as_ref() else {
+fn is_suspend_alarm_scheduled<R: Rtc>(alarm_manager: Option<&AlarmArcs<R>>) -> bool {
+    let Some(alarm_manager) = alarm_manager else {
         return false;
     };
     let alarm_manager = alarm_manager.lock().unwrap_or_else(|e| e.into_inner());
@@ -199,7 +198,19 @@ fn is_suspend_alarm_scheduled(context: &AppContext) -> bool {
 
 /// True while Suspend or WakeDebounce RTC alarms are pending.
 pub(crate) fn is_suspend_rtc_pending(context: &AppContext) -> bool {
-    is_suspend_alarm_scheduled(context) || is_wake_debounce_scheduled(context)
+    is_suspend_rtc_pending_in(context.alarm_manager.as_ref())
+}
+
+/// The shared alarm manager a context of device `D` holds.
+type AlarmArcs<R> = std::sync::Arc<std::sync::Mutex<AlarmManager<R>>>;
+
+/// True while Suspend or WakeDebounce RTC alarms are pending in `alarm_manager`.
+///
+/// Takes the alarm manager rather than the context so platform teardown can
+/// answer it from a [`ShutdownContext`](crate::context::ShutdownContext), which
+/// does not carry the rest of the app state.
+pub(crate) fn is_suspend_rtc_pending_in<R: Rtc>(alarm_manager: Option<&AlarmArcs<R>>) -> bool {
+    is_suspend_alarm_scheduled(alarm_manager) || is_wake_debounce_scheduled(alarm_manager)
 }
 
 /// Cancels Suspend and WakeDebounce RTC alarms together.
@@ -213,7 +224,7 @@ pub(in crate::device::suspend) fn cancel_suspend_rtcs(context: &mut AppContext) 
 /// Event routing maps onto the phase machine documented at the module root:
 /// `PrepareSuspend` → [`prepare_for_sleep`], `Suspend` / Suspend RTC →
 /// [`enter_sleep`], `PollDeepIdleWait` → deep-idle poll.
-pub(crate) fn handle_event(
+pub(crate) async fn handle_event(
     event: &Event,
     hub: &Hub,
     bus: &mut crate::view::Bus,
@@ -222,14 +233,15 @@ pub(crate) fn handle_event(
     runtime: &mut DeviceRuntime<'_>,
 ) -> EventOutcome {
     match event {
-        Event::PrepareSuspend => prepare_for_sleep(hub, bus, rq, context, runtime),
-        Event::Suspend => enter_sleep(hub, bus, rq, context, runtime),
-        Event::PollDeepIdleWait => poll_deep_idle_wait(hub, bus, rq, context, runtime),
+        Event::PrepareSuspend => prepare_for_sleep(hub, bus, rq, context, runtime).await,
+        Event::Suspend => enter_sleep(hub, bus, rq, context, runtime).await,
+        Event::PollDeepIdleWait => poll_deep_idle_wait(hub, bus, rq, context, runtime).await,
         Event::RtcAlarmFired(alarm_type) => {
-            handle_rtc_alarm_fired(*alarm_type, hub, bus, rq, context, runtime)
+            handle_rtc_alarm_fired(*alarm_type, hub, bus, rq, context, runtime).await
         }
         Event::FullInhibitCleared => {
             handle_full_inhibit_cleared(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+                .await
         }
         Event::ClearDeferredSuspend => handle_clear_deferred_suspend(context),
         _ => EventOutcome::Unhandled,
@@ -266,7 +278,7 @@ fn handle_clear_deferred_suspend(context: &mut AppContext) -> EventOutcome {
 /// ([`Inhibitor::set_full_release_notifier`](crate::device::inhibitor::Inhibitor::set_full_release_notifier)).
 /// If [`Context::deferred_suspend`](crate::context::Context::deferred_suspend)
 /// is still set, starts a cycle now that Full is gone.
-fn handle_full_inhibit_cleared(
+async fn handle_full_inhibit_cleared(
     context: &mut AppContext,
     view: &mut dyn View,
     hub: &Hub,
@@ -275,13 +287,13 @@ fn handle_full_inhibit_cleared(
     tasks: &mut Vec<DeviceTask>,
 ) -> EventOutcome {
     if clear_deferred_suspend(context, "full_inhibit_cleared") {
-        start_cycle(context, view, hub, bus, rq, tasks);
+        start_cycle(context, view, hub, bus, rq, tasks).await;
     }
     EventOutcome::Handled
 }
 
 /// Dispatches suspend-related RTC IRQ alarms onto phase handlers.
-fn handle_rtc_alarm_fired(
+async fn handle_rtc_alarm_fired(
     alarm_type: AlarmType,
     hub: &Hub,
     bus: &mut crate::view::Bus,
@@ -290,9 +302,9 @@ fn handle_rtc_alarm_fired(
     runtime: &mut DeviceRuntime<'_>,
 ) -> EventOutcome {
     match alarm_type {
-        AlarmType::AutoSuspend => handle_auto_suspend_fired(hub, bus, rq, context, runtime),
-        AlarmType::Suspend => enter_sleep(hub, bus, rq, context, runtime),
-        AlarmType::WakeDebounce => handle_wake_debounce_fired(hub, bus, rq, context, runtime),
+        AlarmType::AutoSuspend => handle_auto_suspend_fired(hub, bus, rq, context, runtime).await,
+        AlarmType::Suspend => enter_sleep(hub, bus, rq, context, runtime).await,
+        AlarmType::WakeDebounce => handle_wake_debounce_fired(hub, bus, rq, context, runtime).await,
         AlarmType::AutoPowerOff => {
             if context.inhibitor.full_active() {
                 return EventOutcome::Handled;
@@ -302,17 +314,18 @@ fn handle_rtc_alarm_fired(
                 runtime.view.as_mut(),
                 runtime.history,
                 runtime.updating,
-            );
+            )
+            .await;
             EventOutcome::Exit(ExitStatus::PowerOff)
         }
         AlarmType::CalendarUpdate => {
-            handle_calendar_update_continue_cycle(hub, bus, rq, context, runtime)
+            handle_calendar_update_continue_cycle(hub, bus, rq, context, runtime).await
         }
     }
 }
 
 /// Auto Suspend idle deadline fired; starts a cycle unless USB-shared or already suspending.
-fn handle_auto_suspend_fired(
+async fn handle_auto_suspend_fired(
     hub: &Hub,
     bus: &mut crate::view::Bus,
     rq: &mut RenderQueue,
@@ -328,12 +341,12 @@ fn handle_auto_suspend_fired(
         return EventOutcome::Handled;
     }
 
-    start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks);
+    start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks).await;
     EventOutcome::Handled
 }
 
 /// WakeDebounce window expired; re-enters sleep when not USB-shared.
-fn handle_wake_debounce_fired(
+async fn handle_wake_debounce_fired(
     hub: &Hub,
     bus: &mut crate::view::Bus,
     rq: &mut RenderQueue,
@@ -344,11 +357,11 @@ fn handle_wake_debounce_fired(
     if context.shared {
         return EventOutcome::Handled;
     }
-    reenter_sleep(hub, bus, rq, context, runtime)
+    reenter_sleep(hub, bus, rq, context, runtime).await
 }
 
 /// Rebuilds the calendar intermission widget when [`AlarmType::CalendarUpdate`] fires.
-fn refresh_calendar_intermission(
+async fn refresh_calendar_intermission(
     rq: &mut RenderQueue,
     context: &mut AppContext,
     runtime: &mut DeviceRuntime<'_>,
@@ -367,7 +380,8 @@ fn refresh_calendar_intermission(
         context.device.framebuffer().rect(),
         IntermKind::Suspend,
         context,
-    );
+    )
+    .await;
     rq.add(RenderData::new(
         interm.id(),
         *interm.rect(),
@@ -408,19 +422,19 @@ fn schedule_next_calendar_update(context: &mut AppContext) {
 }
 
 /// CalendarUpdate fired during suspend; refresh UI and re-enter sleep.
-fn handle_calendar_update_continue_cycle(
+async fn handle_calendar_update_continue_cycle(
     hub: &Hub,
     bus: &mut crate::view::Bus,
     rq: &mut RenderQueue,
     context: &mut AppContext,
     runtime: &mut DeviceRuntime<'_>,
 ) -> EventOutcome {
-    refresh_calendar_intermission(rq, context, runtime);
+    refresh_calendar_intermission(rq, context, runtime).await;
     schedule_next_calendar_update(context);
     if context.shared {
         return EventOutcome::Handled;
     }
-    reenter_sleep(hub, bus, rq, context, runtime)
+    reenter_sleep(hub, bus, rq, context, runtime).await
 }
 
 /// Re-enter sleep after WakeDebounce or CalendarUpdate, preserving cycle kind.
@@ -428,7 +442,7 @@ fn handle_calendar_update_continue_cycle(
 /// Both Classic and DeepIdle set [`SuspendPhase::ArmingSleep`] and call
 /// [`enter_sleep`] without a second [`prepare_for_sleep`] (frontlight/WiFi
 /// teardown already ran). DeepIdle re-acquires the cycle lease when needed.
-fn reenter_sleep(
+async fn reenter_sleep(
     hub: &Hub,
     bus: &mut crate::view::Bus,
     rq: &mut RenderQueue,
@@ -451,14 +465,14 @@ fn reenter_sleep(
         finish_cycle(context, runtime.tasks, runtime.view.as_mut(), hub, rq);
         return EventOutcome::Handled;
     }
-    enter_sleep(hub, bus, rq, context, runtime)
+    Box::pin(enter_sleep(hub, bus, rq, context, runtime)).await
 }
 
 /// Shared prepare teardown, then arm Classic Suspend RTC or enter DeepIdle sleep.
 ///
 /// Advances phase to [`SuspendPhase::ArmingSleep`]. DeepIdle calls
 /// [`enter_sleep`] immediately; Classic schedules [`AlarmType::Suspend`].
-fn prepare_for_sleep(
+async fn prepare_for_sleep(
     hub: &Hub,
     bus: &mut crate::view::Bus,
     rq: &mut RenderQueue,
@@ -483,7 +497,7 @@ fn prepare_for_sleep(
         }
     }
     if context.settings.wifi != crate::settings::WifiMode::Off {
-        if let Err(error) = context.wifi_session.disable_radio() {
+        if let Err(error) = context.wifi_session.disable_radio().await {
             tracing::error!(error = %error, "Failed to disable WiFi on suspend");
         }
         context.online = false;
@@ -495,7 +509,7 @@ fn prepare_for_sleep(
             if let Some(cycle) = context.suspend.as_mut() {
                 cycle.phase = SuspendPhase::ArmingSleep;
             }
-            enter_sleep(hub, bus, rq, context, runtime)
+            enter_sleep(hub, bus, rq, context, runtime).await
         }
         Some(SuspendKind::Classic) => {
             if let Some(cycle) = context.suspend.as_mut() {
@@ -519,7 +533,7 @@ fn prepare_for_sleep(
 /// - Classic → blocking `power.suspend` / `resume`, then post-wake debounce
 /// - Already `InSleep` / `PostWakeDebounce` → ignore
 /// - No cycle + soft armed → refuse classic (do not invent a cycle)
-fn enter_sleep(
+async fn enter_sleep(
     hub: &Hub,
     bus: &mut crate::view::Bus,
     rq: &mut RenderQueue,
@@ -540,7 +554,7 @@ fn enter_sleep(
     }
 
     if let Some(SuspendKind::DeepIdle) = context.suspend.as_ref().map(|c| c.kind) {
-        if let Some(outcome) = schedule_alarms_before_sleep(context, runtime) {
+        if let Some(outcome) = schedule_alarms_before_sleep(context, runtime).await {
             return outcome;
         }
         start_deep_idle_wait(hub, context, runtime.tasks);
@@ -560,7 +574,7 @@ fn enter_sleep(
         return EventOutcome::Handled;
     }
 
-    if let Some(outcome) = schedule_alarms_before_sleep(context, runtime) {
+    if let Some(outcome) = schedule_alarms_before_sleep(context, runtime).await {
         return outcome;
     }
 
@@ -568,48 +582,56 @@ fn enter_sleep(
     if let Some(cycle) = context.suspend.as_mut() {
         cycle.phase = SuspendPhase::PostWakeDebounce;
     }
-    handle_post_wake(before, after, hub, bus, rq, context, runtime)
+    handle_post_wake(before, after, hub, bus, rq, context, runtime).await
 }
 
 /// Arms AutoPowerOff and CalendarUpdate RTC alarms before kernel sleep; may exit for power-off.
-fn schedule_alarms_before_sleep(
+///
+/// Each `alarm_manager` lock is taken in a short synchronous block so the
+/// `MutexGuard` is dropped before any `.await` (the guard is not `Send` on the
+/// two-worker runtime).
+async fn schedule_alarms_before_sleep(
     context: &mut AppContext,
     runtime: &mut DeviceRuntime<'_>,
 ) -> Option<EventOutcome> {
     let alarm_manager = context.alarm_manager.as_ref()?;
-    let mut alarm_manager = alarm_manager.lock().unwrap_or_else(|e| e.into_inner());
 
-    if context.settings.auto_power_off > 0.0 {
-        let duration = auto_power_off_chrono_duration(context.settings.auto_power_off);
-        match alarm_manager.ensure_scheduled(
-            AlarmType::AutoPowerOff,
-            duration,
-            PastDueAction::Cancel,
-        ) {
-            Ok(EnsureAlarmOutcome::PastDue) => {
-                tracing::info!("AutoPowerOff alarm is past due, powering off");
-                drop(alarm_manager);
-                show_power_off_intermission(
-                    context,
-                    runtime.view.as_mut(),
-                    runtime.history,
-                    runtime.updating,
-                );
-                return Some(EventOutcome::Exit(ExitStatus::PowerOff));
-            }
-            Ok(_) => {}
-            Err(error) => {
-                tracing::error!(error = %error, "Can't schedule auto power off alarm")
+    enum AlarmStep {
+        Proceed,
+        PowerOff,
+    }
+
+    let step = {
+        let mut alarms = alarm_manager.lock().unwrap_or_else(|e| e.into_inner());
+        if context.settings.auto_power_off <= 0.0 {
+            AlarmStep::Proceed
+        } else {
+            let duration = auto_power_off_chrono_duration(context.settings.auto_power_off);
+            match alarms.ensure_scheduled(AlarmType::AutoPowerOff, duration, PastDueAction::Cancel)
+            {
+                Ok(EnsureAlarmOutcome::PastDue) => AlarmStep::PowerOff,
+                Ok(_) => AlarmStep::Proceed,
+                Err(error) => {
+                    tracing::error!(error = %error, "Can't schedule auto power off alarm");
+                    AlarmStep::Proceed
+                }
             }
         }
+    };
+
+    if matches!(step, AlarmStep::PowerOff) {
+        tracing::info!("AutoPowerOff alarm is past due, powering off");
+        show_power_off_intermission(
+            context,
+            runtime.view.as_mut(),
+            runtime.history,
+            runtime.updating,
+        )
+        .await;
+        return Some(EventOutcome::Exit(ExitStatus::PowerOff));
     }
 
-    if context.settings.intermissions[IntermKind::Suspend]
-        == crate::settings::IntermissionDisplay::Calendar
-    {
-        drop(alarm_manager);
-        schedule_next_calendar_update(context);
-    }
+    schedule_next_calendar_update(context);
 
     None
 }
@@ -660,7 +682,7 @@ fn start_deep_idle_wait(hub: &Hub, context: &mut AppContext, tasks: &mut Vec<Dev
 }
 
 /// Polls boottime/monotonic wake detect; retries deep idle or finishes on timeout.
-fn poll_deep_idle_wait(
+async fn poll_deep_idle_wait(
     hub: &Hub,
     bus: &mut crate::view::Bus,
     rq: &mut RenderQueue,
@@ -710,6 +732,7 @@ fn poll_deep_idle_wait(
                 context,
                 runtime,
             )
+            .await
         }
         PollResult::TimedOut => {
             let after = Local::now();
@@ -803,7 +826,7 @@ fn perform_suspend_resume(
 }
 
 /// Checks RTC alarms that fired during classic sleep; may chain debounce, calendar, or power-off.
-fn handle_post_wake(
+async fn handle_post_wake(
     before: chrono::DateTime<Local>,
     after: chrono::DateTime<Local>,
     hub: &Hub,
@@ -835,14 +858,15 @@ fn handle_post_wake(
                 runtime.view.as_mut(),
                 runtime.history,
                 runtime.updating,
-            );
+            )
+            .await;
             return EventOutcome::Exit(ExitStatus::PowerOff);
         }
         if fired_alarms.contains(&AlarmType::WakeDebounce) {
-            return handle_wake_debounce_fired(hub, bus, rq, context, runtime);
+            return handle_wake_debounce_fired(hub, bus, rq, context, runtime).await;
         }
         if fired_alarms.contains(&AlarmType::CalendarUpdate) {
-            return handle_calendar_update_continue_cycle(hub, bus, rq, context, runtime);
+            return handle_calendar_update_continue_cycle(hub, bus, rq, context, runtime).await;
         }
     }
 
@@ -859,7 +883,7 @@ fn handle_post_wake(
 /// is true, sets
 /// [`Context::deferred_suspend`](crate::context::Context::deferred_suspend)
 /// and returns without a cycle. SoftSuspend-only holders do not defer.
-pub(crate) fn start_cycle(
+pub(crate) async fn start_cycle(
     context: &mut AppContext,
     view: &mut dyn View,
     hub: &Hub,
@@ -905,7 +929,8 @@ pub(crate) fn start_cycle(
     }
     context.suspend = Some(cycle);
 
-    view.handle_event(&Event::Suspend, hub, bus, rq, context);
+    view.handle_event(&Event::Suspend, hub, bus, rq, context)
+        .await;
     if let Some(index) = locate::<Intermission>(view) {
         let child = view.child(index);
         rq.add(RenderData::new(child.id(), *child.rect(), UpdateMode::Full));
@@ -914,7 +939,8 @@ pub(crate) fn start_cycle(
             context.device.framebuffer().rect(),
             crate::settings::IntermKind::Suspend,
             context,
-        );
+        )
+        .await;
         rq.add(RenderData::new(
             interm.id(),
             *interm.rect(),
@@ -951,16 +977,19 @@ pub(in crate::device::suspend) fn finish_cycle(
     context.suspend = None;
     context.set_frontlight(context.settings.frontlight);
     if context.settings.wifi.wants_radio_at_rest() {
+        context.wifi_session.set_desired_radio_on(true);
         let session = context.wifi_session.clone();
         let hub = hub.clone();
-        std::thread::spawn(move || match session.enable_radio() {
-            Ok(true) => {
-                hub.send((Event::Device(crate::input::DeviceEvent::NetUp)).into())
-                    .ok();
-            }
-            Ok(false) => {}
-            Err(error) => {
-                tracing::error!(error = %error, "Failed to enable WiFi on resume");
+        crate::runtime::current_handle().spawn(async move {
+            match session.apply_radio().await {
+                Ok(true) => {
+                    hub.send((Event::Device(crate::input::DeviceEvent::NetUp)).into())
+                        .ok();
+                }
+                Ok(false) => {}
+                Err(error) => {
+                    tracing::error!(error = %error, "Failed to enable WiFi on resume");
+                }
             }
         });
     }
@@ -1018,34 +1047,38 @@ pub(in crate::device::suspend) fn cancel_prepare(
 }
 
 /// Tears down the view stack and renders the power-off intermission.
-pub(crate) fn show_power_off_intermission(
+pub(crate) async fn show_power_off_intermission(
     context: &mut AppContext,
     view: &mut dyn View,
     history: &mut Vec<HistoryItem>,
     updating: &mut Vec<crate::view::UpdateData>,
 ) {
-    let (tx, _rx) = mpsc::channel();
+    let (tx, _rx) = crate::view::hub_channel();
     view.handle_event(
         &Event::Back,
         &tx,
         &mut crate::view::Bus::new(),
         &mut crate::view::RenderQueue::new(),
         context,
-    );
+    )
+    .await;
     while let Some(mut item) = history.pop() {
-        item.view.handle_event(
-            &Event::Back,
-            &tx,
-            &mut crate::view::Bus::new(),
-            &mut crate::view::RenderQueue::new(),
-            context,
-        );
+        item.view
+            .handle_event(
+                &Event::Back,
+                &tx,
+                &mut crate::view::Bus::new(),
+                &mut crate::view::RenderQueue::new(),
+                context,
+            )
+            .await;
     }
     let interm = Intermission::new(
         context.device.framebuffer().rect(),
         crate::settings::IntermKind::PowerOff,
         context,
-    );
+    )
+    .await;
     wait_for_all(updating, context);
     interm.render(context, *interm.rect());
     context

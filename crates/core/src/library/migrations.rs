@@ -26,7 +26,7 @@ use crate::library::{METADATA_FILENAME, READING_STATES_DIRNAME};
 use crate::metadata::Info;
 use indexmap::IndexMap;
 use rustc_hash::FxBuildHasher;
-use sqlx::{Row, Sqlite, Transaction};
+use sqlx::{Sqlite, Transaction};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -84,6 +84,12 @@ crate::migration!(
     }
 );
 
+/// One book row the v2 re-hash pass walks, with the path it hashes from.
+struct LibraryBookForRekey {
+    fingerprint: String,
+    absolute_path: Option<String>,
+}
+
 crate::migration!(
     /// Re-fingerprints every book in all libraries using BLAKE3 content hashing.
     ///
@@ -100,8 +106,9 @@ crate::migration!(
     "v2_rehash_fingerprints",
     async fn rehash_fingerprints(ctx: &mut crate::db::migrations::MigrationContext<'_>) {
         let pool = ctx.pool;
-        let books: Vec<(String, Option<String>)> = sqlx::query(
-                r#"
+        let books = sqlx::query_as!(
+            LibraryBookForRekey,
+            r#"
                 SELECT
                     b.fingerprint,
                     (
@@ -116,28 +123,20 @@ crate::migration!(
                 "#
             )
             .fetch_all(pool)
-            .await?
-            .into_iter()
-            .map(|row| {
-                (
-                    row.get::<String, _>("fingerprint"),
-                    row.get::<Option<String>, _>("absolute_path?: String"),
-                )
-            })
-            .collect();
+            .await?;
 
-        for (old_fp_str, absolute_path) in &books {
-            let Some(absolute_path) = absolute_path.as_ref() else {
+        for book in &books {
+            let Some(absolute_path) = book.absolute_path.as_ref() else {
                 continue;
             };
 
             let abs_path = PathBuf::from(absolute_path);
 
-            if !abs_path.exists() {
+            if !fs::try_exists(&abs_path).await.unwrap_or(false) {
                 continue;
             }
 
-            let new_fp = match abs_path.fingerprint() {
+            let new_fp = match abs_path.fingerprint().await {
                 Ok(fp) => fp,
                 Err(e) => {
                     error!(path = ?abs_path, error = %e, "failed to compute BLAKE3 fingerprint, skipping");
@@ -147,13 +146,13 @@ crate::migration!(
 
             let new_fp_str = new_fp.to_string();
 
-            if new_fp_str == *old_fp_str {
+            if new_fp_str == book.fingerprint {
                 continue;
             }
 
-            if let Err(e) = rekey_book(pool, old_fp_str, &new_fp_str).await {
+            if let Err(e) = rekey_book(pool, &book.fingerprint, &new_fp_str).await {
                 error!(
-                    old_fp = %old_fp_str,
+                    old_fp = %book.fingerprint,
                     new_fp = %new_fp_str,
                     error = %e,
                     "failed to re-key book, skipping"
@@ -170,9 +169,10 @@ crate::migration!(
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(pool, books)))]
 async fn canonicalize_legacy_fingerprints(
     pool: &sqlx::SqlitePool,
-    books: &[(String, Option<String>)],
+    books: &[LibraryBookForRekey],
 ) -> Result<(), anyhow::Error> {
-    for (old_fp_str, _) in books {
+    for book in books {
+        let old_fp_str = &book.fingerprint;
         if old_fp_str.len() == 64 {
             continue;
         }
@@ -695,7 +695,7 @@ async fn import_orphan_reading_states(
     reading_states_dir: &Path,
     already_imported: &HashSet<Fp>,
 ) -> usize {
-    if !reading_states_dir.exists() {
+    if !fs::try_exists(reading_states_dir).await.unwrap_or(false) {
         return 0;
     }
 
@@ -820,7 +820,7 @@ async fn ensure_stub_book(
 async fn delete_thumbnail_previews(library_path: &Path) {
     let previews_dir = library_path.join(THUMBNAIL_PREVIEWS_DIRNAME);
 
-    if !previews_dir.exists() {
+    if !fs::try_exists(&previews_dir).await.unwrap_or(false) {
         return;
     }
 
@@ -831,7 +831,7 @@ async fn delete_thumbnail_previews(library_path: &Path) {
 
 #[cfg_attr(feature = "tracing", tracing::instrument(fields(path = ?path), ret(level = tracing::Level::TRACE)))]
 async fn load_metadata(path: &Path) -> Option<IndexMap<Fp, Info, FxBuildHasher>> {
-    if !path.exists() {
+    if !fs::try_exists(path).await.unwrap_or(false) {
         return None;
     }
 
@@ -1019,15 +1019,16 @@ mod tests {
     use crate::document::{SimpleTocEntry, TocLocation};
     use crate::library::db::Db;
     use crate::metadata::{FileInfo, ReaderInfo};
-    use crate::runtime::RUNTIME;
     use chrono::Local;
     use std::collections::BTreeSet;
     use std::path::PathBuf;
     use tempfile::tempdir;
 
-    fn create_test_db() -> (Database, Db) {
-        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.init_for_test(0).expect("failed to run migrations");
+    async fn create_test_db() -> (Database, Db) {
+        let mut db = Database::new(":memory:")
+            .await
+            .expect("failed to create in-memory database");
+        db.init_for_test(0).await.expect("failed to run migrations");
         let libdb = Db::new(&db);
 
         (db, libdb)
@@ -1072,14 +1073,16 @@ mod tests {
         }
     }
 
-    #[test]
-    fn rekey_book_merges_duplicate_content_data() {
-        let (db, libdb) = create_test_db();
+    #[tokio::test]
+    async fn rekey_book_merges_duplicate_content_data() {
+        let (db, libdb) = create_test_db().await;
         let library_a = libdb
             .register_library("/tmp/library-a", "Library A")
+            .await
             .expect("failed to register library A");
         let library_b = libdb
             .register_library("/tmp/library-b", "Library B")
+            .await
             .expect("failed to register library B");
 
         let old_fp = Fp::from_u64(1);
@@ -1105,28 +1108,32 @@ mod tests {
 
         libdb
             .insert_book(library_a, old_fp, &old_info)
+            .await
             .expect("failed to insert old book");
         libdb
             .insert_book(library_b, new_fp, &new_info)
+            .await
             .expect("failed to insert new book");
         libdb
             .save_toc(old_fp, &old_toc)
+            .await
             .expect("failed to save old toc");
         libdb
             .save_thumbnail(old_fp, b"old-thumbnail")
+            .await
             .expect("failed to save old thumbnail");
 
-        RUNTIME.block_on(async {
-            rekey_book(db.pool(), &old_fp.to_string(), &new_fp.to_string())
-                .await
-                .expect("failed to rekey duplicate book");
-        });
+        rekey_book(db.pool(), &old_fp.to_string(), &new_fp.to_string())
+            .await
+            .expect("failed to rekey duplicate book");
 
         let books_a = libdb
             .get_all_books(library_a)
+            .await
             .expect("failed to load library A books");
         let books_b = libdb
             .get_all_books(library_b)
+            .await
             .expect("failed to load library B books");
 
         assert_eq!(books_a.len(), 1);
@@ -1151,25 +1158,29 @@ mod tests {
         assert_eq!(
             libdb
                 .get_thumbnail(new_fp)
+                .await
                 .expect("failed to read thumbnail"),
             Some(b"old-thumbnail".to_vec())
         );
         assert_eq!(
             libdb
                 .get_thumbnail(old_fp)
+                .await
                 .expect("failed to read old thumbnail"),
             None
         );
     }
 
-    #[test]
-    fn rekey_book_keeps_existing_duplicate_data() {
-        let (db, libdb) = create_test_db();
+    #[tokio::test]
+    async fn rekey_book_keeps_existing_duplicate_data() {
+        let (db, libdb) = create_test_db().await;
         let library_a = libdb
             .register_library("/tmp/library-c", "Library C")
+            .await
             .expect("failed to register library C");
         let library_b = libdb
             .register_library("/tmp/library-d", "Library D")
+            .await
             .expect("failed to register library D");
 
         let old_fp = Fp::from_u64(3);
@@ -1208,31 +1219,36 @@ mod tests {
 
         libdb
             .insert_book(library_a, old_fp, &old_info)
+            .await
             .expect("failed to insert old book");
         libdb
             .insert_book(library_b, new_fp, &new_info)
+            .await
             .expect("failed to insert new book");
         libdb
             .save_toc(old_fp, &old_toc)
+            .await
             .expect("failed to save old toc");
         libdb
             .save_toc(new_fp, &new_toc)
+            .await
             .expect("failed to save new toc");
         libdb
             .save_thumbnail(old_fp, b"old-thumbnail")
+            .await
             .expect("failed to save old thumbnail");
         libdb
             .save_thumbnail(new_fp, b"new-thumbnail")
+            .await
             .expect("failed to save new thumbnail");
 
-        RUNTIME.block_on(async {
-            rekey_book(db.pool(), &old_fp.to_string(), &new_fp.to_string())
-                .await
-                .expect("failed to rekey duplicate book");
-        });
+        rekey_book(db.pool(), &old_fp.to_string(), &new_fp.to_string())
+            .await
+            .expect("failed to rekey duplicate book");
 
         let merged = libdb
             .get_all_books(library_a)
+            .await
             .expect("failed to load merged books")
             .into_iter()
             .next()
@@ -1250,150 +1266,143 @@ mod tests {
         assert_eq!(
             libdb
                 .get_thumbnail(new_fp)
+                .await
                 .expect("failed to read thumbnail"),
             Some(b"new-thumbnail".to_vec())
         );
     }
 
-    #[test]
-    fn rehash_fingerprints_canonicalizes_unrekeyed_legacy_fingerprints() {
-        let (db, libdb) = create_test_db();
+    #[tokio::test]
+    async fn rehash_fingerprints_canonicalizes_unrekeyed_legacy_fingerprints() {
+        let (db, libdb) = create_test_db().await;
         let library_id = libdb
             .register_library("/tmp/library-legacy", "Legacy Library")
+            .await
             .expect("failed to register legacy library");
         let legacy_fp = "0000000000000001";
         let legacy_fp_value =
             Fp::from_legacy_str(legacy_fp).expect("legacy fingerprint should parse");
         let canonical_fp = legacy_fp_value.to_string();
 
-        RUNTIME.block_on(async {
-            let mut tx = db
-                .pool()
-                .begin()
-                .await
-                .expect("failed to begin legacy insert transaction");
-
-            ensure_stub_book(&mut tx, library_id, legacy_fp_value)
-                .await
-                .expect("failed to insert legacy book");
-
-            tx.commit()
-                .await
-                .expect("failed to commit legacy insert transaction");
-
-            run_rehash_fingerprints(&db).await;
-        });
+        let mut tx = db
+            .pool()
+            .begin()
+            .await
+            .expect("failed to begin legacy insert transaction");
+        ensure_stub_book(&mut tx, library_id, legacy_fp_value)
+            .await
+            .expect("failed to insert legacy book");
+        tx.commit()
+            .await
+            .expect("failed to commit legacy insert transaction");
+        run_rehash_fingerprints(&db).await;
 
         let handles = libdb
             .list_book_handles(library_id)
+            .await
             .expect("canonicalized legacy books should load");
 
         assert_eq!(handles.len(), 1);
         assert_eq!(handles[0].fp.to_string(), canonical_fp);
 
-        RUNTIME.block_on(async {
-            let old_row = sqlx::query_scalar!(
-                "SELECT fingerprint FROM books WHERE fingerprint = ?",
-                legacy_fp
-            )
-            .fetch_optional(db.pool())
-            .await
-            .expect("failed to query old fingerprint");
-            let new_row = sqlx::query_scalar!(
-                "SELECT fingerprint FROM books WHERE fingerprint = ?",
-                canonical_fp
-            )
-            .fetch_optional(db.pool())
-            .await
-            .expect("failed to query canonical fingerprint");
-
-            assert!(old_row.is_none());
-            assert_eq!(new_row.as_deref(), Some(canonical_fp.as_str()));
-        });
+        let old_row = sqlx::query_scalar!(
+            "SELECT fingerprint FROM books WHERE fingerprint = ?",
+            legacy_fp
+        )
+        .fetch_optional(db.pool())
+        .await
+        .expect("failed to query old fingerprint");
+        let new_row = sqlx::query_scalar!(
+            "SELECT fingerprint FROM books WHERE fingerprint = ?",
+            canonical_fp
+        )
+        .fetch_optional(db.pool())
+        .await
+        .expect("failed to query canonical fingerprint");
+        assert!(old_row.is_none());
+        assert_eq!(new_row.as_deref(), Some(canonical_fp.as_str()));
     }
 
-    #[test]
-    fn rehash_fingerprints_reads_absolute_path_from_library_books() {
+    #[tokio::test]
+    async fn rehash_fingerprints_reads_absolute_path_from_library_books() {
         let temp = tempdir().expect("failed to create temp dir");
         let library_root = temp.path().join("library");
         std::fs::create_dir(&library_root).expect("failed to create library root");
         let book_path = library_root.join("book.epub");
         std::fs::write(&book_path, b"rehash me").expect("failed to write book file");
 
-        let (db, libdb) = create_test_db();
+        let (db, libdb) = create_test_db().await;
         let library_id = libdb
             .register_library(library_root.to_string_lossy().as_ref(), "Rehash Library")
+            .await
             .expect("failed to register library");
         let legacy_fp = "00000000000000aa";
-        let expected_fp = book_path.fingerprint().expect("failed to fingerprint file");
+        let expected_fp = book_path
+            .fingerprint()
+            .await
+            .expect("failed to fingerprint file");
         let now = UnixTimestamp::now();
 
-        RUNTIME.block_on(async {
-            sqlx::query(
-                r#"
-                INSERT INTO books (
-                    fingerprint, title, subtitle, year, language, publisher,
-                    series, edition, volume, number, identifier,
-                    file_kind, file_size, added_at, status
-                ) VALUES (?, ?, '', '', '', '', '', '', '', '', '', ?, ?, ?, ?)
-                "#,
-            )
-            .bind(legacy_fp)
-            .bind("Legacy Book")
-            .bind("epub")
-            .bind(9_i64)
-            .bind(now)
-            .bind("active")
-            .execute(db.pool())
-            .await
-            .expect("failed to insert legacy book");
-
-            sqlx::query(
-                r#"
-                INSERT INTO library_books (
-                    library_id, book_fingerprint, added_to_library_at, file_path, absolute_path
-                ) VALUES (?, ?, ?, ?, ?)
-                "#,
-            )
-            .bind(library_id)
-            .bind(legacy_fp)
-            .bind(now)
-            .bind("book.epub")
-            .bind(book_path.to_string_lossy().as_ref())
-            .execute(db.pool())
-            .await
-            .expect("failed to insert library book row");
-
-            run_rehash_fingerprints(&db).await;
-        });
+        sqlx::query(
+            r#"
+            INSERT INTO books (
+                fingerprint, title, subtitle, year, language, publisher,
+                series, edition, volume, number, identifier,
+                file_kind, file_size, added_at, status
+            ) VALUES (?, ?, '', '', '', '', '', '', '', '', '', ?, ?, ?, ?)
+            "#,
+        )
+        .bind(legacy_fp)
+        .bind("Legacy Book")
+        .bind("epub")
+        .bind(9_i64)
+        .bind(now)
+        .bind("active")
+        .execute(db.pool())
+        .await
+        .expect("failed to insert legacy book");
+        sqlx::query(
+            r#"
+            INSERT INTO library_books (
+                library_id, book_fingerprint, added_to_library_at, file_path, absolute_path
+            ) VALUES (?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(library_id)
+        .bind(legacy_fp)
+        .bind(now)
+        .bind("book.epub")
+        .bind(book_path.to_string_lossy().as_ref())
+        .execute(db.pool())
+        .await
+        .expect("failed to insert library book row");
+        run_rehash_fingerprints(&db).await;
 
         let books = libdb
             .get_all_books(library_id)
+            .await
             .expect("rehash results should load");
 
         assert_eq!(books.len(), 1);
         assert_eq!(books[0].fp, Some(expected_fp));
         assert_eq!(books[0].file.absolute_path, book_path);
 
-        RUNTIME.block_on(async {
-            let expected_fp_str = expected_fp.to_string();
-            let old_row = sqlx::query_scalar!(
-                "SELECT fingerprint FROM books WHERE fingerprint = ?",
-                legacy_fp
-            )
-            .fetch_optional(db.pool())
-            .await
-            .expect("failed to query legacy row");
-            let new_row = sqlx::query_scalar!(
-                "SELECT fingerprint FROM books WHERE fingerprint = ?",
-                expected_fp_str
-            )
-            .fetch_optional(db.pool())
-            .await
-            .expect("failed to query rehashed row");
-
-            assert!(old_row.is_none());
-            assert_eq!(new_row.as_deref(), Some(expected_fp_str.as_str()));
-        });
+        let expected_fp_str = expected_fp.to_string();
+        let old_row = sqlx::query_scalar!(
+            "SELECT fingerprint FROM books WHERE fingerprint = ?",
+            legacy_fp
+        )
+        .fetch_optional(db.pool())
+        .await
+        .expect("failed to query legacy row");
+        let new_row = sqlx::query_scalar!(
+            "SELECT fingerprint FROM books WHERE fingerprint = ?",
+            expected_fp_str
+        )
+        .fetch_optional(db.pool())
+        .await
+        .expect("failed to query rehashed row");
+        assert!(old_row.is_none());
+        assert_eq!(new_row.as_deref(), Some(expected_fp_str.as_str()));
     }
 }

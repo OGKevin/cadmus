@@ -227,15 +227,15 @@ mod tests {
     mod handle {
         use super::*;
 
-        #[test]
-        fn download_event_returns_downloading_string() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn download_event_returns_downloading_string() {
             let info = DictionaryInfo {
                 lang: "en".to_string(),
                 is_installed: false,
                 update_available: false,
                 is_installing: false,
             };
-            let mut context = create_test_context();
+            let mut context = create_test_context().await;
             context.settings = make_settings();
             let mut bus: Bus = VecDeque::new();
             let event = Event::Select(EntryId::DownloadDictionary("en".to_string()));
@@ -246,15 +246,15 @@ mod tests {
             assert!(!consumed);
         }
 
-        #[test]
-        fn request_event_returns_none() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn request_event_returns_none() {
             let info = DictionaryInfo {
                 lang: "en".to_string(),
                 is_installed: true,
                 update_available: false,
                 is_installing: false,
             };
-            let mut context = create_test_context();
+            let mut context = create_test_context().await;
             context.settings = make_settings();
             let mut bus: Bus = VecDeque::new();
             let event = Event::Select(EntryId::RequestDictionaryDownload("en".to_string()));
@@ -265,15 +265,15 @@ mod tests {
             assert!(!consumed);
         }
 
-        #[test]
-        fn event_for_different_lang_returns_none() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn event_for_different_lang_returns_none() {
             let info = DictionaryInfo {
                 lang: "en".to_string(),
                 is_installed: false,
                 update_available: false,
                 is_installing: false,
             };
-            let mut context = create_test_context();
+            let mut context = create_test_context().await;
             context.settings = make_settings();
             let mut bus: Bus = VecDeque::new();
             let event = Event::Select(EntryId::DownloadDictionary("fr".to_string()));
@@ -283,15 +283,15 @@ mod tests {
             assert!(display.is_none());
         }
 
-        #[test]
-        fn unrelated_event_returns_none() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn unrelated_event_returns_none() {
             let info = DictionaryInfo {
                 lang: "en".to_string(),
                 is_installed: false,
                 update_available: false,
                 is_installing: false,
             };
-            let mut context = create_test_context();
+            let mut context = create_test_context().await;
             context.settings = make_settings();
             let mut bus: Bus = VecDeque::new();
 
