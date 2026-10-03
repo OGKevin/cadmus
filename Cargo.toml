@@ -12,7 +12,7 @@ members = [
 
 [workspace.dependencies]
 async-trait = "0.1"
-async_zip = { version = "0.0.17", default-features = false, features = ["deflate", "tokio", "tokio-fs"] }
+async_zip = { version = "0.0.19", default-features = false, features = ["deflate", "tokio", "tokio-fs"] }
 blake3 = "1"
 bytes = "1"
 cc = "1"
