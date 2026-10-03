@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT book_id as \"book_id: BookId\" FROM book_keys WHERE fingerprint = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "book_id: BookId",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "book_keys",
+            "name": "book_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "10d9f749b12db1e2c33e899f0a41d2813788ace21c7643a59848d96375101ba8"
+}

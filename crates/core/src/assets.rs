@@ -90,14 +90,14 @@ impl DocumentationAssets {
 ///
 /// // Note: In actual use, context and hub are provided by the application.
 /// // This example shows the API pattern.
-/// # fn example(rect: Rectangle, hub: &Hub, context: &mut AppContext) {
-/// if let Some(reader) = open_documentation(rect, hub, context) {
+/// # async fn run(rect: Rectangle, hub: &Hub, context: &mut AppContext) {
+/// if let Some(reader) = open_documentation(rect, hub, context).await {
 ///     // Documentation opened successfully
 ///     // The reader can be used to display the embedded EPUB
 /// }
 /// # }
 /// ```
-pub fn open_documentation(
+pub async fn open_documentation(
     rect: crate::geom::Rectangle,
     hub: &crate::view::Hub,
     context: &mut crate::device::AppContext,
@@ -122,5 +122,5 @@ pub fn open_documentation(
         }
     };
 
-    crate::view::reader::Reader::from_embedded_epub(rect, static_bytes, hub, context)
+    crate::view::reader::Reader::from_embedded_epub(rect, static_bytes, hub, context).await
 }

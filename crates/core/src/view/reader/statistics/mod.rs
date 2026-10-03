@@ -3,7 +3,6 @@ pub mod models;
 
 use crate::db::Database;
 use crate::helpers::Fp;
-use anyhow::Error;
 
 use self::db::StatisticsDb;
 use self::models::ReadingEventType;
@@ -23,34 +22,18 @@ impl Statistics {
         }
     }
 
-    /// Record a reading event for a book.
+    /// Records a reading event, logging failures instead of propagating them.
     ///
     /// This records discrete events (BookOpened, BookClosed, PageTurn) to the library database.
-    ///
-    /// # Arguments
-    /// * `fp` - Fingerprint of the book
-    /// * `event_type` - Type of reading event
-    ///
-    /// # Returns
-    /// * `Ok(())` - Event recorded successfully
-    /// * `Err(Error)` - Failed to record event
-    pub async fn record_event(&self, fp: Fp, event_type: ReadingEventType) -> Result<(), Error> {
-        self.db.record_event(fp, event_type).await
-    }
-
-    /// Records an event from synchronous UI code without blocking the runtime.
-    pub(crate) fn spawn_record_event(&self, fp: Fp, event_type: ReadingEventType) {
-        let db = self.db.clone();
-        crate::runtime::current_handle().spawn(async move {
-            if let Err(e) = db.record_event(fp, event_type).await {
-                tracing::error!(
-                    error = %e,
-                    fp = %fp,
-                    event = %event_type,
-                    "failed to log reading event"
-                );
-            }
-        });
+    pub(crate) async fn record_event(&self, fp: Fp, event_type: ReadingEventType) {
+        if let Err(e) = self.db.record_event(fp, event_type).await {
+            tracing::error!(
+                error = %e,
+                fp = %fp,
+                event = %event_type,
+                "failed to log reading event"
+            );
+        }
     }
 }
 
@@ -62,7 +45,7 @@ mod tests {
     use crate::helpers::Fp;
 
     /// Helper to insert a minimal test book into the database.
-    /// Required because reading_events has a foreign key constraint on book_fingerprint.
+    /// Inserts into `books`; the `book_keys` trigger supplies the integer key for events.
     async fn insert_test_book(pool: &sqlx::sqlite::SqlitePool, fp: Fp) {
         let now = UnixTimestamp::now();
         let fp_str = fp.to_string();
@@ -96,14 +79,8 @@ mod tests {
         let fp = Fp::from_u64(11);
 
         insert_test_book(context.database.pool(), fp).await;
-        stats
-            .record_event(fp, ReadingEventType::BookOpened)
-            .await
-            .unwrap();
-        stats
-            .record_event(fp, ReadingEventType::PageTurn)
-            .await
-            .unwrap();
+        stats.record_event(fp, ReadingEventType::BookOpened).await;
+        stats.record_event(fp, ReadingEventType::PageTurn).await;
 
         let events = stats.db.list_events(fp).await.unwrap();
         assert_eq!(events.len(), 2);
@@ -116,20 +93,11 @@ mod tests {
         let fp = Fp::from_u64(12);
 
         insert_test_book(context.database.pool(), fp).await;
-        stats
-            .record_event(fp, ReadingEventType::BookOpened)
-            .await
-            .unwrap();
+        stats.record_event(fp, ReadingEventType::BookOpened).await;
         for _ in 0..10 {
-            stats
-                .record_event(fp, ReadingEventType::PageTurn)
-                .await
-                .unwrap();
+            stats.record_event(fp, ReadingEventType::PageTurn).await;
         }
-        stats
-            .record_event(fp, ReadingEventType::BookClosed)
-            .await
-            .unwrap();
+        stats.record_event(fp, ReadingEventType::BookClosed).await;
 
         let events = stats.db.list_events(fp).await.unwrap();
         assert_eq!(events.len(), 12);

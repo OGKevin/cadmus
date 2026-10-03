@@ -464,12 +464,10 @@ impl Reader {
         info!("{}", info.file.path.display());
 
         let statistics = Statistics::new(&context.database);
-        if let Some(fp) = info.fp
-            && let Err(e) = statistics
+        if let Some(fp) = info.fp {
+            statistics
                 .record_event(fp, ReadingEventType::BookOpened)
-                .await
-        {
-            tracing::error!(error = %e, fp = %fp, event = %ReadingEventType::BookOpened, "failed to log reading event");
+                .await;
         }
 
         hub.send((Event::Update(UpdateMode::Partial)).into()).ok();
@@ -506,7 +504,7 @@ impl Reader {
         })
     }
 
-    pub fn from_html(
+    pub async fn from_html(
         rect: Rectangle,
         html: &str,
         link_uri: Option<&str>,
@@ -546,7 +544,9 @@ impl Reader {
 
         let statistics = Statistics::new(&context.database);
         if let Some(fp) = info.fp {
-            statistics.spawn_record_event(fp, ReadingEventType::BookOpened);
+            statistics
+                .record_event(fp, ReadingEventType::BookOpened)
+                .await;
         }
 
         hub.send((Event::Update(UpdateMode::Partial)).into()).ok();
@@ -584,7 +584,7 @@ impl Reader {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    pub fn from_embedded_epub(
+    pub async fn from_embedded_epub(
         rect: Rectangle,
         epub_bytes: &'static [u8],
         hub: &Hub,
@@ -613,7 +613,9 @@ impl Reader {
 
         let statistics = Statistics::new(&context.database);
         if let Some(fp) = info.fp {
-            statistics.spawn_record_event(fp, ReadingEventType::BookOpened);
+            statistics
+                .record_event(fp, ReadingEventType::BookOpened)
+                .await;
         }
 
         hub.send((Event::Update(UpdateMode::Partial)).into()).ok();
@@ -718,7 +720,7 @@ impl Reader {
         self.text.insert(location, words);
     }
 
-    fn go_to_page(
+    async fn go_to_page(
         &mut self,
         location: usize,
         record: bool,
@@ -747,7 +749,8 @@ impl Reader {
                 && let Some(fp) = self.info.fp
             {
                 self.statistics
-                    .spawn_record_event(fp, ReadingEventType::PageTurn);
+                    .record_event(fp, ReadingEventType::PageTurn)
+                    .await;
             }
 
             self.current_page = location;
@@ -763,7 +766,7 @@ impl Reader {
         }
     }
 
-    fn go_to_chapter(
+    async fn go_to_chapter(
         &mut self,
         dir: CycleDir,
         hub: &Hub,
@@ -796,7 +799,7 @@ impl Reader {
             }
         };
         if let Some(location) = loc {
-            self.go_to_page(location, true, hub, rq, context);
+            self.go_to_page(location, true, hub, rq, context).await;
         }
     }
 
@@ -828,7 +831,7 @@ impl Reader {
         min_loc.and_then(|min| max_loc.map(|max| [min, max]))
     }
 
-    fn go_to_bookmark(
+    async fn go_to_bookmark(
         &mut self,
         dir: CycleDir,
         hub: &Hub,
@@ -841,11 +844,11 @@ impl Reader {
         });
 
         if let Some(location) = loc_bkm {
-            self.go_to_page(location, true, hub, rq, context);
+            self.go_to_page(location, true, hub, rq, context).await;
         }
     }
 
-    fn go_to_annotation(
+    async fn go_to_annotation(
         &mut self,
         dir: CycleDir,
         hub: &Hub,
@@ -872,17 +875,17 @@ impl Reader {
         });
 
         if let Some(location) = loc_annot {
-            self.go_to_page(location, true, hub, rq, context);
+            self.go_to_page(location, true, hub, rq, context).await;
         }
     }
 
-    fn go_to_last_page(&mut self, hub: &Hub, rq: &mut RenderQueue, context: &AppContext) {
+    async fn go_to_last_page(&mut self, hub: &Hub, rq: &mut RenderQueue, context: &AppContext) {
         if let Some(location) = self.history.pop_back() {
-            self.go_to_page(location, false, hub, rq, context);
+            self.go_to_page(location, false, hub, rq, context).await;
         }
     }
 
-    fn vertical_scroll(
+    async fn vertical_scroll(
         &mut self,
         delta_y: i32,
         hub: &Hub,
@@ -970,7 +973,8 @@ impl Reader {
         if location_changed {
             if let Some(fp) = self.info.fp {
                 self.statistics
-                    .spawn_record_event(fp, ReadingEventType::PageTurn);
+                    .record_event(fp, ReadingEventType::PageTurn)
+                    .await;
             }
 
             if let Some(ref mut s) = self.search {
@@ -1149,9 +1153,12 @@ impl Reader {
             Some(location)
                 if location != current_page || self.view_port.page_offset != page_offset =>
             {
-                if let Some(fp) = self.info.fp {
+                if location != current_page
+                    && let Some(fp) = self.info.fp
+                {
                     self.statistics
-                        .spawn_record_event(fp, ReadingEventType::PageTurn);
+                        .record_event(fp, ReadingEventType::PageTurn)
+                        .await;
                 }
 
                 if let Some(ref mut s) = self.search {
@@ -3897,13 +3904,10 @@ impl Reader {
                 r.contrast_gray = None;
             }
 
-            if let Some(fp) = self.info.fp
-                && let Err(e) = self
-                    .statistics
+            if let Some(fp) = self.info.fp {
+                self.statistics
                     .record_event(fp, ReadingEventType::BookClosed)
-                    .await
-            {
-                tracing::error!(error = %e, fp = %fp, event = %ReadingEventType::BookClosed, "failed to log reading event");
+                    .await;
             }
             (context.library.sync_reader_info(&self.info.file.path, r)).await;
         }
@@ -3992,6 +3996,7 @@ impl View for Reader {
                             }
                             Dir::South | Dir::North => {
                                 self.vertical_scroll(start.y - end.y, hub, rq, context)
+                                    .await
                             }
                         };
                     }
@@ -4071,14 +4076,15 @@ impl View for Reader {
                 match dir {
                     Dir::West => {
                         if self.search.is_none() {
-                            self.go_to_chapter(CycleDir::Previous, hub, rq, context);
+                            self.go_to_chapter(CycleDir::Previous, hub, rq, context)
+                                .await;
                         } else {
                             self.go_to_results_page(0, hub, rq, context);
                         }
                     }
                     Dir::East => {
                         if self.search.is_none() {
-                            self.go_to_chapter(CycleDir::Next, hub, rq, context);
+                            self.go_to_chapter(CycleDir::Next, hub, rq, context).await;
                         } else {
                             let last_page = self.search.as_ref().unwrap().highlights.len() - 1;
                             self.go_to_results_page(last_page, hub, rq, context);
@@ -4097,8 +4103,13 @@ impl View for Reader {
             }
             Event::Gesture(GestureEvent::Corner { dir, .. }) => {
                 match dir {
-                    DiagDir::NorthWest => self.go_to_bookmark(CycleDir::Previous, hub, rq, context),
-                    DiagDir::NorthEast => self.go_to_bookmark(CycleDir::Next, hub, rq, context),
+                    DiagDir::NorthWest => {
+                        self.go_to_bookmark(CycleDir::Previous, hub, rq, context)
+                            .await
+                    }
+                    DiagDir::NorthEast => {
+                        self.go_to_bookmark(CycleDir::Next, hub, rq, context).await
+                    }
                     DiagDir::SouthEast => match context.settings.reader.bottom_right_gesture {
                         BottomRightGestureAction::ToggleDithered => {
                             hub.send((Event::Select(EntryId::ToggleDithered)).into())
@@ -4145,8 +4156,12 @@ impl View for Reader {
                 match dir {
                     DiagDir::NorthWest => {
                         self.go_to_annotation(CycleDir::Previous, hub, rq, context)
+                            .await
                     }
-                    DiagDir::NorthEast => self.go_to_annotation(CycleDir::Next, hub, rq, context),
+                    DiagDir::NorthEast => {
+                        self.go_to_annotation(CycleDir::Next, hub, rq, context)
+                            .await
+                    }
                     _ => (),
                 }
                 true
@@ -4164,8 +4179,11 @@ impl View for Reader {
                 match code {
                     ButtonCode::Backward => {
                         self.go_to_chapter(CycleDir::Previous, hub, rq, context)
+                            .await
                     }
-                    ButtonCode::Forward => self.go_to_chapter(CycleDir::Next, hub, rq, context),
+                    ButtonCode::Forward => {
+                        self.go_to_chapter(CycleDir::Next, hub, rq, context).await
+                    }
                     _ => (),
                 }
                 self.held_buttons.insert(code);
@@ -4478,7 +4496,8 @@ impl View for Reader {
                         }
                     } else if let Some(caps) = pdf_page.captures(&link.text) {
                         if let Ok(index) = caps[1].parse::<usize>() {
-                            self.go_to_page(index.saturating_sub(1), true, hub, rq, context);
+                            self.go_to_page(index.saturating_sub(1), true, hub, rq, context)
+                                .await;
                         }
                     } else if let Some(caps) = djvu_page.captures(&link.text) {
                         if let Ok(mut index) = caps[2].parse::<usize>() {
@@ -4488,7 +4507,7 @@ impl View for Reader {
                                 Some("+") => index += self.current_page,
                                 _ => index = index.saturating_sub(1),
                             }
-                            self.go_to_page(index, true, hub, rq, context);
+                            self.go_to_page(index, true, hub, rq, context).await;
                         }
                     } else {
                         let mut doc = self.doc.lock().unwrap();
@@ -4562,7 +4581,7 @@ impl View for Reader {
                     context.settings.reader.corner_width,
                 ) {
                     Region::Corner(diag_dir) => match diag_dir {
-                        DiagDir::NorthWest => self.go_to_last_page(hub, rq, context),
+                        DiagDir::NorthWest => self.go_to_last_page(hub, rq, context).await,
                         DiagDir::NorthEast => self.toggle_bookmark(rq, context.device.dpi()),
                         DiagDir::SouthEast => {
                             if self.search.is_none() {
@@ -4747,15 +4766,15 @@ impl View for Reader {
                     let prefix = caps.get(1).map(|m| m.as_str());
                     if prefix == Some("'") {
                         if let Some(location) = self.find_page_by_name(&caps[2]) {
-                            self.go_to_page(location, true, hub, rq, context);
+                            self.go_to_page(location, true, hub, rq, context).await;
                         }
                     } else {
                         if text == "_" {
                             let location =
                                 (context.rng.next_u64() % self.pages_count as u64) as usize;
-                            self.go_to_page(location, true, hub, rq, context);
+                            self.go_to_page(location, true, hub, rq, context).await;
                         } else if text == "(" {
-                            self.go_to_page(0, true, hub, rq, context);
+                            self.go_to_page(0, true, hub, rq, context).await;
                         } else if text == ")" {
                             self.go_to_page(
                                 self.pages_count.saturating_sub(1),
@@ -4763,13 +4782,14 @@ impl View for Reader {
                                 hub,
                                 rq,
                                 context,
-                            );
+                            )
+                            .await;
                         } else if let Some(percent) = text.strip_suffix('%') {
                             if let Ok(number) = percent.parse::<f64>() {
                                 let location =
                                     (number.max(0.0).min(100.0) / 100.0 * self.pages_count as f64)
                                         .round() as usize;
-                                self.go_to_page(location, true, hub, rq, context);
+                                self.go_to_page(location, true, hub, rq, context).await;
                             }
                         } else if let Ok(number) = caps[2].parse::<f64>() {
                             let location = {
@@ -4782,7 +4802,7 @@ impl View for Reader {
                                 }
                                 index
                             };
-                            self.go_to_page(location, true, hub, rq, context);
+                            self.go_to_page(location, true, hub, rq, context).await;
                         }
                     }
                 }
@@ -4861,7 +4881,7 @@ impl View for Reader {
                 true
             }
             Event::GoTo(location) | Event::Select(EntryId::GoTo(location)) => {
-                self.go_to_page(location, true, hub, rq, context);
+                self.go_to_page(location, true, hub, rq, context).await;
                 true
             }
             Event::GoToLocation(ref location) => {
@@ -4870,12 +4890,12 @@ impl View for Reader {
                     doc.resolve_location(location.clone())
                 };
                 if let Some(offset) = offset_opt {
-                    self.go_to_page(offset, true, hub, rq, context);
+                    self.go_to_page(offset, true, hub, rq, context).await;
                 }
                 true
             }
             Event::Chapter(dir) => {
-                self.go_to_chapter(dir, hub, rq, context);
+                self.go_to_chapter(dir, hub, rq, context).await;
                 true
             }
             Event::ResultsPage(dir) => {
@@ -5109,7 +5129,7 @@ impl View for Reader {
                 if results_count == 1 {
                     self.toggle_results_bar(false, rq, context, context.device.dpi());
                     self.toggle_search_bar(false, hub, rq, context);
-                    self.go_to_page(location, true, hub, rq, context);
+                    self.go_to_page(location, true, hub, rq, context).await;
                 } else if location == self.current_page {
                     self.update(None, hub, rq, context);
                 }
@@ -5213,7 +5233,7 @@ impl View for Reader {
                         .unwrap_or_else(|| text.len());
                     self.find_page_by_name(&text[..end])
                 }) {
-                    self.go_to_page(loc, true, hub, rq, context);
+                    self.go_to_page(loc, true, hub, rq, context).await;
                 }
                 if let Some(rect) = self.selection_rect() {
                     rq.add(RenderData::new(self.id, rect, UpdateMode::Gui));

@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT\n                re.id,\n                re.book_id       as \"book_id: BookId\",\n                bk.fingerprint   as \"book_fingerprint: Fp\",\n                re.timestamp     as \"timestamp: UnixTimestamp\",\n                re.event_type    as \"event_type: ReadingEventType\"\n            FROM reading_events re\n            INNER JOIN book_keys bk ON re.book_id = bk.book_id\n            WHERE bk.fingerprint = ?\n            ORDER BY re.timestamp ASC, re.id ASC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "reading_events",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "book_id: BookId",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "reading_events",
+            "name": "book_id"
+          }
+        }
+      },
+      {
+        "name": "book_fingerprint: Fp",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "book_keys",
+            "name": "fingerprint"
+          }
+        }
+      },
+      {
+        "name": "timestamp: UnixTimestamp",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "reading_events",
+            "name": "timestamp"
+          }
+        }
+      },
+      {
+        "name": "event_type: ReadingEventType",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "reading_events",
+            "name": "event_type"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "801c7424f58e50ae5d11b0bf95a1af36a80c67b5d0d05c029425226c1a56461c"
+}

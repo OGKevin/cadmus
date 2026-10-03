@@ -1,12 +1,19 @@
-use crate::db::types::UnixTimestamp;
-use crate::helpers::Fp;
 use serde::{Deserialize, Serialize};
 use sqlx::{
-    Encode, FromRow, Sqlite,
+    Sqlite,
     encode::IsNull,
     error::BoxDynError,
     sqlite::{SqliteArgumentsBuffer, SqliteTypeInfo, SqliteValueRef},
 };
+
+#[cfg(test)]
+use crate::db::types::UnixTimestamp;
+#[cfg(test)]
+use crate::helpers::Fp;
+#[cfg(test)]
+use crate::library::BookId;
+#[cfg(test)]
+use sqlx::FromRow;
 use std::fmt;
 use std::str::FromStr;
 
@@ -98,6 +105,7 @@ impl<'r> sqlx::Decode<'r, Sqlite> for ReadingEventType {
 #[derive(Debug, Clone, FromRow)]
 pub struct ReadingEventRow {
     pub id: i64,
+    pub book_id: BookId,
     pub book_fingerprint: Fp,
     pub timestamp: UnixTimestamp,
     pub event_type: ReadingEventType,
@@ -151,6 +159,7 @@ mod tests {
         let now = UnixTimestamp::now();
         let row = ReadingEventRow {
             id: 42,
+            book_id: BookId::from(7),
             book_fingerprint: Fp::from_u64(0x12345678),
             timestamp: now,
             event_type: ReadingEventType::BookOpened,
