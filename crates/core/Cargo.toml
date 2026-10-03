@@ -2,6 +2,9 @@
 name = "cadmus-core"
 version = "0.11.0"
 edition = "2024"
+# benches/reader_dict_fixture.rs is a helper for dictionary_bench, not a
+# standalone bench; keep it out of Cargo's bench target auto-discovery.
+autobenches = false
 authors = [
     "Cadmus Authors",
     "Bastien Dejean <nihilhill@gmail.com> (original Plato author)",

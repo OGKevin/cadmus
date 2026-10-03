@@ -129,7 +129,7 @@ impl Database {
     }
 
     /// Runs database initialization using a default [`TestDevice`](crate::device::test_device::TestDevice) for migrations.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "bench"))]
     pub async fn init_for_test(&mut self, backup_retention: usize) -> Result<(), Error> {
         let device = crate::device::test_device::TestDevice::new();
         let mut settings = Settings::default();
