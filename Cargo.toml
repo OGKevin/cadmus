@@ -34,7 +34,7 @@ rustls = { version = "0.23", default-features = false, features = [
 ] }
 sdl3 = { version = "0.20.0", features = ["use-pkg-config"] }
 serde_json = "1.0.149"
-sysinfo = { version = "0.37", default-features = false, features = ["system"] }
+sysinfo = { version = "0.39", default-features = false, features = ["system"] }
 tokio-util = { version = "0.7", default-features = false, features = ["compat", "rt"] }
 tower = { version = "0.5", default-features = false }
 
