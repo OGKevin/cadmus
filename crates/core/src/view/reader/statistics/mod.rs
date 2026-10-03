@@ -8,6 +8,10 @@ use anyhow::Error;
 use self::db::StatisticsDb;
 use self::models::ReadingEventType;
 
+pub(crate) fn should_record_page_turn(current_page: usize, target_page: usize) -> bool {
+    current_page != target_page
+}
+
 pub struct Statistics {
     db: StatisticsDb,
 }
@@ -64,6 +68,13 @@ mod tests {
             .await
             .expect("failed to insert test book");
         });
+    }
+
+    #[test]
+    fn should_record_page_turn_only_when_page_changes() {
+        assert!(should_record_page_turn(0, 1));
+        assert!(should_record_page_turn(4, 2));
+        assert!(!should_record_page_turn(3, 3));
     }
 
     #[test]

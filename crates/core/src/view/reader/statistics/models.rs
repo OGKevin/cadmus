@@ -41,6 +41,7 @@ impl ReadingEventType {
     }
 
     /// Returns all known reading event types.
+    #[cfg(test)]
     pub fn all() -> &'static [ReadingEventType] {
         &[
             ReadingEventType::BookOpened,
@@ -93,6 +94,7 @@ impl<'r> sqlx::Decode<'r, Sqlite> for ReadingEventType {
 }
 
 /// Database row for the reading_events table
+#[cfg(test)]
 #[derive(Debug, Clone, FromRow)]
 pub struct ReadingEventRow {
     pub id: i64,

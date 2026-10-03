@@ -39,6 +39,7 @@ impl StatisticsDb {
     }
 
     /// Get the last event for a book
+    #[cfg(test)]
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fp)))]
     pub fn get_last_event(&self, fp: Fp) -> Result<Option<ReadingEventRow>, Error> {
         Ok(RUNTIME.block_on(async {

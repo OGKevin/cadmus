@@ -60,6 +60,7 @@ use crate::view::named_input::NamedInput;
 use crate::view::notification::Notification;
 use crate::view::reader::statistics::Statistics;
 use crate::view::reader::statistics::models::ReadingEventType;
+use crate::view::reader::statistics::should_record_page_turn;
 use crate::view::search_bar::SearchBar;
 use crate::view::{AppCmd, Bus, Event, Hub, RenderData, RenderQueue, ToggleEvent, View};
 use crate::view::{BIG_BAR_HEIGHT, SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
@@ -744,7 +745,8 @@ impl Reader {
                 s.current_page = s.highlights.range(..=location).count().saturating_sub(1);
             }
 
-            if let Some(fp) = self.info.fp
+            if should_record_page_turn(self.current_page, location)
+                && let Some(fp) = self.info.fp
                 && let Err(e) = self.statistics.record_event(fp, ReadingEventType::PageTurn)
             {
                 tracing::error!(error = %e, fp = %fp, event = %ReadingEventType::PageTurn, "failed to log reading event");
