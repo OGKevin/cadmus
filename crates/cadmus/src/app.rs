@@ -536,6 +536,8 @@ pub async fn run() -> Result<(), Error> {
 
     tracing::info!(duration = ?start_time.elapsed(), "App started");
 
+    context.release_startup_lease();
+
     while let Some(message) = rx.recv().await {
         let (evt, _input_wake) = message.into_parts();
         let skip_main_loop_lease =
