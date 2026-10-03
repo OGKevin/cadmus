@@ -36,6 +36,7 @@ mod emulator;
 
 #[cfg(any(
     test,
+    feature = "bench",
     docsrs,
     all(
         feature = "deviceless",
@@ -64,6 +65,7 @@ pub use emulator::{EmulatorDevice, code_from_key, device_event};
 
 #[cfg(any(
     test,
+    feature = "bench",
     docsrs,
     all(
         feature = "deviceless",
@@ -75,6 +77,7 @@ use crate::device::test_device::TestDevice;
 #[cfg(not(docsrs))]
 #[cfg(any(
     test,
+    feature = "bench",
     all(
         feature = "deviceless",
         not(any(feature = "kobo", feature = "emulator"))

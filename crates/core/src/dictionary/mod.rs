@@ -13,7 +13,10 @@ cfg_select! {
     _ => { mod indexing; }
 }
 
-pub(crate) mod db_index;
+cfg_select! {
+    feature = "bench" => { pub mod db_index; }
+    _ => { pub(crate) mod db_index; }
+}
 mod monolingual;
 
 pub(crate) use monolingual::{MonolingualDictionaryService, reconcile_installed_dictionaries};

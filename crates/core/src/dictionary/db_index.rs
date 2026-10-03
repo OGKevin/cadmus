@@ -11,13 +11,16 @@ use crate::db::Database;
 use super::Metadata;
 use super::indexing::{Entry, IndexReader};
 
-/// Escapes SQLite LIKE wildcards (`%`, `_`) and the escape character (`\`)
-/// so a user-supplied prefix is matched literally.
-fn escape_like_prefix(prefix: &str) -> String {
-    prefix
-        .replace('\\', "\\\\")
-        .replace('%', "\\%")
-        .replace('_', "\\_")
+/// Exclusive upper bound for `word >= prefix` in SQLite `TEXT` order.
+fn prefix_upper_bound(prefix: &str) -> Option<String> {
+    let mut chars: Vec<char> = prefix.chars().collect();
+    while let Some(c) = chars.pop() {
+        if let Some(next) = char::from_u32(c as u32 + 1) {
+            chars.push(next);
+            return Some(chars.into_iter().collect());
+        }
+    }
+    None
 }
 
 /// SQLite-backed implementation of [`IndexReader`].
@@ -103,16 +106,23 @@ impl DbIndexReader {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(headword = %headword, prefix = %prefix)))]
-    async fn fuzzy_scoped(&self, headword: &str, prefix: &str, id: i64) -> Vec<Entry> {
+    async fn fuzzy_scoped(
+        &self,
+        headword: &str,
+        prefix: &str,
+        prefix_end: &str,
+        id: i64,
+    ) -> Vec<Entry> {
         match sqlx::query!(
             r#"SELECT word,
                       offset AS "offset!",
                       size AS "size!",
                       original
                FROM dictionary_index_entry
-               WHERE dict_id = ? AND word LIKE ? || '%' ESCAPE '\'"#,
+               WHERE dict_id = ? AND word >= ? AND word < ?"#,
             id,
             prefix,
+            prefix_end,
         )
         .fetch_all(&self.pool)
         .await
@@ -135,15 +145,16 @@ impl DbIndexReader {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(headword = %headword, prefix = %prefix)))]
-    async fn fuzzy_global(&self, headword: &str, prefix: &str) -> Vec<Entry> {
+    async fn fuzzy_global(&self, headword: &str, prefix: &str, prefix_end: &str) -> Vec<Entry> {
         match sqlx::query!(
             r#"SELECT word,
                       offset AS "offset!",
                       size AS "size!",
                       original
                FROM dictionary_index_entry
-               WHERE word LIKE ? || '%' ESCAPE '\'"#,
+               WHERE word >= ? AND word < ?"#,
             prefix,
+            prefix_end,
         )
         .fetch_all(&self.pool)
         .await
@@ -176,6 +187,10 @@ impl DbIndexReader {
         }
     }
 
+    /// Candidate selection is a half-open BINARY range over the `word` index,
+    /// so it is case-sensitive: a `hello` prefix does not consider `Hello`.
+    /// Case-insensitive dictionaries are unaffected because their words are
+    /// lowercased at index time.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(headword = %headword )))]
     async fn query_fuzzy(&self, headword: &str) -> Vec<Entry> {
         let prefix_len = headword
@@ -183,13 +198,82 @@ impl DbIndexReader {
             .nth(3)
             .map(|(i, _)| i)
             .unwrap_or(headword.len());
-        let prefix = escape_like_prefix(&headword[..prefix_len]);
+        let prefix = &headword[..prefix_len];
         let headword = headword.to_string();
+        let upper = prefix_upper_bound(prefix);
+
+        if let Some(upper) = upper {
+            if let Some(id) = self.dict_id {
+                return self.fuzzy_scoped(&headword, prefix, &upper, id).await;
+            }
+            return self.fuzzy_global(&headword, prefix, &upper).await;
+        }
 
         if let Some(id) = self.dict_id {
-            self.fuzzy_scoped(&headword, &prefix, id).await
+            self.fuzzy_scoped_unbounded(&headword, prefix, id).await
         } else {
-            self.fuzzy_global(&headword, &prefix).await
+            self.fuzzy_global_unbounded(&headword, prefix).await
+        }
+    }
+
+    async fn fuzzy_scoped_unbounded(&self, headword: &str, prefix: &str, id: i64) -> Vec<Entry> {
+        match sqlx::query!(
+            r#"SELECT word,
+                      offset AS "offset!",
+                      size AS "size!",
+                      original
+               FROM dictionary_index_entry
+               WHERE dict_id = ? AND word >= ?"#,
+            id,
+            prefix,
+        )
+        .fetch_all(&self.pool)
+        .await
+        {
+            Ok(rows) => rows
+                .into_iter()
+                .filter(|r| levenshtein(headword, &r.word) <= 1)
+                .map(|r| Entry {
+                    headword: r.word,
+                    offset: r.offset as u64,
+                    size: r.size as u64,
+                    original: r.original,
+                })
+                .collect(),
+            Err(e) => {
+                tracing::error!(error = %e, "fuzzy scoped unbounded dictionary index query failed");
+                Vec::new()
+            }
+        }
+    }
+
+    async fn fuzzy_global_unbounded(&self, headword: &str, prefix: &str) -> Vec<Entry> {
+        match sqlx::query!(
+            r#"SELECT word,
+                      offset AS "offset!",
+                      size AS "size!",
+                      original
+               FROM dictionary_index_entry
+               WHERE word >= ?"#,
+            prefix,
+        )
+        .fetch_all(&self.pool)
+        .await
+        {
+            Ok(rows) => rows
+                .into_iter()
+                .filter(|r| levenshtein(headword, &r.word) <= 1)
+                .map(|r| Entry {
+                    headword: r.word,
+                    offset: r.offset as u64,
+                    size: r.size as u64,
+                    original: r.original,
+                })
+                .collect(),
+            Err(e) => {
+                tracing::error!(error = %e, "fuzzy global unbounded dictionary index query failed");
+                Vec::new()
+            }
         }
     }
 }
@@ -263,6 +347,56 @@ mod tests {
 
     const DICT_ID_1: i64 = 1;
     const DICT_ID_2: i64 = 2;
+
+    #[test]
+    fn prefix_upper_bound_increments_last_scalar() {
+        assert_eq!(prefix_upper_bound("aba").as_deref(), Some("abb"));
+        assert_eq!(prefix_upper_bound("ab%").as_deref(), Some("ab&"));
+        assert_eq!(prefix_upper_bound("a").as_deref(), Some("b"));
+    }
+
+    #[test]
+    fn prefix_upper_bound_skips_non_incrementable_suffix() {
+        let max = '\u{10FFFF}';
+        let prefix = format!("x{max}");
+        assert_eq!(prefix_upper_bound(&prefix).as_deref(), Some("y"));
+    }
+
+    #[test]
+    fn prefix_upper_bound_returns_none_when_no_successor() {
+        assert_eq!(prefix_upper_bound(""), None);
+        assert_eq!(prefix_upper_bound("\u{10FFFF}"), None);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_fuzzy_prefix_range_respects_literal_wildcard_chars() {
+        let db = setup_db().await;
+        insert_entry(db.pool(), DICT_ID_1, "fp1", "ab%word", 0, 10, None).await;
+        insert_entry(db.pool(), DICT_ID_1, "fp1", "abxword", 10, 10, None).await;
+        insert_entry(db.pool(), DICT_ID_1, "fp1", "abyword", 20, 10, None).await;
+
+        let reader = DbIndexReader::new(&db, Some(DICT_ID_1));
+        let results = reader.find("ab%word", true).await;
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].headword, "ab%word");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_fuzzy_prefix_candidates_are_case_sensitive() {
+        let db = setup_db().await;
+        insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None).await;
+        insert_entry(db.pool(), DICT_ID_1, "fp1", "Hello", 10, 10, None).await;
+
+        let reader = DbIndexReader::new(&db, Some(DICT_ID_1));
+
+        let lower = reader.find("hello", true).await;
+        assert_eq!(lower.len(), 1);
+        assert_eq!(lower[0].headword, "hello");
+
+        let upper = reader.find("Hello", true).await;
+        assert_eq!(upper.len(), 1);
+        assert_eq!(upper[0].headword, "Hello");
+    }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_exact_lookup_with_dict_id() {
