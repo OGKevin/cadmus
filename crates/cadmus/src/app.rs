@@ -731,7 +731,8 @@ pub async fn run() -> Result<(), Error> {
                     None,
                     &tx,
                     &mut context,
-                );
+                )
+                .await;
                 let mut next_view = Box::new(r) as Box<dyn View>;
                 transfer_notifications(view.as_mut(), next_view.as_mut(), &mut rq, &mut context);
                 history.push(HistoryItem {
@@ -746,7 +747,7 @@ pub async fn run() -> Result<(), Error> {
                 view.children_mut().retain(|child| !child.is::<Menu>());
 
                 if let Some(r) =
-                    open_documentation(context.device.framebuffer().rect(), &tx, &mut context)
+                    open_documentation(context.device.framebuffer().rect(), &tx, &mut context).await
                 {
                     let mut next_view = Box::new(r) as Box<dyn View>;
                     transfer_notifications(
@@ -782,7 +783,8 @@ pub async fn run() -> Result<(), Error> {
                     link_uri.as_deref(),
                     &tx,
                     &mut context,
-                );
+                )
+                .await;
                 let mut next_view = Box::new(r) as Box<dyn View>;
                 transfer_notifications(view.as_mut(), next_view.as_mut(), &mut rq, &mut context);
                 history.push(HistoryItem {

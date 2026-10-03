@@ -266,6 +266,7 @@ async fn merge_duplicate_book_data(
     merge_toc_entries(tx, old_fp, new_fp).await?;
     merge_book_authors(tx, old_fp, new_fp).await?;
     merge_book_categories(tx, old_fp, new_fp).await?;
+    move_reading_events(tx, old_fp, new_fp).await?;
 
     Ok(())
 }
@@ -555,6 +556,35 @@ async fn move_rekeyed_book_data(
 
     sqlx::query!(
         "UPDATE library_books SET book_fingerprint = ? WHERE book_fingerprint = ?",
+        new_fp,
+        old_fp,
+    )
+    .execute(&mut **tx)
+    .await?;
+
+    move_reading_events(tx, old_fp, new_fp).await?;
+
+    Ok(())
+}
+
+/// Re-points `reading_events` from the old book's surrogate key to the new one.
+///
+/// Reading events reference `book_keys` rather than `books.fingerprint`, so they
+/// are not covered by the fingerprint `UPDATE`s in the rekey paths. Both keys are
+/// resolved through `book_keys`; the caller must run this before deleting the old
+/// `books` row, whose `ON DELETE CASCADE` would otherwise drop the events.
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(tx), fields(old_fp = %old_fp, new_fp = %new_fp)))]
+async fn move_reading_events(
+    tx: &mut Transaction<'_, Sqlite>,
+    old_fp: &str,
+    new_fp: &str,
+) -> Result<(), anyhow::Error> {
+    sqlx::query!(
+        r#"
+        UPDATE reading_events
+        SET book_id = (SELECT book_id FROM book_keys WHERE fingerprint = ?)
+        WHERE book_id = (SELECT book_id FROM book_keys WHERE fingerprint = ?)
+        "#,
         new_fp,
         old_fp,
     )
@@ -1404,5 +1434,102 @@ mod tests {
         .expect("failed to query rehashed row");
         assert!(old_row.is_none());
         assert_eq!(new_row.as_deref(), Some(expected_fp_str.as_str()));
+    }
+
+    async fn record_reading_event(pool: &sqlx::SqlitePool, fp: Fp) {
+        sqlx::query!(
+            "INSERT INTO reading_events (book_id, timestamp, event_type)
+             SELECT book_id, ?, 'BookOpened' FROM book_keys WHERE fingerprint = ?",
+            UnixTimestamp::now(),
+            fp.to_string(),
+        )
+        .execute(pool)
+        .await
+        .expect("failed to record reading event");
+    }
+
+    async fn reading_event_count(pool: &sqlx::SqlitePool, fp: Fp) -> i64 {
+        sqlx::query_scalar!(
+            r#"
+            SELECT COUNT(*) AS "count: i64"
+            FROM reading_events re
+            INNER JOIN book_keys bk ON re.book_id = bk.book_id
+            WHERE bk.fingerprint = ?
+            "#,
+            fp.to_string(),
+        )
+        .fetch_one(pool)
+        .await
+        .expect("failed to count reading events")
+    }
+
+    #[tokio::test]
+    async fn rekey_book_preserves_reading_events_when_duplicate_exists() {
+        let (db, libdb) = create_test_db().await;
+        let library_a = libdb
+            .register_library("/tmp/library-a", "Library A")
+            .await
+            .expect("failed to register library A");
+        let library_b = libdb
+            .register_library("/tmp/library-b", "Library B")
+            .await
+            .expect("failed to register library B");
+
+        let old_fp = Fp::from_u64(1);
+        let new_fp = Fp::from_u64(2);
+
+        libdb
+            .insert_book(
+                library_a,
+                old_fp,
+                &create_info("Old Copy", "", &[], "/tmp/library-a/book.epub", None),
+            )
+            .await
+            .expect("failed to insert old book");
+        libdb
+            .insert_book(
+                library_b,
+                new_fp,
+                &create_info("New Copy", "", &[], "/tmp/library-b/book.epub", None),
+            )
+            .await
+            .expect("failed to insert new book");
+        record_reading_event(db.pool(), old_fp).await;
+
+        rekey_book(db.pool(), &old_fp.to_string(), &new_fp.to_string())
+            .await
+            .expect("failed to rekey duplicate book");
+
+        assert_eq!(reading_event_count(db.pool(), old_fp).await, 0);
+        assert_eq!(reading_event_count(db.pool(), new_fp).await, 1);
+    }
+
+    #[tokio::test]
+    async fn rekey_book_preserves_reading_events_when_new_book_absent() {
+        let (db, libdb) = create_test_db().await;
+        let library_a = libdb
+            .register_library("/tmp/library-a", "Library A")
+            .await
+            .expect("failed to register library A");
+
+        let old_fp = Fp::from_u64(3);
+        let new_fp = Fp::from_u64(4);
+
+        libdb
+            .insert_book(
+                library_a,
+                old_fp,
+                &create_info("Old Copy", "", &[], "/tmp/library-a/book.epub", None),
+            )
+            .await
+            .expect("failed to insert old book");
+        record_reading_event(db.pool(), old_fp).await;
+
+        rekey_book(db.pool(), &old_fp.to_string(), &new_fp.to_string())
+            .await
+            .expect("failed to rekey book");
+
+        assert_eq!(reading_event_count(db.pool(), old_fp).await, 0);
+        assert_eq!(reading_event_count(db.pool(), new_fp).await, 1);
     }
 }

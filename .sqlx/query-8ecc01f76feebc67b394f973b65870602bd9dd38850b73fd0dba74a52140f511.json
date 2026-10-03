@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        UPDATE reading_events\n        SET book_id = (SELECT book_id FROM book_keys WHERE fingerprint = ?)\n        WHERE book_id = (SELECT book_id FROM book_keys WHERE fingerprint = ?)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "8ecc01f76feebc67b394f973b65870602bd9dd38850b73fd0dba74a52140f511"
+}

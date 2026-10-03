@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT COUNT(*) AS \"count: i64\"\n            FROM reading_events re\n            INNER JOIN book_keys bk ON re.book_id = bk.book_id\n            WHERE bk.fingerprint = ?\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "count: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "9adb6b6673d44cba7085e77ac74c6f2f76f94b18dda4cc45556f4b5576fdf200"
+}

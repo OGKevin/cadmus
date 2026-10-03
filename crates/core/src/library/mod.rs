@@ -1,5 +1,8 @@
+pub mod book_id;
 pub(crate) mod book_status;
 pub(crate) mod db;
+
+pub use book_id::BookId;
 pub mod importer;
 mod migrations;
 
