@@ -187,6 +187,10 @@ impl DbIndexReader {
         }
     }
 
+    /// Candidate selection is a half-open BINARY range over the `word` index,
+    /// so it is case-sensitive: a `hello` prefix does not consider `Hello`.
+    /// Case-insensitive dictionaries are unaffected because their words are
+    /// lowercased at index time.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(headword = %headword )))]
     async fn query_fuzzy(&self, headword: &str) -> Vec<Entry> {
         let prefix_len = headword
@@ -375,6 +379,23 @@ mod tests {
         let results = reader.find("ab%word", true).await;
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].headword, "ab%word");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_fuzzy_prefix_candidates_are_case_sensitive() {
+        let db = setup_db().await;
+        insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None).await;
+        insert_entry(db.pool(), DICT_ID_1, "fp1", "Hello", 10, 10, None).await;
+
+        let reader = DbIndexReader::new(&db, Some(DICT_ID_1));
+
+        let lower = reader.find("hello", true).await;
+        assert_eq!(lower.len(), 1);
+        assert_eq!(lower[0].headword, "hello");
+
+        let upper = reader.find("Hello", true).await;
+        assert_eq!(upper.len(), 1);
+        assert_eq!(upper[0].headword, "Hello");
     }
 
     #[tokio::test(flavor = "multi_thread")]
