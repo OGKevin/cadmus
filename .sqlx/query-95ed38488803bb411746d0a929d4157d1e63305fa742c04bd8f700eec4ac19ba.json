@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO reading_events (book_fingerprint, timestamp, event_type) VALUES (?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "95ed38488803bb411746d0a929d4157d1e63305fa742c04bd8f700eec4ac19ba"
+}
