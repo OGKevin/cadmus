@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT word,\n                      offset AS \"offset!\",\n                      size AS \"size!\",\n                      original\n               FROM dictionary_index_entry\n               WHERE word LIKE ? || '%' ESCAPE '\\'",
+  "query": "SELECT word,\n                      offset AS \"offset!\",\n                      size AS \"size!\",\n                      original\n               FROM dictionary_index_entry\n               WHERE word >= ?",
   "describe": {
     "columns": [
       {
@@ -53,10 +53,10 @@
     },
     "nullable": [
       false,
-      false,
+      null,
       false,
       true
     ]
   },
-  "hash": "0067ec84fc4f33bc90f17845d52ee552ef0bde134783b7aea3a5140d32e0e7f3"
+  "hash": "a271afe6de88ff3700f95c2c5cd11ab65ad617fa29904bbcc86bf5ecc39e3bdf"
 }
