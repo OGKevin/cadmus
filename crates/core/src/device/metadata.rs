@@ -54,8 +54,6 @@
 use crate::device::error::DeviceError;
 #[cfg(not(test))]
 use std::env;
-#[cfg(not(test))]
-use std::fs;
 use tracing::{debug, error, info, warn};
 
 /// Represents the hardware platform of the device.
@@ -105,6 +103,16 @@ impl std::fmt::Display for Platform {
 const VERSION_PATH: &str = "/mnt/onboard/.kobo/version";
 const VENDOR_ID: u16 = 0x2237;
 
+/// Normalizes field 5 from `/mnt/onboard/.kobo/version` (see module docs).
+fn normalize_firmware_model_number(raw: &str) -> String {
+    let raw = raw.trim();
+    raw.rsplit('-')
+        .next()
+        .unwrap_or(raw)
+        .trim_start_matches('0')
+        .to_string()
+}
+
 /// Device metadata read from Kobo version file.
 #[derive(Debug, Clone)]
 pub struct DeviceMetadata {
@@ -112,6 +120,8 @@ pub struct DeviceMetadata {
     pub product_id: u16,
     pub serial_number: String,
     pub firmware_version: String,
+    /// Normalized model number from field 5 of the version file.
+    pub model_number: String,
     pub partition: String,
     pub manufacturer: String,
     pub product: String,
@@ -141,7 +151,7 @@ impl DeviceMetadata {
     /// Returns [`DeviceError`] if:
     /// - the version file cannot be read or has fewer than 6 fields, or
     /// - the `PLATFORM` environment variable is not set.
-    pub fn read() -> Result<Self, DeviceError> {
+    pub async fn read() -> Result<Self, DeviceError> {
         cfg_select! {
             test => {
                 Ok(Self {
@@ -149,13 +159,14 @@ impl DeviceMetadata {
                     product_id: 0x4237,
                     serial_number: "TESTSERIAL0000".to_string(),
                     firmware_version: "0.0.0".to_string(),
+                    model_number: "390".to_string(),
                     partition: "/dev/mmcblk0p3".to_string(),
                     manufacturer: "Kobo".to_string(),
                     product: "eReader-test".to_string(),
                 })
             }
             _ => {
-                let content = fs::read_to_string(VERSION_PATH).map_err(|e| {
+                let content = tokio::fs::read_to_string(VERSION_PATH).await.map_err(|e| {
                     error!(path = VERSION_PATH, error = %e, "Failed to read Kobo version file");
                     DeviceError::Metadata(format!("Cannot read version file: {}", e))
                 })?;
@@ -182,14 +193,9 @@ impl DeviceMetadata {
         let serial_number = fields[0].to_string();
         let firmware_version = fields[2].to_string();
 
-        let raw = fields[5].trim();
-        let model_number = raw
-            .rsplit('-')
-            .next()
-            .unwrap_or(raw)
-            .trim_start_matches('0');
+        let model_number = normalize_firmware_model_number(fields[5]);
 
-        let product_id = model_to_product_id(model_number);
+        let product_id = model_to_product_id(&model_number);
         let partition = platform_to_partition(platform).to_string();
         let product = format!("eReader-{}", firmware_version);
 
@@ -208,6 +214,7 @@ impl DeviceMetadata {
             product_id,
             serial_number,
             firmware_version,
+            model_number,
             partition,
             manufacturer: "Kobo".to_string(),
             product,
@@ -320,6 +327,7 @@ mod tests {
         assert_eq!(metadata.serial_number, "SERIALPLACEHOLDER");
         assert_eq!(metadata.firmware_version, "4.45.23640");
         assert_eq!(metadata.product_id, 0x4237);
+        assert_eq!(metadata.model_number, "390");
         assert_eq!(metadata.partition, "/dev/mmcblk0p12");
         assert_eq!(metadata.manufacturer, "Kobo");
         assert_eq!(metadata.product, "eReader-4.45.23640");

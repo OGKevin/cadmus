@@ -1,5 +1,5 @@
 use super::input::InputSource;
-use super::model::Model;
+use super::model::{DeviceTreeCompatible, Model, parse_device_tree_compatible_bytes};
 use crate::device::DeviceIdentity;
 use crate::device::linux::LinuxRtc;
 use crate::device::metadata::DeviceMetadata;
@@ -95,8 +95,72 @@ impl Device {
     }
 
     /// Creates a device from product and model number strings.
-    fn from_product(product: &str, model_number: &str) -> anyhow::Result<Self> {
-        Model::new(product, model_number).device()
+    async fn from_product(product: &str, model_number: &str) -> anyhow::Result<Self> {
+        Model::new(product, model_number).device().await
+    }
+
+    fn model_number_from_environment() -> String {
+        match env::var("MODEL_NUMBER") {
+            Ok(number) => number,
+            Err(_) => {
+                eprintln!("Warning: MODEL_NUMBER is not set; device-tree model matching may fail");
+                String::new()
+            }
+        }
+    }
+
+    /// Builds a device from the device tree, falling back to environment variables.
+    ///
+    /// Runs before [`crate::logging::init_logging`] because the log path depends on the
+    /// device, so `tracing` has no subscriber yet. Diagnostics therefore go to stderr,
+    /// which `cadmus.sh` redirects into `info.log`.
+    pub async fn from_environment() -> anyhow::Result<Self> {
+        let model_number = match DeviceMetadata::read().await {
+            Ok(metadata) => metadata.model_number,
+            Err(error) => {
+                eprintln!(
+                    "Warning: failed to read Kobo device metadata from .kobo/version: {error:#}; falling back to MODEL_NUMBER"
+                );
+                Self::model_number_from_environment()
+            }
+        };
+        if let Some(model) = Self::detect_model(&model_number).await {
+            return model.device().await;
+        }
+        let product = env::var("PRODUCT").unwrap_or_default();
+        Self::from_product(&product, &model_number).await
+    }
+
+    async fn detect_model(model_number: &str) -> Option<Model> {
+        let compatible = Self::read_device_tree_compatible().await;
+        let model = Model::from_device_tree(&compatible, model_number);
+
+        if model.is_none() {
+            eprintln!(
+                "Warning: unable to identify Kobo model from device tree; compatible={:?}, \
+                 model_number={model_number:?}, PRODUCT={:?}; using environment variables",
+                compatible
+                    .iter()
+                    .map(|entry| entry.as_str())
+                    .collect::<Vec<_>>(),
+                env::var("PRODUCT").ok(),
+            );
+        }
+
+        model
+    }
+
+    async fn read_device_tree_compatible() -> Vec<DeviceTreeCompatible> {
+        const PATHS: &[&str] = &[
+            "/proc/device-tree/compatible",
+            "/sys/firmware/devicetree/base/compatible",
+        ];
+        for path in PATHS {
+            if let Ok(bytes) = tokio::fs::read(path).await {
+                return parse_device_tree_compatible_bytes(&bytes);
+            }
+        }
+        Vec::new()
     }
 }
 
@@ -187,20 +251,6 @@ impl crate::device::DeviceInput for Device {
     }
 }
 
-impl Default for Device {
-    /// Builds a device from the `PRODUCT` and `MODEL_NUMBER` environment variables.
-    ///
-    /// # Panics
-    ///
-    /// Panics if hardware initialization fails. Cadmus cannot run without a
-    /// working device; callers should treat init failure as fatal.
-    fn default() -> Self {
-        let product = env::var("PRODUCT").unwrap_or_default();
-        let model_number = env::var("MODEL_NUMBER").unwrap_or_default();
-        Device::from_product(&product, &model_number).expect("failed to initialize device")
-    }
-}
-
 crate::forward_device_identity!(Device, model);
 crate::forward_device_capabilities!(Device, model);
 crate::forward_device_rotation!(Device, model, boot = boot_transformed_rotation);
@@ -213,9 +263,9 @@ mod tests {
     mod paths {
         use super::*;
 
-        #[test]
-        fn install_subdir() {
-            let d = Model::Sage.device().unwrap();
+        #[tokio::test]
+        async fn install_subdir() {
+            let d = Model::Sage.device().await.unwrap();
             let subdir = d.install_subdir();
             assert!(
                 subdir == ".adds/cadmus" || subdir == ".adds/cadmus-tst" || subdir.is_empty(),
@@ -223,9 +273,9 @@ mod tests {
             );
         }
 
-        #[test]
-        fn data_subdir() {
-            let d = Model::Sage.device().unwrap();
+        #[tokio::test]
+        async fn data_subdir() {
+            let d = Model::Sage.device().await.unwrap();
             let subdir = d.data_subdir();
             assert!(
                 subdir == ".cadmus" || subdir == ".cadmus-tst",
@@ -233,9 +283,9 @@ mod tests {
             );
         }
 
-        #[test]
-        fn install_dir_ends_with_install_subdir() {
-            let d = Model::Sage.device().unwrap();
+        #[tokio::test]
+        async fn install_dir_ends_with_install_subdir() {
+            let d = Model::Sage.device().await.unwrap();
             let install_dir = d.install_dir();
             let subdir = d.install_subdir();
             if !subdir.is_empty() {
@@ -248,25 +298,25 @@ mod tests {
             }
         }
 
-        #[test]
-        fn install_path_joins_install_dir() {
-            let d = Model::Sage.device().unwrap();
+        #[tokio::test]
+        async fn install_path_joins_install_dir() {
+            let d = Model::Sage.device().await.unwrap();
             let relative = std::path::Path::new("tmp");
             let expected = d.install_dir().join(relative);
             assert_eq!(d.install_path(relative), expected);
         }
 
-        #[test]
-        fn data_path_joins_data_dir() {
-            let d = Model::Sage.device().unwrap();
+        #[tokio::test]
+        async fn data_path_joins_data_dir() {
+            let d = Model::Sage.device().await.unwrap();
             let relative = std::path::Path::new("cadmus.sqlite");
             let expected = d.data_dir().join(relative);
             assert_eq!(d.data_path(relative), expected);
         }
 
-        #[test]
-        fn tmp_dir_is_data_path_tmp() {
-            let d = Model::Sage.device().unwrap();
+        #[tokio::test]
+        async fn tmp_dir_is_data_path_tmp() {
+            let d = Model::Sage.device().await.unwrap();
             let expected = d.data_path(std::path::Path::new("tmp"));
             assert_eq!(d.tmp_dir(), expected);
         }
@@ -294,9 +344,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn boot_transformed_rotation_stored_at_init() {
-        let device = Model::Glo.device().unwrap();
+    #[tokio::test]
+    async fn boot_transformed_rotation_stored_at_init() {
+        let device = Model::Glo.device().await.unwrap();
         assert!((0..4).contains(&device.boot_transformed_rotation()));
     }
 }

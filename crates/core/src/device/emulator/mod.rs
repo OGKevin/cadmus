@@ -527,6 +527,11 @@ impl EmulatorDevice {
         device.input = EmulatorInputSource::new_with_sdl(device.dpi, sdl_context);
         device
     }
+
+    /// Builds the emulator device.
+    pub async fn from_environment() -> anyhow::Result<Self> {
+        Ok(Self::default())
+    }
 }
 
 impl DeviceIdentity for EmulatorDevice {
