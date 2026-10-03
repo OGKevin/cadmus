@@ -14,3 +14,10 @@
   other `.ftl` files.
 - Missing keys in a locale fall back to `en-GB` at runtime until Crowdin
   syncs them.
+
+## Runtime message IDs
+
+- `fl!("kebab-case-id")` is checked at compile time; unknown IDs fail the build.
+- `fl_or!(runtime_id, "English fallback")` skips that check. Missing message IDs
+  are logged at `tracing` warning level and the caller-supplied fallback string
+  is returned. Use only when the ID cannot be a literal.

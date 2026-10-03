@@ -169,6 +169,13 @@ comment explaining why the typed macro cannot be used.
 All user-visible strings must use the `fl!` macro (`use crate::fl;`). Never
 hardcode string literals for labels, buttons, placeholders, or notifications.
 
+When the message ID is only known at runtime (config, plugin payload, table of
+keys), use `fl_or!(id, "English fallback")` or `fl_or!(id, "fallback", var =
+value)` for Fluent placeholders (`use crate::fl_or;`). Prefer
+`fl!` whenever the ID is a literal so compile-time validation still applies.
+The fallback string is a last resort for an unknown ID, not a substitute for
+missing Crowdin translations (those fall back to `en-GB` via the loader).
+
 Message IDs, sort order, and locale-editing rules live in
 [`i18n/AGENTS.md`](i18n/AGENTS.md). Pass parameters with
 `fl!("id", var = value)`.
