@@ -14,6 +14,8 @@ use std::fmt;
 /// holders in logs and [`SoftSuspendBackend::holders`](crate::device::soft_suspend::SoftSuspendBackend::holders).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SoftSuspendName {
+    /// Process startup, from enabling autosleep until the main loop runs.
+    Startup,
     /// Gesture / touch / USB input enqueued on the hub.
     Input,
     /// RTC alarm IRQ delivered on the hub.
@@ -40,6 +42,7 @@ impl SoftSuspendName {
     /// Returns the stable string written to holders and logs.
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::Startup => "startup",
             Self::Input => "input",
             Self::Rtc => "rtc",
             Self::Wifi => "wifi",

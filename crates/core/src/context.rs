@@ -1,7 +1,7 @@
 use crate::db::Database;
 use crate::device::Device;
 use crate::device::DeviceHardware;
-use crate::device::inhibitor::Inhibitor;
+use crate::device::inhibitor::{Inhibitor, InhibitorGuard, Kind, SoftSuspendName};
 use crate::device::rtc::AlarmManager;
 use crate::device::soft_suspend::SoftSuspendBackend as _;
 #[cfg(any(feature = "kobo", docsrs))]
@@ -54,6 +54,12 @@ pub struct Context<D: Device> {
     pub covered: bool,
     pub shared: bool,
     pub online: bool,
+    /// SoftSuspend lease held from [`Self::new`] until [`Self::release_startup_lease`].
+    ///
+    /// Enabling autosleep while no wake lock is held lets the kernel suspend
+    /// the still-initialising process, so this must be taken before the
+    /// inhibitor applies settings.
+    startup_lease: Option<InhibitorGuard>,
     /// Active explicit suspend cycle; `None` means interactive.
     #[cfg(any(feature = "kobo", docsrs))]
     pub(crate) suspend: Option<crate::device::suspend::SuspendCycle>,
@@ -128,6 +134,9 @@ impl<D: Device> Context<D> {
             }
         };
         let inhibitor = <D as DeviceHardware>::inhibitor(&device);
+        let startup_lease = inhibitor
+            .acquire(Kind::SoftSuspend, SoftSuspendName::Startup)
+            .ok();
         inhibitor.apply_settings(
             settings.autosleep_mode,
             settings.indicate_autosleep_led,
@@ -152,6 +161,7 @@ impl<D: Device> Context<D> {
             covered: false,
             shared: false,
             online: false,
+            startup_lease,
             #[cfg(any(feature = "kobo", docsrs))]
             suspend: None,
             #[cfg(any(feature = "kobo", docsrs))]
@@ -161,6 +171,15 @@ impl<D: Device> Context<D> {
             #[cfg(all(test, feature = "kobo"))]
             deep_idle_poll_inject: std::collections::VecDeque::new(),
         }
+    }
+
+    /// Releases the startup SoftSuspend lease taken by [`Self::new`].
+    ///
+    /// Call once the main loop is running and taking a lease for every hub
+    /// event; afterwards the wake lock is never unheld again. Releasing twice
+    /// is a no-op.
+    pub fn release_startup_lease(&mut self) {
+        self.startup_lease.take();
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), level = tracing::Level::TRACE))]
@@ -470,7 +489,6 @@ pub mod test_helpers {
     use crate::db::Database;
     use crate::device::AppContext;
     use crate::device::battery::Battery as _;
-    use crate::device::inhibitor::{Kind, SoftSuspendName};
     use crate::device::test_device::TestDevice;
     use crate::frontlight::LightLevels;
 
@@ -533,7 +551,7 @@ pub mod test_helpers {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_create_test_context_defaults() {
-        let context = create_test_context().await;
+        let mut context = create_test_context().await;
         assert_eq!(context.display.dims, (600, 800));
         assert!(!context.plugged);
         assert!(!context.covered);
@@ -547,6 +565,7 @@ pub mod test_helpers {
         assert!(context.input_history.is_empty());
         assert_eq!(context.kb_rect, Rectangle::default());
         assert!(!context.inhibitor.is_supported());
+        context.release_startup_lease();
         assert!(context.inhibitor.is_empty());
         let _lease = context
             .inhibitor
@@ -557,6 +576,23 @@ pub mod test_helpers {
         assert_eq!(context.inhibitor.holders().len(), 1);
         drop(_lease);
         assert!(context.inhibitor.is_empty());
+        assert!(context.inhibitor.holders().is_empty());
+    }
+
+    /// A wake lock must already be held when autosleep is enabled, otherwise
+    /// the kernel suspends the still-initialising process.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn fresh_context_holds_startup_lease_until_released() {
+        let mut context = create_test_context().await;
+        assert_eq!(
+            context.inhibitor.holders(),
+            vec![crate::lease::LeaseName::from(SoftSuspendName::Startup)]
+        );
+
+        context.release_startup_lease();
+        assert!(context.inhibitor.holders().is_empty());
+
+        context.release_startup_lease();
         assert!(context.inhibitor.holders().is_empty());
     }
 
