@@ -10,6 +10,9 @@ build-features = Nouveautés : { $features }
 build-kind-main = Main
 build-kind-test = Test
 english = Anglais
+
+# Keyboard
+
 startup-loading = Cadmus démarre…
 
 # Notifications
@@ -28,6 +31,11 @@ notification-timezone-detection-failed = Échec de la détection du fuseau horai
 # Common
 cancel = Annuler
 delete = Supprimer
+# GitHub device authorization
+device-auth-connecting = Connexion à GitHub…
+device-auth-go-to-uri = Ouvrir : { $uri }
+device-auth-enter-code = Saisir le code : { $code }
+device-auth-cancelled-on-github = Autorisation annulée
 # Top Menu Strings
 top-menu-exit = Sortir
 top-menu-reboot-device = Redémarrer l'appareil
@@ -39,11 +47,7 @@ top-menu-switch-to = Changer pour la version { $build }
 top-menu-sync-time = Synchroniser l'horloge
 top-menu-wifi = Wifi
 
-# GitHub device authorization
-device-auth-connecting = Connexion à GitHub…
-device-auth-go-to-uri = Ouvrir : { $uri }
-device-auth-enter-code = Saisir le code : { $code }
-device-auth-cancelled-on-github = Autorisation annulée
+# OTA
 
 # Settings - Button Scheme
 settings-button-scheme-natural = Naturel
@@ -125,7 +129,6 @@ settings-import-force-full-import-cancel = { cancel }
 settings-import-force-full-import-confirm = Réimporte tous les fichiers de toutes vos bibliothèques. Cela peut prendre du temps et vider la batterie, il est conseillé de laisser votre appareil branché le temps de l'opération.
 settings-import-force-full-import-confirm-button = Tout réimporter
 settings-import-sync-metadata = Synchroniser Metadata
-# Importer
 importer-importing-library = Importation de la bibliothèque en cours…
 # Settings - Log Level
 settings-log-level-trace = TRACE

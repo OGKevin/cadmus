@@ -5,23 +5,23 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Language: fr\n"
-"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+"Language: it\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
 "X-Crowdin-Project: cadmus\n"
 "X-Crowdin-Project-ID: 906735\n"
-"X-Crowdin-Language: fr\n"
+"X-Crowdin-Language: it\n"
 "X-Crowdin-File: /docs/po/messages.pot\n"
 "X-Crowdin-File-ID: 51\n"
-"Language-Team: French\n"
-"PO-Revision-Date: 2026-10-03 08:51\n"
+"Language-Team: Italian\n"
+"PO-Revision-Date: 2026-10-03 17:54\n"
 
 #: src/SUMMARY.md:1
 msgid "Overview"
-msgstr "Vue d'ensemble"
+msgstr ""
 
 #: src/SUMMARY.md:3
 msgid "User Guide"
-msgstr "Guide de l'utilisateur"
+msgstr ""
 
 #: src/SUMMARY.md:5 src/installation/index.md:1
 msgid "Installation"
@@ -29,11 +29,11 @@ msgstr ""
 
 #: src/SUMMARY.md:6 src/installation/test-builds.md:1
 msgid "Test builds"
-msgstr "Build de test"
+msgstr ""
 
 #: src/SUMMARY.md:7 src/installation/ota.md:1 src/fonts.md:114
 msgid "OTA updates"
-msgstr "Mises à jour OTA"
+msgstr ""
 
 #: src/SUMMARY.md:8
 msgid "Manually install PR builds"
@@ -41,7 +41,7 @@ msgstr ""
 
 #: src/SUMMARY.md:9 src/installation/migration.md:1
 msgid "Migrating from Plato"
-msgstr "Migrer depuis Plato"
+msgstr ""
 
 #: src/SUMMARY.md:10
 msgid "Using with KFMon"
@@ -49,12 +49,12 @@ msgstr ""
 
 #: src/SUMMARY.md:11 src/installation/uninstall.md:1
 msgid "Uninstalling Cadmus"
-msgstr "Désinstaller Cadmus"
+msgstr ""
 
 #: src/SUMMARY.md:12 src/SUMMARY.md:18 src/settings/index.md:1 src/fonts.md:108
 #: src/ui/settings/index.md:1
 msgid "Settings"
-msgstr "Réglages"
+msgstr ""
 
 #: src/SUMMARY.md:13 src/fonts.md:1
 msgid "Fonts"
@@ -62,7 +62,7 @@ msgstr ""
 
 #: src/SUMMARY.md:14 src/ui/index.md:1
 msgid "User Interface"
-msgstr "Interface Utilisateur"
+msgstr ""
 
 #: src/SUMMARY.md:15 src/ui/filechooser.md:1
 msgid "File Chooser"
@@ -70,7 +70,7 @@ msgstr ""
 
 #: src/SUMMARY.md:16 src/ui/keyboard.md:1
 msgid "Keyboard"
-msgstr "Clavier"
+msgstr ""
 
 #: src/SUMMARY.md:17 src/ui/dictionary.md:1
 msgid "Dictionary"
@@ -79,15 +79,15 @@ msgstr ""
 #: src/SUMMARY.md:19 src/installation/migration.md:118
 #: src/ui/settings/dictionaries.md:1
 msgid "Dictionaries"
-msgstr "Dictionnaires"
+msgstr ""
 
 #: src/SUMMARY.md:20 src/library/index.md:1
 msgid "Library"
-msgstr "Bibliothèque"
+msgstr ""
 
 #: src/SUMMARY.md:21
 msgid "Importing"
-msgstr "Importation en cours"
+msgstr ""
 
 #: src/SUMMARY.md:22 src/settings/index.md:642 src/reader/index.md:1
 msgid "Reader"
@@ -107,7 +107,7 @@ msgstr ""
 
 #: src/SUMMARY.md:26 src/time-sync.md:1
 msgid "Automatic Time Syncing"
-msgstr "Synchronisation automatique de l'horloge"
+msgstr ""
 
 #: src/SUMMARY.md:27 src/auto-frontlight.md:1
 msgid "Automatic Frontlight"
@@ -123,7 +123,7 @@ msgstr ""
 
 #: src/SUMMARY.md:30 src/installation/ota.md:96 src/troubleshooting/index.md:1
 msgid "Troubleshooting"
-msgstr "Résolution des problèmes"
+msgstr ""
 
 #: src/SUMMARY.md:31
 msgid "CHANGELOG"
@@ -131,7 +131,7 @@ msgstr ""
 
 #: src/SUMMARY.md:35
 msgid "Contributor Guide"
-msgstr "Guide du contributeur"
+msgstr ""
 
 #: src/SUMMARY.md:37
 msgid "Development Environment"
@@ -183,11 +183,11 @@ msgstr ""
 
 #: src/SUMMARY.md:49 src/settings/index.md:1168
 msgid "Telemetry"
-msgstr "Télémétrie"
+msgstr ""
 
 #: src/SUMMARY.md:50
 msgid "Logging"
-msgstr "Logs"
+msgstr ""
 
 #: src/SUMMARY.md:51
 msgid "Tracing"
@@ -199,7 +199,7 @@ msgstr ""
 
 #: src/SUMMARY.md:53
 msgid "Website"
-msgstr "Site web"
+msgstr ""
 
 #: src/SUMMARY.md:54
 msgid "User guide"
@@ -207,7 +207,7 @@ msgstr ""
 
 #: src/SUMMARY.md:55
 msgid "Translations"
-msgstr "Traductions"
+msgstr ""
 
 #: src/SUMMARY.md:56
 msgid "For developers"
@@ -263,23 +263,23 @@ msgstr ""
 
 #: src/index.md:14
 msgid "Supported firmwares"
-msgstr "Versions supportées"
+msgstr ""
 
 #: src/index.md:16
 msgid "Any 4._X_._Y_ firmware, with _X_ ≥ 6, will do."
-msgstr "N'importe quel logiciel 4._X_._Y_ dont _X_ ≥ 6 fonctionne."
+msgstr ""
 
 #: src/index.md:18
 msgid "Supported devices"
-msgstr "Appareils supportés"
+msgstr ""
 
 #: src/index.md:46
 msgid "Supported formats"
-msgstr "Formats compatibles"
+msgstr ""
 
 #: src/index.md:48
 msgid "PDF, CBZ, FB2, MOBI, XPS, TXT, JPEG, JPG, PNG, WEBP and SVG via [MuPDF](https://mupdf.com/index.html)."
-msgstr "PDF, CBZ, FB2, MOBI, XPS, TXT, JPEG, JPG, PNG, WEBP et SVG via [MuPDF](https://mupdf.com/index.html)."
+msgstr ""
 
 #: src/index.md:49
 msgid "ePUB through a built-in renderer."
@@ -291,11 +291,11 @@ msgstr ""
 
 #: src/index.md:52
 msgid "Features"
-msgstr "Fonctionnalités"
+msgstr ""
 
 #: src/index.md:54
 msgid "Crop the margins."
-msgstr "Recadrez les marges."
+msgstr ""
 
 #: src/index.md:55
 msgid "Continuous fit-to-width zoom mode with line preserving cuts."
@@ -303,11 +303,11 @@ msgstr ""
 
 #: src/index.md:56
 msgid "Rotate the screen (portrait ↔ landscape)."
-msgstr "Tourner l'écran (portrait ↔ paysage)."
+msgstr ""
 
 #: src/index.md:57
 msgid "Adjust the contrast."
-msgstr "Ajuster le contraste."
+msgstr ""
 
 #: src/index.md:58
 msgid "Define words using _dictd_ dictionaries."
@@ -315,7 +315,7 @@ msgstr ""
 
 #: src/index.md:59
 msgid "Annotations, highlights and bookmarks."
-msgstr "Annotations, surlignements et marque-pages."
+msgstr ""
 
 #: src/index.md:60
 msgid "Retrieve articles from online sources through hooks."
@@ -323,15 +323,15 @@ msgstr ""
 
 #: src/index.md:62
 msgid "Screenshots"
-msgstr "Captures d'écran"
+msgstr ""
 
 #: src/index.md:73
 msgid "Acknowledgments"
-msgstr "Remerciements"
+msgstr ""
 
 #: src/index.md:75
 msgid "Cadmus is a fork of [Plato](https://github.com/baskerville/plato), a document reader created by Bastien Dejean."
-msgstr "Cadmus est une fork de [Plato](https://github.com/baskerville/plato), un lecteur de documents créé par Bastien Dejean."
+msgstr ""
 
 #: src/installation/index.md:3
 msgid "Cadmus comes in different packages. Pick the one that matches your needs."
@@ -392,19 +392,19 @@ msgstr ""
 
 #: src/installation/index.md:39
 msgid "Updating"
-msgstr "Mise à jour"
+msgstr ""
 
 #: src/installation/index.md:41
 msgid "There are two ways to update Cadmus once it's installed."
-msgstr "Il existe deux façons de mettre à jour Cadmus une fois installé."
+msgstr ""
 
 #: src/installation/index.md:43
 msgid "Wirelessly (OTA)"
-msgstr "Sans-fil (OTA)"
+msgstr ""
 
 #: src/installation/index.md:45
 msgid "The easiest way — no computer needed, just WiFi. Open **Main Menu → Check for Updates** and follow the prompts. See [OTA updates](./ota.md) for details."
-msgstr "La façon la plus simple — aucun ordinateur n'est nécessaire, juste du WiFi. Ouvrez **Menu Principal → Vérifier les mises à jour** et suivez les instructions à l'écran. Plus de détails sur la page [Mises à jour OTA](./ota.md)."
+msgstr ""
 
 #: src/installation/index.md:49
 msgid "Via USB"
@@ -436,15 +436,15 @@ msgstr ""
 
 #: src/installation/index.md:64
 msgid "Cadmus detects the file automatically and reboots your Kobo to install the update. You don't need to do anything else."
-msgstr "Cadmus détecte automatiquement le fichier et redémarre votre Kobo pour installer la mise à jour. Vous n'avez pas besoin d'intervenir."
+msgstr ""
 
 #: src/installation/index.md:67
 msgid "Uninstalling"
-msgstr "Désinstallation"
+msgstr ""
 
 #: src/installation/index.md:69
 msgid "See [Uninstalling Cadmus](./uninstall.md)."
-msgstr "Voir [Désinstaller Cadmus](./uninstall.md)."
+msgstr ""
 
 #: src/installation/test-builds.md:3
 msgid "First-time install"
@@ -644,7 +644,7 @@ msgstr ""
 
 #: src/installation/ota.md:79
 msgid "Normal vs test builds"
-msgstr "Version normale vs test"
+msgstr ""
 
 #: src/installation/ota.md:81
 msgid "OTA works for both types of builds. The type you're currently using determines what gets downloaded:"
@@ -2205,7 +2205,7 @@ msgstr ""
 
 #: src/ui/filechooser.md:8
 msgid "How It Works"
-msgstr "Comment cela marche"
+msgstr ""
 
 #: src/ui/filechooser.md:10
 msgid "The file chooser has three main parts:"
@@ -2790,7 +2790,7 @@ msgstr ""
 
 #: src/library/importing.md:17
 msgid "Force full import"
-msgstr "Forcer l'importation totale"
+msgstr ""
 
 #: src/library/importing.md:19
 msgid "If you suspect the import cache is stale or corrupted, you can force a full re-import:"
@@ -3188,7 +3188,7 @@ msgstr ""
 
 #: src/time-sync.md:49
 msgid "Tap the clock in the top bar."
-msgstr "Touchez l'horloge dans la barre du haut."
+msgstr ""
 
 #: src/time-sync.md:50
 msgid "Select **Sync Time**."
@@ -3200,7 +3200,7 @@ msgstr ""
 
 #: src/time-sync.md:55 src/auto-frontlight.md:87
 msgid "Privacy"
-msgstr "Confidentialité"
+msgstr ""
 
 #: src/time-sync.md:58
 msgid "Time syncing sends a request to `ipapi.co` to determine your timezone based on your IP address. No personal data is sent — only your device's public IP address is visible to that service as part of the network request."
@@ -3524,7 +3524,7 @@ msgstr ""
 
 #: src/troubleshooting/index.md:9
 msgid "Where to find Cadmus logs"
-msgstr "Où trouver les logs de Cadmus"
+msgstr ""
 
 #: src/troubleshooting/index.md:11
 msgid "Cadmus saves logs in a `logs` folder. Here's where to find it on each platform:"
