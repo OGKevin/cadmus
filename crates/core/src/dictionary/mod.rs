@@ -19,7 +19,10 @@ cfg_select! {
 }
 mod monolingual;
 
-pub(crate) use monolingual::{MonolingualDictionaryService, reconcile_installed_dictionaries};
+pub(crate) use monolingual::{
+    DictionaryEntry, MonolingualDictionaryService, dictionary_label,
+    reconcile_installed_dictionaries,
+};
 
 use std::collections::HashMap;
 use std::path::Path;

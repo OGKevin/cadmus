@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO reader_dict_monolingual_metadata\n                       (lang, formats, updated, words, cached_at, name, name_loc)\n                   VALUES (?, ?, ?, ?, ?, ?, ?)\n                   ON CONFLICT(lang) DO UPDATE SET\n                       formats   = excluded.formats,\n                       updated   = excluded.updated,\n                       words     = excluded.words,\n                       cached_at = excluded.cached_at,\n                       name      = excluded.name,\n                       name_loc  = excluded.name_loc",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": []
+  },
+  "hash": "496cc70e3fcef74d9d7105ed391f2ab1883e222d25d46397769f339ace178eb0"
+}

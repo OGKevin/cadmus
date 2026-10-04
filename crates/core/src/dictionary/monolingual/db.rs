@@ -43,21 +43,27 @@ impl Db {
         let cached_at = UnixTimestamp::now();
         let formats = &entry.formats;
         let words = entry.words as i64;
+        let name = &entry.name;
+        let name_loc = &entry.name_loc;
 
         sqlx::query!(
             r#"INSERT INTO reader_dict_monolingual_metadata
-                       (lang, formats, updated, words, cached_at)
-                   VALUES (?, ?, ?, ?, ?)
+                       (lang, formats, updated, words, cached_at, name, name_loc)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(lang) DO UPDATE SET
                        formats   = excluded.formats,
                        updated   = excluded.updated,
                        words     = excluded.words,
-                       cached_at = excluded.cached_at"#,
+                       cached_at = excluded.cached_at,
+                       name      = excluded.name,
+                       name_loc  = excluded.name_loc"#,
             lang,
             formats,
             updated,
             words,
             cached_at,
+            name,
+            name_loc,
         )
         .execute(&self.pool)
         .await?;
@@ -76,7 +82,7 @@ impl Db {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(lang = %lang)))]
     pub(super) async fn get_entry(&self, lang: &str) -> Result<Option<DictionaryEntry>, Error> {
         let row = sqlx::query!(
-            r#"SELECT formats, updated as "updated: UnixTimestamp", words
+            r#"SELECT formats, updated as "updated: UnixTimestamp", words, name, name_loc
                    FROM reader_dict_monolingual_metadata
                    WHERE lang = ?"#,
             lang,
@@ -88,6 +94,8 @@ impl Db {
             formats: r.formats,
             updated: r.updated.into(),
             words: r.words as u64,
+            name: r.name,
+            name_loc: r.name_loc,
         }))
     }
 
@@ -102,7 +110,7 @@ impl Db {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub(super) async fn get_all_entries(&self) -> Result<Vec<(String, DictionaryEntry)>, Error> {
         let rows = sqlx::query!(
-            r#"SELECT lang, formats, updated as "updated: UnixTimestamp", words
+            r#"SELECT lang, formats, updated as "updated: UnixTimestamp", words, name, name_loc
                    FROM reader_dict_monolingual_metadata"#,
         )
         .fetch_all(&self.pool)
@@ -116,6 +124,8 @@ impl Db {
                         formats: r.formats,
                         updated: r.updated.into(),
                         words: r.words as u64,
+                        name: r.name,
+                        name_loc: r.name_loc,
                     },
                 ))
             })
@@ -261,6 +271,8 @@ mod tests {
             formats: "df,dic,dictorg,kobo,mobi,stardict".to_string(),
             updated: NaiveDate::from_ymd_opt(year, month, day).unwrap(),
             words,
+            name: Some("English".to_string()),
+            name_loc: Some("English".to_string()),
         }
     }
 
@@ -283,6 +295,28 @@ mod tests {
             NaiveDate::from_ymd_opt(2026, 4, 1).unwrap()
         );
         assert_eq!(fetched.words, 1_381_375);
+        assert_eq!(fetched.name.as_deref(), entry.name.as_deref());
+        assert_eq!(fetched.name_loc, entry.name_loc);
+
+        let single = db.get_entry("en").await.expect("get_entry should not fail");
+        assert_eq!(single.and_then(|e| e.name_loc), entry.name_loc.clone());
+    }
+
+    #[tokio::test]
+    async fn test_upsert_with_missing_names_reads_back_as_none() {
+        let (_database, db) = create_test_db().await;
+        let entry = DictionaryEntry {
+            name: None,
+            name_loc: None,
+            ..make_entry(2026, 4, 1, 1_381_375)
+        };
+
+        db.upsert_entry("en", &entry)
+            .await
+            .expect("upsert should succeed");
+
+        let fetched = db.get_entry("en").await.expect("get_entry should not fail");
+        assert_eq!(fetched.and_then(|e| e.name_loc), None);
     }
 
     #[tokio::test]
