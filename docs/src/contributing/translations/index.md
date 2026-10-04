@@ -62,7 +62,9 @@ flowchart LR
   ([`crates/core/i18n/en-GB/cadmus_core.ftl`](https://github.com/ogkevin/cadmus/blob/master/crates/core/i18n/en-GB/cadmus_core.ftl)).
 - [`crates/core/src/i18n.rs`](https://github.com/ogkevin/cadmus/blob/master/crates/core/src/i18n.rs)
   embeds FTL files at compile time via `rust-embed` / `i18n_embed`; `fl!()`
-  resolves message IDs at compile time.
+  resolves literal message IDs at compile time. `fl_or!()` looks up runtime IDs
+  with a caller-supplied English fallback when the ID is absent from every
+  loaded locale.
 - [`crates/core/build.rs`](https://github.com/ogkevin/cadmus/blob/master/crates/core/build.rs)
   scans `i18n/` subdirectories and emits `AVAILABLE_LOCALES` for the Settings
   language picker.

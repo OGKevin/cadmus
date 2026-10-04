@@ -12,14 +12,21 @@ or see the main [Translations](index.md) page.
    [`crates/core/i18n/en-GB/cadmus_core.ftl`](https://github.com/ogkevin/cadmus/blob/master/crates/core/i18n/en-GB/cadmus_core.ftl)
    (kebab-case IDs, sorted within sections — see
    [`crates/core/AGENTS.md`](https://github.com/ogkevin/cadmus/blob/master/crates/core/AGENTS.md)).
-2. Use `fl!("message-id")` or `fl!("id", var = value)` in Rust.
-3. Other languages are filled in on Crowdin — do not hand-edit locale FTL files
+2. Use `fl!("message-id")` or `fl!("id", var = value)` in Rust when the ID is
+   known at compile time.
+3. When the ID is only known at runtime, use
+   `fl_or!(id, "English fallback")` (`use cadmus_core::fl_or;`). The fallback
+   is for IDs missing from every loaded locale, not for untranslated Crowdin
+   keys (those still resolve via the `en-GB` bundle).
+4. Other languages are filled in on Crowdin — do not hand-edit locale FTL files
    unless you have a specific reason.
-4. Run `cargo check -p cadmus-core` to validate message IDs at compile time.
+5. Run `cargo check -p cadmus-core` to validate literal message IDs at compile
+   time (`fl!` only).
 
 ```rust
 let label = crate::fl!("my-new-message");
 let label = crate::fl!("books-loaded", count = book_count);
+let label = fl_or!(dynamic_id, "My new message");
 ```
 
 ## Updating documentation translation sources

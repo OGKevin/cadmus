@@ -67,3 +67,118 @@ macro_rules! fl {
         i18n_embed_fl::fl!($crate::i18n::language_loader(), $message_id, $($key = $value),*)
     }};
 }
+
+/// Looks up a Fluent message by a runtime ID, returning `fallback` when the ID has
+/// no translation in the active language or in [`DEFAULT_LOCALE`].
+///
+/// Unlike [`fl!`], the message ID is not checked at compile time. Fluent
+/// placeholders use the same `name = value` syntax as [`fl!`]:
+///
+/// The two-argument form calls [`FluentLanguageLoader::get`] and does not supply
+/// Fluent variables. Messages with `{ $var }` placeholders need the `name = value`
+/// arm (same as [`fl!`]).
+///
+/// ```
+/// # use cadmus_core::fl_or;
+/// # let dynamic_id = "startup-loading";
+/// fl_or!(dynamic_id, "Loading…");
+/// fl_or!(dynamic_id, "Features: …", features = "kobo");
+/// ```
+#[macro_export]
+macro_rules! fl_or {
+    ($message_id:expr, $fallback:expr $(,)?) => {{
+        let loader = $crate::i18n::language_loader();
+        let message_id: &str = &$message_id;
+        if loader.has(message_id) {
+            loader.get(message_id)
+        } else {
+            ::tracing::warn!(message_id, "missing translation, using fallback");
+            $fallback.to_string()
+        }
+    }};
+    ($message_id:expr, $fallback:expr, $($key:ident = $value:expr),* $(,)?) => {{
+        let loader = $crate::i18n::language_loader();
+        let message_id: &str = &$message_id;
+        if loader.has(message_id) {
+            let args = {
+                let mut map = ::std::collections::HashMap::new();
+                $( map.insert(stringify!($key), ::std::convert::Into::into($value)); )*
+                map
+            };
+            loader.get_args_concrete(message_id, args)
+        } else {
+            ::tracing::warn!(message_id, "missing translation, using fallback");
+            $fallback.to_string()
+        }
+    }};
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::i18n::language_loader;
+
+    #[test]
+    fn fl_or_known_id_ignores_fallback() {
+        assert_eq!(fl_or!("startup-loading", "unused"), fl!("startup-loading"));
+    }
+
+    #[test]
+    fn fl_or_unknown_id_returns_fallback() {
+        assert_eq!(fl_or!("definitely-not-a-message", "English"), "English");
+    }
+
+    #[test]
+    fn fl_or_accepts_runtime_string_id() {
+        let id = String::from("startup-loading");
+        assert_eq!(fl_or!(id, "unused"), fl!("startup-loading"));
+        let id = "startup-loading";
+        assert_eq!(fl_or!(id, "unused"), fl!("startup-loading"));
+    }
+
+    #[test]
+    fn fl_or_with_fluent_args_matches_fl() {
+        assert_eq!(
+            fl_or!("build-features", "unused", features = "kobo"),
+            fl!("build-features", features = "kobo"),
+        );
+    }
+
+    #[test]
+    fn fl_or_unknown_id_with_fluent_args_returns_fallback() {
+        assert_eq!(
+            fl_or!("definitely-not-a-message", "English", features = "kobo"),
+            "English",
+        );
+    }
+
+    #[test]
+    fn fl_or_accepts_mixed_fluent_arg_types() {
+        assert_eq!(
+            fl_or!(
+                "notification-downloading-dictionary-progress",
+                "unused",
+                lang = "fr",
+                downloaded = 3usize,
+                total = 10u32,
+            ),
+            fl!(
+                "notification-downloading-dictionary-progress",
+                lang = "fr",
+                downloaded = 3usize,
+                total = 10u32,
+            ),
+        );
+    }
+
+    #[test]
+    fn fl_or_two_arg_form_does_not_pass_fluent_variables() {
+        assert_eq!(
+            fl_or!("build-features", "unused"),
+            language_loader().get("build-features"),
+        );
+        assert_ne!(
+            fl_or!("build-features", "unused"),
+            fl!("build-features", features = "kobo"),
+        );
+    }
+}
