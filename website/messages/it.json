@@ -1,0 +1,47 @@
+{
+  "metadata": {
+    "title": "",
+    "description": ""
+  },
+  "heading": {
+    "subtitle": ""
+  },
+  "actions": {
+    "viewOnGithub": "",
+    "latestRelease": "",
+    "latestReleaseVersion": ""
+  },
+  "docs": {
+    "userGuide": {
+      "label": "",
+      "description": ""
+    },
+    "translations": {
+      "label": "",
+      "description": ""
+    },
+    "apiReference": {
+      "label": "",
+      "description": ""
+    },
+    "storybook": {
+      "label": "",
+      "description": ""
+    },
+    "planning": {
+      "label": "",
+      "description": ""
+    }
+  },
+  "footer": {
+    "poweredBy": ""
+  },
+  "notFound": {
+    "message": "",
+    "backHome": ""
+  },
+  "language": {
+    "name": "",
+    "change": ""
+  }
+}
