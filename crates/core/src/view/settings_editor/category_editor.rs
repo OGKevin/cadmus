@@ -2,7 +2,7 @@ use crate::color::{BLACK, WHITE};
 use crate::context::DICTIONARIES_DIRNAME;
 use crate::device::AppContext;
 use crate::device::{DeviceIdentity as _, DevicePaths as _};
-use crate::dictionary::MonolingualDictionaryService;
+use crate::dictionary::{MonolingualDictionaryService, dictionary_label};
 use crate::fl;
 use crate::framebuffer::UpdateMode;
 use crate::geom::{CycleDir, Rectangle, halves};
@@ -685,7 +685,7 @@ impl CategoryEditor {
     /// Opens a modal confirmation dialog before starting a dictionary download.
     #[inline]
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, rq, context)))]
-    fn handle_dictionary_download_request(
+    async fn handle_dictionary_download_request(
         &mut self,
         lang: &str,
         hub: &Hub,
@@ -704,9 +704,15 @@ impl CategoryEditor {
 
         self.remove_dictionary_download_confirm(rq);
 
+        let entry = match self.dict_service.as_ref() {
+            Some(service) => service.get_entry_for_lang(lang).await.unwrap_or(None),
+            None => None,
+        };
+        let label = dictionary_label(lang, entry.as_ref());
+
         let dialog = Dialog::builder(
             ViewId::DictionaryDownloadConfirm,
-            fl!("settings-dictionaries-confirm-download", lang = lang),
+            fl!("settings-dictionaries-confirm-download", lang = label),
         )
         .add_button(
             &fl!("settings-dictionaries-confirm-download-cancel"),
@@ -935,6 +941,7 @@ impl View for CategoryEditor {
             }
             Event::Select(EntryId::RequestDictionaryDownload(lang)) => {
                 self.handle_dictionary_download_request(lang, hub, rq, context)
+                    .await
             }
             Event::Select(EntryId::DownloadDictionary(lang)) => {
                 self.handle_confirm_dictionary_download(lang, hub, rq, context)

@@ -8,14 +8,16 @@ use crate::view::{EntryId, EntryKind, Event};
 
 /// Represents a single monolingual dictionary row in the Dictionaries settings category.
 ///
-/// Each row shows a lang code as the label and "Installed" or "Download" as the
-/// value. Installed dictionaries show a sub-menu with "Re-download" and "Delete"
+/// Each row shows the dictionary name as the label and "Installed" or "Download"
+/// as the value. Installed dictionaries show a sub-menu with "Re-download" and "Delete"
 /// options; uninstalled ones show an `ActionLabel` that requests a download on tap.
 /// When an update is available, the value shows "Update Available" and the submenu
 /// includes an "Update" option above "Re-download". When a download is in progress,
 /// the value shows "Downloading" and no action widget is offered.
 pub struct DictionaryInfo {
-    /// ISO 639-1 language code, e.g. `"en"` or `"fr"`.
+    /// Rendered dictionary name, e.g. `"English"` or `"French | français"`.
+    pub label: String,
+    /// ISO 639-1 language code, e.g. `"en"` or `"fr"`. Identifies the row.
     pub lang: String,
     /// Whether this dictionary is currently installed on the device.
     pub is_installed: bool,
@@ -31,7 +33,7 @@ impl SettingKind for DictionaryInfo {
     }
 
     fn label(&self, _settings: &Settings) -> String {
-        self.lang.clone()
+        self.label.clone()
     }
 
     fn handle(
@@ -118,6 +120,7 @@ mod tests {
         #[test]
         fn uninstalled_yields_action_label_with_request_event() {
             let info = DictionaryInfo {
+                label: "English".to_string(),
                 lang: "en".to_string(),
                 is_installed: false,
                 update_available: false,
@@ -138,6 +141,7 @@ mod tests {
         #[test]
         fn installed_yields_submenu_with_redownload_and_delete() {
             let info = DictionaryInfo {
+                label: "French".to_string(),
                 lang: "fr".to_string(),
                 is_installed: true,
                 update_available: false,
@@ -165,6 +169,7 @@ mod tests {
         #[test]
         fn update_available_yields_submenu_with_update_first() {
             let info = DictionaryInfo {
+                label: "German".to_string(),
                 lang: "de".to_string(),
                 is_installed: true,
                 update_available: true,
@@ -194,6 +199,7 @@ mod tests {
         #[test]
         fn is_installing_yields_none_widget() {
             let info = DictionaryInfo {
+                label: "Spanish".to_string(),
                 lang: "es".to_string(),
                 is_installed: false,
                 update_available: false,
@@ -210,6 +216,7 @@ mod tests {
         #[test]
         fn is_installing_takes_priority_over_installed() {
             let info = DictionaryInfo {
+                label: "Spanish".to_string(),
                 lang: "es".to_string(),
                 is_installed: true,
                 update_available: true,
@@ -224,12 +231,34 @@ mod tests {
         }
     }
 
+    mod label {
+        use super::*;
+
+        #[test]
+        fn renders_the_dictionary_name_and_keeps_lang_identity() {
+            let info = DictionaryInfo {
+                label: "French | français".to_string(),
+                lang: "fr".to_string(),
+                is_installed: false,
+                update_available: false,
+                is_installing: false,
+            };
+
+            assert_eq!(info.label(&make_settings()), "French | français");
+            assert_eq!(
+                info.identity(),
+                SettingIdentity::DictionaryInfo("fr".to_string())
+            );
+        }
+    }
+
     mod handle {
         use super::*;
 
         #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         async fn download_event_returns_downloading_string() {
             let info = DictionaryInfo {
+                label: "English".to_string(),
                 lang: "en".to_string(),
                 is_installed: false,
                 update_available: false,
@@ -249,6 +278,7 @@ mod tests {
         #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         async fn request_event_returns_none() {
             let info = DictionaryInfo {
+                label: "English".to_string(),
                 lang: "en".to_string(),
                 is_installed: true,
                 update_available: false,
@@ -268,6 +298,7 @@ mod tests {
         #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         async fn event_for_different_lang_returns_none() {
             let info = DictionaryInfo {
+                label: "English".to_string(),
                 lang: "en".to_string(),
                 is_installed: false,
                 update_available: false,
@@ -286,6 +317,7 @@ mod tests {
         #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         async fn unrelated_event_returns_none() {
             let info = DictionaryInfo {
+                label: "English".to_string(),
                 lang: "en".to_string(),
                 is_installed: false,
                 update_available: false,

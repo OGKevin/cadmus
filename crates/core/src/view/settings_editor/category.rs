@@ -20,9 +20,9 @@ use super::kinds::reader::{
 use super::kinds::telemetry::{LogLevel, LoggingEnabled};
 use crate::device::AppContext;
 use crate::device::soft_suspend::SoftSuspendBackend as _;
-use crate::dictionary::MonolingualDictionaryService;
+use crate::dictionary::{DictionaryEntry, MonolingualDictionaryService, dictionary_label};
 use crate::fl;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Categories of settings available in the settings editor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -164,16 +164,25 @@ impl Category {
                     return Vec::new();
                 };
 
-                let available: BTreeSet<String> = if context.online {
+                let available: BTreeMap<String, DictionaryEntry> = if context.online {
                     match (service.get_available_dictionaries()).await {
-                        Ok(dicts) => dicts.into_iter().map(|(lang, _)| lang).collect(),
+                        Ok(dicts) => dicts.into_iter().collect(),
                         Err(e) => {
                             tracing::warn!(error = %e, "Failed to load available dictionaries");
-                            BTreeSet::new()
+                            BTreeMap::new()
                         }
                     }
                 } else {
-                    BTreeSet::new()
+                    match (service.get_cached_available_dictionaries()).await {
+                        Ok(dicts) => dicts.into_iter().collect(),
+                        Err(e) => {
+                            tracing::warn!(
+                                error = %e,
+                                "Failed to load cached available dictionaries"
+                            );
+                            BTreeMap::new()
+                        }
+                    }
                 };
 
                 let installed: BTreeSet<String> = match (service.get_installed_dictionaries()).await
@@ -185,16 +194,22 @@ impl Category {
                     }
                 };
 
-                let mut all_langs: Vec<String> = available.union(&installed).cloned().collect();
+                let mut all_langs: Vec<&str> = available
+                    .keys()
+                    .map(String::as_str)
+                    .chain(installed.iter().map(String::as_str))
+                    .collect();
                 all_langs.sort();
+                all_langs.dedup();
 
                 let mut rows = Vec::with_capacity(all_langs.len());
                 for lang in all_langs {
-                    let is_installed = installed.contains(&lang);
-                    let update_available = is_installed && service.is_update_available(&lang).await;
-                    let is_installing = service.is_installing(&lang);
+                    let is_installed = installed.contains(lang);
+                    let update_available = is_installed && service.is_update_available(lang).await;
+                    let is_installing = service.is_installing(lang);
                     rows.push(Box::new(DictionaryInfo {
-                        lang,
+                        label: dictionary_label(lang, available.get(lang)),
+                        lang: lang.to_owned(),
                         is_installed,
                         update_available,
                         is_installing,

@@ -17,8 +17,13 @@ languages.
 
 Go to **Main Menu → Settings → Dictionaries**.
 
-You will see a list of available languages. Each row shows the language code
-and its current status.
+You will see a list of available dictionaries. Each row shows the dictionary
+name and its current status.
+
+The name is shown in your interface language, followed by the language's own
+name — for example `French | français`. If Cadmus has no translation for the
+language yet, only the native name appears, and a dictionary whose name is not
+known at all falls back to its language code (`en`, `fr`, …).
 
 ## Statuses
 

@@ -90,6 +90,31 @@ impl MonolingualDictionaryService {
         Ok(monolingual)
     }
 
+    /// Returns monolingual dictionaries from the SQLite metadata cache only.
+    ///
+    /// Does not make any network requests. Returns an empty list when nothing
+    /// has been cached yet.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database read fails.
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
+    pub async fn get_cached_available_dictionaries(
+        &self,
+    ) -> Result<Vec<(String, DictionaryEntry)>, MonolingualError> {
+        let metadata = match self.get_cached_metadata().await? {
+            Some(metadata) => metadata,
+            None => return Ok(Vec::new()),
+        };
+
+        let monolingual = metadata
+            .into_iter()
+            .filter_map(|(lang, mut targets)| targets.remove(&lang).map(|entry| (lang, entry)))
+            .collect();
+
+        Ok(monolingual)
+    }
+
     /// Returns the cached metadata entry for a single language.
     ///
     /// This does not make any network requests. Returns `None` if no entry for
@@ -1007,6 +1032,8 @@ mod tests {
             formats: "df,dic,dictorg,kobo,mobi,stardict".to_string(),
             updated: NaiveDate::from_ymd_opt(year, month, day).unwrap(),
             words: 1_381_375,
+            name: Some("English".to_string()),
+            name_loc: Some("English".to_string()),
         }
     }
 
@@ -1897,6 +1924,27 @@ mod tests {
             .insert("ja".to_string());
 
         assert!(clone.is_installing("ja"));
+    }
+
+    #[tokio::test]
+    async fn test_get_cached_available_dictionaries_empty_without_cache() {
+        let (service, _dir, _db) = create_test_service().await;
+        let dicts = service.get_cached_available_dictionaries().await.unwrap();
+        assert!(dicts.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_cached_available_dictionaries_returns_monolingual_entries() {
+        let (service, _dir, _db) = create_test_service().await;
+
+        let entry = make_entry(2026, 4, 1);
+        service.db.upsert_entry("en", &entry).await.unwrap();
+        service.db.upsert_entry("fr", &entry).await.unwrap();
+
+        let dicts = service.get_cached_available_dictionaries().await.unwrap();
+        assert_eq!(dicts.len(), 2);
+        assert!(dicts.iter().any(|(lang, _)| lang == "en"));
+        assert!(dicts.iter().any(|(lang, _)| lang == "fr"));
     }
 
     #[tokio::test]

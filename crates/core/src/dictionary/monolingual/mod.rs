@@ -16,4 +16,5 @@ mod errors;
 mod metadata;
 mod service;
 
+pub(crate) use metadata::{DictionaryEntry, dictionary_label};
 pub(crate) use service::{MonolingualDictionaryService, reconcile_installed_dictionaries};

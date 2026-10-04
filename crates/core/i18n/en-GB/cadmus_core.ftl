@@ -11,8 +11,6 @@ build-features = Features: { $features }
 build-kind-main = Main
 build-kind-test = Test
 
-english = English
-
 # Keyboard
 
 keyboard-key-alternate = ALT
@@ -231,6 +229,36 @@ settings-dictionaries-installed = Installed
 settings-dictionaries-re-download = Re-download
 settings-dictionaries-update = Update
 settings-dictionaries-update-available = Update Available
+
+# Languages
+catalan = Catalan
+chinese = Chinese
+czech = Czech
+danish = Danish
+dutch = Dutch
+english = English
+esperanto = Esperanto
+finnish = Finnish
+french = French
+german = German
+greek = Greek
+italian = Italian
+japanese = Japanese
+korean = Korean
+latin = Latin
+lithuanian = Lithuanian
+lojban = Lojban
+malagasy = Malagasy
+norwegian = Norwegian
+polish = Polish
+portuguese = Portuguese
+romanian = Romanian
+russian = Russian
+spanish = Spanish
+swedish = Swedish
+thai = Thai
+turkish = Turkish
+ukrainian = Ukrainian
 
 # Calendar intermission
 calendar-date-line = { $day } { $month } { $year } - { $weekday }

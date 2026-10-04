@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT lang, formats, updated as \"updated: UnixTimestamp\", words\n                   FROM reader_dict_monolingual_metadata",
+  "query": "SELECT lang, formats, updated as \"updated: UnixTimestamp\", words, name, name_loc\n                   FROM reader_dict_monolingual_metadata",
   "describe": {
     "columns": [
       {
@@ -46,6 +46,28 @@
             "name": "words"
           }
         }
+      },
+      {
+        "name": "name",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "reader_dict_monolingual_metadata",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "name_loc",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "reader_dict_monolingual_metadata",
+            "name": "name_loc"
+          }
+        }
       }
     ],
     "parameters": {
@@ -55,8 +77,10 @@
       false,
       false,
       false,
-      false
+      false,
+      true,
+      true
     ]
   },
-  "hash": "0fe0278ab5697f08073547c6667dd4ab154bbdf16b900581565733430ffed779"
+  "hash": "485436caaf5384a6f5639280710692df2cef1274b536f9b6cb90d1405ac5d020"
 }
