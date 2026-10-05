@@ -7,7 +7,9 @@ use super::html::layout::{LoopContext, StyleData};
 use super::html::style::StyleSheet;
 use super::html::xml::XmlParser;
 use super::pdf::PdfOpener;
-use crate::document::{BoundedText, Document, Location, TextLocation, TocEntry, chapter_from_uri};
+use crate::document::{
+    BoundedText, Document, Href, Location, TextLocation, TocEntry, chapter_from_uri,
+};
 use crate::framebuffer::Pixmap;
 use crate::geom::{Boundary, CycleDir};
 use crate::helpers::{Normalize, decode_entities};
@@ -25,6 +27,24 @@ const VIEWER_STYLESHEET: &str = "css/epub.css";
 const USER_STYLESHEET: &str = "css/epub-user.css";
 
 type UriCache = FxHashMap<String, usize>;
+
+/// Which table-of-contents document `toc_from_href` should parse.
+enum TocDocumentKind {
+    /// EPUB 2 NCX, selected from the spine `toc` item rather than the filename.
+    Ncx,
+    /// EPUB 3 navigation document, selected from the manifest `nav` property.
+    Nav,
+}
+
+fn epub_type_has_toc(value: &str) -> bool {
+    value.split_whitespace().any(|token| token == "toc")
+}
+
+fn toc_entries_have_title(entries: &[TocEntry]) -> bool {
+    entries
+        .iter()
+        .any(|entry| !entry.title.trim().is_empty() || toc_entries_have_title(&entry.children))
+}
 
 impl<R: Read + Seek> ResourceFetcher for ZipArchive<R> {
     fn fetch(&mut self, name: &str) -> Result<Vec<u8>, Error> {
@@ -254,16 +274,19 @@ impl<R: Read + Seek> EpubDocument<R> {
         for child in node.children() {
             if child.tag_name() == Some("li") {
                 let link = child.children().find(|child| child.tag_name() == Some("a"));
-                let title = link
-                    .map(|link| decode_entities(&link.text()).into_owned())
+                let label = link.or_else(|| {
+                    child
+                        .children()
+                        .find(|child| child.tag_name() == Some("span"))
+                });
+                let title = label
+                    .map(|label| decode_entities(&label.text()).into_owned())
                     .unwrap_or_default();
                 let rel_uri = link
+                    .or_else(|| child.find("a"))
                     .and_then(|link| {
-                        link.attribute("href").map(|href| {
-                            percent_decode_str(&decode_entities(href))
-                                .decode_utf8_lossy()
-                                .into_owned()
-                        })
+                        link.attribute("href")
+                            .map(|href| Href::from(href).decoded())
                     })
                     .unwrap_or_default();
 
@@ -282,7 +305,9 @@ impl<R: Read + Seek> EpubDocument<R> {
                     Vec::new()
                 };
 
-                if let Some(location) = loc {
+                if let Some(location) = loc
+                    && (!title.trim().is_empty() || !sub_entries.is_empty())
+                {
                     entries.push(TocEntry {
                         title,
                         location,
@@ -707,6 +732,84 @@ impl<R: Read + Seek> EpubDocument<R> {
         self.metadata("dc:date")
             .map(|s| s.chars().take(4).collect())
     }
+
+    fn nav_document_href(&self) -> Option<Href> {
+        let manifest = self.info.root().find("manifest")?;
+        manifest.children().find_map(|child| {
+            let is_nav = child
+                .attribute("properties")
+                .is_some_and(|props| props.split_whitespace().any(|prop| prop == "nav"));
+            if is_nav {
+                child.attribute("href").map(Href::from)
+            } else {
+                None
+            }
+        })
+    }
+
+    fn ncx_href(&self) -> Option<Href> {
+        let toc_id = self.info.root().find("spine")?.attribute("toc")?;
+        self.info
+            .root()
+            .find("manifest")?
+            .find_by_id(toc_id)?
+            .attribute("href")
+            .map(Href::from)
+    }
+
+    fn toc_from_href(&mut self, href: &Href, kind: TocDocumentKind) -> Option<Vec<TocEntry>> {
+        let archive_path = self
+            .parent
+            .join(href.decoded())
+            .normalize()
+            .to_string_lossy()
+            .into_owned();
+        let Some(toc_dir) = Path::new(&archive_path).parent() else {
+            tracing::error!(
+                path = %archive_path,
+                "TOC path has no parent directory"
+            );
+            return None;
+        };
+        let toc_dir = toc_dir.to_path_buf();
+
+        let mut text = String::new();
+        {
+            let mut zf = self.archive.by_name(&archive_path).ok()?;
+            zf.read_to_string(&mut text).ok()?;
+        }
+
+        let root = XmlParser::new(&text).parse();
+
+        match kind {
+            TocDocumentKind::Ncx => {
+                let Some(map) = root.root().find("navMap") else {
+                    tracing::error!(href = href.as_str(), "NCX has no navMap");
+                    return None;
+                };
+                Some(self.walk_toc_ncx(map, &toc_dir, &mut 0, &mut FxHashMap::default()))
+            }
+            TocDocumentKind::Nav => {
+                let Some(nav) = root.root().descendants().find(|desc| {
+                    desc.tag_name() == Some("nav")
+                        && desc.attribute("epub:type").is_some_and(epub_type_has_toc)
+                }) else {
+                    tracing::error!(href = href.as_str(), "nav document has no toc nav");
+                    return None;
+                };
+                let Some(list) = nav.find("ol") else {
+                    tracing::error!(href = href.as_str(), "toc nav has no ol");
+                    return None;
+                };
+                let entries = self.walk_toc_nav(list, &toc_dir, &mut 0, &mut FxHashMap::default());
+                if !toc_entries_have_title(&entries) {
+                    tracing::error!(href = href.as_str(), "nav toc has no titles");
+                    return None;
+                }
+                Some(entries)
+            }
+        }
+    }
 }
 
 impl EpubDocumentFile {
@@ -762,64 +865,13 @@ impl<R: Read + Seek> Document for EpubDocument<R> {
     }
 
     fn toc(&mut self) -> Option<Vec<TocEntry>> {
-        let name = self
-            .info
-            .root()
-            .find("spine")
-            .and_then(|spine| spine.attribute("toc"))
-            .and_then(|toc_id| {
-                self.info
-                    .root()
-                    .find("manifest")
-                    .and_then(|manifest| manifest.find_by_id(toc_id))
-                    .and_then(|entry| entry.attribute("href"))
-            })
-            .or_else(|| {
-                self.info
-                    .root()
-                    .find("manifest")
-                    .and_then(|manifest| {
-                        manifest.children().find(|child| {
-                            child
-                                .attribute("properties")
-                                .iter()
-                                .any(|props| props.split_whitespace().any(|prop| prop == "nav"))
-                        })
-                    })
-                    .and_then(|entry| entry.attribute("href"))
-            })
-            .map(|href| {
-                self.parent
-                    .join(href)
-                    .normalize()
-                    .to_string_lossy()
-                    .into_owned()
-            })?;
-
-        let toc_dir = Path::new(&name).parent().unwrap_or_else(|| Path::new(""));
-
-        let mut text = String::new();
-        if let Ok(mut zf) = self.archive.by_name(&name) {
-            zf.read_to_string(&mut text).ok()?;
-        } else {
-            return None;
+        if let Some(href) = self.nav_document_href()
+            && let Some(entries) = self.toc_from_href(&href, TocDocumentKind::Nav)
+        {
+            return Some(entries);
         }
-
-        let root = XmlParser::new(&text).parse();
-
-        if name.ends_with(".ncx") {
-            root.root()
-                .find("navMap")
-                .map(|map| self.walk_toc_ncx(map, toc_dir, &mut 0, &mut FxHashMap::default()))
-        } else {
-            root.root()
-                .descendants()
-                .find(|desc| {
-                    desc.tag_name() == Some("nav") && desc.attribute("epub:type") == Some("toc")
-                })
-                .and_then(|map| map.find("ol"))
-                .map(|map| self.walk_toc_nav(map, toc_dir, &mut 0, &mut FxHashMap::default()))
-        }
+        let href = self.ncx_href()?;
+        self.toc_from_href(&href, TocDocumentKind::Ncx)
     }
 
     fn chapter<'a>(&mut self, offset: usize, toc: &'a [TocEntry]) -> Option<(&'a TocEntry, f32)> {
@@ -1169,6 +1221,126 @@ mod tests {
         doc.engine.set_margin_width(3);
         doc.engine.load_fonts_from(root_dir);
         doc
+    }
+
+    #[test]
+    fn epub_type_toc_matches_a_whitespace_separated_token() {
+        assert!(epub_type_has_toc("toc"));
+        assert!(epub_type_has_toc("landmarks toc"));
+        assert!(!epub_type_has_toc("landmarks"));
+        assert!(!epub_type_has_toc("tocpage"));
+    }
+
+    #[test]
+    fn blank_toc_titles_do_not_count_as_a_usable_toc() {
+        let blank = TocEntry {
+            title: "  ".into(),
+            location: Location::Exact(0),
+            index: 0,
+            children: Vec::new(),
+        };
+        assert!(!toc_entries_have_title(std::slice::from_ref(&blank)));
+
+        let nested = TocEntry {
+            title: String::new(),
+            location: Location::Exact(0),
+            index: 0,
+            children: vec![TocEntry {
+                title: "Chapter I".into(),
+                location: Location::Exact(1),
+                index: 1,
+                children: Vec::new(),
+            }],
+        };
+        assert!(toc_entries_have_title(std::slice::from_ref(&nested)));
+    }
+
+    /// Packages that ship both an NCX and an EPUB 3 nav must use the nav.
+    /// The fixture's NCX only has "Part One from NCX"; the chapters live in nav.xhtml.
+    #[test]
+    fn nav_toc_is_preferred_over_flat_ncx() {
+        let root_dir = PathBuf::from(
+            std::env::var("TEST_ROOT_DIR").expect("TEST_ROOT_DIR must be set for epub tests"),
+        );
+        let epub_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("src/document/tests/fixtures/nav-preferred.epub");
+        let mut doc = EpubDocumentFile::new(&epub_path, &root_dir).expect("failed to open fixture");
+        let toc = doc.toc().expect("fixture has a toc");
+
+        assert!(
+            toc.iter().all(|entry| entry.title != "Part One from NCX"),
+            "NCX was used instead of the nav document: {toc:?}"
+        );
+        let part = toc
+            .iter()
+            .find(|entry| entry.title == "Part One")
+            .expect("nav part title");
+        assert!(
+            part.children.iter().any(|entry| entry.title == "Chapter I"),
+            "nav chapter was dropped: {part:?}"
+        );
+    }
+
+    /// This package has no `properties="nav"` item, so the NCX is the table of
+    /// contents. Nested `navPoint`s in that NCX must still be kept.
+    #[test]
+    fn documentation_epub_toc_keeps_nested_nav_points() {
+        let mut doc = setup_epub();
+        let toc = doc.toc().expect("documentation epub has a toc");
+
+        let installation = toc
+            .iter()
+            .find(|entry| entry.title == "1. Installation")
+            .expect("top-level Installation entry");
+        assert!(
+            installation
+                .children
+                .iter()
+                .any(|entry| entry.title == "1.1. Test builds"),
+            "nested NCX navPoint was dropped: {installation:?}"
+        );
+
+        let migration = installation
+            .children
+            .iter()
+            .find(|entry| entry.title == "1.4. Migrating from Plato")
+            .expect("1.4 should be a child of Installation");
+        assert!(
+            migration
+                .children
+                .iter()
+                .any(|entry| entry.title == "1.4.1. Using with KFMon"),
+            "third-level NCX navPoint was dropped: {migration:?}"
+        );
+
+        let root_dir = PathBuf::from(
+            std::env::var("TEST_ROOT_DIR").expect("TEST_ROOT_DIR must be set for epub tests"),
+        );
+        let html = crate::document::toc_as_html(&toc, usize::MAX);
+        let mut view = crate::document::html::HtmlDocument::new_from_memory(&html, &root_dir);
+        view.layout(600, 800, 12.0, 265);
+        view.set_margin_width(3);
+        let mut rendered = String::new();
+        let mut loc = Location::Exact(0);
+        let mut seen = std::collections::HashSet::new();
+        while let Some((words, offset)) = Document::words(&mut view, loc.clone()) {
+            if !seen.insert(offset) {
+                break;
+            }
+            for word in words {
+                rendered.push_str(&word.text);
+            }
+            loc = Location::Next(offset);
+        }
+        // Word spans do not include the spaces between them.
+        assert!(
+            rendered.contains("1.1.Testbuilds"),
+            "nested TOC entry was not drawn. rendered={rendered}"
+        );
+        assert!(
+            rendered.contains("1.4.1.UsingwithKFMon"),
+            "third-level TOC entry was not drawn. rendered={rendered}"
+        );
     }
 
     #[test]
