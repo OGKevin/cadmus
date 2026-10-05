@@ -582,6 +582,7 @@ impl Db {
                 FROM library_books_full_info
                 WHERE library_id = ?
                   AND status = 'active'
+                  AND file_path != ''
                 ORDER BY added_at DESC
                 "#,
             library_id
@@ -946,6 +947,7 @@ impl Db {
                 INNER JOIN books b ON b.fingerprint = lb.book_fingerprint
                 WHERE lb.library_id = ?
                   AND b.status = 'active'
+                  AND lb.file_path != ''
                 "#,
             library_id,
         )
@@ -1014,6 +1016,7 @@ impl Db {
                 FROM library_books_full_info
                 WHERE library_id = ?1
                   AND status = 'active'
+                  AND file_path != ''
                   AND (?2 IS NULL OR file_path = ?2 OR file_path LIKE (?2 || '/%'))
                 "#,
             library_id,
@@ -1499,6 +1502,9 @@ impl Db {
     /// Returns a page of books under `prefix`, sorted by `sort_method`, along
     /// with the total number of matching books.
     ///
+    /// Shelf-visible listings exclude rows whose `file_path` is empty (see also
+    /// [`get_all_books`](Self::get_all_books) and [`count_books`](Self::count_books)).
+    ///
     /// Uses untyped `sqlx::query_as` so the `ORDER BY` column can be selected
     /// dynamically.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
@@ -1588,6 +1594,7 @@ impl Db {
             FROM library_books_full_info
             WHERE library_id = ?
               AND status = 'active'
+              AND file_path != ''
               AND (? IS NULL OR file_path = ? OR file_path LIKE (? || '/%'))
             ORDER BY {order_expr}
             LIMIT ? OFFSET ?
@@ -1600,6 +1607,7 @@ impl Db {
                 FROM library_books_full_info
                 WHERE library_id = ?
                   AND status = 'active'
+                  AND file_path != ''
                   AND (? IS NULL OR file_path = ? OR file_path LIKE (? || '/%'))
                 "#,
             library_id,
@@ -4677,6 +4685,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn page_books_excludes_empty_file_path() {
+        let (_db, libdb) = create_test_db().await;
+        let library_id = register_test_library(&libdb, "/tmp/pb_empty_path", "PB Empty Path").await;
+
+        let valid_fp = Fp::from_str("EE00000000000001").unwrap();
+        libdb
+            .insert_book(
+                library_id,
+                valid_fp,
+                &make_info("valid/book.pdf", "Visible", "Author"),
+            )
+            .await
+            .unwrap();
+
+        let empty_path_fp = Fp::from_str("EE00000000000002").unwrap();
+        let mut bad = make_info("", "Ghost", "Author");
+        bad.file.path = PathBuf::new();
+        libdb
+            .insert_book(library_id, empty_path_fp, &bad)
+            .await
+            .unwrap();
+
+        libdb.compute_sort_keys(library_id).await.unwrap();
+
+        let (books, total) = libdb
+            .page_books(library_id, Path::new(""), SortMethod::Title, false, 10, 0)
+            .await
+            .expect("page_books failed");
+
+        assert_eq!(total, 1);
+        assert_eq!(books.len(), 1);
+        assert_eq!(books[0].title, "Visible");
+    }
+
+    #[tokio::test]
     async fn page_books_sort_by_author() {
         let (_db, libdb) = create_test_db().await;
         let library_id = register_test_library(&libdb, "/tmp/pb_author", "PB Author").await;
@@ -5663,7 +5706,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_activates_existing_pending_stub_onto_shelf() {
+    async fn update_activates_shared_book_but_shelf_requires_membership_file_path() {
         let (db, libdb) = create_test_db().await;
         let library_a = register_test_library(&libdb, "/tmp/test_promote_a", "Lib A").await;
         let library_b = register_test_library(&libdb, "/tmp/test_promote_b", "Lib B").await;
@@ -5715,8 +5758,8 @@ mod tests {
 
         let shelf_a = libdb.get_all_books(library_a).await.expect("shelf A");
         assert!(
-            shelf_a.iter().any(|b| b.title == "Promoted"),
-            "library A should see activated book via shared books row"
+            !shelf_a.iter().any(|b| b.title == "Promoted"),
+            "library A membership has no file_path; active shared row must not appear on shelf"
         );
 
         let shelf_b = libdb.get_all_books(library_b).await.expect("shelf B");
