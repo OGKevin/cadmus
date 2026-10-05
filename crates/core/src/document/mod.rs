@@ -15,6 +15,7 @@ use self::pdf::PdfOpener;
 use crate::document::file_extension::FileExtension;
 use crate::framebuffer::Pixmap;
 use crate::geom::{Boundary, CycleDir};
+use crate::helpers::decode_entities;
 use crate::metadata::{Annotation, TextAlign};
 use crate::settings::INTERNAL_CARD_ROOT;
 use crate::version::get_version;
@@ -22,6 +23,7 @@ use anyhow::{Error, format_err};
 use nix::sys::statvfs;
 #[cfg(target_os = "linux")]
 use nix::sys::sysinfo;
+use percent_encoding::percent_decode_str;
 use regex::Regex;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
@@ -37,6 +39,29 @@ use unicode_normalization::UnicodeNormalization;
 use unicode_normalization::char::is_combining_mark;
 
 pub const BYTES_PER_PAGE: f64 = 2048.0;
+
+/// A document href, as written by the source that produced it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Href(String);
+
+impl Href {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Percent-decodes the href after expanding XML entities.
+    pub fn decoded(&self) -> String {
+        percent_decode_str(&decode_entities(&self.0))
+            .decode_utf8_lossy()
+            .into_owned()
+    }
+}
+
+impl From<&str> for Href {
+    fn from(value: &str) -> Self {
+        Href(value.to_string())
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum Location {
@@ -746,6 +771,12 @@ mod tests {
     use super::*;
     use std::net::{IpAddr, Ipv4Addr};
     use std::path::PathBuf;
+
+    #[test]
+    fn href_decoded_expands_percent_encoding_and_entities() {
+        assert_eq!(Href::from("chap%20one.xhtml").decoded(), "chap one.xhtml");
+        assert_eq!(Href::from("a&amp;b.xhtml").decoded(), "a&b.xhtml");
+    }
 
     #[test]
     fn test_file_kind_recognizes_htm_extension() {
