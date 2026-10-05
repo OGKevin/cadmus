@@ -2080,7 +2080,7 @@ impl Reader {
                     self.rect.min.y + small_height - small_thickness
                 ],
                 TopBarVariant::Back,
-                self.info.title(),
+                self.info.display_title(),
                 context,
             );
 

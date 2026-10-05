@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                SELECT COUNT(*)\n                FROM library_books_full_info\n                WHERE library_id = ?\n                  AND status = 'active'\n                  AND file_path != ''\n                  AND (? IS NULL OR file_path = ? OR file_path LIKE (? || '/%'))\n                ",
+  "describe": {
+    "columns": [
+      {
+        "name": "COUNT(*)",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "6b33efa25b6dac5ad702fe966aaca504a97581db4d867b56639743830beae80e"
+}

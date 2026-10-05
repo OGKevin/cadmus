@@ -26,6 +26,10 @@ use tracing::{error, warn};
 pub const DEFAULT_CONTRAST_EXPONENT: f32 = 1.0;
 pub const DEFAULT_CONTRAST_GRAY: f32 = 224.0;
 
+/// Returned when [`Info::file_stem`] cannot derive a name from [`FileInfo::path`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MissingFileStem;
+
 pub type Metadata = Vec<Info>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -381,18 +385,32 @@ impl Info {
         }
     }
 
-    pub fn file_stem(&self) -> String {
-        self.file
-            .path
-            .file_stem()
-            .unwrap()
-            .to_string_lossy()
-            .into_owned()
+    pub fn file_stem(&self) -> Result<String, MissingFileStem> {
+        self.file.path.file_stem().map_or_else(
+            || {
+                warn!(
+                    path = %self.file.path.display(),
+                    "could not derive file stem from book path"
+                );
+                Err(MissingFileStem)
+            },
+            |s| Ok(s.to_string_lossy().into_owned()),
+        )
+    }
+
+    /// User-visible title for shelves and reader chrome (includes localized fallback).
+    pub fn display_title(&self) -> String {
+        let title = self.title();
+        if title.is_empty() {
+            crate::fl!("untitled")
+        } else {
+            title
+        }
     }
 
     pub fn title(&self) -> String {
         if self.title.is_empty() {
-            return self.file_stem();
+            return self.file_stem().unwrap_or_default();
         }
 
         let mut title = self.title.clone();
@@ -406,8 +424,12 @@ impl Info {
         }
 
         if !self.subtitle.is_empty() {
-            title = if self.subtitle.chars().next().unwrap().is_alphanumeric()
-                && title.chars().last().unwrap().is_alphanumeric()
+            title = if self
+                .subtitle
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_alphanumeric())
+                && title.chars().last().is_some_and(|c| c.is_alphanumeric())
             {
                 format!("{}: {}", title, self.subtitle)
             } else {
@@ -435,9 +457,9 @@ impl Info {
 
     pub fn label(&self) -> String {
         if !self.author.is_empty() {
-            format!("{} · {}", self.title(), &self.author)
+            format!("{} · {}", self.display_title(), self.author)
         } else {
-            self.title()
+            self.display_title()
         }
     }
 }
@@ -817,11 +839,11 @@ pub fn sort_title(i1: &Info, i2: &Info) -> Ordering {
     let mut i2_title = i2.alphabetic_title().to_string();
 
     if i1_title.is_empty() {
-        i1_title = i1.file_stem()
+        i1_title = i1.file_stem().unwrap_or_default();
     }
 
     if i2_title.is_empty() {
-        i2_title = i2.file_stem()
+        i2_title = i2.file_stem().unwrap_or_default();
     }
 
     natural_cmp(i1_title.as_str(), i2_title.as_str())
@@ -1215,6 +1237,19 @@ mod tests {
             },
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn file_stem_errors_on_empty_path() {
+        let info = Info::default();
+        assert_eq!(info.file_stem(), Err(MissingFileStem));
+        assert!(info.title().is_empty());
+    }
+
+    #[test]
+    fn display_title_shows_untitled_when_path_and_title_empty() {
+        let info = Info::default();
+        assert_eq!(info.display_title(), crate::fl!("untitled"));
     }
 
     #[test]

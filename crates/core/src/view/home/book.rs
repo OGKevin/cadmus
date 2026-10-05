@@ -113,7 +113,7 @@ impl View for Book {
         fb.draw_rectangle(&self.rect, scheme[0]);
 
         let (title, author) = if self.first_column == FirstColumn::TitleAndAuthor {
-            (self.info.title(), self.info.author.as_str())
+            (self.info.display_title(), self.info.author.as_str())
         } else {
             let filename = self
                 .info

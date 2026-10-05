@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                SELECT COUNT(*) AS \"count!: i64\"\n                FROM library_books lb\n                INNER JOIN books b ON b.fingerprint = lb.book_fingerprint\n                WHERE lb.library_id = ?\n                  AND b.status = 'active'\n                  AND lb.file_path != ''\n                ",
+  "describe": {
+    "columns": [
+      {
+        "name": "count!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "1c8175ea74be5b764d9b770c71005175192c2c032dae0b61002d902abacea95b"
+}

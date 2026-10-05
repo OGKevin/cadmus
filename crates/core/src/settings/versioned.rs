@@ -116,8 +116,10 @@ impl SettingsManager {
     /// 4. Loads and deserializes the settings
     ///
     /// The manifest is searched for an entry matching the current version.
-    /// If no exact match exists, the entry with the most recent UUID is used.
-    /// If the manifest is empty, default settings are returned.
+    /// If no exact match exists, the entry with the most recent UUID is tried first.
+    /// If a settings file cannot be read or parsed, older manifest entries are tried
+    /// (newest UUID first). If the manifest is empty or every file fails, defaults
+    /// are returned.
     ///
     /// # Returns
     ///
@@ -152,52 +154,66 @@ impl SettingsManager {
             }
         };
 
-        let matched_entry = manifest
-            .entries
-            .iter()
-            .find(|e| e.version == self.current_version)
-            .cloned()
-            .or_else(|| {
-                let mut entries: Vec<_> = manifest.entries.clone();
-                entries.sort_by(|a, b| b.uuid.cmp(&a.uuid));
-                entries.first().cloned()
-            });
+        let candidates = Self::settings_load_candidates(&manifest, self.current_version.clone());
+        if candidates.is_empty() {
+            println!(
+                "No existing settings found for version {}, using defaults",
+                self.current_version
+            );
+            return Settings::default();
+        }
 
-        match matched_entry {
-            Some(entry) => {
-                println!(
-                    "Loading settings from version {} (file: {})",
-                    entry.version, entry.file
-                );
-                let file_path = self.settings_dir.join(&entry.file);
-                match crate::helpers::load_toml::<Settings, _>(&file_path) {
-                    Ok(mut settings) => {
-                        if settings.sanitize() {
-                            eprintln!(
-                                "some settings value were invalid, they have been cleaned up"
-                            );
-                        }
-
-                        settings
+        for entry in candidates {
+            println!(
+                "Loading settings from version {} (file: {})",
+                entry.version, entry.file
+            );
+            let file_path = self.settings_dir.join(&entry.file);
+            match crate::helpers::load_toml::<Settings, _>(&file_path) {
+                Ok(mut settings) => {
+                    if settings.sanitize() {
+                        eprintln!("some settings value were invalid, they have been cleaned up");
                     }
-                    Err(e) => {
-                        eprintln!(
-                            "failed to load settings file {}: {}; using defaults",
-                            file_path.display(),
-                            e
-                        );
-                        Settings::default()
-                    }
+                    return settings;
+                }
+                Err(e) => {
+                    eprintln!(
+                        "failed to load settings file {}: {}; trying next manifest entry",
+                        file_path.display(),
+                        e
+                    );
                 }
             }
-            None => {
-                println!(
-                    "No existing settings found for version {}, using defaults",
-                    self.current_version
-                );
-                Settings::default()
-            }
         }
+
+        eprintln!("all manifest settings files failed to load; using defaults");
+        Settings::default()
+    }
+
+    /// Manifest entries to try when loading settings: exact current version first,
+    /// then remaining entries newest UUID first.
+    fn settings_load_candidates(
+        manifest: &SettingsManifest,
+        current_version: GitVersion,
+    ) -> Vec<SettingsEntry> {
+        let mut entries = manifest.entries.clone();
+        if entries.is_empty() {
+            return Vec::new();
+        }
+
+        let exact = entries
+            .iter()
+            .position(|e| e.version == current_version)
+            .map(|idx| entries.remove(idx));
+
+        entries.sort_by(|a, b| b.uuid.cmp(&a.uuid));
+
+        let mut order = Vec::new();
+        if let Some(entry) = exact {
+            order.push(entry);
+        }
+        order.extend(entries);
+        order
     }
 
     /// Saves settings to a versioned file and updates the manifest.
@@ -716,6 +732,36 @@ mod tests {
         assert_eq!(
             loaded.selected_library, 2,
             "v0.3.0 should load settings from v0.2.0 (most recent by UUID)"
+        );
+    }
+
+    #[test]
+    fn test_load_falls_back_to_older_entry_when_current_file_is_corrupt() {
+        let temp_dir = TempDir::new().unwrap();
+        let manager_v1 = create_test_manager(&temp_dir);
+
+        let settings_v1 = Settings {
+            selected_library: 1,
+            ..Settings::default()
+        };
+        manager_v1.save(&settings_v1).unwrap();
+
+        let manager_v2 = manager_v1.clone_with_version("v0.2.0".parse::<GitVersion>().unwrap());
+        let settings_v2 = Settings {
+            selected_library: 2,
+            ..Settings::default()
+        };
+        manager_v2.save(&settings_v2).unwrap();
+
+        let corrupt_path = manager_v2
+            .settings_dir
+            .join(format!("Settings-{}.toml", manager_v2.current_version));
+        std::fs::write(&corrupt_path, "not valid toml {{{").unwrap();
+
+        let loaded = manager_v2.load();
+        assert_eq!(
+            loaded.selected_library, 1,
+            "corrupt current-version file should fall back to the older manifest entry"
         );
     }
 
