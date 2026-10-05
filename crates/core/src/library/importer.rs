@@ -1226,6 +1226,67 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn import_removes_active_books_with_empty_file_path() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("on-disk.epub"), b"epub content").expect("write");
+
+        let db = create_migrated_db().await;
+        let lib = Library::new(dir.path(), &db, "test")
+            .await
+            .expect("library");
+
+        let on_disk_fp = dir
+            .path()
+            .join("on-disk.epub")
+            .fingerprint()
+            .await
+            .expect("fp");
+        let on_disk_info = Info {
+            title: "On disk".to_string(),
+            file: FileInfo {
+                path: PathBuf::from("on-disk.epub"),
+                absolute_path: dir.path().join("on-disk.epub"),
+                kind: Some(FileExtension::Epub),
+                size: 12,
+                mtime: None,
+            },
+            ..Default::default()
+        };
+        lib.db
+            .batch_insert_books(lib.library_id, &[(on_disk_fp, &on_disk_info)])
+            .await
+            .expect("insert on-disk book");
+
+        let ghost_fp = Fp::from_u64(99);
+        let ghost_info = Info {
+            title: "Ghost".to_string(),
+            file: FileInfo {
+                path: PathBuf::new(),
+                absolute_path: dir.path().join("missing.epub"),
+                kind: Some(FileExtension::Epub),
+                size: 1,
+                mtime: None,
+            },
+            ..Default::default()
+        };
+        lib.db
+            .batch_insert_books(lib.library_id, &[(ghost_fp, &ghost_info)])
+            .await
+            .expect("insert ghost book");
+
+        let shutdown = CancellationToken::new();
+        run_import(dir.path(), &db, &shutdown).await;
+
+        let books = lib.db.get_all_books(lib.library_id).await.expect("shelf");
+        assert_eq!(books.len(), 1);
+        assert_eq!(books[0].title, "On disk");
+        assert!(
+            books.iter().all(|b| b.fp != Some(ghost_fp)),
+            "empty-path row should be removed by import"
+        );
+    }
+
+    #[tokio::test]
     async fn keeps_books_the_scan_could_not_read() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let sub = dir.path().join("locked");
