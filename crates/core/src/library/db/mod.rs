@@ -1276,7 +1276,7 @@ impl Db {
         let key = {
             let t = info.alphabetic_title();
             if t.is_empty() {
-                info.file_stem()
+                info.file_stem().unwrap_or_default()
             } else {
                 t.to_string()
             }

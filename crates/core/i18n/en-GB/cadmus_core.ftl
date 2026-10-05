@@ -260,6 +260,10 @@ thai = Thai
 turkish = Turkish
 ukrainian = Ukrainian
 
+# Library metadata
+
+untitled = Untitled
+
 # Calendar intermission
 calendar-date-line = { $day } { $month } { $year } - { $weekday }
 calendar-poweroff = Auto power off in { $duration }
