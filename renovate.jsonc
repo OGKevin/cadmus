@@ -17,6 +17,7 @@
     "addLabels": ["security"]
   },
   "labels": ["automated", "dependencies"],
+  "postUpdateOptions": ["npmInstallTwice"],
   "reviewers": ["OGKevin"],
   "git-submodules": {
     "enabled": true
