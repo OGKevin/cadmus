@@ -44,6 +44,13 @@
       "groupSlug": "sntpc"
     },
     {
+      "description": "opentelemetry-rust monorepo crates and tracing-opentelemetry only compile together; overrides group:monorepos and the Rust non-major group",
+      "matchDatasources": ["crate"],
+      "matchPackageNames": ["/^opentelemetry/", "tracing-opentelemetry"],
+      "groupName": "opentelemetry",
+      "groupSlug": "opentelemetry"
+    },
+    {
       "matchManagers": ["github-actions"],
       "matchUpdateTypes": ["minor", "patch", "digest"],
       "groupName": "GitHub Actions non-major dependencies",
