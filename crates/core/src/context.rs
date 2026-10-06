@@ -2,6 +2,7 @@ use crate::db::Database;
 use crate::device::Device;
 use crate::device::DeviceHardware;
 use crate::device::inhibitor::{Inhibitor, InhibitorGuard, Kind, SoftSuspendName};
+use crate::device::leds::StatusLed;
 use crate::device::rtc::AlarmManager;
 use crate::device::soft_suspend::SoftSuspendBackend as _;
 #[cfg(any(feature = "kobo", docsrs))]
@@ -88,6 +89,7 @@ impl<D: Device> Context<D> {
         database: Database,
         settings: Settings,
         fonts: Fonts,
+        status_led: Arc<StatusLed>,
     ) -> Context<D> {
         device.refresh_framebuffer_from_kernel();
         let fb = device.framebuffer();
@@ -133,7 +135,7 @@ impl<D: Device> Context<D> {
                 WifiSession::unavailable(wifi_mode)
             }
         };
-        let inhibitor = <D as DeviceHardware>::inhibitor(&device);
+        let inhibitor = <D as DeviceHardware>::inhibitor(&device, status_led);
         let startup_lease = inhibitor
             .acquire(Kind::SoftSuspend, SoftSuspendName::Startup)
             .ok();
@@ -531,6 +533,7 @@ pub mod test_helpers {
             .init(&device, 0, &mut settings)
             .await
             .expect("failed to run migrations");
+        let status_led = StatusLed::new(device.device_leds());
         Context::new(
             device,
             Library::new(Path::new("/tmp"), &database, "test")
@@ -545,6 +548,7 @@ pub mod test_helpers {
                 .to_path_buf(),
             )
             .expect("Failed to load fonts"),
+            status_led,
         )
         .await
     }

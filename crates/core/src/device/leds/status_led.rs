@@ -69,8 +69,8 @@ struct ArbiterState {
 }
 
 struct StatusLedInner {
-    /// Physical LED backend; `None` when hardware is unavailable.
-    leds: Option<Arc<dyn DeviceLeds>>,
+    /// Physical LED backend. [`NoopLeds`](super::NoopLeds) when hardware is absent.
+    leds: Arc<dyn DeviceLeds>,
     /// Active commands and the generation counter.
     state: Mutex<ArbiterState>,
     /// Carries both "the command set changed" and "shut down" to the worker.
@@ -104,13 +104,13 @@ enum BlinkPhaseOutcome {
 
 /// Drives the status LED from prioritized named commands.
 ///
-/// Construct once per [`Inhibitor`](crate::device::inhibitor::Inhibitor) and
-/// share the `Arc` across autosleep policy and future Full-inhibit wiring.
+/// Construct once, before the startup screen, and pass the same `Arc` into
+/// [`Context`](crate::context::Context) so the inhibitor shares it.
 pub struct StatusLed {
     inner: Arc<StatusLedInner>,
-    /// Owned here so the worker cannot outlive the arbiter. `Drop` cancels it
-    /// rather than joining.
-    worker: Option<crate::runtime::Job<()>>,
+    /// Pattern worker. [`Self::shutdown`] joins it. [`Drop`] only cancels, so
+    /// unwinding does not wait.
+    worker: Mutex<Option<crate::runtime::Job<()>>>,
 }
 
 /// RAII guard for an installed status-LED command.
@@ -271,10 +271,7 @@ impl StatusLedInner {
     }
 
     fn write_led(&self, on: bool) {
-        let Some(leds) = self.leds.as_ref() else {
-            return;
-        };
-        let result = if on { leds.on() } else { leds.off() };
+        let result = if on { self.leds.on() } else { self.leds.off() };
         if let Err(error) = result {
             tracing::warn!(error = %error, on, "failed to write status LED");
         }
@@ -284,9 +281,9 @@ impl StatusLedInner {
 impl StatusLed {
     /// Creates an arbiter over `leds` and starts the pattern worker task.
     ///
-    /// Pass `None` when hardware is unavailable; installs still succeed for tests
-    /// and noop hosts.
-    pub fn new(leds: Option<Arc<dyn DeviceLeds>>) -> Arc<Self> {
+    /// `leds` is the hardware backend, or [`NoopLeds`](super::NoopLeds) when
+    /// the device has no status LED. Installs still succeed in that case.
+    pub fn new(leds: Arc<dyn DeviceLeds>) -> Arc<Self> {
         let (signal, receiver) = watch::channel(LedSignal::Changed(0));
         let inner = Arc::new(StatusLedInner {
             leds,
@@ -301,8 +298,27 @@ impl StatusLed {
         let job = crate::runtime::Job::spawn(move |job_cancel| worker.run(receiver, job_cancel));
         Arc::new(Self {
             inner,
-            worker: Some(job),
+            worker: Mutex::new(Some(job)),
         })
+    }
+
+    /// Stops the pattern worker and waits for it to turn the LED off.
+    ///
+    /// The worker is the one job stored in this shared value. Cancel exits
+    /// the loop, which turns the LED off, and the join is bounded by
+    /// [`crate::runtime::SHUTDOWN_DEADLINE`]. [`Drop`] still only cancels, so
+    /// unwinding does not wait. A second call does nothing.
+    pub async fn shutdown(&self) {
+        let Some(worker) = self
+            .worker
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .take()
+        else {
+            return;
+        };
+        worker.cancel();
+        let _ = worker.join(crate::runtime::SHUTDOWN_DEADLINE).await;
     }
 
     /// Installs or replaces `name` with `pattern` at `priority`.
@@ -355,9 +371,12 @@ impl StatusLed {
 
 impl Drop for StatusLed {
     fn drop(&mut self) {
-        // Cancel rather than join: the worker turns the LED off and exits on
-        // its own, and a `Drop` that waits can abort the process while unwinding.
-        if let Some(job) = self.worker.take() {
+        if let Some(job) = self
+            .worker
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .take()
+        {
             job.cancel();
         }
     }
@@ -449,7 +468,7 @@ mod tests {
                 }
             })),
         });
-        let led = StatusLed::new(Some(leds.clone() as Arc<dyn DeviceLeds>));
+        let led = StatusLed::new(leds.clone());
         *status_led.lock().unwrap() = Some(Arc::clone(&led));
         let _blink = led.install(
             "soft-indicate",
@@ -477,7 +496,7 @@ mod tests {
             off_calls: Arc::new(AtomicU32::new(0)),
             on_first_on: None,
         });
-        let status_led = StatusLed::new(Some(leds.clone() as Arc<dyn DeviceLeds>));
+        let status_led = StatusLed::new(leds.clone());
         let _blink = status_led.install(
             "full-inhibit",
             LedPriority::FullInhibit,
@@ -495,6 +514,36 @@ mod tests {
         .await;
     }
 
+    #[test]
+    fn startup_priority_outranks_full_inhibit() {
+        assert!(LedPriority::Startup > LedPriority::FullInhibit);
+        assert!(LedPriority::FullInhibit > LedPriority::SoftIndicate);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn startup_blink_toggles_then_turns_off_when_released() {
+        let leds = Arc::new(CountingLeds {
+            on_calls: AtomicU32::new(0),
+            off_calls: Arc::new(AtomicU32::new(0)),
+            on_first_on: None,
+        });
+        let status_led = StatusLed::new(leds.clone());
+        let guard = status_led.install(
+            "startup",
+            LedPriority::Startup,
+            LedPattern::Blink {
+                on: Duration::from_millis(20),
+                off: Duration::from_millis(20),
+            },
+        );
+        wait_for(|| leds.on_calls.load(Ordering::SeqCst) >= 1).await;
+        let off_after_on = leds.off_calls.load(Ordering::SeqCst);
+        wait_for(|| leds.off_calls.load(Ordering::SeqCst) > off_after_on).await;
+        let off_before_drop = leds.off_calls.load(Ordering::SeqCst);
+        drop(guard);
+        wait_for(|| leds.off_calls.load(Ordering::SeqCst) > off_before_drop).await;
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn higher_priority_overrides_lower() {
         let leds = Arc::new(CountingLeds {
@@ -502,7 +551,7 @@ mod tests {
             off_calls: Arc::new(AtomicU32::new(0)),
             on_first_on: None,
         });
-        let status_led = StatusLed::new(Some(leds.clone() as Arc<dyn DeviceLeds>));
+        let status_led = StatusLed::new(leds.clone());
         let _low = status_led.install(
             "soft-indicate",
             LedPriority::SoftIndicate,
@@ -528,7 +577,7 @@ mod tests {
             off_calls: Arc::new(AtomicU32::new(0)),
             on_first_on: None,
         });
-        let status_led = StatusLed::new(Some(leds.clone() as Arc<dyn DeviceLeds>));
+        let status_led = StatusLed::new(leds.clone());
         let _low = status_led.install(
             "soft-indicate",
             LedPriority::SoftIndicate,
@@ -552,7 +601,7 @@ mod tests {
             off_calls: Arc::new(AtomicU32::new(0)),
             on_first_on: None,
         });
-        let status_led = StatusLed::new(Some(leds.clone() as Arc<dyn DeviceLeds>));
+        let status_led = StatusLed::new(leds.clone());
         let first = status_led.install(
             "soft-indicate",
             LedPriority::SoftIndicate,
@@ -591,7 +640,7 @@ mod tests {
             off_calls: Arc::new(AtomicU32::new(0)),
             on_first_on: None,
         });
-        let status_led = StatusLed::new(Some(leds.clone() as Arc<dyn DeviceLeds>));
+        let status_led = StatusLed::new(leds.clone());
         let guard = status_led.install(
             "soft-indicate",
             LedPriority::SoftIndicate,
@@ -604,7 +653,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn missing_hardware_succeeds_without_io() {
-        let status_led = StatusLed::new(None);
+        let status_led = StatusLed::new(Arc::new(crate::device::leds::NoopLeds));
         let guard = status_led.install(
             "soft-indicate",
             LedPriority::SoftIndicate,
@@ -620,7 +669,7 @@ mod tests {
             off_calls: Arc::new(AtomicU32::new(0)),
             on_first_on: None,
         });
-        let status_led = StatusLed::new(Some(leds.clone() as Arc<dyn DeviceLeds>));
+        let status_led = StatusLed::new(leds.clone());
         let guard = status_led.install(
             "soft-indicate",
             LedPriority::SoftIndicate,
@@ -630,5 +679,28 @@ mod tests {
         drop(guard);
         drop(status_led);
         wait_for(|| leds.off_calls.load(Ordering::SeqCst) >= 1).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn shutdown_turns_led_off_after_guard_is_released() {
+        let leds = Arc::new(CountingLeds {
+            on_calls: AtomicU32::new(0),
+            off_calls: Arc::new(AtomicU32::new(0)),
+            on_first_on: None,
+        });
+        let status_led = StatusLed::new(leds.clone());
+        let guard = status_led.install(
+            "soft-indicate",
+            LedPriority::SoftIndicate,
+            LedPattern::SolidOn,
+        );
+        wait_for(|| leds.on_calls.load(Ordering::SeqCst) >= 1).await;
+        let off_while_on = leds.off_calls.load(Ordering::SeqCst);
+        drop(guard);
+        wait_for(|| leds.off_calls.load(Ordering::SeqCst) > off_while_on).await;
+        let off_before_shutdown = leds.off_calls.load(Ordering::SeqCst);
+        status_led.shutdown().await;
+        wait_for(|| leds.off_calls.load(Ordering::SeqCst) > off_before_shutdown).await;
+        status_led.shutdown().await;
     }
 }

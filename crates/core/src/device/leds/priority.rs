@@ -17,4 +17,9 @@ pub enum LedPriority {
     /// `"full-inhibit"` SoftSuspend lease while any
     /// [`Kind::Full`](crate::device::inhibitor::Kind::Full) holder is active.
     FullInhibit,
+    /// Startup pulse.
+    ///
+    /// Outranks [`Self::FullInhibit`] and [`Self::SoftIndicate`]. Held through
+    /// startup and dropped before the main loop processes events.
+    Startup,
 }

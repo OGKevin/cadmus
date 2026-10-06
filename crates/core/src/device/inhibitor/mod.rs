@@ -48,7 +48,9 @@ pub use kind::Kind;
 pub use soft_suspend::SoftSuspendName;
 
 use crate::device::battery::{Battery, FakeBattery};
-use crate::device::leds::StatusLed;
+#[cfg(all(test, target_os = "linux"))]
+use crate::device::leds::DeviceLeds;
+use crate::device::leds::{NoopLeds, StatusLed};
 use crate::device::soft_suspend::SoftSuspendBackend;
 use crate::device::soft_suspend::mode::AutosleepMode;
 use crate::lease::LeaseName;
@@ -56,8 +58,6 @@ use soft_suspend::{NoOpSoftSuspendKind, SoftSuspendKind};
 use std::sync::Arc;
 use std::time::Duration;
 
-#[cfg(any(target_os = "linux", docsrs))]
-use crate::device::leds::DeviceLeds;
 #[cfg(any(target_os = "linux", docsrs))]
 use crate::device::linux::soft_suspend::kind::LinuxSoftSuspendKind;
 #[cfg(all(test, target_os = "linux"))]
@@ -97,7 +97,7 @@ impl Inhibitor {
         status_led: Arc<StatusLed>,
         battery: Arc<dyn Battery>,
     ) -> Arc<Self> {
-        let full = full::FullInhibitState::new(Arc::clone(&soft_suspend), status_led);
+        let full = full::FullInhibitState::new(Arc::clone(&soft_suspend), Arc::clone(&status_led));
         Arc::new(Self {
             soft_suspend,
             full,
@@ -109,36 +109,19 @@ impl Inhibitor {
     pub fn noop() -> Arc<Self> {
         Self::new(
             NoOpSoftSuspendKind::new(),
-            StatusLed::new(None),
+            StatusLed::new(Arc::new(NoopLeds)),
             Arc::new(FakeBattery::new()),
         )
     }
 
-    /// NoOp SoftSuspend with an injected shared battery (tests / emulator wiring).
-    ///
-    /// Compiled for emulator, standalone deviceless (`TestDevice` when `kobo`
-    /// and `emulator` are off), tests, and rustdoc. A `--workspace` kobo
-    /// clippy build still unifies `deviceless` from importer/fetcher; the
-    /// extra `not(kobo)` arm keeps this helper off that lib target so it is
-    /// not unused.
-    #[cfg(any(
-        test,
-        docsrs,
-        feature = "emulator",
-        all(
-            feature = "deviceless",
-            not(any(feature = "kobo", feature = "emulator"))
-        )
-    ))]
-    pub(crate) fn noop_with_battery(battery: Arc<dyn Battery>) -> Arc<Self> {
-        Self::new(NoOpSoftSuspendKind::new(), StatusLed::new(None), battery)
-    }
-
     /// Builds a Linux SoftSuspend kind when sysfs is available, otherwise an
     /// inert NoOp that never touches `/sys/power`.
+    ///
+    /// `status_led` is the arbiter created from this device's [`DeviceLeds`].
+    /// It is handed to autosleep and Full-inhibit. The inhibitor does not keep
+    /// its own copy.
     #[cfg(any(target_os = "linux", docsrs))]
-    pub fn from_system(leds: Option<Arc<dyn DeviceLeds>>, battery: Arc<dyn Battery>) -> Arc<Self> {
-        let status_led = StatusLed::new(leds);
+    pub fn from_system(status_led: Arc<StatusLed>, battery: Arc<dyn Battery>) -> Arc<Self> {
         match LinuxSoftSuspendKind::try_from_system(Arc::clone(&status_led)) {
             Some(kind) => Self::new(kind, status_led, battery),
             None => Self::new(NoOpSoftSuspendKind::new(), status_led, battery),
@@ -152,6 +135,13 @@ impl Inhibitor {
         leds: Option<Arc<dyn DeviceLeds>>,
         battery: Arc<dyn Battery>,
     ) -> Arc<Self> {
+        let leds = match leds {
+            Some(leds) => leds,
+            None => {
+                tracing::warn!("status LED unavailable, using noop");
+                Arc::new(NoopLeds)
+            }
+        };
         let status_led = StatusLed::new(leds);
         let kind = LinuxSoftSuspendKind::with_paths(paths, Arc::clone(&status_led));
         Self::new(kind, status_led, battery)
@@ -283,7 +273,11 @@ mod tests {
     fn inhibitor_with_capacity(capacity: f32) -> Arc<Inhibitor> {
         let battery = Arc::new(FakeBattery::new());
         battery.set_capacity(capacity);
-        Inhibitor::noop_with_battery(battery)
+        Inhibitor::new(
+            NoOpSoftSuspendKind::new(),
+            StatusLed::new(Arc::new(NoopLeds)),
+            battery,
+        )
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

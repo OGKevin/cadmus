@@ -250,8 +250,11 @@ macro_rules! impl_device_hardware {
     (@hook inhibitor noop_battery) => {
         fn inhibitor(
             &self,
+            status_led: std::sync::Arc<$crate::device::leds::StatusLed>,
         ) -> std::sync::Arc<$crate::device::inhibitor::Inhibitor> {
-            $crate::device::inhibitor::Inhibitor::noop_with_battery(
+            $crate::device::inhibitor::Inhibitor::new(
+                $crate::device::inhibitor::soft_suspend::NoOpSoftSuspendKind::new(),
+                status_led,
                 std::sync::Arc::clone(&self.battery)
                     as std::sync::Arc<dyn $crate::device::battery::Battery>,
             )
@@ -261,12 +264,10 @@ macro_rules! impl_device_hardware {
     (@hook inhibitor from_system) => {
         fn inhibitor(
             &self,
+            status_led: std::sync::Arc<$crate::device::leds::StatusLed>,
         ) -> std::sync::Arc<$crate::device::inhibitor::Inhibitor> {
             $crate::device::inhibitor::Inhibitor::from_system(
-                Some(
-                    std::sync::Arc::clone(&self.leds)
-                        as std::sync::Arc<dyn $crate::device::leds::DeviceLeds>,
-                ),
+                status_led,
                 std::sync::Arc::clone(&self.battery)
                     as std::sync::Arc<dyn $crate::device::battery::Battery>,
             )
