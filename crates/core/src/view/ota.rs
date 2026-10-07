@@ -651,10 +651,11 @@ struct OtaDownloadContext {
     inhibitor: Arc<Inhibitor>,
 }
 
-/// Cleans up partial OTA files and closes the view after user cancellation.
-async fn finish_ota_cancelled(hub: &Hub, ota_view_id: ViewId, tmp_dir: &Path, deploy_path: &Path) {
+/// Deletes partial download and staging files after user cancellation.
+///
+/// The download job's [`crate::runtime::DropGuard`] closes the overlay.
+async fn finish_ota_cancelled(tmp_dir: &Path, deploy_path: &Path) {
     cleanup_ota_cancel(tmp_dir, deploy_path).await;
-    hub.send((Event::Close(ota_view_id)).into()).ok();
 }
 
 /// Completes a published OTA install, including the committed-but-not-durable
@@ -707,10 +708,9 @@ fn send_ota_progress(hub: &Hub, label: String, percent: u8, cancelable: bool) {
 /// install is not abandoned between the request and the exit it triggers.
 ///
 /// On user cancellation, deletes partial download and staging files via
-/// [`finish_ota_cancelled`] and closes the view without rebooting. Every phase
-/// that waits on the network — the WiFi lease, scope verification and the
-/// artifact lookup — observes the cancel token, so a press takes effect there
-/// rather than when the request happens to return.
+/// [`finish_ota_cancelled`] and closes the view without rebooting. The cancel
+/// token is observed while waiting for the WiFi lease, verifying scopes,
+/// looking up the artifact, and during the download itself.
 ///
 /// On a 401 or insufficient-scopes response, sends [`Event::Github`] with
 /// [`GithubEvent::TokenInvalid`] without closing the view so re-authentication
@@ -724,11 +724,11 @@ fn send_ota_progress(hub: &Hub, label: String, percent: u8, cancelable: bool) {
 /// sends [`Event::ClearDeferredSuspend`] **before** the Full guard drops, then
 /// queues reboot so a deferred Auto Suspend does not race the reboot.
 ///
-/// Failure `Close` events go on the hub, so the main loop removes the overlay.
-/// A panic sends the same close through [`crate::runtime::UnwindGuard`]. The
-/// runtime keeps the process alive, so the overlay would otherwise stay up.
-/// That is not the Cancel-button path
-/// (see [`OtaView::on_close_during_download`]).
+/// [`crate::runtime::DropGuard`] sends failure [`Event::Close`] events on the
+/// hub, so the main loop removes the overlay. A panic sends the same close
+/// through [`crate::runtime::UnwindGuard`]. The runtime keeps the process
+/// alive, so the overlay would otherwise stay up. That is not the Cancel-button
+/// path (see [`OtaView::on_close_during_download`]).
 fn run_ota_download(ctx: OtaDownloadContext) -> crate::runtime::Job {
     let OtaDownloadContext {
         kind,
@@ -766,6 +766,12 @@ fn run_ota_download(ctx: OtaDownloadContext) -> crate::runtime::Job {
         let committed = async move {
             let hub2 = hub.clone();
             let should_cancel = CancelFunc::from_flag(&cancelled);
+            let mut close_on_drop = crate::runtime::DropGuard::arm({
+                let hub = hub2.clone();
+                move || {
+                    hub.send((Event::Close(ota_view_id)).into()).ok();
+                }
+            });
 
             let _full_hold =
                 match crate::runtime::spawn_blocking(move || inhibitor.acquire(Kind::Full, "ota"))
@@ -773,7 +779,6 @@ fn run_ota_download(ctx: OtaDownloadContext) -> crate::runtime::Job {
                 {
                     Ok(Ok(guard)) => guard,
                     Ok(Err(InhibitorError::BatteryTooLow)) => {
-                        hub2.send((Event::Close(ota_view_id)).into()).ok();
                         hub2.send(
                             (Event::Notification(NotificationEvent::Show(fl!(
                                 "ota-battery-too-low"
@@ -785,19 +790,18 @@ fn run_ota_download(ctx: OtaDownloadContext) -> crate::runtime::Job {
                     }
                     Err(error) => {
                         error!(error = %error, "OTA inhibit task failed");
-                        hub2.send((Event::Close(ota_view_id)).into()).ok();
                         return false;
                     }
                 };
 
             let _wifi = match tokio::select! {
+                biased;
                 _ = job_cancel.cancelled() => return false,
                 lease = wifi_session.acquire("ota-download") => lease,
             } {
                 Ok(lease) => lease,
                 Err(e) => {
                     error!(error = %e, "Failed to acquire WiFi lease for OTA download");
-                    hub2.send((Event::Close(ota_view_id)).into()).ok();
                     hub2.send(
                         (Event::Notification(NotificationEvent::Show(fl!(
                             "notification-not-online"
@@ -813,7 +817,6 @@ fn run_ota_download(ctx: OtaDownloadContext) -> crate::runtime::Job {
                 Ok(c) => c,
                 Err(e) => {
                     error!(error = %e, "Failed to create GitHub client");
-                    hub2.send((Event::Close(ota_view_id)).into()).ok();
                     hub2.send(
                         (Event::Notification(NotificationEvent::Show(fl!(
                             "ota-client-build-failed"
@@ -859,7 +862,7 @@ fn run_ota_download(ctx: OtaDownloadContext) -> crate::runtime::Job {
             };
 
             if matches!(download_result, Err(OtaError::Cancelled)) {
-                finish_ota_cancelled(&hub2, ota_view_id, &tmp_dir, &deploy_path).await;
+                finish_ota_cancelled(&tmp_dir, &deploy_path).await;
                 return false;
             }
             match download_result {
@@ -878,7 +881,7 @@ fn run_ota_download(ctx: OtaDownloadContext) -> crate::runtime::Job {
                     };
 
                     if matches!(deploy_result, Err(OtaError::Cancelled)) {
-                        finish_ota_cancelled(&hub2, ota_view_id, &tmp_dir, &deploy_path).await;
+                        finish_ota_cancelled(&tmp_dir, &deploy_path).await;
                         return false;
                     }
 
@@ -886,11 +889,11 @@ fn run_ota_download(ctx: OtaDownloadContext) -> crate::runtime::Job {
                         Ok(outcome) => {
                             hub2.send((Event::ClearDeferredSuspend).into()).ok();
                             finish_successful_deploy(&hub2, &install_dir, outcome).await;
+                            close_on_drop.disarm();
                             return true;
                         }
                         Err(e) => {
                             error!(error = %e, "Deployment failed");
-                            hub2.send((Event::Close(ota_view_id)).into()).ok();
                             hub2.send(
                                 (Event::Notification(NotificationEvent::Show(fl!(
                                     "ota-deployment-failed"
@@ -905,10 +908,10 @@ fn run_ota_download(ctx: OtaDownloadContext) -> crate::runtime::Job {
                     tracing::warn!("GitHub token rejected — triggering re-auth");
                     hub2.send((Event::Github(GithubEvent::TokenInvalid)).into())
                         .ok();
+                    close_on_drop.disarm();
                 }
                 Err(e) => {
                     error!(error = %e, "OTA download failed");
-                    hub2.send((Event::Close(ota_view_id)).into()).ok();
                     hub2.send(
                         (Event::Notification(NotificationEvent::Show(fl!("ota-download-failed"))))
                             .into(),
@@ -929,7 +932,7 @@ fn run_ota_download(ctx: OtaDownloadContext) -> crate::runtime::Job {
 
 /// Closes the OTA overlay when the download task panics.
 ///
-/// Normal failure and cancel paths send [`Event::Close`] explicitly; this runs
+/// Other failure returns close through [`crate::runtime::DropGuard`]. This runs
 /// only from [`crate::runtime::UnwindGuard`] on panic unwind.
 fn close_ota_view_after_panic(hub: &Hub, ota_view_id: ViewId) {
     error!("OTA download task panicked");
@@ -1659,11 +1662,10 @@ mod tests {
             .expect("the in-flight request must be dropped, not awaited");
     }
 
-    /// The cancelled state has to reach the UI: the race reports
-    /// [`OtaError::Cancelled`], and the branch that consumes it removes the
-    /// partial download and closes the overlay on the hub.
+    /// A cancelled download deletes the partial artifact. The overlay close is
+    /// the job's [`crate::runtime::DropGuard`], not this cleanup.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn cancelled_download_cleans_up_and_closes_the_overlay() {
+    async fn cancelled_download_removes_the_partial_artifact() {
         let tmp = tempfile::Builder::new()
             .prefix("cadmus-ota-cancel-")
             .tempdir()
@@ -1672,16 +1674,12 @@ mod tests {
         let partial = tmp.path().join("cadmus-ota-42.zip");
         std::fs::write(&partial, b"partial").unwrap();
 
-        let (hub, mut rx) = crate::view::hub_channel();
-        let view_id = ViewId::Ota(OtaViewId::Main);
-        finish_ota_cancelled(&hub, view_id, tmp.path(), &deploy_path).await;
+        finish_ota_cancelled(tmp.path(), &deploy_path).await;
 
         assert!(
             !partial.exists(),
             "a cancelled download must leave no partial artifact"
         );
-        let message = rx.try_recv().expect("close event");
-        assert!(matches!(message.event, Event::Close(id) if id == view_id));
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
