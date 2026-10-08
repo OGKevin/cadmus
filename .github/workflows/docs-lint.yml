@@ -21,6 +21,7 @@ jobs:
         with:
           filters: |
             docs:
+              - 'CHANGELOG.md'
               - 'docs/**'
               - '.agents/skills/**'
               - '.cursor/CLOUD.md'
@@ -39,7 +40,7 @@ jobs:
         id: files
         run: |
           shopt -s globstar nullglob
-          all=(docs/**/*.md .agents/skills/**/*.md .cursor/CLOUD.md **/AGENTS.md **/REVIEW.md build-scripts/**/*.md thirdparty/**/*-kobo.md thirdparty/**/*-cadmus.md)
+          all=(CHANGELOG.md docs/**/*.md .agents/skills/**/*.md .cursor/CLOUD.md **/AGENTS.md **/REVIEW.md build-scripts/**/*.md thirdparty/**/*-kobo.md thirdparty/**/*-cadmus.md)
           files=()
           for f in "${all[@]}"; do
             [[ "$f" == node_modules/* ]] && continue
