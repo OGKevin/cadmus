@@ -68,6 +68,13 @@ pub const WORKER_THREADS: usize = 2;
 /// own. Blocking jobs share this pool.
 pub const MAX_BLOCKING_THREADS: usize = 512;
 
+/// OS name of every thread the process runtime spawns.
+///
+/// Tokio applies one name to reactor workers and blocking-pool threads.
+/// Linux `comm` keeps 15 bytes; this stays under that so process lists show
+/// the full name, distinct from the main thread.
+const THREAD_NAME: &str = "cadmus-rt";
+
 /// How long shutdown waits for in-flight async work before aborting it.
 ///
 /// Tokio's blocking pool cannot cancel a stuck `recv`/`sleep` in a
@@ -77,11 +84,14 @@ pub const MAX_BLOCKING_THREADS: usize = 512;
 pub const SHUTDOWN_DEADLINE: Duration = Duration::from_secs(5);
 
 /// Multi-thread builder with both thread pools capped.
+///
+/// Reactor workers and blocking-pool threads are named `cadmus-rt`.
 pub fn builder() -> Builder {
     let mut builder = Builder::new_multi_thread();
     builder
         .worker_threads(WORKER_THREADS)
         .max_blocking_threads(MAX_BLOCKING_THREADS)
+        .thread_name(THREAD_NAME)
         .enable_all();
     builder
 }
@@ -429,6 +439,23 @@ mod tests {
             JobOutcome::Finished(7)
         ));
         assert!(started.elapsed() < Duration::from_millis(500));
+    }
+
+    #[test]
+    fn process_runtime_names_worker_and_blocking_threads() {
+        let runtime = builder().build().expect("process runtime");
+        let worker = runtime.spawn(async { std::thread::current().name().map(str::to_owned) });
+        let blocking = runtime.spawn_blocking(|| std::thread::current().name().map(str::to_owned));
+        runtime.block_on(async {
+            assert_eq!(
+                worker.await.expect("worker task").as_deref(),
+                Some(THREAD_NAME)
+            );
+            assert_eq!(
+                blocking.await.expect("blocking task").as_deref(),
+                Some(THREAD_NAME)
+            );
+        });
     }
 
     #[test]
