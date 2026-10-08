@@ -337,6 +337,37 @@ impl<F: FnOnce()> Drop for UnwindGuard<F> {
     }
 }
 
+/// Runs `on_drop` when dropped unless [`Self::disarm`]ed.
+///
+/// [`UnwindGuard`] runs only while panicking. This also runs on a normal drop.
+/// The callback must not panic.
+#[must_use = "disarm the guard to skip the callback, or it runs on drop"]
+pub(crate) struct DropGuard<F: FnOnce()> {
+    on_drop: Option<F>,
+}
+
+impl<F: FnOnce()> DropGuard<F> {
+    /// Arms `on_drop` until [`Self::disarm`] or drop.
+    pub(crate) fn arm(on_drop: F) -> Self {
+        Self {
+            on_drop: Some(on_drop),
+        }
+    }
+
+    /// Drops the callback so a later drop does nothing.
+    pub(crate) fn disarm(&mut self) {
+        self.on_drop.take();
+    }
+}
+
+impl<F: FnOnce()> Drop for DropGuard<F> {
+    fn drop(&mut self) {
+        if let Some(on_drop) = self.on_drop.take() {
+            on_drop();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -371,6 +402,24 @@ mod tests {
         drop(UnwindGuard::arm(|| {
             hit.store(true, std::sync::atomic::Ordering::SeqCst)
         }));
+        assert!(!hit.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[test]
+    fn drop_guard_runs_callback_on_normal_drop() {
+        let hit = std::sync::atomic::AtomicBool::new(false);
+        drop(DropGuard::arm(|| {
+            hit.store(true, std::sync::atomic::Ordering::SeqCst)
+        }));
+        assert!(hit.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[test]
+    fn drop_guard_skips_callback_after_disarm() {
+        let hit = std::sync::atomic::AtomicBool::new(false);
+        let mut guard = DropGuard::arm(|| hit.store(true, std::sync::atomic::Ordering::SeqCst));
+        guard.disarm();
+        drop(guard);
         assert!(!hit.load(std::sync::atomic::Ordering::SeqCst));
     }
 
