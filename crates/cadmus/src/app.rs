@@ -7,6 +7,7 @@ use cadmus_core::device::AppDevice;
 use cadmus_core::device::DeviceHardware as _;
 use cadmus_core::device::DeviceRotation as _;
 use cadmus_core::device::inhibitor::{Kind, SoftSuspendName};
+use cadmus_core::device::leds::{LedPattern, LedPriority, StatusLed};
 use cadmus_core::device::rtc::shutdown_rtc;
 use cadmus_core::device::wifi::WifiManager;
 use cadmus_core::device::{
@@ -347,12 +348,13 @@ async fn open_document(
     }
 }
 
-#[cfg_attr(feature = "tracing", tracing::instrument(skip(device, settings, fonts, database), level = tracing::Level::TRACE))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(device, settings, fonts, database, status_led), level = tracing::Level::TRACE))]
 async fn build_context(
     device: AppDevice,
     settings: Settings,
     fonts: Fonts,
     database: Database,
+    status_led: std::sync::Arc<StatusLed>,
 ) -> Result<AppContext, Error> {
     let mut settings = settings;
 
@@ -367,7 +369,7 @@ async fn build_context(
     let library_settings = &settings.libraries[settings.selected_library];
     let library = Library::new(&library_settings.path, &database, &library_settings.name).await?;
 
-    Ok(AppContext::new(device, library, database, settings, fonts).await)
+    Ok(AppContext::new(device, library, database, settings, fonts, status_led).await)
 }
 
 /// Application entry after the process runtime is running.
@@ -421,12 +423,21 @@ pub async fn run() -> Result<(), Error> {
 
     let mut fonts = Fonts::load(&device.install_dir()).context("can't load fonts")?;
 
+    let status_led = StatusLed::new(device.device_leds());
+    let startup_led = status_led.install(
+        "startup",
+        LedPriority::Startup,
+        LedPattern::Blink {
+            on: std::time::Duration::from_millis(500),
+            off: std::time::Duration::from_millis(500),
+        },
+    );
     {
         #[cfg(feature = "tracing")]
         let _span = tracing::trace_span!(parent: &start_span, "startup-screen").entered();
 
         StartupScreen::show(&mut device, &mut fonts).ok();
-    }
+    };
 
     let mut database = Database::new(device.resolve_db_path())
         .await
@@ -451,9 +462,15 @@ pub async fn run() -> Result<(), Error> {
 
     let database = database;
 
-    let mut context = build_context(device, settings, fonts, database)
-        .await
-        .context("can't build context")?;
+    let mut context = build_context(
+        device,
+        settings,
+        fonts,
+        database,
+        std::sync::Arc::clone(&status_led),
+    )
+    .await
+    .context("can't build context")?;
 
     context.load_dictionaries().await;
     context.load_keyboard_layouts().await;
@@ -539,6 +556,7 @@ pub async fn run() -> Result<(), Error> {
     tracing::info!(duration = ?start_time.elapsed(), "App started");
 
     context.release_startup_lease();
+    drop(startup_led);
 
     while let Some(message) = rx.recv().await {
         let (evt, _input_wake) = message.into_parts();
@@ -1135,6 +1153,8 @@ pub async fn run() -> Result<(), Error> {
 
     #[cfg(feature = "profiling")]
     cadmus_core::telemetry::profiling::shutdown_profiling();
+
+    status_led.shutdown().await;
 
     Ok(())
 }

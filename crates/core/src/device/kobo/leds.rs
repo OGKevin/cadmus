@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 /// Default brightness path used when discovery finds nothing (graceful no-op).
 pub(super) const LED_BRIGHTNESS_PATH: &str = "/sys/class/leds/LED/brightness";
 
-/// Known standard-LED brightness nodes, same order as `contrib/cadmus.sh`.
+/// Known standard-LED brightness nodes, probed in this order.
 pub(super) const LED_BRIGHTNESS_CANDIDATES: &[&str] = &[
     LED_BRIGHTNESS_PATH,
     "/sys/class/leds/GLED/brightness",

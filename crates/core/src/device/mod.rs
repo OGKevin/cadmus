@@ -623,15 +623,30 @@ pub trait DeviceHardware: Send {
     /// Returns [`crate::device::leds::LedsError`] when LEDs are unavailable.
     fn leds(&self) -> Result<std::sync::Arc<Self::Leds>, crate::device::leds::LedsError>;
 
-    /// Returns this device's inhibitor (SoftSuspend + Full kinds, LED arbiter,
-    /// shared battery for Full acquire gating).
+    /// Status LED backend for this device.
     ///
-    /// Default: [`crate::device::inhibitor::Inhibitor::noop`].
-    /// Emulator / test devices use [`Inhibitor::noop_with_battery`](crate::device::inhibitor::Inhibitor::noop_with_battery)
-    /// with the device battery. Kobo probes sysfs via
+    /// [`Self::leds`] when that succeeds, otherwise [`NoopLeds`](crate::device::leds::NoopLeds).
+    fn device_leds(&self) -> Arc<dyn crate::device::leds::DeviceLeds> {
+        match self.leds() {
+            Ok(leds) => leds,
+            Err(_) => Arc::new(crate::device::leds::NoopLeds),
+        }
+    }
+
+    /// Returns this device's inhibitor using the caller-owned status-LED arbiter.
+    ///
+    /// Default: noop soft-suspend and a fake battery. Emulator / test devices
+    /// use the device battery. Kobo probes sysfs via
     /// [`Inhibitor::from_system`](crate::device::inhibitor::Inhibitor::from_system).
-    fn inhibitor(&self) -> Arc<crate::device::inhibitor::Inhibitor> {
-        crate::device::inhibitor::Inhibitor::noop()
+    fn inhibitor(
+        &self,
+        status_led: Arc<crate::device::leds::StatusLed>,
+    ) -> Arc<crate::device::inhibitor::Inhibitor> {
+        crate::device::inhibitor::Inhibitor::new(
+            crate::device::inhibitor::soft_suspend::NoOpSoftSuspendKind::new(),
+            status_led,
+            Arc::new(crate::device::battery::FakeBattery::new()),
+        )
     }
 
     /// Returns a shared RTC handle.

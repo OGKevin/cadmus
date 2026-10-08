@@ -4,7 +4,6 @@
 //! reports [`DEFAULT_ROTATION`] and rotation APIs are no-ops. This avoids
 //! inconsistent state until faithful framebuffer and input tracking exists.
 
-mod leds;
 mod power;
 mod rtc;
 mod usb;
@@ -480,7 +479,7 @@ pub struct EmulatorDevice {
     wifi_manager: Arc<crate::device::wifi::NoopWifiManager>,
     usb_manager: Arc<crate::device::emulator::usb::EmulatorUsbManager>,
     power_manager: Arc<crate::device::emulator::power::EmulatorPowerManager>,
-    leds: Arc<crate::device::emulator::leds::EmulatorLeds>,
+    leds: Arc<crate::device::leds::NoopLeds>,
     rtc: Arc<EmulatorRtc>,
     time_manager: crate::time_manager::TimeManager<EmulatorRtc>,
     input: EmulatorInputSource,
@@ -513,7 +512,7 @@ impl EmulatorDevice {
             wifi_manager: Arc::new(crate::device::wifi::NoopWifiManager::default()),
             usb_manager: Arc::new(crate::device::emulator::usb::EmulatorUsbManager),
             power_manager: Arc::new(crate::device::emulator::power::EmulatorPowerManager),
-            leds: Arc::new(crate::device::emulator::leds::EmulatorLeds),
+            leds: Arc::new(crate::device::leds::NoopLeds),
             rtc,
             time_manager,
             input: EmulatorInputSource::new(dpi),
@@ -591,7 +590,7 @@ crate::impl_device_hardware!(
     WifiManager = crate::device::wifi::NoopWifiManager,
     UsbManager = crate::device::emulator::usb::EmulatorUsbManager,
     PowerManager = crate::device::emulator::power::EmulatorPowerManager,
-    Leds = crate::device::emulator::leds::EmulatorLeds,
+    Leds = crate::device::leds::NoopLeds,
     Rtc = crate::device::emulator::rtc::EmulatorRtc;
     override inhibitor noop_battery,
 );

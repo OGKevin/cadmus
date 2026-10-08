@@ -28,6 +28,19 @@ pub trait DeviceLeds: Send + Sync {
     }
 }
 
+/// LED backend that accepts on/off and does not touch hardware.
+pub struct NoopLeds;
+
+impl DeviceLeds for NoopLeds {
+    fn on(&self) -> Result<(), LedsError> {
+        Ok(())
+    }
+
+    fn off(&self) -> Result<(), LedsError> {
+        Ok(())
+    }
+}
+
 impl<T: DeviceLeds + ?Sized> DeviceLeds for Box<T> {
     fn on(&self) -> Result<(), LedsError> {
         (**self).on()
