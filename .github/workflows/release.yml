@@ -42,7 +42,7 @@ jobs:
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
-      pr_number: ${{ steps.release.outputs.pr }}
+      pr_number: ${{ steps.release.outputs.pr && fromJSON(steps.release.outputs.pr).number || '' }}
     steps:
       - name: Run release-please
         id: release
