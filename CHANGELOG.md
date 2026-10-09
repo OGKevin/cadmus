@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.12.1](https://github.com/OGKevin/cadmus/compare/v0.12.0...v0.12.1) (2026-10-09)
+
+
+### Features
+
+* **epub:** prefer the nav table of contents ([#1073](https://github.com/OGKevin/cadmus/issues/1073)) ([d052bd0](https://github.com/OGKevin/cadmus/commit/d052bd045a69a45cc0744b3fc260a61646992b17))
+* **runtime:** name Tokio threads cadmus-rt ([#1083](https://github.com/OGKevin/cadmus/issues/1083)) ([fbdecb4](https://github.com/OGKevin/cadmus/commit/fbdecb4efd475c205a5731e86a9fa23d70e1691b))
+
+
+### Bug Fixes
+
+* **ota:** close the view when cancel lands during wifi acquire ([#1079](https://github.com/OGKevin/cadmus/issues/1079)) ([847fb24](https://github.com/OGKevin/cadmus/commit/847fb24a41b38e6c030a34b524a89c37b16826c3))
+
 ## [0.12.0](https://github.com/OGKevin/cadmus/compare/v0.11.0...v0.12.0) (2026-10-05)
 
 ### ⚠ BREAKING CHANGES
