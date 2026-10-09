@@ -42,7 +42,7 @@ jobs:
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
-      pr_number: ${{ steps.release.outputs.pr }}
+      pr_number: ${{ steps.release.outputs.pr && fromJSON(steps.release.outputs.pr).number || '' }}
     steps:
       - name: Run release-please
         id: release
@@ -50,6 +50,53 @@ jobs:
         with:
           target-branch: ${{ github.ref_name }}
           token: ${{ secrets.GITHUB_TOKEN }}
+
+  format-release-changelog:
+    name: Format release-please CHANGELOG
+    runs-on: ubuntu-latest
+    needs: release-please
+    if: >-
+      github.event_name != 'pull_request' &&
+      needs.release-please.outputs.release_created != 'true' &&
+      needs.release-please.outputs.pr_number != ''
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Install rumdl
+        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
+        with:
+          tool: rumdl@0.2.78
+
+      - name: Format CHANGELOG on release PR branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ needs.release-please.outputs.pr_number }}
+        run: |
+          set -euo pipefail
+          head_ref="$(gh pr view "${PR_NUMBER}" --json headRefName --jq '.headRefName')"
+          case "${head_ref}" in
+            release-please--branches--*) ;;
+            *)
+              echo "Skip: head ref is not a release-please branch (${head_ref})"
+              exit 0
+              ;;
+          esac
+          gh pr checkout "${PR_NUMBER}"
+          rumdl fmt CHANGELOG.md
+          if git diff --quiet -- CHANGELOG.md; then
+            echo "CHANGELOG.md already formatted"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit -m "chore: format CHANGELOG.md with rumdl"
+          git push origin "HEAD:${head_ref}"
 
   build-and-upload:
     name: Build and Upload Release Assets
