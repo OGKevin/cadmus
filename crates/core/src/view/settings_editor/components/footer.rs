@@ -1,7 +1,6 @@
-//! Rust side of `SettingsFooter`.
+//! Plus button on the settings pager.
 //!
-//! The plus button is the footer's only callback. It is shown for libraries
-//! and opens the new-library editor.
+//! It is shown for libraries and opens the new-library editor.
 
 use super::{Component, Editor, Env, Step};
 use crate::device::AppContext;

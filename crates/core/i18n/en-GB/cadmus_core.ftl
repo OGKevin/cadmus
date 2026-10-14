@@ -41,6 +41,8 @@ notification-downloading-dictionary = Downloading dictionary for "{ $lang }"
 notification-downloading-dictionary-completed = Downloading dictionary for "{ $lang }" completed
 notification-downloading-dictionary-progress = Downloading { $lang } ({ $downloaded }/{ $total })
 notification-dictionary-indexing = Indexing "{ $name }"
+notification-library-name-empty = Library name cannot be empty
+notification-library-path-missing = Path does not exist
 notification-network-up = Network is up ({ $ip }, { $essid }).
 notification-not-online = WiFi must be connected for this action.
 notification-refresh-rate-invalid = Refresh rate must be a number between 0 and 255.
@@ -51,6 +53,7 @@ notification-timezone-detection-failed = Timezone detection failed
 # Common
 cancel = Cancel
 delete = Delete
+ok = OK
 
 # GitHub device authorization
 device-auth-connecting = Connecting to GitHub…

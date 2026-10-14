@@ -11,194 +11,211 @@
 
 use super::components::Parts;
 
-#[cfg(test)]
-use super::components::{setting_kind, static_rows};
+use slint::ComponentHandle;
 
 use crate::device::AppContext;
 use crate::device::{DeviceHardware as _, DevicePaths as _};
 use crate::dictionary::MonolingualDictionaryService;
 use crate::fl;
-use crate::framebuffer::UpdateMode;
+use crate::framebuffer::{Framebuffer as _, UpdateMode};
 use crate::geom::Rectangle;
-use crate::input::{ButtonCode, ButtonStatus, DeviceEvent, FingerStatus};
-use crate::view::common::toggle_main_menu;
-use crate::view::slint::generated::SettingsWindow;
-use crate::view::slint::{Session, SlintView};
-use crate::view::{Bus, Event, Hub, Id, NotificationEvent, RenderData, RenderQueue, View, ViewId};
+use crate::input::{ButtonCode, ButtonStatus, DeviceEvent};
+use crate::view::slint::generated::{InkScreen, SettingsWindow};
+use crate::view::slint::{Env, Flow, Session, SlintHost, SlintScreen};
+use crate::view::{Event, Hub, NotificationEvent, RenderQueue};
 
-type SettingsSession = Session<SettingsWindow>;
+/// Settings editor view. The host owns the session and the common event loop.
+pub type SettingsEditor = SlintHost<SettingsScreen>;
 
-/// Main settings editor view.
-///
 /// Category pages, the file browser, and the other sheets are components
 /// owned by [`Parts`]. They share this window's session.
-pub struct SettingsEditor {
-    id: Id,
-    rect: Rectangle,
-    children: Vec<Box<dyn View>>,
-    ui: Option<SettingsSession>,
-    parts: Parts,
-}
-
-/// The press already changed the category or the page. Forwarding the release
-/// turns it into an arrow key and then drains whatever the category change
-/// queued, which opens the first row.
-fn swallows_category_button_release(event: &DeviceEvent) -> bool {
-    matches!(
-        event,
-        DeviceEvent::Button {
-            code: ButtonCode::Backward | ButtonCode::Forward,
-            status: ButtonStatus::Released | ButtonStatus::Repeated,
-            ..
-        }
-    )
+pub struct SettingsScreen {
+    pub(super) parts: Parts,
 }
 
 #[async_trait::async_trait(?Send)]
-impl View for SettingsEditor {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
+impl SlintScreen for SettingsScreen {
+    type Window = SettingsWindow;
+
+    fn open(context: &mut AppContext) -> anyhow::Result<Session<SettingsWindow>> {
+        super::components::open(context)
+    }
+
+    fn wire(&mut self, window: &SettingsWindow) {
+        self.parts.wire(window);
+    }
+
+    fn sync(&mut self, session: &Session<SettingsWindow>, context: &AppContext) {
+        self.parts.sync(session.component(), context);
+        let _ = session.redraw();
+    }
+
+    async fn apply_callbacks(
+        &mut self,
+        hub: &Hub,
+        bus: &mut crate::view::Bus,
+        context: &mut AppContext,
+    ) -> Flow {
+        self.parts.drain(hub, bus, context).await
+    }
+
+    fn consume_back(&mut self) -> bool {
+        self.parts.close_top()
+    }
+
     fn stop_jobs(&self) {
         self.parts.stop_jobs();
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     fn take_background_jobs(&mut self, jobs: &mut Vec<crate::runtime::Job>) {
         if let Some(job) = self.parts.take_job() {
             jobs.push(job);
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
-    async fn handle_event(
-        &mut self,
-        evt: &Event,
-        hub: &Hub,
-        bus: &mut Bus,
-        rq: &mut RenderQueue,
-        context: &mut AppContext,
-    ) -> bool {
+    fn skip_preview(&self, finger_down: bool, finger_preview: bool) -> bool {
+        crate::view::slint::components::text_sheet::skip_press_frame(
+            self.parts.text_is_open(),
+            finger_down,
+            finger_preview,
+        )
+    }
+
+    fn panel_refresh(&self, finger_down: bool) -> (UpdateMode, bool) {
+        let refresh = crate::view::slint::components::text_sheet::frame_refresh(
+            self.parts.text_is_open(),
+            finger_down,
+        );
+        (refresh.mode, refresh.wait)
+    }
+
+    async fn on_event(&mut self, evt: &Event, env: &mut Env<'_>, _rq: &mut RenderQueue) -> bool {
         match evt {
-            Event::Back => {
-                if self.parts.close_top() {
-                    self.sync(context);
-                    self.queue(rq);
-                    true
-                } else {
-                    false
-                }
-            }
             Event::SelectSettingsCategory(category) => {
-                self.parts.set_category(*category, context).await;
-                self.sync(context);
-                self.queue(rq);
-                true
-            }
-            Event::ToggleNear(ViewId::MainMenu, rect) => {
-                toggle_main_menu(self, *rect, None, rq, context);
-                true
-            }
-            Event::Close(ViewId::MainMenu) => {
-                toggle_main_menu(self, Rectangle::default(), Some(false), rq, context);
+                self.parts.set_category(*category, env.context).await;
                 true
             }
             Event::DictionaryInstallComplete { lang, result } => {
-                self.parts.reload_dictionaries(context).await;
+                self.parts.reload_dictionaries(env.context).await;
                 match result {
                     Ok(()) => {
                         tracing::info!(lang, "Dictionary installed");
-                        hub.send((Event::ReindexDictionaries).into()).ok();
-                        hub.send(
-                            (Event::Notification(NotificationEvent::Show(fl!(
-                                "notification-downloading-dictionary-completed",
-                                lang = lang
-                            ))))
-                            .into(),
-                        )
-                        .ok();
+                        env.hub.send((Event::ReindexDictionaries).into()).ok();
+                        env.hub
+                            .send(
+                                (Event::Notification(NotificationEvent::Show(fl!(
+                                    "notification-downloading-dictionary-completed",
+                                    lang = lang
+                                ))))
+                                .into(),
+                            )
+                            .ok();
                     }
                     Err(error) => {
                         tracing::warn!(lang, error = %error, "Failed to install dictionary");
-                        hub.send(
-                            (Event::Notification(NotificationEvent::Show(fl!(
-                                "notification-dictionary-install-failed",
-                                lang = lang
-                            ))))
-                            .into(),
-                        )
-                        .ok();
+                        env.hub
+                            .send(
+                                (Event::Notification(NotificationEvent::Show(fl!(
+                                    "notification-dictionary-install-failed",
+                                    lang = lang
+                                ))))
+                                .into(),
+                            )
+                            .ok();
                     }
                 }
-                self.sync(context);
-                self.queue(rq);
-                true
-            }
-            Event::Device(device) => {
-                self.handle_device(*device, hub, bus, rq, context).await;
-                true
-            }
-            Event::SlintTimer => {
-                let repainted = self.ui.as_ref().is_some_and(|session| session.tick());
-                self.settle(repainted, false, false, hub, bus, rq, context)
-                    .await;
                 true
             }
             _ => false,
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, context), fields(rect = ?rect)))]
-    fn render(&self, context: &mut AppContext, rect: Rectangle) {
-        self.blit_frame(context, &rect);
+    async fn take_device(
+        &mut self,
+        event: DeviceEvent,
+        window: Option<&SettingsWindow>,
+        env: &mut Env<'_>,
+        swallow: &mut Option<ButtonCode>,
+    ) -> bool {
+        match event {
+            DeviceEvent::Button {
+                code: ButtonCode::Backward,
+                status: ButtonStatus::Pressed,
+                ..
+            } if self.parts.is_plain() => {
+                *swallow = Some(ButtonCode::Backward);
+                self.parts.step_category(-1, env.context).await;
+                true
+            }
+            DeviceEvent::Button {
+                code: ButtonCode::Forward,
+                status: ButtonStatus::Pressed,
+                ..
+            } if self.parts.is_plain() => {
+                *swallow = Some(ButtonCode::Forward);
+                self.parts.step_category(1, env.context).await;
+                true
+            }
+            DeviceEvent::Button {
+                code: code @ (ButtonCode::Backward | ButtonCode::Forward),
+                status: ButtonStatus::Pressed | ButtonStatus::Repeated,
+                ..
+            } => {
+                let delta = if code == ButtonCode::Backward { -1 } else { 1 };
+                let Some(window) = window else {
+                    return false;
+                };
+                if self.parts.bump_open(window, delta) {
+                    *swallow = Some(code);
+                    true
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        }
     }
 
-    fn render_rect(&self, rect: &Rectangle) -> Rectangle {
-        rect.intersection(self.rect()).unwrap_or(*rect)
-    }
-
-    fn rect(&self) -> &Rectangle {
-        &self.rect
-    }
-
-    fn rect_mut(&mut self) -> &mut Rectangle {
-        &mut self.rect
-    }
-
-    fn children(&self) -> &Vec<Box<dyn View>> {
-        &self.children
-    }
-
-    fn children_mut(&mut self) -> &mut Vec<Box<dyn View>> {
-        &mut self.children
-    }
-
-    fn id(&self) -> Id {
-        self.id
-    }
-
-    fn is_background(&self) -> bool {
-        true
-    }
-}
-
-#[async_trait::async_trait(?Send)]
-impl SlintView for SettingsEditor {
-    type Component = SettingsWindow;
-
-    fn session(&self) -> Option<&Session<SettingsWindow>> {
-        self.ui.as_ref()
+    fn log_resize(
+        &self,
+        previous: Rectangle,
+        rect: Rectangle,
+        context: &AppContext,
+        session: Option<&Session<SettingsWindow>>,
+        children: usize,
+    ) {
+        let fb_dims = context.device.framebuffer().dims();
+        let session = session.map(|session| {
+            let physical = session.component().window().size();
+            let screen = session.component().global::<InkScreen>();
+            (
+                session.size(),
+                (physical.width, physical.height),
+                (screen.get_window_width(), screen.get_window_height()),
+            )
+        });
+        tracing::debug!(
+            previous_rect = %previous,
+            requested_rect = %rect,
+            fb_width = fb_dims.0,
+            fb_height = fb_dims.1,
+            display_width = context.display.dims.0,
+            display_height = context.display.dims.1,
+            session_width = session.as_ref().map(|sizes| sizes.0.0),
+            session_height = session.as_ref().map(|sizes| sizes.0.1),
+            slint_width = session.as_ref().map(|sizes| sizes.1.0),
+            slint_height = session.as_ref().map(|sizes| sizes.1.1),
+            chrome_width = session.as_ref().map(|sizes| sizes.2.0),
+            chrome_height = session.as_ref().map(|sizes| sizes.2.1),
+            children,
+            "settings editor resize"
+        );
     }
 }
 
 impl SettingsEditor {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(rq, context)))]
     pub async fn new(rect: Rectangle, rq: &mut RenderQueue, context: &mut AppContext) -> Self {
-        let ui = match super::components::open(context) {
-            Ok(session) => Some(session),
-            Err(error) => {
-                tracing::error!(error = %error, "slint settings screen failed to open");
-                None
-            }
-        };
         let dict_service = match MonolingualDictionaryService::new(
             &context.database,
             context
@@ -212,211 +229,14 @@ impl SettingsEditor {
                 None
             }
         };
-
-        let mut editor = SettingsEditor {
-            id: crate::view::ID_FEEDER.next(),
+        Self::mount(
             rect,
-            children: Vec::new(),
-            ui,
-            parts: Parts::new(dict_service),
-        };
-        if let Some(session) = &editor.ui {
-            editor.parts.wire(session);
-        }
-        editor.sync(context);
-        if let Some(session) = &editor.ui {
-            let fb = context.device.framebuffer_mut();
-            if let Err(error) = session.present(fb) {
-                tracing::error!(error = %error, "slint settings frame failed");
-            }
-        }
-        rq.add(RenderData::new(editor.id, editor.rect, UpdateMode::Gui));
-        editor
-    }
-
-    #[cfg(test)]
-    fn blank() -> Self {
-        Self {
-            id: Id::default(),
-            rect: rect![0, 0, 10, 10],
-            children: Vec::new(),
-            ui: None,
-            parts: Parts::new(None),
-        }
-    }
-
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(event = ?event)))]
-    async fn handle_device(
-        &mut self,
-        event: DeviceEvent,
-        hub: &Hub,
-        bus: &mut Bus,
-        rq: &mut RenderQueue,
-        context: &mut AppContext,
-    ) {
-        match event {
-            DeviceEvent::Button {
-                code: ButtonCode::Home,
-                status: ButtonStatus::Pressed,
-                ..
-            } => {
-                if !self.parts.close_top() {
-                    bus.push_back(Event::Back);
-                }
-                self.sync(context);
-                self.queue(rq);
-            }
-            DeviceEvent::Button {
-                code: ButtonCode::Backward,
-                status: ButtonStatus::Pressed,
-                ..
-            } if self.parts.is_plain() => {
-                self.step_category(-1, context, rq).await;
-            }
-            DeviceEvent::Button {
-                code: ButtonCode::Forward,
-                status: ButtonStatus::Pressed,
-                ..
-            } if self.parts.is_plain() => {
-                self.step_category(1, context, rq).await;
-            }
-            DeviceEvent::Button {
-                code: ButtonCode::Backward | ButtonCode::Forward,
-                status: ButtonStatus::Pressed | ButtonStatus::Repeated,
-                ..
-            } if self.parts.page_target().is_some() => {
-                let delta = match event {
-                    DeviceEvent::Button {
-                        code: ButtonCode::Backward,
-                        ..
-                    } => -1,
-                    _ => 1,
-                };
-                self.bump_page(delta);
-                self.queue(rq);
-            }
-            event if swallows_category_button_release(&event) => {}
-            _ => {
-                let finger_down = matches!(
-                    event,
-                    DeviceEvent::Finger {
-                        status: FingerStatus::Down,
-                        ..
-                    }
-                );
-                let finger_preview = matches!(
-                    event,
-                    DeviceEvent::Finger {
-                        status: FingerStatus::Down | FingerStatus::Motion,
-                        ..
-                    }
-                );
-                let skip = crate::view::slint::components::text_sheet::skip_press_frame(
-                    self.parts.text_is_open(),
-                    finger_down,
-                    finger_preview,
-                );
-                let repainted = self.forward_device(event);
-                self.settle(repainted, skip, finger_down, hub, bus, rq, context)
-                    .await;
-            }
-        }
-    }
-
-    /// Applies what Slint queued, copies the result back into the window, and
-    /// queues the panel update.
-    ///
-    /// `repainted` is whether Slint captured a frame. `skip` leaves a press
-    /// preview unqueued. `finger_down` selects the keyboard flash.
-    async fn settle(
-        &mut self,
-        repainted: bool,
-        skip: bool,
-        finger_down: bool,
-        hub: &Hub,
-        bus: &mut Bus,
-        rq: &mut RenderQueue,
-        context: &mut AppContext,
-    ) {
-        let acted = self.parts.drain(hub, bus, context).await == crate::view::slint::Flow::Redraw;
-        if acted {
-            self.sync(context);
-            self.queue_frame(rq, finger_down);
-        } else if repainted && !skip {
-            self.queue_frame(rq, finger_down);
-        }
-        if let Some(session) = &self.ui {
-            session.wake_for_timers(hub);
-        }
-    }
-
-    /// Moves to the next or previous category and drops callbacks the rebuild queued.
-    async fn step_category(
-        &mut self,
-        delta: isize,
-        context: &mut AppContext,
-        rq: &mut RenderQueue,
-    ) {
-        self.parts.step_category(delta, context).await;
-        self.sync(context);
-        self.parts.discard_queued();
-        self.queue(rq);
-    }
-
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(delta = delta)))]
-    fn bump_page(&self, delta: i32) {
-        let Some(target) = self.parts.page_target() else {
-            return;
-        };
-        let Some(session) = &self.ui else {
-            return;
-        };
-        self.parts.bump(session.component(), &target, delta);
-        let _ = session.redraw();
-    }
-
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    fn queue(&self, rq: &mut RenderQueue) {
-        self.queue_frame(rq, false);
-    }
-
-    fn queue_frame(&self, rq: &mut RenderQueue, finger_down: bool) {
-        let Some(session) = &self.ui else {
-            return;
-        };
-        let rects = session.take_dirty();
-        if rects.is_empty() {
-            tracing::trace!("slint settings frame had nothing dirty");
-            return;
-        }
-        let refresh = crate::view::slint::components::text_sheet::frame_refresh(
-            self.parts.text_is_open(),
-            finger_down,
-        );
-        tracing::trace!(
-            mode = ?refresh.mode,
-            wait = refresh.wait,
-            rects = rects.len(),
-            "slint settings queued a frame"
-        );
-        for rect in rects {
-            tracing::trace!(%rect, "slint dirty area");
-            if refresh.wait {
-                rq.add(RenderData::new(self.id, rect, refresh.mode));
-            } else {
-                rq.add(RenderData::no_wait(self.id, rect, refresh.mode));
-            }
-        }
-    }
-
-    /// Copies this editor into the Slint components and captures a frame.
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, context)))]
-    fn sync(&mut self, context: &AppContext) {
-        let Some(session) = &self.ui else {
-            return;
-        };
-        self.parts.sync(session.component(), context);
-        let _ = session.redraw();
+            rq,
+            context,
+            SettingsScreen {
+                parts: Parts::new(dict_service),
+            },
+        )
     }
 }
 
@@ -426,177 +246,55 @@ impl SettingsEditor {
 /// no committed golden image.
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-
-    use anyhow::Context as _;
-    use anyhow::Error;
-
-    use crate::color::Color;
-    use crate::framebuffer::{Framebuffer, Pixmap, UpdateMode};
-    use crate::geom::Rectangle;
+    use super::super::components::install_ui_font;
+    use crate::framebuffer::{Framebuffer as _, Pixmap, UpdateMode};
+    use crate::view::View as _;
     use crate::view::slint::generated::{SettingsCategory, SettingsWindow};
+    use crate::view::slint::testing::RecordingFramebuffer;
 
-    use super::{setting_kind, static_rows};
+    async fn context_at(dpi: u16) -> crate::device::AppContext {
+        use crate::context::test_helpers::create_test_context_from_device;
+        use crate::device::test_device::TestDevice;
 
-    struct RecordingFramebuffer {
-        pixmap: Pixmap,
-        updates: Vec<(Rectangle, UpdateMode)>,
+        create_test_context_from_device(TestDevice::new().with_screen(600, 800, dpi)).await
     }
 
-    impl RecordingFramebuffer {
-        fn new(width: u32, height: u32) -> Self {
-            Self {
-                pixmap: Pixmap::new(width, height, 3),
-                updates: Vec::new(),
-            }
-        }
+    /// Opens through the install-font path, at this device's size.
+    async fn open_settings_window(
+        context: &mut crate::device::AppContext,
+    ) -> crate::view::slint::Session<SettingsWindow> {
+        install_ui_font(context).await;
+        super::super::components::open(context).expect("settings session")
     }
 
-    impl Framebuffer for RecordingFramebuffer {
-        fn set_pixel(&mut self, x: u32, y: u32, color: Color) {
-            self.pixmap.set_pixel(x, y, color);
-        }
+    /// Copies `labels` into the category page. Opening the window does not
+    /// publish rows, so a pixel check supplies the lines the page would sync.
+    fn seed_rows(window: &SettingsWindow, category: SettingsCategory, labels: &[&str]) {
+        use slint::ComponentHandle as _;
+        use slint::{ModelRc, VecModel};
 
-        fn set_blended_pixel(&mut self, x: u32, y: u32, color: Color, alpha: f32) {
-            self.pixmap.set_blended_pixel(x, y, color, alpha);
-        }
+        use crate::view::slint::generated::{SettingRow, StaticLine, StaticPageIo};
 
-        fn invert_region(&mut self, rect: &Rectangle) {
-            self.pixmap.invert_region(rect);
-        }
-
-        fn shift_region(&mut self, rect: &Rectangle, drift: u8) {
-            self.pixmap.shift_region(rect, drift);
-        }
-
-        fn update(&mut self, rect: &Rectangle, mode: UpdateMode) -> Result<u32, Error> {
-            self.updates.push((*rect, mode));
-            Ok(1)
-        }
-
-        fn wait(&self, _token: u32) -> Result<i32, Error> {
-            Ok(1)
-        }
-
-        fn save(&self, _path: &str) -> Result<(), Error> {
-            Ok(())
-        }
-
-        fn set_rotation(&mut self, _n: i8) -> Result<(u32, u32), Error> {
-            Ok(self.pixmap.dims())
-        }
-
-        fn set_monochrome(&mut self, enable: bool) {
-            self.pixmap.set_monochrome(enable);
-        }
-
-        fn set_dithered(&mut self, enable: bool) {
-            self.pixmap.set_dithered(enable);
-        }
-
-        fn set_inverted(&mut self, enable: bool) {
-            self.pixmap.set_inverted(enable);
-        }
-
-        fn monochrome(&self) -> bool {
-            self.pixmap.monochrome()
-        }
-
-        fn dithered(&self) -> bool {
-            self.pixmap.dithered()
-        }
-
-        fn inverted(&self) -> bool {
-            self.pixmap.inverted()
-        }
-
-        fn width(&self) -> u32 {
-            self.pixmap.width()
-        }
-
-        fn height(&self) -> u32 {
-            self.pixmap.height()
-        }
-
-        fn rotation(&self) -> i8 {
-            self.pixmap.rotation()
-        }
-    }
-
-    fn font_bytes() -> Vec<u8> {
-        let font = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fonts/NotoSans-Regular.ttf");
-        std::fs::read(&font).unwrap_or_else(|error| panic!("read {}: {error}", font.display()))
-    }
-
-    /// Writes the UI font into the device install directory.
-    ///
-    /// The install directory is one fixed path shared by every test process, so
-    /// the write is atomic: a concurrent `register_install_fonts` in another
-    /// process must never read a half-written font and fail to open its session.
-    fn install_ui_font(context: &crate::device::AppContext) {
-        use crate::device::DevicePaths as _;
-
-        let fonts_dir = context.device.install_dir().join("fonts");
-        std::fs::create_dir_all(&fonts_dir).expect("create fonts dir");
-        let tmp = tempfile::Builder::new()
-            .prefix(".ui-font-")
-            .tempfile_in(&fonts_dir)
-            .expect("temp font file");
-        std::fs::write(tmp.path(), font_bytes()).expect("write font");
-        tmp.persist(fonts_dir.join("NotoSans-Regular.ttf"))
-            .expect("persist font");
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn static_row_ids_match_category_settings() {
-        use crate::context::test_helpers::create_test_context;
-        use crate::device::soft_suspend::SoftSuspendBackend as _;
-        use crate::view::settings_editor::kinds::SettingIdentity;
-
-        use crate::view::slint::generated::SettingRow;
-
-        let context = create_test_context().await;
-        for category in [
-            SettingsCategory::General,
-            SettingsCategory::Power,
-            SettingsCategory::Reader,
-            SettingsCategory::Intermissions,
-            SettingsCategory::Import,
-            SettingsCategory::Telemetry,
-        ] {
-            let from_settings: Vec<SettingIdentity> = category
-                .settings(&context, None)
-                .await
+        let rows = ModelRc::new(VecModel::from(
+            labels
                 .iter()
-                .map(|kind| kind.identity())
-                .collect();
-            let hide_soft_suspend =
-                category == SettingsCategory::Power && !context.inhibitor.is_supported();
-            let from_slint: Vec<SettingIdentity> = static_rows(category)
-                .iter()
-                .copied()
-                .filter(|row| {
-                    !hide_soft_suspend
-                        || !matches!(
-                            row,
-                            SettingRow::AutosleepMode
-                                | SettingRow::IndicateAutosleepLed
-                                | SettingRow::AutosleepGrace
-                        )
+                .map(|label| StaticLine {
+                    label: (*label).into(),
+                    value: "1".into(),
+                    row: SettingRow::Locale,
                 })
-                .filter_map(|row| setting_kind(row, &context).map(|kind| kind.identity()))
-                .collect();
-            assert_eq!(from_slint, from_settings, "{category:?}");
+                .collect::<Vec<_>>(),
+        ));
+        match category {
+            SettingsCategory::Libraries | SettingsCategory::Dictionaries => {}
+            _ => window.global::<StaticPageIo>().set_rows(rows),
         }
     }
 
-    fn open_settings_window(font: &[u8]) -> crate::view::slint::Session<SettingsWindow> {
-        crate::view::slint::open_with_font(167, 600, 800, font, |family| {
-            let ui = SettingsWindow::new().context("failed to create slint settings window")?;
-            ui.set_font_family(family.into());
-            Ok(ui)
-        })
-        .expect("settings session")
+    fn seed_count(window: &SettingsWindow, category: SettingsCategory, count: usize) {
+        let labels: Vec<String> = (0..count).map(|index| format!("Row {index}")).collect();
+        let borrowed: Vec<&str> = labels.iter().map(String::as_str).collect();
+        seed_rows(window, category, &borrowed);
     }
 
     fn tap_category_at(
@@ -652,10 +350,11 @@ mod tests {
             .sum()
     }
 
-    #[test]
-    fn every_category_draws_its_rows() {
-        let font = font_bytes();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn every_category_draws_its_rows() {
+        let mut context = context_at(167).await;
         let mut fb = RecordingFramebuffer::new(600, 800);
+        install_ui_font(&context).await;
         for category in [
             SettingsCategory::General,
             SettingsCategory::Power,
@@ -664,8 +363,9 @@ mod tests {
             SettingsCategory::Import,
             SettingsCategory::Telemetry,
         ] {
-            let session = open_settings_window(&font);
+            let session = super::super::components::open(&mut context).expect("settings session");
             let window = session.component();
+            seed_count(window, category, 4);
             window.set_category(category);
             session.present(&mut fb).expect("frame");
             assert!(
@@ -675,16 +375,13 @@ mod tests {
         }
     }
 
-    #[test]
-    fn hidden_rows_do_not_reserve_space() {
-        let font = font_bytes();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn hidden_rows_do_not_reserve_space() {
+        let mut context = context_at(167).await;
         let mut fb = RecordingFramebuffer::new(600, 800);
-        let session = open_settings_window(&font);
+        let session = open_settings_window(&mut context).await;
         let window = session.component();
-        use slint::ComponentHandle as _;
-        window
-            .global::<crate::view::slint::generated::PowerPageIo>()
-            .set_show_soft_suspend(false);
+        seed_count(window, SettingsCategory::Power, 3);
         window.set_category(SettingsCategory::Power);
         session.present(&mut fb).expect("frame");
         assert!(
@@ -693,13 +390,14 @@ mod tests {
         );
     }
 
-    #[test]
-    fn pagination_control_appears_when_rows_exceed_a_page() {
-        let font = font_bytes();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn pagination_control_appears_when_rows_exceed_a_page() {
+        let mut context = context_at(167).await;
         let mut fb = RecordingFramebuffer::new(600, 800);
 
-        let many = open_settings_window(&font);
+        let many = open_settings_window(&mut context).await;
         let window = many.component();
+        seed_count(window, SettingsCategory::General, 24);
         window.set_category(SettingsCategory::General);
         many.present(&mut fb).expect("frame");
         assert!(
@@ -707,8 +405,9 @@ mod tests {
             "a pager should render when the rows exceed one page"
         );
 
-        let few = open_settings_window(&font);
+        let few = open_settings_window(&mut context).await;
         let window = few.component();
+        seed_count(window, SettingsCategory::Import, 1);
         window.set_category(SettingsCategory::Import);
         few.present(&mut fb).expect("frame");
         assert!(
@@ -728,13 +427,15 @@ mod tests {
         channel_spread(&pixel) <= 8 && (170..=230).contains(&pixel[0])
     }
 
-    #[test]
-    fn material_palette_stays_gray_until_color_is_enabled() {
+    /// The selected category is the colored mark. It stays black until the
+    /// panel is chromatic.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn material_palette_stays_gray_until_color_is_enabled() {
         use slint::ComponentHandle as _;
 
-        let font = font_bytes();
+        let mut context = context_at(167).await;
         let mut fb = RecordingFramebuffer::new(600, 800);
-        let session = open_settings_window(&font);
+        let session = open_settings_window(&mut context).await;
         session.present(&mut fb).expect("frame");
         let worst = fb
             .pixmap
@@ -768,22 +469,21 @@ mod tests {
     }
 
     /// The accept button is the primary action. On a color panel it is orange;
-    /// Cancel stays white.
-    #[test]
-    fn the_confirm_accept_button_is_orange_on_a_color_panel() {
+    /// Cancel stays white. The label is white, so the sample is the orange
+    /// padding beside the glyph.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn the_confirm_accept_button_is_orange_on_a_color_panel() {
         use slint::ComponentHandle as _;
 
         use crate::view::slint::generated::{ConfirmSheetIo, MaterialPalette};
 
-        let font = font_bytes();
+        let mut context = context_at(300).await;
         let mut fb = RecordingFramebuffer::new(600, 800);
-        let session = crate::view::slint::open_with_font(300, 600, 800, &font, |family| {
-            let ui = SettingsWindow::new().context("failed to create slint settings window")?;
-            ui.set_font_family(family.into());
-            ui.global::<MaterialPalette>().set_chromatic(true);
-            Ok(ui)
-        })
-        .expect("settings session");
+        let session = open_settings_window(&mut context).await;
+        session
+            .component()
+            .global::<MaterialPalette>()
+            .set_chromatic(true);
         let confirm = session.component().global::<ConfirmSheetIo>();
         confirm.set_message("Download dictionary for \"English\"?".into());
         confirm.set_accept_label("Download".into());
@@ -791,8 +491,6 @@ mod tests {
         session.present(&mut fb).expect("frame");
 
         let accept = orange_button(&fb.pixmap).expect("the accept button is not colored");
-        // The label is white, so the middle of the button is the glyph.
-        // The fill is the orange padding beside it.
         let accept_pixel = pixmap_pixel(&fb.pixmap, accept.x0 + 4, (accept.y0 + accept.y1) / 2);
         assert!(
             is_orange(accept_pixel),
@@ -829,8 +527,7 @@ mod tests {
         channel_spread(&pixel) >= 6 && pixel[0] > pixel[1] && pixel[0] > pixel[2]
     }
 
-    /// The filled primary button. The category underline is orange too, but
-    /// it is only a few rows tall, so the button is the tall orange band.
+    /// The filled primary button. It is the tall orange band.
     fn orange_button(pixmap: &Pixmap) -> Option<PxSpan> {
         let mut best: Option<PxSpan> = None;
         let mut y = 0u32;
@@ -884,48 +581,87 @@ mod tests {
         (count >= 40).then_some((x0, x1))
     }
 
-    /// The bordered card: long horizontal ink runs that do not cross the screen.
+    /// The bordered card, measured from its side strokes.
+    ///
+    /// On a gray panel the accept button is solid black. A horizontal scan
+    /// treats that fill as the card and reports the button height.
     fn card_bounds(pixmap: &Pixmap) -> Option<PxSpan> {
         let width = pixmap.width();
-        let mut best: Option<PxSpan> = None;
-        let mut runs = Vec::new();
-        for y in 0..pixmap.height() {
-            let mut x = 0;
-            while x < width {
+        let height = pixmap.height();
+        let mut columns = Vec::new();
+        for x in 0..width {
+            let mut y = 0u32;
+            while y < height {
                 if !is_ink(pixmap_pixel(pixmap, x, y)) {
-                    x += 1;
+                    y += 1;
                     continue;
                 }
-                let x0 = x;
-                while x < width && is_ink(pixmap_pixel(pixmap, x, y)) {
-                    x += 1;
+                let y0 = y;
+                y += 1;
+                while y < height && is_ink(pixmap_pixel(pixmap, x, y)) {
+                    y += 1;
                 }
-                let len = x - x0;
-                if len > width / 3 && len + 16 < width {
-                    runs.push((y, x0, x));
+                if y.saturating_sub(y0) > 80 {
+                    columns.push((x, y0, y - 1));
                 }
             }
         }
-        for (y, x0, x1) in &runs {
-            let mut span = PxSpan {
-                x0: *x0,
-                y0: *y,
-                x1: *x1,
-                y1: *y,
-            };
-            for (other_y, other_x0, other_x1) in &runs {
-                if other_x0.abs_diff(*x0) <= 4 && other_x1.abs_diff(*x1) <= 4 {
-                    span.y0 = span.y0.min(*other_y);
-                    span.y1 = span.y1.max(*other_y);
-                }
+
+        struct Stroke {
+            x0: u32,
+            x1: u32,
+            y0: u32,
+            y1: u32,
+        }
+
+        let mut strokes: Vec<Stroke> = Vec::new();
+        for (x, y0, y1) in columns {
+            let joined = strokes.iter_mut().rev().find(|stroke| {
+                x == stroke.x1.saturating_add(1)
+                    && y0.abs_diff(stroke.y0) <= 4
+                    && y1.abs_diff(stroke.y1) <= 4
+            });
+            if let Some(stroke) = joined {
+                stroke.x1 = x;
+                stroke.y0 = stroke.y0.min(y0);
+                stroke.y1 = stroke.y1.max(y1);
+            } else {
+                strokes.push(Stroke {
+                    x0: x,
+                    x1: x,
+                    y0,
+                    y1,
+                });
             }
-            let tall = span.y1.saturating_sub(span.y0);
-            let best_tall = best
-                .as_ref()
-                .map(|item| item.y1.saturating_sub(item.y0))
-                .unwrap_or(0);
-            if tall > best_tall {
-                best = Some(span);
+        }
+
+        let mut best: Option<PxSpan> = None;
+        for left in &strokes {
+            if left.x1.saturating_sub(left.x0) >= 6 {
+                continue;
+            }
+            for right in &strokes {
+                if right.x0 <= left.x1.saturating_add(40) || right.x1.saturating_sub(right.x0) >= 6
+                {
+                    continue;
+                }
+                if left.y0.abs_diff(right.y0) > 8 || left.y1.abs_diff(right.y1) > 8 {
+                    continue;
+                }
+                let span = PxSpan {
+                    x0: left.x0,
+                    y0: left.y0.min(right.y0),
+                    x1: right.x1.saturating_add(1),
+                    y1: left.y1.max(right.y1),
+                };
+                let tall = span.y1.saturating_sub(span.y0);
+                let best_tall = best
+                    .as_ref()
+                    .map(|item| item.y1.saturating_sub(item.y0))
+                    .unwrap_or(0);
+                if tall > best_tall {
+                    best = Some(span);
+                }
             }
         }
         best.filter(|span| span.y1.saturating_sub(span.y0) > 80)
@@ -1023,6 +759,13 @@ mod tests {
         [data[index], data[index + 1], data[index + 2]]
     }
 
+    /// Gap under the text-dialog keyboard, in dp.
+    ///
+    /// This is `bottom-gap` in `text_sheet.slint`. 19dp is the old 36 logical px.
+    const KEYBOARD_BOTTOM_GAP_DP: f32 = 19.0;
+    /// One dp is 1/160 inch. `InkMetrics.dp` is `BASE_DPI / DP_PER_INCH`.
+    const DP_PER_INCH: f32 = 160.0;
+
     /// The field card sits above the keyboard, and the keyboard matches the
     /// reader keyboard with a gap under it.
     fn assert_text_dialog_layout(pixmap: &Pixmap, context: &crate::device::AppContext) {
@@ -1059,9 +802,8 @@ mod tests {
             keyboard_height < height as f32 * 0.75,
             "the keyboard fills the window ({keyboard_height} of {height})"
         );
-        // The rule is the top of the key block. Its lowest row sits on that edge.
         let from_bottom = height as f32 - rule as f32;
-        let gap = 36.0 * scale;
+        let gap = KEYBOARD_BOTTOM_GAP_DP * crate::unit::BASE_DPI / DP_PER_INCH * scale;
         let expected_from_bottom = block + gap;
         assert!(
             (from_bottom - expected_from_bottom).abs() < 4.0,
@@ -1080,16 +822,12 @@ mod tests {
         );
     }
 
-    #[test]
-    fn settings_frame_shows_a_category_and_a_row() {
-        let font = font_bytes();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn settings_frame_shows_a_category_and_a_row() {
+        let mut context = context_at(167).await;
         let mut fb = RecordingFramebuffer::new(600, 800);
-        let session = crate::view::slint::open_with_font(167, 600, 800, &font, |family| {
-            let ui = SettingsWindow::new().context("failed to create slint settings window")?;
-            ui.set_font_family(family.into());
-            Ok(ui)
-        })
-        .expect("settings session");
+        let session = open_settings_window(&mut context).await;
+        seed_count(session.component(), SettingsCategory::General, 3);
         session.present(&mut fb).expect("settings frame");
         assert_eq!(fb.updates.as_slice(), &[(fb.rect(), UpdateMode::Full)]);
         assert!(
@@ -1102,17 +840,14 @@ mod tests {
         );
     }
 
-    #[test]
-    fn switching_category_rerenders_the_rows() {
-        let font = font_bytes();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn switching_category_rerenders_the_rows() {
+        let mut context = context_at(167).await;
         let mut fb = RecordingFramebuffer::new(600, 800);
-        let session = crate::view::slint::open_with_font(167, 600, 800, &font, |family| {
-            let ui = SettingsWindow::new().context("failed to create slint settings window")?;
-            ui.set_font_family(family.into());
-            Ok(ui)
-        })
-        .expect("settings session");
+        let session = open_settings_window(&mut context).await;
         let window = session.component();
+        seed_rows(window, SettingsCategory::General, &["Language"]);
+        seed_rows(window, SettingsCategory::Power, &["Auto suspend"]);
         window.set_category(SettingsCategory::General);
         session.present(&mut fb).expect("settings frame");
         let general = fb.pixmap.data().to_vec();
@@ -1128,21 +863,21 @@ mod tests {
         assert_ne!(general, power, "rows did not change with the category");
     }
 
-    #[test]
-    fn tapping_a_category_queues_the_category_action() {
+    /// Power's touch target on the 167 dpi / 600×800 frame. The label ink sits
+    /// near y 88; y 145 is the first settings row.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn tapping_a_category_queues_the_category_action() {
         use super::super::components::Parts;
         use crate::geom::Point;
         use crate::input::{DeviceEvent, FingerStatus};
 
-        let font = font_bytes();
+        let mut context = context_at(167).await;
         let mut fb = RecordingFramebuffer::new(600, 800);
-        let session = open_settings_window(&font);
+        let session = open_settings_window(&mut context).await;
         let parts = Parts::new(None);
-        parts.wire(&session);
+        parts.wire(session.component());
         session.present(&mut fb).expect("frame");
 
-        // Power's touch target on the 167 dpi / 600×800 frame. The label ink
-        // sits near y 88; y 145 is the first settings row.
         let position = Point::new(120, 88);
         for status in [FingerStatus::Down, FingerStatus::Up] {
             session.handle_device(DeviceEvent::Finger {
@@ -1159,15 +894,15 @@ mod tests {
         );
     }
 
-    #[test]
-    fn selecting_a_category_does_not_shift_tabs_to_the_right() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn selecting_a_category_does_not_shift_tabs_to_the_right() {
         use super::super::components::Parts;
 
-        let font = font_bytes();
+        let mut context = context_at(167).await;
         let mut fb = RecordingFramebuffer::new(600, 800);
-        let session = open_settings_window(&font);
+        let session = open_settings_window(&mut context).await;
         let parts = Parts::new(None);
-        parts.wire(&session);
+        parts.wire(session.component());
         session.present(&mut fb).expect("frame");
         let window = session.component();
         let libraries = find_category_tap(&session, &parts, window, SettingsCategory::Libraries);
@@ -1182,6 +917,89 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn resize_updates_the_slint_window_to_the_framebuffer() {
+        use slint::ComponentHandle as _;
+
+        use super::SettingsEditor;
+        use crate::device::DeviceHardware as _;
+        use crate::framebuffer::{Framebuffer as _, Pixmap};
+        use crate::view::View as _;
+        use crate::view::slint::generated::InkScreen;
+
+        let mut context = context_at(167).await;
+        install_ui_font(&context).await;
+        let rect = context.device.framebuffer().rect();
+        let mut ignored = crate::view::RenderQueue::new();
+        let mut editor = SettingsEditor::new(rect, &mut ignored, &mut context).await;
+        let (hub, _rx) = crate::view::hub_channel();
+        let (before_width, before_height) = {
+            let chrome = editor
+                .ui
+                .as_ref()
+                .expect("session")
+                .component()
+                .global::<InkScreen>();
+            (chrome.get_window_width(), chrome.get_window_height())
+        };
+
+        let (width, height) = context.device.framebuffer().dims();
+        *context.device.framebuffer_mut() = Pixmap::new(height, width, 1);
+        let rotated = context.device.framebuffer().rect();
+        let mut rq = crate::view::RenderQueue::new();
+        editor.resize(rotated, &hub, &mut rq, &mut context);
+
+        assert_eq!(editor.rect(), &rotated);
+        let session = editor.ui.as_ref().expect("session");
+        assert_eq!(session.size(), (height, width));
+        let physical = session.component().window().size();
+        assert_eq!((physical.width, physical.height), (height, width));
+        let chrome = session.component().global::<InkScreen>();
+        assert_eq!(chrome.get_window_width(), before_height);
+        assert_eq!(chrome.get_window_height(), before_width);
+
+        let mut fb = RecordingFramebuffer::new(height, width);
+        session.blit(&mut fb).expect("blit");
+        let painted = (0..width).any(|y| !is_paper(pixmap_pixel(&fb.pixmap, height - 2, y)));
+        assert!(painted, "resized frame left the new width blank");
+        let header = (0..80).any(|y| (0..200).any(|x| is_ink(pixmap_pixel(&fb.pixmap, x, y))));
+        assert!(header, "resized frame dropped the header");
+        assert!(!rq.is_empty(), "resize did not queue a refresh");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn resize_moves_an_open_notification() {
+        use crate::device::DeviceHardware as _;
+        use crate::framebuffer::{Framebuffer as _, Pixmap};
+        use crate::view::View as _;
+        use crate::view::notification::Notification;
+
+        let mut context = context_at(167).await;
+        install_ui_font(&context).await;
+        let rect = context.device.framebuffer().rect();
+        let mut ignored = crate::view::RenderQueue::new();
+        let mut editor = super::SettingsEditor::new(rect, &mut ignored, &mut context).await;
+        let (hub, _rx) = crate::view::hub_channel();
+        let mut rq = crate::view::RenderQueue::new();
+        let note = Notification::new(None, "Saved".into(), true, &hub, &mut rq, &mut context);
+        let before = *note.rect();
+        editor.children_mut().push(Box::new(note));
+
+        let (width, height) = context.device.framebuffer().dims();
+        *context.device.framebuffer_mut() = Pixmap::new(height, width, 1);
+        context.display.dims = (height, width);
+        editor.resize(
+            context.device.framebuffer().rect(),
+            &hub,
+            &mut rq,
+            &mut context,
+        );
+
+        let after = *editor.children()[0].rect();
+        assert_ne!(after, before, "the notification stayed at {before}");
+        assert_eq!(after.max.x - before.max.x, height as i32 - width as i32);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn toggling_a_setting_updates_the_displayed_value() {
         use slint::ComponentHandle as _;
 
@@ -1192,21 +1010,23 @@ mod tests {
         use crate::geom::Point;
         use crate::input::{DeviceEvent, FingerStatus};
         use crate::view::View as _;
-        use crate::view::slint::generated::{GeneralPageIo, SettingRow};
+        use crate::view::slint::generated::{SettingRow, StaticPageIo};
 
         let mut context = create_test_context().await;
-        install_ui_font(&context);
+        context.settings.auto_share = false;
+        install_ui_font(&context).await;
 
         let rect = context.device.framebuffer().rect();
         let mut rq = crate::view::RenderQueue::new();
         let mut editor = SettingsEditor::new(rect, &mut rq, &mut context).await;
         let before = {
             let window = editor.ui.as_ref().expect("session").component();
-            let io = window.global::<GeneralPageIo>();
-            let before = io.get_auto_share();
+            let io = window.global::<StaticPageIo>();
+            let before = super::super::components::row_value(&io.get_rows(), SettingRow::AutoShare);
             io.invoke_row_pressed(SettingRow::AutoShare);
             before
         };
+        assert_eq!(before, crate::fl!("settings-general-toggle-off"));
         let (hub, _rx) = crate::view::hub_channel();
         let mut bus = crate::view::Bus::new();
         let handled = editor
@@ -1224,18 +1044,83 @@ mod tests {
             )
             .await;
         assert!(handled);
-        let after = editor
-            .ui
-            .as_ref()
-            .expect("session")
-            .component()
-            .global::<GeneralPageIo>()
-            .get_auto_share();
+        let after = super::super::components::row_value(
+            &editor
+                .ui
+                .as_ref()
+                .expect("session")
+                .component()
+                .global::<StaticPageIo>()
+                .get_rows(),
+            SettingRow::AutoShare,
+        );
         assert_ne!(
             after, before,
             "the row still shows the value from before the toggle"
         );
         assert!(context.settings.auto_share, "the setting was not applied");
+    }
+
+    /// The row cannot be held. Moving the clock past the hold interval checks
+    /// that a slow tap still opens it.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_slow_tap_still_opens_a_row_that_cannot_be_held() {
+        use crate::device::DeviceIdentity as _;
+        use crate::input::FingerStatus;
+        use crate::view::slint::generated::SettingsCategory;
+
+        let (mut context, mut editor, mut rq) = editor_with_cormorant().await;
+        let locale = context.settings.locale.clone();
+        editor
+            .parts
+            .set_category(SettingsCategory::General, &mut context)
+            .await;
+        editor.sync(&context);
+        let position = first_general_row(&editor, context.device.dpi());
+
+        finger(
+            &mut editor,
+            &mut context,
+            &mut rq,
+            FingerStatus::Down,
+            position,
+        )
+        .await;
+        assert!(!editor.parts.choice_is_open(), "finger down opened the row");
+        crate::view::slint::advance_test_clock(std::time::Duration::from_millis(700));
+        finger(
+            &mut editor,
+            &mut context,
+            &mut rq,
+            FingerStatus::Up,
+            position,
+        )
+        .await;
+        assert!(
+            editor.parts.choice_is_open(),
+            "a slow tap did not open the row"
+        );
+        assert_eq!(context.settings.locale, locale);
+    }
+
+    /// Physical point in the middle of the first general row.
+    ///
+    /// That row opens a choice and cannot be held. Rows are top-aligned under
+    /// `top-chrome`. `per-page` only limits how many rows are visible, so the
+    /// first row is not measured from the footer.
+    fn first_general_row(editor: &super::SettingsEditor, dpi: u16) -> crate::geom::Point {
+        use slint::ComponentHandle as _;
+
+        use crate::unit::BASE_DPI;
+        use crate::view::slint::generated::InkMetrics;
+
+        let window = editor.ui.as_ref().expect("session").component();
+        let metrics = window.global::<InkMetrics>();
+        let scale = f32::from(dpi.max(1)) / BASE_DPI;
+        crate::geom::Point::new(
+            (metrics.get_dp() * 24.0 * scale).round() as i32,
+            ((window.get_top_chrome() + metrics.get_row() * 0.5) * scale).round() as i32,
+        )
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -1247,7 +1132,7 @@ mod tests {
         use crate::view::View as _;
 
         let mut context = create_test_context().await;
-        install_ui_font(&context);
+        install_ui_font(&context).await;
 
         let rect = context.device.framebuffer().rect();
         let mut rq = crate::view::RenderQueue::new();
@@ -1277,7 +1162,7 @@ mod tests {
         use crate::framebuffer::Framebuffer as _;
 
         let mut context = create_test_context().await;
-        install_ui_font(&context);
+        install_ui_font(&context).await;
 
         let rect = context.device.framebuffer().rect();
         let mut rq = crate::view::RenderQueue::new();
@@ -1313,7 +1198,7 @@ mod tests {
         use crate::framebuffer::Framebuffer as _;
 
         let mut context = create_test_context().await;
-        install_ui_font(&context);
+        install_ui_font(&context).await;
         let rect = context.device.framebuffer().rect();
         let mut rq = crate::view::RenderQueue::new();
         let editor = SettingsEditor::new(rect, &mut rq, &mut context).await;
@@ -1407,14 +1292,14 @@ mod tests {
     fn open_font_list(editor: &super::SettingsEditor) {
         use slint::ComponentHandle as _;
 
-        use crate::view::slint::generated::{ReaderPageIo, SettingRow};
+        use crate::view::slint::generated::{SettingRow, StaticPageIo};
 
         editor
             .ui
             .as_ref()
             .expect("session")
             .component()
-            .global::<ReaderPageIo>()
+            .global::<StaticPageIo>()
             .invoke_row_pressed(SettingRow::FontFamily);
     }
 
@@ -1455,22 +1340,22 @@ mod tests {
     }
 
     /// A physical point outside the centered dialog. Tapping the backdrop
-    /// closes it; the dialog has no back button of its own.
+    /// closes it; the dialog has no back button of its own. The dialog is
+    /// centered and at most two thirds of the screen wide, so a corner lands
+    /// on the backdrop.
     fn point_outside_menu() -> crate::geom::Point {
-        // The dialog is centered and at most two thirds of the screen wide,
-        // so a screen corner always lands on the backdrop.
         crate::geom::Point::new(2, 2)
     }
 
+    /// Only the visible page is copied into the window, so the test shows Reader.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn tapping_a_font_selects_it_and_returns_to_settings() {
         use slint::ComponentHandle as _;
 
         use crate::settings::DEFAULT_FONT_FAMILY;
-        use crate::view::slint::generated::{ChoiceSheetIo, ReaderPageIo};
+        use crate::view::slint::generated::{ChoiceSheetIo, SettingRow, StaticPageIo};
 
         let (mut context, mut editor, mut rq) = editor_with_cormorant().await;
-        // Only the visible page is copied into the window, so show Reader.
         editor
             .parts
             .set_category(SettingsCategory::Reader, &mut context)
@@ -1497,7 +1382,13 @@ mod tests {
         assert_ne!(name, DEFAULT_FONT_FAMILY);
         let window = editor.ui.as_ref().expect("session").component();
         assert!(!window.global::<ChoiceSheetIo>().get_open());
-        assert_eq!(window.global::<ReaderPageIo>().get_font_family(), name);
+        assert_eq!(
+            super::super::components::row_value(
+                &window.global::<StaticPageIo>().get_rows(),
+                SettingRow::FontFamily,
+            ),
+            name
+        );
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -1536,7 +1427,7 @@ mod tests {
 
         use crate::document::file_extension::FileExtension;
         use crate::view::slint::generated::{
-            ChoiceSheetIo, ReaderPageIo, RefreshRatesIo, SettingRow,
+            ChoiceSheetIo, RefreshRatesIo, SettingRow, StaticPageIo,
         };
 
         let (mut context, mut editor, mut rq) = editor_with_cormorant().await;
@@ -1545,7 +1436,7 @@ mod tests {
             .as_ref()
             .expect("session")
             .component()
-            .global::<ReaderPageIo>()
+            .global::<StaticPageIo>()
             .invoke_row_pressed(SettingRow::RefreshRate);
         drain_motion(&mut editor, &mut context, &mut rq).await;
         editor
@@ -1599,18 +1490,18 @@ mod tests {
         use slint::Model as _;
 
         use crate::input::FingerStatus;
-        use crate::view::slint::generated::{GeneralPageIo, KeyAction, SettingRow, TextSheetIo};
+        use crate::view::slint::generated::{KeyAction, SettingRow, StaticPageIo, TextSheetIo};
 
         let (mut context, mut editor, mut rq) = editor_with_cormorant().await;
         rq.clear();
         let window = editor.ui.as_ref().expect("session").component();
         window
-            .global::<GeneralPageIo>()
+            .global::<StaticPageIo>()
             .invoke_row_pressed(SettingRow::WifiIdleTimeout);
         drain_motion(&mut editor, &mut context, &mut rq).await;
         assert_keyboard_updates(&rq, window_area(&editor));
 
-        let pixmap = session_pixmap(&editor, editor.rect.width(), editor.rect.height());
+        let pixmap = session_pixmap(&editor, editor.rect().width(), editor.rect().height());
         assert_text_dialog_layout(&pixmap, &context);
         let page = {
             let window = editor.ui.as_ref().expect("session").component();
@@ -1715,7 +1606,9 @@ mod tests {
     }
 
     /// Download and re-import questions share this card. It sits in the
-    /// middle and leaves the page visible around it.
+    /// middle and leaves the page visible around it. The re-import warning
+    /// is a paragraph, so the card is tall. Rounded corners shorten the
+    /// measured border, so the center is what has to match.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn the_confirm_dialog_floats_in_the_center() {
         use slint::ComponentHandle as _;
@@ -1723,7 +1616,7 @@ mod tests {
         use crate::geom::Point;
         use crate::input::{DeviceEvent, FingerStatus};
         use crate::view::View as _;
-        use crate::view::slint::generated::{ConfirmSheetIo, ImportPageIo, SettingRow};
+        use crate::view::slint::generated::{ConfirmSheetIo, SettingRow, StaticPageIo};
 
         let (mut context, mut editor, mut rq) = editor_with_cormorant().await;
         editor
@@ -1731,7 +1624,7 @@ mod tests {
             .as_ref()
             .expect("session")
             .component()
-            .global::<ImportPageIo>()
+            .global::<StaticPageIo>()
             .invoke_row_pressed(SettingRow::ForceFullImport);
         drain_motion(&mut editor, &mut context, &mut rq).await;
 
@@ -1742,7 +1635,7 @@ mod tests {
             confirm.get_message().as_str(),
             crate::fl!("settings-import-force-full-import-confirm")
         );
-        let pixmap = session_pixmap(&editor, editor.rect.width(), editor.rect.height());
+        let pixmap = session_pixmap(&editor, editor.rect().width(), editor.rect().height());
         let card = card_bounds(&pixmap).expect("the confirm card has no border");
         let window_width = pixmap.width() as f32;
         let window_height = pixmap.height() as f32;
@@ -1755,9 +1648,6 @@ mod tests {
             dialog_height > 180.0,
             "the confirm card collapsed ({dialog_height})"
         );
-        // The re-import warning is a paragraph, so the card is tall. It still
-        // leaves the page visible on every side. Rounded corners shorten the
-        // measured border, so the center is what has to match.
         assert!(
             window_width - dialog_width >= 48.0,
             "the confirm card reaches the side edges ({dialog_width} of {window_width})"
@@ -1794,7 +1684,7 @@ mod tests {
             .as_ref()
             .expect("session")
             .component()
-            .global::<ImportPageIo>()
+            .global::<StaticPageIo>()
             .invoke_row_pressed(SettingRow::ForceFullImport);
         drain_motion(&mut editor, &mut context, &mut rq).await;
         assert!(
@@ -1854,14 +1744,14 @@ mod tests {
     fn window_area(editor: &super::SettingsEditor) -> f32 {
         use slint::ComponentHandle as _;
 
-        use crate::view::slint::generated::SettingsChrome;
+        use crate::view::slint::generated::InkScreen;
 
         let chrome = editor
             .ui
             .as_ref()
             .expect("session")
             .component()
-            .global::<SettingsChrome>();
+            .global::<InkScreen>();
         chrome.get_window_width() * chrome.get_window_height()
     }
 
@@ -1949,7 +1839,7 @@ mod tests {
         use slint::ComponentHandle as _;
         use slint::Model as _;
 
-        use crate::view::slint::generated::{ChoiceSheetIo, ImportPageIo, SettingRow};
+        use crate::view::slint::generated::{ChoiceSheetIo, SettingRow, StaticPageIo};
 
         let (mut context, mut editor, mut rq) = editor_with_cormorant().await;
         editor
@@ -1957,7 +1847,7 @@ mod tests {
             .as_ref()
             .expect("session")
             .component()
-            .global::<ImportPageIo>()
+            .global::<StaticPageIo>()
             .invoke_row_pressed(SettingRow::AllowedKinds);
         drain_motion(&mut editor, &mut context, &mut rq).await;
         assert!(editor.parts.choice_is_open(), "allowed kinds did not open");
@@ -2010,6 +1900,102 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn releasing_the_category_button_does_not_open_a_row() {
+        use crate::view::View as _;
+        use crate::view::slint::generated::SettingsCategory;
+
+        let (mut context, mut editor, mut rq) = editor_with_cormorant().await;
+        let (hub, _rx) = crate::view::hub_channel();
+        let mut bus = crate::view::Bus::new();
+        press_forward(&mut editor, &mut context, &mut rq, &hub, &mut bus).await;
+        assert_eq!(editor.parts.category(), SettingsCategory::Power);
+        assert!(
+            editor.parts.is_plain(),
+            "releasing the category button opened a row"
+        );
+
+        editor
+            .handle_event(
+                &crate::view::Event::SlintTimer,
+                &hub,
+                &mut bus,
+                &mut rq,
+                &mut context,
+            )
+            .await;
+        assert!(
+            editor.parts.is_plain(),
+            "a timer tick after the release opened a row"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_forwarded_press_does_not_keep_a_release_that_never_arrived() {
+        use crate::input::{ButtonCode, ButtonStatus, DeviceEvent};
+        use crate::view::View as _;
+        use crate::view::slint::generated::SettingsCategory;
+
+        let (mut context, mut editor, mut rq) = editor_with_cormorant().await;
+        let (hub, _rx) = crate::view::hub_channel();
+        let mut bus = crate::view::Bus::new();
+        editor
+            .handle_event(
+                &crate::view::Event::Device(DeviceEvent::Button {
+                    time: 0.0,
+                    code: ButtonCode::Forward,
+                    status: ButtonStatus::Pressed,
+                }),
+                &hub,
+                &mut bus,
+                &mut rq,
+                &mut context,
+            )
+            .await;
+        assert_eq!(editor.parts.category(), SettingsCategory::Power);
+        assert_eq!(editor.swallow_release, Some(ButtonCode::Forward));
+
+        editor.parts.show_confirm();
+        assert!(editor.parts.confirm_is_open());
+
+        editor
+            .handle_event(
+                &crate::view::Event::Device(DeviceEvent::Button {
+                    time: 0.0,
+                    code: ButtonCode::Forward,
+                    status: ButtonStatus::Pressed,
+                }),
+                &hub,
+                &mut bus,
+                &mut rq,
+                &mut context,
+            )
+            .await;
+        assert_eq!(
+            editor.swallow_release, None,
+            "the new press inherited a release that never arrived"
+        );
+
+        editor
+            .handle_event(
+                &crate::view::Event::Device(DeviceEvent::Button {
+                    time: 0.0,
+                    code: ButtonCode::Forward,
+                    status: ButtonStatus::Released,
+                }),
+                &hub,
+                &mut bus,
+                &mut rq,
+                &mut context,
+            )
+            .await;
+        assert_eq!(editor.swallow_release, None);
+        assert!(
+            editor.parts.confirm_is_open(),
+            "forwarding the button closed the confirm sheet"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn stepping_categories_with_buttons_does_not_open_an_editor() {
         use slint::ComponentHandle as _;
 
@@ -2021,7 +2007,7 @@ mod tests {
 
         let mut context =
             create_test_context_from_device(TestDevice::new().with_screen(1264, 1680, 300)).await;
-        install_ui_font(&context);
+        install_ui_font(&context).await;
         context.settings.libraries.push(Default::default());
         let rect = context.device.framebuffer().rect();
         let mut rq = crate::view::RenderQueue::new();
@@ -2049,15 +2035,15 @@ mod tests {
         );
     }
 
+    /// A tap still opens only that library after the hold interval. The clock
+    /// moves, so the test does not wait.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn tapping_the_first_library_opens_only_that_editor() {
         use crate::geom::Point;
         use crate::input::FingerStatus;
 
-        // The device waited a few seconds on Libraries before the tap. That
-        // is long enough for a hold timer to come due if it is already running.
         let mut screen = LibraryScreen::open().await;
-        std::thread::sleep(std::time::Duration::from_millis(800));
+        crate::view::slint::advance_test_clock(std::time::Duration::from_millis(800));
 
         let position = Point::new(273, 374);
         screen.finger(1, FingerStatus::Down, position).await;
@@ -2098,7 +2084,7 @@ mod tests {
         let mut screen = LibraryScreen::open().await;
         let position = Point::new(273, 374);
         screen.finger(1, FingerStatus::Down, position).await;
-        std::thread::sleep(std::time::Duration::from_millis(800));
+        crate::view::slint::advance_test_clock(std::time::Duration::from_millis(800));
         screen.finger(1, FingerStatus::Up, position).await;
 
         let (open, _, choice) = screen.overlays();
@@ -2143,7 +2129,7 @@ mod tests {
             let mut context =
                 create_test_context_from_device(TestDevice::new().with_screen(1264, 1680, 300))
                     .await;
-            install_ui_font(&context);
+            install_ui_font(&context).await;
             context.settings.libraries = vec![
                 LibrarySettings {
                     name: "On Board".to_string(),
@@ -2309,12 +2295,16 @@ mod tests {
 
 #[cfg(test)]
 mod job_tests {
-    use super::SettingsEditor;
+    use super::super::components::Parts;
+    use super::{SettingsEditor, SettingsScreen};
     use crate::runtime::Job;
     use crate::view::View;
+    use crate::view::slint::SlintHost;
 
     fn editor(job: Option<Job>) -> SettingsEditor {
-        let mut editor = SettingsEditor::blank();
+        let mut editor = SlintHost::blank(SettingsScreen {
+            parts: Parts::new(None),
+        });
         editor.parts.set_dictionary_job(job);
         editor
     }

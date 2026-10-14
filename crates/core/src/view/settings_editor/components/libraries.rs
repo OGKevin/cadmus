@@ -87,14 +87,23 @@ impl Component for Libraries {
     }
 }
 
-/// Removes library `index` and keeps the settings invariant.
+/// Removes library `index`.
+///
+/// An earlier removal shifts the open library left, so its index drops by one.
+/// Removing the open library leaves the index on the entry that slides into
+/// that slot. The index is then clamped to the last remaining library. This
+/// function does not reload that library.
 pub(super) fn delete(index: usize, context: &mut AppContext) {
-    if index < context.settings.libraries.len() {
-        context.settings.libraries.remove(index);
-        context.settings.sanitize_libraries();
-        if context.settings.selected_library >= context.settings.libraries.len() {
-            context.settings.selected_library = context.settings.libraries.len() - 1;
-        }
+    if index >= context.settings.libraries.len() {
+        return;
+    }
+    context.settings.libraries.remove(index);
+    if index < context.settings.selected_library {
+        context.settings.selected_library -= 1;
+    }
+    context.settings.sanitize_libraries();
+    if context.settings.selected_library >= context.settings.libraries.len() {
+        context.settings.selected_library = context.settings.libraries.len() - 1;
     }
 }
 
@@ -108,4 +117,56 @@ fn library_lines(context: &AppContext) -> Vec<SettingLine> {
             value: library.path.display().to_string().into(),
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::delete;
+    use crate::context::test_helpers::create_test_context;
+    use crate::settings::LibrarySettings;
+    use std::path::PathBuf;
+
+    fn library(name: &str) -> LibrarySettings {
+        LibrarySettings {
+            name: name.to_string(),
+            path: PathBuf::from(name),
+            ..LibrarySettings::default()
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn delete_earlier_library_keeps_index_on_open_library() {
+        let mut context = create_test_context().await;
+        context.settings.libraries = vec![library("A"), library("B"), library("C")];
+        context.settings.selected_library = 1;
+
+        delete(0, &mut context);
+
+        assert_eq!(context.settings.selected_library, 0);
+        assert_eq!(context.settings.libraries[0].name, "B");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn delete_selected_library_indexes_the_next_library() {
+        let mut context = create_test_context().await;
+        context.settings.libraries = vec![library("A"), library("B"), library("C")];
+        context.settings.selected_library = 1;
+
+        delete(1, &mut context);
+
+        assert_eq!(context.settings.selected_library, 1);
+        assert_eq!(context.settings.libraries[1].name, "C");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn delete_last_selected_library_clamps_to_new_last() {
+        let mut context = create_test_context().await;
+        context.settings.libraries = vec![library("A"), library("B"), library("C")];
+        context.settings.selected_library = 2;
+
+        delete(2, &mut context);
+
+        assert_eq!(context.settings.selected_library, 1);
+        assert_eq!(context.settings.libraries[1].name, "B");
+    }
 }

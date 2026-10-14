@@ -25,14 +25,26 @@ pub(super) async fn start_dictionary_download(
     hub: &Hub,
     context: &AppContext,
 ) {
+    let notify_failure = || {
+        hub.send(
+            (Event::Notification(NotificationEvent::Show(fl!(
+                "notification-dictionary-install-failed",
+                lang = lang
+            ))))
+            .into(),
+        )
+        .ok();
+    };
     let entry = match service.get_entry_for_lang(lang).await {
         Ok(Some(entry)) => entry,
         Ok(None) => {
             tracing::warn!(lang, "No metadata entry found for language; cannot install");
+            notify_failure();
             return;
         }
         Err(error) => {
             tracing::warn!(lang, error = %error, "Failed to look up dictionary entry");
+            notify_failure();
             return;
         }
     };

@@ -23,8 +23,14 @@ source string. `cadmus-translate` extracts those strings with
 template into `ui/lang/<lang>/LC_MESSAGES/cadmus-core.po`, which the build
 bundles (`--no-default-translation-context`, so no `msgctxt`).
 
-Do not hand-edit the `.po` files. Runtime values, including setting rows and
-category names, stay in Fluent.
+Do not hand-edit the `.po` files. Category names and the file chooser's "Up"
+and "Select this folder" stay `@tr`. They have no Fluent twin.
+
+Strings chosen at runtime use `fl!`. A settings row label is
+[`SettingKind::label`](../src/view/settings_editor/kinds/mod.rs), not a second
+`@tr` string. Cancel and OK on the confirmation dialog and the text dialog,
+and the library and refresh-rate labels that already have `fl!` keys, are set
+from Rust.
 
 ## Runtime message IDs
 

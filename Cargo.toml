@@ -24,6 +24,8 @@ gix = { version = "0.90", default-features = false, features = [
 ] }
 http = "1"
 http-body-util = "0.1"
+i-slint-common = { version = "=1.18.1", features = ["fontconfig-dlopen"] }
+i-slint-core = { version = "=1.18.1", default-features = false, features = ["image-decoders", "svg"] }
 io_tee = "0.1"
 octocrab = { version = "0.54.2", default-features = false, features = [
     "jwt-rust-crypto",
@@ -32,6 +34,7 @@ reqwest-middleware = { version = "0.5.2", default-features = false }
 reqwest-retry = { version = "0.9.1", default-features = false }
 reqwest-tracing = { version = "0.7.1", default-features = false }
 rars = { version = "0.12", default-features = false, features = ["encryption"] }
+rgb = "0.8"
 rust-embed = "8"
 rustls = { version = "0.23", default-features = false, features = [
   "ring",
@@ -41,16 +44,13 @@ rustls = { version = "0.23", default-features = false, features = [
 ] }
 sdl3 = { version = "0.20.0", features = ["use-pkg-config"] }
 serde_json = "1.0.149"
-i-slint-common = { version = "1.18.1", features = ["fontconfig-dlopen"] }
-i-slint-core = { version = "1.18.1", default-features = false, features = ["image-decoders", "svg"] }
-rgb = "0.8"
-slint = { version = "1.18.1", default-features = false, features = [
+slint = { version = "=1.18.1", default-features = false, features = [
     "compat-1-2",
     "renderer-software",
     "std",
     "unstable-fontique-011",
 ] }
-slint-build = "1.18.1"
+slint-build = "=1.18.1"
 sysinfo = { version = "0.39", default-features = false, features = ["system"] }
 tokio-util = { version = "0.7", default-features = false, features = ["compat", "rt"] }
 tower = { version = "0.5", default-features = false }

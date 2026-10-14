@@ -34,7 +34,8 @@ use crate::view::settings_editor::kinds::reader::{
 };
 use crate::view::settings_editor::kinds::telemetry::{LogLevel, LoggingEnabled};
 use crate::view::settings_editor::kinds::{SettingKind, SettingsFetchData, WidgetKind};
-use crate::view::slint::generated::{SettingRow, SettingsCategory};
+use crate::view::slint::changed_model;
+use crate::view::slint::generated::{SettingRow, SettingsCategory, StaticLine};
 use crate::view::{Bus, EntryId, Event};
 
 #[cfg(feature = "tracing")]
@@ -53,14 +54,6 @@ pub(super) enum PressedRow {
     Setting(SettingRow),
     /// Index into the library model, starting at 0.
     Library(i32),
-}
-
-/// Display string for `row`, or empty when this build has no such setting.
-pub(super) fn text(row: SettingRow, context: &AppContext) -> slint::SharedString {
-    kind(row, context)
-        .map(|kind| display_of(kind.as_ref(), context))
-        .unwrap_or_default()
-        .into()
 }
 
 /// The [`SettingKind`] that reads and writes `row`.
@@ -127,10 +120,10 @@ pub(in crate::view::settings_editor) fn kind(
     }
 }
 
-/// Static rows of `category`, in the same order as that page's `.slint` file.
+/// Static rows of `category`, in page order.
 ///
 /// Libraries and dictionaries are models, so they have no static rows.
-#[cfg(test)]
+/// Rows this device or build does not show are dropped before the page is drawn.
 pub(in crate::view::settings_editor) fn static_rows(
     category: SettingsCategory,
 ) -> &'static [SettingRow] {
@@ -187,6 +180,84 @@ pub(in crate::view::settings_editor) fn static_rows(
     }
 }
 
+struct ShownRow {
+    row: SettingRow,
+    kind: Box<dyn SettingKind>,
+}
+
+/// Rows `category` shows, each with the [`SettingKind`] that reads it.
+///
+/// Soft suspend is omitted when the device has no such modes. A telemetry
+/// row whose [`kind`] is `None` is omitted, so the page does not keep an
+/// empty slot for a feature this build lacks. The page and the category
+/// tests both use this list.
+fn shown(category: SettingsCategory, context: &AppContext) -> Vec<ShownRow> {
+    static_rows(category)
+        .iter()
+        .copied()
+        .filter_map(|row| {
+            if soft_suspend_hidden(row, context) {
+                return None;
+            }
+            kind(row, context).map(|kind| ShownRow { row, kind })
+        })
+        .collect()
+}
+
+fn soft_suspend_hidden(row: SettingRow, context: &AppContext) -> bool {
+    matches!(
+        row,
+        SettingRow::AutosleepMode | SettingRow::IndicateAutosleepLed | SettingRow::AutosleepGrace
+    ) && !context.inhibitor.is_supported()
+}
+
+/// The [`SettingKind`]s a static settings page shows.
+///
+/// Libraries and dictionaries are not in this list. Only the category tests
+/// read this; the pages publish rows through [`publish_rows`].
+#[cfg(test)]
+pub(in crate::view::settings_editor) fn shown_kinds(
+    category: SettingsCategory,
+    context: &AppContext,
+) -> Vec<Box<dyn SettingKind>> {
+    shown(category, context)
+        .into_iter()
+        .map(|shown| shown.kind)
+        .collect()
+}
+
+/// Rows `category` shows for this device and build.
+#[cfg(test)]
+fn visible_rows(category: SettingsCategory, context: &AppContext) -> Vec<SettingRow> {
+    shown(category, context)
+        .into_iter()
+        .map(|shown| shown.row)
+        .collect()
+}
+
+fn line_of(row: SettingRow, kind: &dyn SettingKind, context: &AppContext) -> StaticLine {
+    StaticLine {
+        label: kind.label(&context.settings).into(),
+        value: display_of(kind, context).into(),
+        row,
+    }
+}
+
+/// The row model to assign, or `None` when `current` already shows `category`.
+///
+/// Each visible row's [`SettingKind`] is built once.
+pub(super) fn publish_rows(
+    current: &slint::ModelRc<StaticLine>,
+    category: SettingsCategory,
+    context: &AppContext,
+) -> Option<slint::ModelRc<StaticLine>> {
+    let lines = shown(category, context)
+        .iter()
+        .map(|shown| line_of(shown.row, shown.kind.as_ref(), context))
+        .collect();
+    changed_model(current, lines)
+}
+
 /// Turns a row tap into the [`Step`] that shows or applies it.
 pub(super) fn activate(row: PressedRow, env: &mut Env<'_>) -> Step {
     let Some(kind) = pressed_kind(row, env.context) else {
@@ -216,6 +287,10 @@ pub(super) fn activate(row: PressedRow, env: &mut Env<'_>) -> Step {
 }
 
 /// Applies the entry `id` chosen from the settings choice sheet.
+///
+/// Accepting the row closes the list. [`Step::Redraw`] copies the new value
+/// onto the settings row. A choice that keeps the menu open refreshes the
+/// list instead of closing it.
 pub(super) fn apply_setting_choice(row: PressedRow, id: EntryId, env: &mut Env<'_>) -> Step {
     let Some(kind) = pressed_kind(row, env.context) else {
         return Step::Idle;
@@ -232,20 +307,26 @@ pub(super) fn apply_setting_choice(row: PressedRow, id: EntryId, env: &mut Env<'
     if keep {
         return refresh_choice(row, env);
     }
-    // Accepting the row closes the list. Redraw copies the new value onto the
-    // settings row.
     Step::Redraw
 }
 
 /// Applies a submitted string to a settings row.
-pub(super) fn apply_text(row: PressedRow, text: &str, context: &mut AppContext) {
-    let Some(kind) = pressed_kind(row, context) else {
+///
+/// The kind handles `Event::Submit` first, so alarms and other live state
+/// stay in step with the saved value. A kind that ignores the submit still
+/// persists the text.
+pub(super) fn apply_text(row: PressedRow, text: &str, env: &mut Env<'_>) {
+    let Some(kind) = pressed_kind(row, env.context) else {
         return;
     };
     let Some(input) = kind.as_input_kind() else {
         return;
     };
-    input.apply_text(text, &mut context.settings);
+    let event = Event::Submit(input.submit_view_id(), text.to_string());
+    let (_display, consumed) = kind.handle(&event, env.context, env.bus);
+    if !consumed {
+        input.apply_text(text, &mut env.context.settings);
+    }
 }
 
 /// Applies a file chosen for a row that used the file chooser.
@@ -345,5 +426,134 @@ pub(super) fn entry_id(entry: &crate::view::EntryKind) -> Option<EntryId> {
         | crate::view::EntryKind::CheckBox(_, id, _)
         | crate::view::EntryKind::RadioButton(_, id, _) => Some(id.clone()),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+pub(super) fn row_ids(rows: &slint::ModelRc<StaticLine>) -> Vec<SettingRow> {
+    use slint::Model as _;
+
+    rows.iter().map(|line| line.row).collect()
+}
+
+#[cfg(test)]
+pub(in crate::view::settings_editor) fn row_value(
+    rows: &slint::ModelRc<StaticLine>,
+    row: SettingRow,
+) -> String {
+    use slint::Model as _;
+
+    rows.iter()
+        .find(|line| line.row == row)
+        .unwrap_or_else(|| panic!("missing {row:?}"))
+        .value
+        .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::context::test_helpers::create_test_context;
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn visible_rows_omit_unsupported_soft_suspend() {
+        let context = create_test_context().await;
+        assert!(!context.inhibitor.is_supported());
+        let rows = visible_rows(SettingsCategory::Power, &context);
+        for hidden in [
+            SettingRow::AutosleepMode,
+            SettingRow::IndicateAutosleepLed,
+            SettingRow::AutosleepGrace,
+        ] {
+            assert!(!rows.contains(&hidden), "{hidden:?} was shown");
+        }
+        assert!(rows.contains(&SettingRow::AutoSuspend));
+        assert_eq!(rows.first().copied(), Some(SettingRow::AutoSuspend));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_row_label_is_the_fluent_string() {
+        use slint::{Model, ModelRc, VecModel};
+
+        let context = create_test_context().await;
+
+        let current = ModelRc::new(VecModel::from(Vec::<StaticLine>::new()));
+        let lines =
+            publish_rows(&current, SettingsCategory::General, &context).expect("published rows");
+        let language = lines
+            .iter()
+            .find(|line| line.row == SettingRow::Locale)
+            .expect("language row");
+        assert_eq!(language.label.as_str(), fl!("settings-general-language"));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn apply_text_zero_cancels_auto_suspend_alarm() {
+        use crate::AlarmType;
+
+        let mut context = create_test_context().await;
+        context.settings.auto_suspend = 30.0;
+        crate::device::reschedule_auto_suspend_alarm(&mut context);
+        let (hub, _rx) = crate::view::hub_channel();
+        let mut bus = Bus::new();
+        {
+            let mut env = super::super::settings_env(&hub, &mut bus, &mut context);
+            apply_text(PressedRow::Setting(SettingRow::AutoSuspend), "0", &mut env);
+        }
+
+        assert_eq!(context.settings.auto_suspend, 0.0);
+        assert!(
+            !context
+                .alarm_manager
+                .as_ref()
+                .unwrap()
+                .lock()
+                .unwrap()
+                .has_alarm(AlarmType::AutoSuspend)
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn apply_text_auto_frontlight_brightness_pushes_config_changed() {
+        let mut context = create_test_context().await;
+        let (hub, _rx) = crate::view::hub_channel();
+        let mut bus = Bus::new();
+        {
+            let mut env = super::super::settings_env(&hub, &mut bus, &mut context);
+            apply_text(
+                PressedRow::Setting(SettingRow::AutoFrontlightBrightness),
+                "25",
+                &mut env,
+            );
+        }
+
+        assert_eq!(
+            context.settings.auto_frontlight_night_brightness,
+            Some(25.0.into())
+        );
+        assert!(
+            bus.iter()
+                .any(|event| matches!(event, Event::AutoFrontlightConfigChanged))
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn apply_text_wifi_idle_timeout_updates_when_handle_ignores_submit() {
+        let mut context = create_test_context().await;
+        context.settings.wifi_idle_timeout = 10.0;
+        let (hub, _rx) = crate::view::hub_channel();
+        let mut bus = Bus::new();
+        {
+            let mut env = super::super::settings_env(&hub, &mut bus, &mut context);
+            apply_text(
+                PressedRow::Setting(SettingRow::WifiIdleTimeout),
+                "0",
+                &mut env,
+            );
+        }
+
+        assert_eq!(context.settings.wifi_idle_timeout, 0.0);
+        assert!(bus.is_empty());
     }
 }

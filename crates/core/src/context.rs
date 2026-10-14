@@ -464,6 +464,10 @@ impl<D: Device> ShutdownContext<'_, D> {
 }
 
 /// Applies `rotation` to the device framebuffer and the display.
+#[cfg_attr(
+    feature = "tracing",
+    tracing::instrument(level = "debug", skip(device, display), fields(rotation = rotation))
+)]
 fn set_rotation<D: Device>(
     device: &mut D,
     display: &mut Display,
@@ -476,15 +480,18 @@ fn set_rotation<D: Device>(
         device.refresh_framebuffer_from_kernel();
         display.rotation = rotation;
         display.dims = new_dims;
-        let (context_rotation, context_dims) = (display.rotation, display.dims);
+        let context_dims = display.dims;
+        let fb_dims_after = device.framebuffer().dims();
+        let fb_rotation_after = device.framebuffer().rotation();
         tracing::debug!(
             rotation,
             fb_rotation_before = fb_rotation,
             fb_dims_before = ?fb_dims,
-            context_rotation,
+            returned_dims = ?new_dims,
             context_dims = ?context_dims,
-            new_fb_dims = ?new_dims,
-            fb_rotation_after = device.framebuffer().rotation(),
+            fb_dims_after = ?fb_dims_after,
+            fb_rotation_after,
+            dims_match = new_dims == fb_dims_after,
             "set_rotation"
         );
         Ok(new_dims)

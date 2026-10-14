@@ -1,4 +1,6 @@
 import { Hairline } from "hairline.slint";
+import { HoldTouch } from "hold_touch.slint";
+import { InkMetrics } from "ink/metrics.slint";
 import { MaterialPalette } from "ink/palette.slint";
 
 // What a key does. Character keys insert `insert`. The labels and which
@@ -31,9 +33,8 @@ export struct KeyCap {
 }
 
 // A locked key is already black, so pressing it flashes the other way.
-// The hold timer starts stopped. A Slint timer runs by default, and a
-// timer left running would open the accent strip for a key that was not held.
-component Key inherits Rectangle {
+// Named KeyButton so it does not shadow Slint's built-in `Key`.
+component KeyButton inherits Rectangle {
     in property <string> label;
     in property <bool> engaged: false;
     in property <float> stretch: 1;
@@ -42,32 +43,19 @@ component Key inherits Rectangle {
     callback tapped();
     callback held();
 
-    property <bool> suppress-click: false;
-    property <bool> pressed: false;
-    property <bool> inverted: root.pressed != root.engaged;
+    property <bool> inverted: touch.down != root.engaged;
 
     horizontal-stretch: root.stretch;
     min-width: 0px;
     height: 100%;
     background: root.inverted ? MaterialPalette.on-surface : MaterialPalette.surface;
-    border-width: 2px;
+    border-width: InkMetrics.hairline;
     border-color: MaterialPalette.on-surface;
-
-    hold-timer := Timer {
-        interval: 600ms;
-        running: false;
-        triggered => {
-            hold-timer.stop();
-            if (root.holdable) {
-                root.suppress-click = true;
-                root.held();
-            }
-        }
-    }
 
     Text {
         text: root.label;
-        font-size: root.compact ? 24px : 34px;
+        font-family: "Varela Round";
+        font-size: root.compact ? 13px * InkMetrics.dp : InkMetrics.body;
         color: root.inverted ? MaterialPalette.surface : MaterialPalette.on-surface;
         horizontal-alignment: center;
         vertical-alignment: center;
@@ -76,38 +64,22 @@ component Key inherits Rectangle {
         overflow: elide;
     }
 
-    TouchArea {
+    touch := HoldTouch {
         width: 100%;
         height: 100%;
-        pointer-event(event) => {
-            if (event.kind == PointerEventKind.down) {
-                root.pressed = true;
-                root.suppress-click = false;
-                if (!root.holdable) {
-                    return;
-                }
-                if (hold-timer.running) {
-                    hold-timer.restart();
-                } else {
-                    hold-timer.running = true;
-                }
-            }
-            if (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) {
-                root.pressed = false;
-                hold-timer.stop();
-            }
+        holdable: root.holdable;
+        tapped => {
+            root.tapped();
         }
-        clicked => {
-            if (!root.suppress-click) {
-                root.tapped();
-            }
-            root.suppress-click = false;
+        held => {
+            root.held();
         }
     }
 }
 
 // The keys sit on the bottom, in a block as tall as the reader keyboard.
-// `key-height` and `key-gap` are that keyboard's key and its padding.
+// `block-height`, `key-height`, and `key-gap` are logical pixels. Rust
+// sets them from the reader keyboard. They are not dp.
 // The strip above the block stays empty until a held character has
 // accented forms, so the field above does not jump. Touches on the
 // empty strip and on the padding stay inside the dialog.
@@ -141,14 +113,14 @@ export component OnScreenKeyboard inherits VerticalLayout {
             width: 100%;
             height: 100%;
             background: MaterialPalette.surface;
-            border-width: 2px;
+            border-width: InkMetrics.hairline;
             border-color: MaterialPalette.on-surface;
 
             HorizontalLayout {
-                padding: 4px;
-                spacing: 4px;
+                padding: 2px * InkMetrics.dp;
+                spacing: 2px * InkMetrics.dp;
 
-                for variant in root.variants: Key {
+                for variant in root.variants: KeyButton {
                     label: variant;
                     stretch: 1;
                     tapped => {
@@ -185,7 +157,7 @@ export component OnScreenKeyboard inherits VerticalLayout {
                 height: root.key-height;
                 spacing: root.key-gap;
 
-                for key in row: Key {
+                for key in row: KeyButton {
                     label: key.label;
                     stretch: key.stretch;
                     engaged: key.engaged;
