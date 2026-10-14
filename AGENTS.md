@@ -299,6 +299,13 @@ For workflows, load the matching skill from [`.agents/skills/`](.agents/skills/)
 | `translations-sync`   | Regenerate the translations POT after user-facing doc edits |
 | `fetch-cadmus-logs`   | Look up device logs in Loki by run ID                       |
 
+`devenv` links the upstream Slint skill at `.agents/skills/slint` and writes
+`.cursor/mcp.json` (only if that file is missing) and `opencode.jsonc`. The
+viewer MCP server in both files is disabled until `cadmus-slint-view` is
+running. None of the three is committed. The skill is a symlink into the nix store. treefmt
+excludes that directory and the two generated files, and a tree walk skips the
+symlink. The skill's release is the `slint` input in `devenv.yaml`.
+
 ## Testing
 
 After code changes, complete every step before considering work done:

@@ -51,6 +51,7 @@ pub mod search_bar;
 pub mod settings_editor;
 pub mod sketch;
 pub mod slider;
+pub(crate) mod slint;
 pub mod startup;
 pub mod toggle;
 pub mod toggleable_keyboard;
@@ -86,7 +87,7 @@ use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
-use tracing::error;
+use tracing::{debug, error};
 use unic_langid::LanguageIdentifier;
 
 // Border thicknesses in pixels, at 300 DPI.
@@ -347,6 +348,12 @@ pub fn render(
                 updating.retain(|update| {
                     let overlaps = render_rect.overlaps(&update.rect);
                     if overlaps && !update.has_completed() {
+                        debug!(
+                            token = update.token,
+                            waiting_for = %update.rect,
+                            %render_rect,
+                            "waiting on framebuffer update"
+                        );
                         context
                             .device
                             .framebuffer()
@@ -427,9 +434,16 @@ pub fn process_render_queue(
             }
         }
 
+        debug!(
+            ?mode,
+            wait,
+            areas = ids.len() + bgs.len(),
+            "render queue pass"
+        );
         render(view, wait, &ids, &mut rects, &mut bgs, context, updating);
 
         for rect in rects {
+            debug!(%rect, ?mode, wait, "framebuffer update");
             match context.device.framebuffer_mut().update(&rect, mode) {
                 Ok(token) => {
                     updating.push(UpdateData {
@@ -556,8 +570,8 @@ pub enum Event {
     ToggleBookMenu(Rectangle, usize),
     TogglePresetMenu(Rectangle, usize),
     SubMenu(Rectangle, Vec<EntryKind>),
-    OpenSettingsCategory(settings_editor::Category),
-    SelectSettingsCategory(settings_editor::Category),
+    OpenSettingsCategory(settings_editor::SettingsCategory),
+    SelectSettingsCategory(settings_editor::SettingsCategory),
     UpdateSettings(Box<settings::Settings>),
     EditLibrary(usize),
     UpdateLibrary(usize, Box<settings::LibrarySettings>),
@@ -678,11 +692,11 @@ pub enum Event {
     /// This event is sent from the version check thread when the remote version
     /// is newer than the current version, triggering the actual download to begin.
     StartStableReleaseDownload,
-    /// Result of a background dictionary install spawned by `CategoryEditor`.
+    /// Result of a background dictionary install spawned by the settings screen.
     ///
     /// Sent from the download thread when the install completes (success or
-    /// failure). `CategoryEditor` handles this by rebuilding the rows list so
-    /// the newly-installed dictionary appears immediately.
+    /// failure). The settings screen reloads the dictionary rows so the
+    /// newly-installed dictionary appears immediately.
     DictionaryInstallComplete {
         lang: String,
         result: Result<(), String>,
@@ -735,6 +749,17 @@ pub enum Event {
     /// dictionaries are no longer visible). The app and emulator main loops
     /// handle this event directly on the context.
     ReloadDictionaries,
+    /// A Slint timer came due.
+    ///
+    /// A Slint view only runs Slint's timers while it handles input, so a
+    /// press-and-hold would not fire until the finger lifted. After each
+    /// input the view asks Slint when its next timer is due and sends this
+    /// event then. The view runs the timers and applies what they queued.
+    ///
+    /// A late event is ignored. The only handler is the open Slint screen.
+    /// After that screen closes, the current view does not handle this event,
+    /// and the main loop drops it.
+    SlintTimer,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
