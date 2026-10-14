@@ -18,6 +18,12 @@ const FILES: &[(&str, &str)] = &[
         "ofl/parisienne/Parisienne-Regular.ttf",
     ),
     ("Delius-Regular.ttf", "ofl/delius/Delius-Regular.ttf"),
+    // Regional Noto CJK subsets. Slint registers these as script fallbacks
+    // so settings labels can draw Japanese, Korean, and Chinese names.
+    ("NotoSansJP.ttf", "ofl/notosansjp/NotoSansJP[wght].ttf"),
+    ("NotoSansKR.ttf", "ofl/notosanskr/NotoSansKR[wght].ttf"),
+    ("NotoSansSC.ttf", "ofl/notosanssc/NotoSansSC[wght].ttf"),
+    ("NotoSansTC.ttf", "ofl/notosanstc/NotoSansTC[wght].ttf"),
 ];
 
 pub(crate) fn is_complete(root: &Path, fonts_dir: &Path) -> bool {

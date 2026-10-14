@@ -1,0 +1,26 @@
+// Material dp, mapped onto the 300 DPI design pixel used by the rest of
+// the UI. A dp is 1/160 inch. 300/160 keeps a 64dp bar at 120 design px.
+
+export global InkMetrics {
+    out property <float> dp: 300 / 160;
+
+    out property <length> app-bar: 64px * root.dp;
+    out property <length> bottom-bar: 80px * root.dp;
+    out property <length> tab-row: 49px * root.dp;
+    out property <length> icon-button: 48px * root.dp;
+    out property <length> fab: 56px * root.dp;
+    out property <length> icon: 24px * root.dp;
+    out property <length> indicator: 8px * root.dp;
+    out property <length> tab-radius: 8px * root.dp;
+    out property <length> bar-pad: 6px * root.dp;
+    out property <length> bar-gap: 6px * root.dp;
+    out property <length> tab-pad-x: 16px * root.dp;
+    out property <length> tab-pad-top: 10px * root.dp;
+    out property <length> tab-pad-bottom: 8px * root.dp;
+
+    out property <length> title: 22px * root.dp;
+    out property <length> tab-label: 14px * root.dp;
+    out property <length> bar-label: 16px * root.dp;
+    out property <int> title-weight: 300;
+    out property <int> label-weight: 600;
+}

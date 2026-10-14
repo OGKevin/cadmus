@@ -29,18 +29,30 @@ let label = crate::fl!("books-loaded", count = book_count);
 let label = fl_or!(dynamic_id, "My new message");
 ```
 
-## Updating documentation translation sources
+## Adding Slint UI strings
 
-After changing **user-facing** English docs (`docs/src/**/*.md` outside
-`contributing/`):
+Static copy in a `.slint` file uses `@tr("English")`; the English text is the
+source string. `cadmus-translate` extracts it with `slint-tr-extractor` into
+[`crates/core/ui/lang/cadmus-core.pot`](https://github.com/ogkevin/cadmus/blob/master/crates/core/ui/lang/cadmus-core.pot).
+Do not add translations to
+`crates/core/ui/lang/<lang>/LC_MESSAGES/cadmus-core.po` by hand — Crowdin owns
+those. Runtime values (setting rows, category names, live state) stay in
+Fluent, not `@tr`.
+
+## Updating translation sources
+
+After changing **user-facing** English strings — Fluent IDs, `.slint` `@tr`
+copy, or docs (`docs/src/**/*.md` outside `contributing/`):
 
 ```bash
 cadmus-translate   # devenv
-# or: MDBOOK_OUTPUT='{"xgettext": {}}' mdbook build -d docs/po docs
+# refreshes docs/po/messages.pot and crates/core/ui/lang/cadmus-core.pot
+# or, docs only: MDBOOK_OUTPUT='{"xgettext": {}}' mdbook build -d docs/po docs
 ```
 
-Commit the updated `docs/po/messages.pot` alongside your doc edits. Crowdin
-picks up the new template; translators update locale `.po` files there.
+Commit the updated `docs/po/messages.pot` and/or
+`crates/core/ui/lang/cadmus-core.pot` alongside your edits. Crowdin picks up
+the new templates; translators update the locale files there.
 
 When changing website strings, update
 [`website/messages/en.json`](https://github.com/ogkevin/cadmus/blob/master/website/messages/en.json)
@@ -49,7 +61,8 @@ only — Crowdin handles `website/messages/<lang>.json`.
 ## You do not need to maintain translated files
 
 After changing English source strings, do **not** hand-edit `docs/po/*.po`,
-`crates/core/i18n/*/*.ftl`, or `website/messages/*.json` for other locales.
+`crates/core/i18n/*/*.ftl`, `crates/core/ui/lang/<lang>/**`, or
+`website/messages/*.json` for other locales.
 
 Outdated or fuzzy entries in those files are reconciled on Crowdin and synced
 back via the `crowdin` CI workflow (`skip_untranslated_strings: true` on

@@ -1,17 +1,11 @@
-//! Single, deduplicated identity enum for all settings.
+//! Single identity enum for all settings.
 //!
-//! This replaces the two parallel `Kind` enums that previously existed in
-//! `setting_row` and `setting_value`.  It is only used to route
 //! [`SettingsEvent::UpdateValue`](crate::view::settings_editor::SettingsEvent)
-//! events to the correct view — the view layer itself contains no per-setting
-//! match arms.
+//! still carries this identity for callers outside the Slint screen.
 
-/// Identifies a specific setting value view for targeted updates.
+/// Identifies one setting.
 ///
-/// Used in [`SettingsEvent::UpdateValue`](crate::view::settings_editor::SettingsEvent)
-/// so that [`CategoryEditor`](crate::view::settings_editor::CategoryEditor) can tell
-/// exactly which [`SettingValue`](crate::view::settings_editor::SettingValue) to
-/// refresh after a setting changes.
+/// Carried by [`SettingsEvent::UpdateValue`](crate::view::settings_editor::SettingsEvent).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SettingIdentity {
     KeyboardLayout,

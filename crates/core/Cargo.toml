@@ -94,6 +94,17 @@ sqlx = { version = "0.9", features = [
 tokio = { version = "1.40", features = ["fs", "macros", "net", "process", "rt", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-util = { workspace = true }
 sdl3 = { workspace = true, optional = true }
+slint = { workspace = true }
+# Slint renders `Rgb8Pixel`; the frame buffer is bytes. `FromSlice` is the
+# safe cast between them. Already in the tree through Slint.
+rgb = { workspace = true }
+# Enables fontique's dlopen backend. Slint's software renderer otherwise
+# links fontconfig, which the emulator devenv and Kobo images do not ship.
+i-slint-common = { workspace = true }
+# Settings bar icons are embedded SVGs. The `slint` crate does not forward
+# image decoding, so these features are enabled on the same `i-slint-core`.
+# resvg is built without system fonts and does not link libfontconfig.
+i-slint-core = { workspace = true }
 
 tracing = "0.1"
 tracing-log = "0.2"
@@ -135,6 +146,7 @@ blake3 = "1"
 build-deps = { path = "../build-deps" }
 cc = { workspace = true }
 serde_json = { workspace = true }
+slint-build = { workspace = true }
 uuid = { version = "1.20.0", features = ["v7"] }
 
 [features]

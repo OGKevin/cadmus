@@ -1,0 +1,198 @@
+import { KeyAction, KeyCap, OnScreenKeyboard } from "keyboard.slint";
+import { TouchLabel } from "touch_label.slint";
+import { MaterialPalette } from "ink/palette.slint";
+
+// The keyboard sits just above the bottom edge. The label, the
+// field, and the buttons float above it. Rust owns the text and the
+// caret: keys report insertions, deletions, and motion. A tap that
+// misses both closes the dialog, unless an accent strip is open, in
+// which case that tap only closes the strip.
+//
+// The keyboard's height is its content. Left unset, the layout
+// stretches to the window and the field lands on the keys.
+// The field row is as wide as the text and pinned to the right, so
+// the caret stays on screen at the end of a long value.
+export component TextSheet inherits Rectangle {
+    in property <length> window-width;
+    in property <length> window-height;
+    in property <string> label;
+    in property <string> text-before;
+    in property <string> text-after;
+    in property <[[KeyCap]]> rows;
+    in property <[string]> variants;
+    callback typed(string);
+    callback deleted();
+    callback deleted-forward();
+    callback moved(KeyAction);
+    callback shift-pressed();
+    callback alternate-pressed();
+    callback held(string);
+    callback accepted();
+    callback dismissed();
+    callback popup-dismissed();
+
+    property <length> margin: 24px;
+    property <length> bottom-gap: 36px;
+    in property <length> block-height: 480px;
+    in property <length> key-height: 64px;
+    in property <length> key-gap: 4px;
+    property <length> panel-w: Math.min(840px, Math.max(120px, root.window-width - 2 * root.margin));
+
+    width: 100%;
+    height: 100%;
+
+    TouchArea {
+        width: 100%;
+        height: 100%;
+        clicked => {
+            if (root.variants.length > 0) {
+                root.popup-dismissed();
+            } else {
+                root.dismissed();
+            }
+        }
+    }
+
+    keyboard := OnScreenKeyboard {
+        x: 0px;
+        height: self.min-height;
+        y: root.height - self.min-height - root.bottom-gap;
+        width: 100%;
+        block-height: root.block-height;
+        key-height: root.key-height;
+        key-gap: root.key-gap;
+        rows: root.rows;
+        variants: root.variants;
+        typed(value) => {
+            root.typed(value);
+        }
+        deleted => {
+            root.deleted();
+        }
+        deleted-forward => {
+            root.deleted-forward();
+        }
+        moved(action) => {
+            root.moved(action);
+        }
+        shift-pressed => {
+            root.shift-pressed();
+        }
+        alternate-pressed => {
+            root.alternate-pressed();
+        }
+        held(value) => {
+            root.held(value);
+        }
+        accepted => {
+            root.accepted();
+        }
+        dismissed => {
+            root.dismissed();
+        }
+    }
+
+    Rectangle {
+        x: Math.max(0px, (root.window-width - self.width) / 2);
+        y: Math.max(0px, keyboard.y - self.height - 16px);
+        width: root.panel-w;
+        height: column.min-height;
+        background: MaterialPalette.surface;
+        border-width: 3px;
+        border-radius: 9px;
+        border-color: MaterialPalette.on-surface;
+
+        TouchArea {
+            width: 100%;
+            height: 100%;
+        }
+
+        column := VerticalLayout {
+            padding: 20px;
+            spacing: 12px;
+
+            Text {
+                text: root.label;
+                font-size: 34px;
+                color: MaterialPalette.on-surface;
+                overflow: elide;
+                height: 44px;
+                vertical-alignment: center;
+            }
+
+            Rectangle {
+                height: 72px;
+                border-width: 2px;
+                border-color: MaterialPalette.on-surface;
+                clip: true;
+
+                Rectangle {
+                    x: parent.width - self.width;
+                    width: line.preferred-width;
+                    height: 100%;
+
+                    line := HorizontalLayout {
+                        padding-left: 16px;
+                        padding-right: 16px;
+                        spacing: 4px;
+
+                        Text {
+                            text: root.text-before;
+                            font-size: 34px;
+                            color: MaterialPalette.on-surface;
+                            vertical-alignment: center;
+                        }
+
+                        Rectangle {
+                            width: 2px;
+
+                            VerticalLayout {
+                                alignment: center;
+
+                                Rectangle {
+                                    width: 2px;
+                                    height: 36px;
+                                    background: MaterialPalette.on-surface;
+                                }
+                            }
+                        }
+
+                        Text {
+                            text: root.text-after;
+                            font-size: 34px;
+                            color: MaterialPalette.on-surface;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 12px;
+                height: 72px;
+
+                TouchLabel {
+                    horizontal-stretch: 1;
+                    height: 72px;
+                    border-width: 2px;
+                    border-color: MaterialPalette.on-surface;
+                    label: @tr("Cancel");
+                    clicked => {
+                        root.dismissed();
+                    }
+                }
+
+                TouchLabel {
+                    horizontal-stretch: 1;
+                    height: 72px;
+                    background: MaterialPalette.primary;
+                    label: @tr("OK");
+                    label-color: MaterialPalette.on-primary;
+                    clicked => {
+                        root.accepted();
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,8 @@
+import { MaterialPalette } from "ink/palette.slint";
+
+export component Hairline inherits Rectangle {
+    in property <color> line-color: MaterialPalette.on-surface;
+
+    height: 2px;
+    background: root.line-color;
+}
