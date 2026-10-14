@@ -6,6 +6,10 @@ import { ValueRow } from "../../widgets/value_row.slint";
 export global LibraryEditorIo {
     in property <bool> open: false;
     in property <string> heading;
+    in property <string> name-label;
+    in property <string> path-label;
+    in property <string> finished-label;
+    in property <string> accept-label;
     in property <string> library-name;
     in property <string> path;
     in property <string> finished;
@@ -38,7 +42,7 @@ export component LibraryEditor inherits Rectangle {
         }
 
         ValueRow {
-            label: @tr("Name");
+            label: LibraryEditorIo.name-label;
             value: LibraryEditorIo.library-name;
             pressed => {
                 LibraryEditorIo.name-pressed();
@@ -46,7 +50,7 @@ export component LibraryEditor inherits Rectangle {
         }
 
         ValueRow {
-            label: @tr("Path");
+            label: LibraryEditorIo.path-label;
             value: LibraryEditorIo.path;
             pressed => {
                 LibraryEditorIo.path-pressed();
@@ -54,7 +58,7 @@ export component LibraryEditor inherits Rectangle {
         }
 
         ValueRow {
-            label: @tr("End of Book Action");
+            label: LibraryEditorIo.finished-label;
             value: LibraryEditorIo.finished;
             pressed => {
                 LibraryEditorIo.finished-pressed();
@@ -66,7 +70,7 @@ export component LibraryEditor inherits Rectangle {
         }
 
         ActionBar {
-            label: @tr("OK");
+            label: LibraryEditorIo.accept-label;
             clicked => {
                 LibraryEditorIo.accepted();
             }

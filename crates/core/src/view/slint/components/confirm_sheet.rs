@@ -9,19 +9,20 @@
 use slint::{ComponentHandle, Global};
 
 use crate::device::AppContext;
+use crate::fl;
 use crate::view::slint::component::{Component, Env};
 use crate::view::slint::generated::ConfirmSheetIo;
 use crate::view::slint::{CallbackQueue, connect};
 
 /// One callback from the confirmation dialog.
 #[derive(Debug)]
-pub enum Action {
+pub(in crate::view) enum Action {
     Accepted,
     Dismissed,
 }
 
 /// What the screen does after one callback.
-pub enum Outcome {
+pub(in crate::view) enum Outcome {
     /// Nothing further.
     Idle,
     /// The reader closed the dialog.
@@ -31,7 +32,7 @@ pub enum Outcome {
 }
 
 /// State of one open confirmation dialog.
-pub struct ConfirmSheet<W> {
+pub(in crate::view) struct ConfirmSheet<W> {
     pending: Option<Pending>,
     queue: CallbackQueue<Action>,
     window: super::WindowOf<W>,
@@ -43,7 +44,7 @@ struct Pending {
 }
 
 impl<W> ConfirmSheet<W> {
-    pub fn new() -> Self {
+    pub(in crate::view) fn new() -> Self {
         Self {
             pending: None,
             queue: CallbackQueue::new(),
@@ -56,7 +57,7 @@ impl<W> ConfirmSheet<W> {
         feature = "tracing",
         tracing::instrument(name = "confirm_sheet.open", skip_all)
     )]
-    pub fn open(&mut self, message: String, accept: String) {
+    pub(in crate::view) fn open(&mut self, message: String, accept: String) {
         tracing::debug!("confirmation opened");
         self.pending = Some(Pending { message, accept });
     }
@@ -66,7 +67,7 @@ impl<W> ConfirmSheet<W> {
         feature = "tracing",
         tracing::instrument(name = "confirm_sheet.close", skip_all)
     )]
-    pub fn close(&mut self) {
+    pub(in crate::view) fn close(&mut self) {
         if self.pending.is_none() {
             return;
         }
@@ -74,8 +75,24 @@ impl<W> ConfirmSheet<W> {
         self.pending = None;
     }
 
-    pub fn is_open(&self) -> bool {
+    pub(in crate::view) fn is_open(&self) -> bool {
         self.pending.is_some()
+    }
+
+    fn handle(&mut self, action: Action) -> Outcome {
+        match action {
+            Action::Accepted => match self.pending.take() {
+                Some(_) => {
+                    tracing::debug!("confirmation accepted");
+                    Outcome::Accepted
+                }
+                None => Outcome::Idle,
+            },
+            Action::Dismissed => {
+                self.close();
+                Outcome::Dismissed
+            }
+        }
     }
 }
 
@@ -119,6 +136,7 @@ where
             return;
         };
         io.set_message(pending.message.as_str().into());
+        io.set_cancel_label(fl!("cancel").into());
         io.set_accept_label(pending.accept.as_str().into());
         io.set_open(true);
     }
@@ -128,18 +146,31 @@ where
         tracing::instrument(name = "confirm_sheet.apply", skip_all, fields(action = ?action))
     )]
     async fn apply(&mut self, action: Action, _env: &mut Env<'_>) -> Outcome {
-        match action {
-            Action::Accepted => match self.pending.take() {
-                Some(_) => {
-                    tracing::debug!("confirmation accepted");
-                    Outcome::Accepted
-                }
-                None => Outcome::Idle,
-            },
-            Action::Dismissed => {
-                self.close();
-                Outcome::Dismissed
-            }
-        }
+        self.handle(action)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accepting_closes_the_dialog() {
+        let mut sheet = ConfirmSheet::<()>::new();
+        assert!(matches!(sheet.handle(Action::Accepted), Outcome::Idle));
+        sheet.open("Import every book?".into(), "Import".into());
+        assert!(matches!(sheet.handle(Action::Accepted), Outcome::Accepted));
+        assert!(!sheet.is_open());
+    }
+
+    #[test]
+    fn dismissing_closes_the_dialog() {
+        let mut sheet = ConfirmSheet::<()>::new();
+        sheet.open("Import every book?".into(), "Import".into());
+        assert!(matches!(
+            sheet.handle(Action::Dismissed),
+            Outcome::Dismissed
+        ));
+        assert!(!sheet.is_open());
     }
 }

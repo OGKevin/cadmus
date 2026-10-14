@@ -1,11 +1,12 @@
 import { TouchLabel } from "touch_label.slint";
+import { InkMetrics } from "ink/metrics.slint";
 import { MaterialPalette } from "ink/palette.slint";
 
 export component ActionBar inherits Rectangle {
     in property <string> label;
     callback clicked();
 
-    height: 121px;
+    height: InkMetrics.row;
     background: MaterialPalette.primary;
 
     TouchLabel {

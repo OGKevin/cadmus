@@ -50,19 +50,19 @@ Cadmus also ships fonts from [Noto](https://github.com/notofonts/noto-fonts),
 [Google Fonts](https://github.com/googlefonts/google-fonts) for the app interface
 and HTML rendering fallbacks:
 
-| Font            | Used for                                       |
-| --------------- | ---------------------------------------------- |
-| Noto Sans       | Menus, settings, startup, and other app text   |
-| Noto Sans JP    | Japanese labels in settings and other Slint UI |
-| Noto Sans KR    | Korean labels in settings and other Slint UI   |
-| Noto Sans SC    | Simplified Chinese labels in Slint UI          |
-| Noto Sans TC    | Traditional Chinese labels in Slint UI         |
-| Noto Serif      | Serif text in the app interface                |
-| Source Code Pro | Monospace in the app and code blocks in books  |
-| Varela Round    | On-screen keyboard                             |
-| Cormorant       | Intermission screens                           |
-| Parisienne      | Decorative cursive text in EPUB/HTML content   |
-| Delius          | Decorative fantasy text in EPUB/HTML content   |
+| Font            | Used for                                          |
+| --------------- | ------------------------------------------------- |
+| Noto Sans       | Menus, settings, and other app text               |
+| Noto Sans JP    | Japanese labels on the Settings screen            |
+| Noto Sans KR    | Korean labels on the Settings screen              |
+| Noto Sans SC    | Simplified Chinese labels on the Settings screen  |
+| Noto Sans TC    | Traditional Chinese labels on the Settings screen |
+| Noto Serif      | Serif text in the app interface                   |
+| Source Code Pro | Monospace in the app and code blocks in books     |
+| Varela Round    | On-screen keyboard                                |
+| Cormorant       | Startup and intermission screens                  |
+| Parisienne      | Decorative cursive text in EPUB/HTML content      |
+| Delius          | Decorative fantasy text in EPUB/HTML content      |
 
 ## Changing the font while reading
 

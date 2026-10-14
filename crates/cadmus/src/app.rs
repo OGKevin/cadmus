@@ -49,7 +49,6 @@ use cadmus_core::view::reader::Reader;
 use cadmus_core::view::rotation_values::RotationValues;
 use cadmus_core::view::settings_editor::SettingsEditor;
 use cadmus_core::view::sketch::Sketch;
-use cadmus_core::view::startup::StartupScreen;
 use cadmus_core::view::touch_events::TouchEvents;
 use cadmus_core::view::{
     AppCmd, Bus, EntryId, EntryKind, Event, Hub, NotificationEvent, RenderData, RenderQueue,
@@ -60,8 +59,6 @@ use std::collections::VecDeque;
 use std::env;
 use std::path::PathBuf;
 use std::time::Instant;
-#[cfg(feature = "tracing")]
-use tracing::Instrument;
 use tracing::{error, info, warn};
 
 pub const APP_NAME: &str = "Cadmus";
@@ -236,6 +233,10 @@ impl Drop for MainLoopSoftSuspendGuard {
 }
 
 /// Keeps the root view in sync after a rotation changes framebuffer dimensions.
+#[cfg_attr(
+    feature = "tracing",
+    tracing::instrument(level = "debug", skip(view, tx, rq, context))
+)]
 fn sync_view_after_rotation(
     view: &mut Box<dyn View>,
     prev_dims: (u32, u32),
@@ -244,13 +245,6 @@ fn sync_view_after_rotation(
     rq: &mut RenderQueue,
     context: &mut AppContext,
 ) {
-    tracing::debug!(
-        previous_dims = ?prev_dims,
-        dims = ?dims,
-        resized = prev_dims != dims,
-        rotation = context.display.rotation,
-        "syncing root view after rotation"
-    );
     let fb_rect = Rectangle::from(dims);
     if prev_dims != dims {
         view.resize(fb_rect, tx, rq, context);
@@ -299,15 +293,19 @@ fn apply_rotation(
                 .device
                 .input()
                 .send_raw(display_rotate_event(rotation));
+            sync_view_after_rotation(view, prev_dims, dims, tx, rq, context);
             tracing::debug!(
                 previous_rotation = prev_rotation,
                 rotation,
                 previous_dims = ?prev_dims,
                 dims = ?dims,
+                framebuffer_dims = ?context.device.framebuffer().dims(),
                 framebuffer_rotation = context.device.framebuffer().rotation(),
+                view_rect = %view.rect(),
+                settings_editor = view.is::<SettingsEditor>(),
+                resized = prev_dims != dims,
                 "rotation applied"
             );
-            sync_view_after_rotation(view, prev_dims, dims, tx, rq, context);
             true
         }
         Err(error) => {
@@ -462,13 +460,9 @@ async fn open_last_reading(
     }
 }
 
-async fn open_startup_screen(device: &mut AppDevice) -> Option<StartupScreen> {
-    match StartupScreen::open(device).await {
-        Ok(screen) => Some(screen),
-        Err(error) => {
-            error!(error = %error, "slint startup render failed");
-            None
-        }
+fn open_startup_screen(device: &mut AppDevice) {
+    if let Err(error) = cadmus_core::view::startup::open(device) {
+        error!(error = %error, "slint startup render failed");
     }
 }
 
@@ -570,11 +564,10 @@ pub async fn run() -> Result<(), Error> {
     );
 
     #[cfg(feature = "tracing")]
-    let startup_screen = open_startup_screen(&mut device)
-        .instrument(tracing::trace_span!(parent: &start_span, "startup-screen"))
-        .await;
+    tracing::trace_span!(parent: &start_span, "startup-screen")
+        .in_scope(|| open_startup_screen(&mut device));
     #[cfg(not(feature = "tracing"))]
-    let startup_screen = open_startup_screen(&mut device).await;
+    open_startup_screen(&mut device);
 
     let mut database = Database::new(device.resolve_db_path())
         .await
@@ -636,8 +629,6 @@ pub async fn run() -> Result<(), Error> {
         &context,
         dictionary_pool,
     );
-
-    drop(startup_screen);
 
     let mut history: Vec<HistoryItem> = Vec::new();
     let mut rq = RenderQueue::new();

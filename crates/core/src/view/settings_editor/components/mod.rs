@@ -6,8 +6,8 @@
 //! result converts into [`Step`] with `From`. [`Step`] reduces to [`Flow`],
 //! which tells the view loop whether the renderer should redraw.
 //!
-//! [`each_part`] is the list of pieces. Wire, drain, and discard all walk it,
-//! so a new piece is added in one place. Sync does not: it covers the shell,
+//! [`each_part`] is the list of pieces. Wire and drain walk it, so a new piece
+//! is added in one place. Sync does not: it covers the shell,
 //! the visible category page, and the overlays, because a hidden page is
 //! repainted when its category opens.
 //!
@@ -19,17 +19,12 @@
 mod category_bar;
 mod dictionaries;
 mod footer;
-mod general;
-mod import;
-mod intermission;
 mod libraries;
 mod library_editor;
-mod power;
-mod reader;
 mod refresh_rates;
 mod setting;
 mod shell;
-mod telemetry;
+mod static_page;
 mod text_limits;
 
 use std::path::PathBuf;
@@ -43,12 +38,14 @@ use text_limits::TextLimits;
 use crate::device::AppContext;
 use crate::document::file_extension::FileExtension;
 use crate::view::slint::Flow;
-use crate::view::slint::Session;
+use crate::view::slint::OverlayStack;
 use crate::view::slint::components::{choice_sheet, confirm_sheet, file_browser, text_sheet};
 use crate::view::slint::generated::{SettingRow, SettingsCategory, SettingsWindow};
 pub(super) use crate::view::slint::{Component, Env};
 use crate::view::{Bus, EntryId, EntryKind, Event, Hub};
 
+#[cfg(test)]
+pub(in crate::view::settings_editor) use crate::view::slint::testing::install_ui_font;
 pub(super) use file_browser::Mode as FilesMode;
 pub(super) use shell::open;
 
@@ -58,12 +55,7 @@ macro_rules! each_part {
         $call!($self, shell);
         $call!($self, category_bar);
         $call!($self, footer);
-        $call!($self, general);
-        $call!($self, power);
-        $call!($self, reader);
-        $call!($self, intermission);
-        $call!($self, import);
-        $call!($self, telemetry);
+        $call!($self, static_page);
         $call!($self, libraries);
         $call!($self, dictionaries);
         $call!($self, files);
@@ -76,7 +68,67 @@ macro_rules! each_part {
 }
 
 #[cfg(test)]
-pub(super) use setting::{kind as setting_kind, static_rows};
+pub(super) use setting::shown_kinds;
+
+#[cfg(test)]
+pub(in crate::view::settings_editor) use setting::row_value;
+
+/// Borrows the three fields of [`Env`] in field order.
+#[cfg(test)]
+fn settings_env<'a>(hub: &'a Hub, bus: &'a mut Bus, context: &'a mut AppContext) -> Env<'a> {
+    Env { hub, bus, context }
+}
+
+/// Hub and bus reused by one page test's `apply` calls.
+#[cfg(test)]
+struct ApplyEnv {
+    hub: Hub,
+    /// Kept so `hub.send` during `apply` does not hit a closed channel.
+    incoming: crate::view::HubReceiver,
+    bus: Bus,
+}
+
+/// Hub, bus, and [`Env`] for applying rows in a page test.
+#[cfg(test)]
+fn apply_env() -> ApplyEnv {
+    let (hub, incoming) = crate::view::hub_channel();
+    ApplyEnv {
+        hub,
+        incoming,
+        bus: Bus::new(),
+    }
+}
+
+#[cfg(test)]
+impl ApplyEnv {
+    fn env<'a>(&'a mut self, context: &'a mut AppContext) -> Env<'a> {
+        assert!(
+            !self.incoming.is_closed(),
+            "the settings test hub has no receiver"
+        );
+        settings_env(&self.hub, &mut self.bus, context)
+    }
+}
+
+/// Every published row has a non-empty label.
+#[cfg(test)]
+fn assert_labels(rows: &slint::ModelRc<crate::view::slint::generated::StaticLine>) {
+    use slint::Model as _;
+
+    assert!(rows.iter().all(|line| !line.label.is_empty()));
+}
+
+/// The text of the next notification on `rx`.
+#[cfg(test)]
+fn notification(rx: &mut crate::view::HubReceiver) -> String {
+    use crate::view::NotificationEvent;
+
+    let message = rx.try_recv().expect("missing notification");
+    match message.event {
+        Event::Notification(NotificationEvent::Show(text)) => text,
+        other => panic!("unexpected hub event {other:?}"),
+    }
+}
 
 use setting::PressedRow;
 
@@ -276,12 +328,7 @@ pub(super) struct Parts {
     shell: Shell,
     category_bar: category_bar::CategoryBar,
     footer: footer::Footer,
-    general: general::GeneralPage,
-    power: power::PowerPage,
-    reader: reader::ReaderPage,
-    intermission: intermission::IntermissionPage,
-    import: import::ImportPage,
-    telemetry: telemetry::TelemetryPage,
+    static_page: static_page::StaticPage,
     libraries: libraries::Libraries,
     dictionaries: Dictionaries,
     files: Files,
@@ -304,12 +351,7 @@ impl Parts {
             shell: Shell::new(),
             category_bar: category_bar::CategoryBar::new(),
             footer: footer::Footer::new(),
-            general: general::GeneralPage::new(),
-            power: power::PowerPage::new(),
-            reader: reader::ReaderPage::new(),
-            intermission: intermission::IntermissionPage::new(),
-            import: import::ImportPage::new(),
-            telemetry: telemetry::TelemetryPage::new(),
+            static_page: static_page::StaticPage::new(),
             libraries: libraries::Libraries::new(),
             dictionaries: Dictionaries::new(service),
             files: Files::new(),
@@ -334,8 +376,7 @@ impl Parts {
 
     /// Connects every component's callbacks. Runs once after the window opens.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    pub(super) fn wire(&self, session: &Session<SettingsWindow>) {
-        let window = session.component();
+    pub(super) fn wire(&self, window: &SettingsWindow) {
         macro_rules! wire_one {
             ($self:ident, $field:ident) => {
                 $self.$field.wire(window);
@@ -361,15 +402,11 @@ impl Parts {
         sync_one!(self, shell);
         sync_one!(self, category_bar);
         sync_one!(self, footer);
+        sync_one!(self, static_page);
         match self.shell.category() {
-            SettingsCategory::General => sync_one!(self, general),
-            SettingsCategory::Power => sync_one!(self, power),
-            SettingsCategory::Reader => sync_one!(self, reader),
-            SettingsCategory::Intermissions => sync_one!(self, intermission),
-            SettingsCategory::Import => sync_one!(self, import),
-            SettingsCategory::Telemetry => sync_one!(self, telemetry),
             SettingsCategory::Libraries => sync_one!(self, libraries),
             SettingsCategory::Dictionaries => sync_one!(self, dictionaries),
+            _ => {}
         }
         sync_one!(self, files);
         sync_one!(self, choice);
@@ -377,7 +414,7 @@ impl Parts {
         sync_one!(self, confirm);
         sync_one!(self, refresh);
         sync_one!(self, library);
-        tracing::debug!(elapsed_us = elapsed_us(started), "settings sync");
+        tracing::trace!(elapsed_us = elapsed_us(started), "settings sync");
     }
 
     /// Applies every callback the window queued since the last drain.
@@ -407,20 +444,6 @@ impl Parts {
         }
         each_part!(self, step);
         flow
-    }
-
-    /// Drops callbacks queued by a programmatic window update.
-    ///
-    /// A category change rebuilds the visible page. That rebuild must not be
-    /// applied later as a row press: the hardware button release drains the
-    /// queue, and the first row's editor would open on its own.
-    pub(super) fn discard_queued(&self) {
-        macro_rules! drop_one {
-            ($self:ident, $field:ident) => {
-                let _ = $self.$field.take();
-            };
-        }
-        each_part!(self, drop_one);
     }
 
     /// Performs one [`Step`], re-dispatching any step a route produces.
@@ -477,7 +500,7 @@ impl Parts {
                 Step::Submitted(text) => {
                     let waiting = self.waiting.take();
                     tracing::debug!(?waiting, "settings text submitted");
-                    self.route_text(waiting, text, env.context);
+                    self.route_text(waiting, text, env);
                     return Flow::Redraw;
                 }
                 Step::Confirmed => {
@@ -590,14 +613,14 @@ impl Parts {
 
     #[cfg_attr(
         feature = "tracing",
-        tracing::instrument(skip(self, context, text), fields(len = text.chars().count()))
+        tracing::instrument(skip(self, env, text), fields(len = text.chars().count()))
     )]
-    fn route_text(&mut self, waiting: Option<Waiting>, text: String, context: &mut AppContext) {
+    fn route_text(&mut self, waiting: Option<Waiting>, text: String, env: &mut Env<'_>) {
         match waiting {
-            Some(Waiting::SettingText(row)) => setting::apply_text(row, &text, context),
+            Some(Waiting::SettingText(row)) => setting::apply_text(row, &text, env),
             Some(Waiting::LibraryName) => self.library.set_name(text),
-            Some(Waiting::RefreshRegular) => self.refresh.apply_regular(text, context),
-            Some(Waiting::RefreshInverted) => self.refresh.apply_inverted(text, context),
+            Some(Waiting::RefreshRegular) => self.refresh.apply_regular(text, env.context),
+            Some(Waiting::RefreshInverted) => self.refresh.apply_inverted(text, env.context),
             Some(Waiting::KindRegular) => self.refresh.apply_kind_text(true, text),
             Some(Waiting::KindInverted) => self.refresh.apply_kind_text(false, text),
             _ => {}
@@ -658,72 +681,34 @@ impl Parts {
             && !self.library.is_open()
     }
 
+    fn shared_overlays(&mut self) -> OverlayStack<'_, SettingsWindow> {
+        OverlayStack::new(vec![
+            &mut self.text,
+            &mut self.choice,
+            &mut self.confirm,
+            &mut self.files,
+            &mut self.refresh,
+            &mut self.library,
+        ])
+    }
+
     pub(super) fn close_top(&mut self) -> bool {
-        let closed = if self.choice.is_open() || self.text.is_open() {
-            self.choice.close();
-            self.text.close();
-            true
-        } else if self.confirm.is_open() {
-            self.confirm.close();
-            true
-        } else if self.files.is_open() {
-            self.files.close();
-            true
-        } else if self.refresh.kind_is_open() {
-            self.refresh.close_kind();
-            true
-        } else if self.refresh.is_open() {
-            self.refresh.close();
-            true
-        } else if self.library.is_open() {
-            self.library.close();
+        if self.shared_overlays().close_top() {
+            self.waiting = None;
             true
         } else {
             false
-        };
-        if closed {
-            self.waiting = None;
         }
-        closed
     }
 
     pub(super) fn text_is_open(&self) -> bool {
         self.text.is_open()
     }
 
-    pub(super) fn page_target(&self) -> Option<PageList> {
-        // The text dialog is not a page. Claiming it here swallows forward
-        // and back so the page underneath does not move.
-        if self.text.is_open() {
-            return Some(PageList::Text);
-        }
-        if self.confirm.is_open() {
-            return None;
-        }
-        // Forward and back move this list. Claiming it here keeps the
-        // settings page underneath still.
-        if self.choice.is_open() {
-            return Some(PageList::Choice);
-        }
-        if self.files.is_open() {
-            return Some(PageList::Files);
-        }
-        if self.refresh.kind_is_open() {
-            return None;
-        }
-        if self.refresh.is_open() {
-            return Some(PageList::Refresh);
-        }
-        None
-    }
-
-    pub(super) fn bump(&self, window: &SettingsWindow, target: &PageList, delta: i32) {
-        match target {
-            PageList::Files => Files::bump(window, delta),
-            PageList::Refresh => RefreshRates::bump(window, delta),
-            PageList::Choice => ChoiceList::bump(window, delta),
-            PageList::Text => {}
-        }
+    /// Moves the front-most paged overlay. Returns whether that overlay claimed
+    /// the hardware page buttons, including the text dialog which only swallows.
+    pub(super) fn bump_open(&mut self, window: &SettingsWindow, delta: i32) -> bool {
+        self.shared_overlays().bump_open(window, delta)
     }
 
     pub(super) fn dismiss_all(&mut self) {
@@ -764,6 +749,17 @@ impl Parts {
     }
 
     #[cfg(test)]
+    pub(super) fn show_confirm(&mut self) {
+        self.confirm
+            .open("Delete this library?".into(), "Delete".into());
+    }
+
+    #[cfg(test)]
+    pub(super) fn confirm_is_open(&self) -> bool {
+        self.confirm.is_open()
+    }
+
+    #[cfg(test)]
     pub(super) async fn hold_library(&mut self, row: i32, context: &AppContext) {
         if let Step::Ask(waiting, sheet) = self.libraries.hold(row, context) {
             self.open_sheet(waiting, sheet).await;
@@ -771,10 +767,148 @@ impl Parts {
     }
 }
 
-/// Which open list the page buttons should move.
-pub(super) enum PageList {
-    Files,
-    Refresh,
-    Choice,
-    Text,
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::context::test_helpers::create_test_context;
+    use crate::settings::LibrarySettings;
+    use crate::view::slint::components::choice_sheet::Row;
+    use crate::view::slint::generated::SettingRow;
+
+    /// What `dispatch` does with an accepted row: it takes `waiting` before
+    /// `finish_pick`. The list closes and that control is not put back.
+    fn finish_accepted(parts: &mut Parts) {
+        let waiting = parts.waiting.take();
+        parts.finish_pick(waiting, &Step::Redraw);
+    }
+
+    fn row(label: &str, value: EntryId) -> Row<EntryId> {
+        Row {
+            label: label.to_owned(),
+            checked: false,
+            value,
+        }
+    }
+
+    #[test]
+    fn finish_pick_keeps_an_ignored_row_open() {
+        let mut parts = Parts::new(None);
+        parts.choice.open(
+            "Format".into(),
+            vec![row("leave", EntryId::DeleteLibrary(0))],
+        );
+        parts.finish_pick(Some(Waiting::AddKind), &Step::Idle);
+        assert!(parts.choice.is_open());
+        assert!(matches!(parts.waiting, Some(Waiting::AddKind)));
+
+        parts.waiting = None;
+        parts.finish_pick(Some(Waiting::AddKind), &Step::Rows(Vec::new()));
+        assert!(parts.choice.is_open());
+        assert!(matches!(parts.waiting, Some(Waiting::AddKind)));
+
+        finish_accepted(&mut parts);
+        assert!(!parts.choice.is_open());
+        assert!(parts.waiting.is_none());
+    }
+
+    #[test]
+    fn close_top_closes_the_front_sheet_and_forgets_who_asked() {
+        let mut parts = Parts::new(None);
+        parts
+            .confirm
+            .open("Delete this library?".into(), "Delete".into());
+        parts.waiting = Some(Waiting::DeleteLibrary(1));
+        assert!(parts.close_top());
+        assert!(!parts.confirm.is_open());
+        assert!(parts.waiting.is_none());
+
+        parts.choice.open(
+            "Language".into(),
+            vec![row("English", EntryId::DeleteLibrary(0))],
+        );
+        parts.waiting = Some(Waiting::SettingChoice(PressedRow::Setting(
+            SettingRow::Locale,
+        )));
+        assert!(parts.close_top());
+        assert!(!parts.choice.is_open());
+        assert!(parts.waiting.is_none());
+        assert!(!parts.close_top());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn dispatch_leaves_and_forgets_a_dismiss() {
+        let mut context = create_test_context().await;
+        let mut parts = Parts::new(None);
+        let (hub, _rx) = crate::view::hub_channel();
+        let mut bus = Bus::new();
+        let mut env = super::settings_env(&hub, &mut bus, &mut context);
+        parts.waiting = Some(Waiting::ForceImport);
+        assert_eq!(
+            parts.dispatch(Step::Dismissed, &mut env).await,
+            Flow::Redraw
+        );
+        assert!(parts.waiting.is_none());
+
+        assert_eq!(parts.dispatch(Step::Leave, &mut env).await, Flow::Redraw);
+        assert!(matches!(bus.pop_front(), Some(Event::Back)));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn dispatch_keeps_an_ignored_pick_and_closes_an_accepted_one() {
+        let mut context = create_test_context().await;
+        context.settings.libraries.push(LibrarySettings {
+            name: "Second".into(),
+            ..LibrarySettings::default()
+        });
+        let before = context.settings.libraries.len();
+        let index = before - 1;
+        let mut parts = Parts::new(None);
+        let (hub, _rx) = crate::view::hub_channel();
+        let mut bus = Bus::new();
+        let mut env = super::settings_env(&hub, &mut bus, &mut context);
+
+        parts
+            .open_sheet(
+                Waiting::AddKind,
+                Sheet::Choice {
+                    title: "Format".into(),
+                    entries: vec![EntryKind::Command(
+                        "leave".into(),
+                        EntryId::DeleteLibrary(0),
+                    )],
+                },
+            )
+            .await;
+        assert_eq!(
+            parts
+                .dispatch(Step::Picked(EntryId::DeleteLibrary(0)), &mut env)
+                .await,
+            Flow::Idle
+        );
+        assert!(parts.choice.is_open(), "an ignored row closed the list");
+        assert!(matches!(parts.waiting, Some(Waiting::AddKind)));
+
+        parts
+            .open_sheet(
+                Waiting::DeleteLibrary(index),
+                Sheet::Choice {
+                    title: "Delete".into(),
+                    entries: vec![EntryKind::Command(
+                        "Delete".into(),
+                        EntryId::DeleteLibrary(index),
+                    )],
+                },
+            )
+            .await;
+        assert_eq!(
+            parts
+                .dispatch(Step::Picked(EntryId::DeleteLibrary(index)), &mut env)
+                .await,
+            Flow::Redraw
+        );
+        assert!(!parts.choice.is_open());
+        assert!(parts.waiting.is_none());
+        assert_eq!(env.context.settings.libraries.len(), before - 1);
+    }
 }

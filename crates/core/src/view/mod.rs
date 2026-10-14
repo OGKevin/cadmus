@@ -87,7 +87,7 @@ use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
-use tracing::{debug, error};
+use tracing::{error, trace};
 use unic_langid::LanguageIdentifier;
 
 // Border thicknesses in pixels, at 300 DPI.
@@ -348,7 +348,7 @@ pub fn render(
                 updating.retain(|update| {
                     let overlaps = render_rect.overlaps(&update.rect);
                     if overlaps && !update.has_completed() {
-                        debug!(
+                        trace!(
                             token = update.token,
                             waiting_for = %update.rect,
                             %render_rect,
@@ -434,16 +434,12 @@ pub fn process_render_queue(
             }
         }
 
-        debug!(
-            ?mode,
-            wait,
-            areas = ids.len() + bgs.len(),
-            "render queue pass"
-        );
+        let updates = ids.values().map(Vec::len).sum::<usize>() + bgs.len();
+        trace!(?mode, wait, rects = updates, "render queue pass");
         render(view, wait, &ids, &mut rects, &mut bgs, context, updating);
 
         for rect in rects {
-            debug!(%rect, ?mode, wait, "framebuffer update");
+            trace!(%rect, ?mode, wait, "framebuffer update");
             match context.device.framebuffer_mut().update(&rect, mode) {
                 Ok(token) => {
                     updating.push(UpdateData {
@@ -461,6 +457,10 @@ pub fn process_render_queue(
 }
 
 #[inline]
+#[cfg_attr(
+    feature = "tracing",
+    tracing::instrument(level = "debug", skip_all, fields(pending = updating.len()))
+)]
 pub fn wait_for_all(updating: &mut Vec<UpdateData>, context: &mut AppContext) {
     for update in updating.drain(..) {
         if update.has_completed() {
@@ -574,9 +574,6 @@ pub enum Event {
     SelectSettingsCategory(settings_editor::SettingsCategory),
     UpdateSettings(Box<settings::Settings>),
     EditLibrary(usize),
-    UpdateLibrary(usize, Box<settings::LibrarySettings>),
-    AddLibrary,
-    DeleteLibrary(usize),
     /// Open the refresh rate editor (global + per-kind overrides).
     OpenRefreshRateEditor,
     /// Open the per-kind refresh rate editor for the given file extension.
@@ -756,9 +753,9 @@ pub enum Event {
     /// input the view asks Slint when its next timer is due and sends this
     /// event then. The view runs the timers and applies what they queued.
     ///
-    /// A late event is ignored. The only handler is the open Slint screen.
-    /// After that screen closes, the current view does not handle this event,
-    /// and the main loop drops it.
+    /// A late event is ignored once the screen that armed it has closed.
+    /// Another view does not handle this event, so the main loop drops it.
+    /// If that screen is open again, the late event runs one extra tick.
     SlintTimer,
 }
 

@@ -5,10 +5,12 @@ export component ModelPage inherits VerticalLayout {
     in property <[SettingLine]> rows;
     in property <int> page;
     in property <int> per-page;
+    in property <bool> holdable: false;
     callback row-pressed(int);
     callback row-held(int);
 
     for line[index] in root.rows: PagedSetting {
+        holdable: root.holdable;
         slot: index;
         page: root.page;
         per-page: root.per-page;

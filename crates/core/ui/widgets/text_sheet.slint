@@ -1,5 +1,6 @@
 import { KeyAction, KeyCap, OnScreenKeyboard } from "keyboard.slint";
 import { TouchLabel } from "touch_label.slint";
+import { InkMetrics } from "ink/metrics.slint";
 import { MaterialPalette } from "ink/palette.slint";
 
 // The keyboard sits just above the bottom edge. The label, the
@@ -16,6 +17,8 @@ export component TextSheet inherits Rectangle {
     in property <length> window-width;
     in property <length> window-height;
     in property <string> label;
+    in property <string> cancel-label;
+    in property <string> accept-label;
     in property <string> text-before;
     in property <string> text-after;
     in property <[[KeyCap]]> rows;
@@ -31,12 +34,13 @@ export component TextSheet inherits Rectangle {
     callback dismissed();
     callback popup-dismissed();
 
-    property <length> margin: 24px;
-    property <length> bottom-gap: 36px;
+    property <length> margin: 13px * InkMetrics.dp;
+    property <length> bottom-gap: 19px * InkMetrics.dp;
+    // Logical pixels from the reader keyboard. Rust sets them. Not dp.
     in property <length> block-height: 480px;
     in property <length> key-height: 64px;
     in property <length> key-gap: 4px;
-    property <length> panel-w: Math.min(840px, Math.max(120px, root.window-width - 2 * root.margin));
+    property <length> panel-w: Math.min(448px * InkMetrics.dp, Math.max(64px * InkMetrics.dp, root.window-width - 2 * root.margin));
 
     width: 100%;
     height: 100%;
@@ -94,12 +98,12 @@ export component TextSheet inherits Rectangle {
 
     Rectangle {
         x: Math.max(0px, (root.window-width - self.width) / 2);
-        y: Math.max(0px, keyboard.y - self.height - 16px);
+        y: Math.max(0px, keyboard.y - self.height - 9px * InkMetrics.dp);
         width: root.panel-w;
         height: column.min-height;
         background: MaterialPalette.surface;
-        border-width: 3px;
-        border-radius: 9px;
+        border-width: InkMetrics.frame;
+        border-radius: InkMetrics.radius;
         border-color: MaterialPalette.on-surface;
 
         TouchArea {
@@ -108,21 +112,21 @@ export component TextSheet inherits Rectangle {
         }
 
         column := VerticalLayout {
-            padding: 20px;
-            spacing: 12px;
+            padding: 11px * InkMetrics.dp;
+            spacing: 6px * InkMetrics.dp;
 
             Text {
                 text: root.label;
-                font-size: 34px;
+                font-size: InkMetrics.body;
                 color: MaterialPalette.on-surface;
                 overflow: elide;
-                height: 44px;
+                height: 23px * InkMetrics.dp;
                 vertical-alignment: center;
             }
 
             Rectangle {
-                height: 72px;
-                border-width: 2px;
+                height: 38px * InkMetrics.dp;
+                border-width: InkMetrics.hairline;
                 border-color: MaterialPalette.on-surface;
                 clip: true;
 
@@ -132,26 +136,26 @@ export component TextSheet inherits Rectangle {
                     height: 100%;
 
                     line := HorizontalLayout {
-                        padding-left: 16px;
-                        padding-right: 16px;
-                        spacing: 4px;
+                        padding-left: 9px * InkMetrics.dp;
+                        padding-right: 9px * InkMetrics.dp;
+                        spacing: 2px * InkMetrics.dp;
 
                         Text {
                             text: root.text-before;
-                            font-size: 34px;
+                            font-size: InkMetrics.body;
                             color: MaterialPalette.on-surface;
                             vertical-alignment: center;
                         }
 
                         Rectangle {
-                            width: 2px;
+                            width: InkMetrics.hairline;
 
                             VerticalLayout {
                                 alignment: center;
 
                                 Rectangle {
-                                    width: 2px;
-                                    height: 36px;
+                                    width: InkMetrics.hairline;
+                                    height: 19px * InkMetrics.dp;
                                     background: MaterialPalette.on-surface;
                                 }
                             }
@@ -159,7 +163,7 @@ export component TextSheet inherits Rectangle {
 
                         Text {
                             text: root.text-after;
-                            font-size: 34px;
+                            font-size: InkMetrics.body;
                             color: MaterialPalette.on-surface;
                             vertical-alignment: center;
                         }
@@ -168,15 +172,15 @@ export component TextSheet inherits Rectangle {
             }
 
             HorizontalLayout {
-                spacing: 12px;
-                height: 72px;
+                spacing: 6px * InkMetrics.dp;
+                height: 38px * InkMetrics.dp;
 
                 TouchLabel {
                     horizontal-stretch: 1;
-                    height: 72px;
-                    border-width: 2px;
+                    height: 38px * InkMetrics.dp;
+                    border-width: InkMetrics.hairline;
                     border-color: MaterialPalette.on-surface;
-                    label: @tr("Cancel");
+                    label: root.cancel-label;
                     clicked => {
                         root.dismissed();
                     }
@@ -184,9 +188,9 @@ export component TextSheet inherits Rectangle {
 
                 TouchLabel {
                     horizontal-stretch: 1;
-                    height: 72px;
+                    height: 38px * InkMetrics.dp;
                     background: MaterialPalette.primary;
-                    label: @tr("OK");
+                    label: root.accept-label;
                     label-color: MaterialPalette.on-primary;
                     clicked => {
                         root.accepted();

@@ -12,6 +12,7 @@ use slint::{ComponentHandle, Global, ModelRc, VecModel};
 use crate::device::AppContext;
 use crate::device::DeviceHardware as _;
 use crate::device::DeviceIdentity as _;
+use crate::fl;
 use crate::framebuffer::Framebuffer as _;
 use crate::framebuffer::UpdateMode;
 use crate::view::keyboard::{
@@ -24,7 +25,7 @@ use crate::view::slint::{CallbackQueue, changed_model, connect};
 
 /// One callback from the text dialog.
 #[derive(Debug)]
-pub enum Action {
+pub(in crate::view) enum Action {
     /// Insert `text` at the caret. Extra characters past the field's limit
     /// are dropped.
     Insert(String),
@@ -48,10 +49,10 @@ pub enum Action {
 
 /// How the host queues one captured frame while this dialog may be open.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct FrameRefresh {
-    pub mode: UpdateMode,
+pub(in crate::view) struct FrameRefresh {
+    pub(in crate::view) mode: UpdateMode,
     /// When false, the update does not wait for the previous waveform.
-    pub wait: bool,
+    pub(in crate::view) wait: bool,
 }
 
 /// Whether a finger-down or finger-move frame should be left unqueued.
@@ -59,7 +60,11 @@ pub struct FrameRefresh {
 /// A finger-down on an open keyboard is the black key flash, so the host
 /// queues it. Any other press preview waits for the release, which carries
 /// the new state.
-pub fn skip_press_frame(keyboard_open: bool, finger_down: bool, finger_preview: bool) -> bool {
+pub(in crate::view) fn skip_press_frame(
+    keyboard_open: bool,
+    finger_down: bool,
+    finger_preview: bool,
+) -> bool {
     let flash = keyboard_open && finger_down;
     finger_preview && !flash
 }
@@ -67,7 +72,7 @@ pub fn skip_press_frame(keyboard_open: bool, finger_down: bool, finger_preview: 
 /// An open keyboard does not wait on the previous waveform. A finger-down
 /// on that keyboard uses [`UpdateMode::Fast`], the same as the reader
 /// keyboard's pressed key. Every other frame uses [`UpdateMode::Gui`].
-pub fn frame_refresh(keyboard_open: bool, finger_down: bool) -> FrameRefresh {
+pub(in crate::view) fn frame_refresh(keyboard_open: bool, finger_down: bool) -> FrameRefresh {
     if keyboard_open && finger_down {
         FrameRefresh {
             mode: UpdateMode::Fast,
@@ -87,7 +92,7 @@ pub fn frame_refresh(keyboard_open: bool, finger_down: bool) -> FrameRefresh {
 }
 
 /// What the screen does after one callback.
-pub enum Outcome {
+pub(in crate::view) enum Outcome {
     /// Nothing further.
     Idle,
     /// The field, the caret, the layer, or the accent strip changed.
@@ -99,7 +104,7 @@ pub enum Outcome {
 }
 
 /// State of one open text dialog.
-pub struct TextSheet<W> {
+pub(in crate::view) struct TextSheet<W> {
     pending: Option<Pending>,
     shift: ModifierState,
     alternate: ModifierState,
@@ -121,7 +126,7 @@ struct Pending {
 }
 
 impl<W> TextSheet<W> {
-    pub fn new() -> Self {
+    pub(in crate::view) fn new() -> Self {
         Self {
             pending: None,
             shift: ModifierState::Off,
@@ -147,7 +152,13 @@ impl<W> TextSheet<W> {
             fields(numbers = numbers, max_chars = max_chars, len = initial.chars().count())
         )
     )]
-    pub fn open(&mut self, label: String, initial: String, numbers: bool, max_chars: usize) {
+    pub(in crate::view) fn open(
+        &mut self,
+        label: String,
+        initial: String,
+        numbers: bool,
+        max_chars: usize,
+    ) {
         tracing::debug!("text dialog opened");
         let cursor = initial.len();
         self.pending = Some(Pending {
@@ -172,7 +183,7 @@ impl<W> TextSheet<W> {
         feature = "tracing",
         tracing::instrument(name = "text_sheet.close", skip_all)
     )]
-    pub fn close(&mut self) {
+    pub(in crate::view) fn close(&mut self) {
         if self.pending.is_none() {
             return;
         }
@@ -181,7 +192,7 @@ impl<W> TextSheet<W> {
         self.reset_keys();
     }
 
-    pub fn is_open(&self) -> bool {
+    pub(in crate::view) fn is_open(&self) -> bool {
         self.pending.is_some()
     }
 
@@ -499,6 +510,8 @@ where
             io.set_text_after(text[cursor..].into());
             self.copied = Some((label, text, cursor));
         }
+        io.set_cancel_label(fl!("cancel").into());
+        io.set_accept_label(fl!("ok").into());
         io.set_open(true);
 
         let layout_name = context.settings.keyboard_layout.as_str();

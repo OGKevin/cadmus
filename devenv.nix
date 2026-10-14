@@ -298,27 +298,40 @@ let
         editable: true
   '';
 
-  # Workspace version of the `slint` input (devenv.yaml). The viewer
-  # tarball and the Rust crate stay on this release.
-  slintVersion =
-    (builtins.fromTOML (builtins.readFile (inputs.slint + "/Cargo.toml"))).workspace.package.version;
+  # The viewer tarball is the same release as the skill input and the
+  # workspace crate. Renovate bumps those two together; this equality fails
+  # the shell if the viewer would otherwise stay on an older release. The
+  # hashes are for that release and have to be updated with it. Following
+  # the input's Cargo.toml for the URL is what makes the versions match;
+  # the hash still cannot be derived from it.
+  slintRelease =
+    let
+      inputVersion = (builtins.fromTOML (builtins.readFile "${inputs.slint}/Cargo.toml")).workspace.package.version;
+      cratePin = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).workspace.dependencies.slint.version;
+      crateVersion = builtins.replaceStrings [ "=" ] [ "" ] cratePin;
+    in
+    assert pkgs.lib.assertMsg (inputVersion == crateVersion) ''
+      Slint input ${inputVersion} does not match the workspace pin ${cratePin}.
+      Run `devenv update slint` and update the viewer hashes in devenv.nix.
+    '';
+    inputVersion;
 
   # nixpkgs' slint-viewer is built without the MCP server. This is the
   # official release binary, which serves it. The `slint` input is the git
-  # tree (the skill and `slintVersion`); it does not contain that binary.
+  # tree (the skill); it does not contain that binary.
   slintViewer = pkgs.stdenv.mkDerivation {
     pname = "slint-viewer";
-    version = slintVersion;
+    version = slintRelease;
 
     src =
       if isLinux then
         pkgs.fetchurl {
-          url = "https://github.com/slint-ui/slint/releases/download/v${slintVersion}/slint-viewer-linux.tar.gz";
+          url = "https://github.com/slint-ui/slint/releases/download/v${slintRelease}/slint-viewer-linux.tar.gz";
           sha256 = "86b260e661cdc24dcadaf63266b034f3281cbec542afc26545a72a986fe42a13";
         }
       else
         pkgs.fetchurl {
-          url = "https://github.com/slint-ui/slint/releases/download/v${slintVersion}/slint-viewer-macos.tar.gz";
+          url = "https://github.com/slint-ui/slint/releases/download/v${slintRelease}/slint-viewer-macos.tar.gz";
           sha256 = "e6ced86250e052122b65b593c77c2042a54798428a0f9ae5840f8769f1488571";
         };
 
@@ -341,9 +354,9 @@ let
       chmod +x $out/bin/slint-viewer
     '';
 
+    # `dontFixup` already skips ELF patching and stripping. Darwin has no ELF
+    # to patch, and the binary is already linked for that platform.
     dontFixup = isDarwin;
-    dontPatchELF = isDarwin;
-    dontStrip = isDarwin;
   };
 
   # Cursor's MCP file and OpenCode's `mcp` key use different schemas.
@@ -412,9 +425,6 @@ in
     # Emulator dependency
     pkgs.sdl3
 
-    # Preview the Slint UI files and serve the viewer MCP endpoint.
-    slintViewer
-
     # Extract @tr() strings into cadmus-core.pot (cadmus-translate)
     pkgs.slint-tr-extractor
 
@@ -475,6 +485,11 @@ in
   ++ pkgs.lib.optionals isDarwin [
     # macOS uses Apple's clang from Xcode Command Line Tools
     # Frameworks are provided by the system SDK, no need to add them explicitly
+  ]
+  # Linux release tarball is x86_64. Other Linux hosts must not fetch it.
+  ++ pkgs.lib.optionals (isDarwin || (isLinux && pkgs.stdenv.hostPlatform.isx86_64)) [
+    # Preview the Slint UI files and serve the viewer MCP endpoint.
+    slintViewer
   ];
 
   # Enable Rust with cross-compilation support
@@ -925,6 +940,10 @@ in
     # SLINT_MCP_PORT exposes the viewer on the endpoint in the generated MCP
     # config (Cursor and OpenCode).
     cadmus-slint-view.exec = ''
+      if ! command -v slint-viewer >/dev/null 2>&1; then
+        echo "The official slint-viewer binary is only provided on x86_64 Linux and macOS." >&2
+        exit 1
+      fi
       export SLINT_MCP_PORT="''${SLINT_MCP_PORT:-9315}"
       slint-viewer \
         --auto-reload \
@@ -1107,13 +1126,6 @@ in
   };
 
   enterShell = ''
-    skill="${config.devenv.root}/.agents/skills/slint"
-    if [ -e "$skill" ] && [ ! -L "$skill" ]; then
-      echo "error: $skill is a directory. Remove it so devenv can link the Slint skill." >&2
-      exit 1
-    fi
-  ''
-  + ''
     echo "Cadmus development environment"
     echo ""
     echo "Available commands:"
@@ -1181,6 +1193,7 @@ in
   treefmt = {
     enable = true;
     config = {
+      # nixpkgs treefmt, so the binary matches the nixpkgs formatters in `programs`.
       package = pkgs.treefmt;
       programs = {
         prettier.enable = true;

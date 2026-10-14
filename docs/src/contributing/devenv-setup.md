@@ -119,12 +119,12 @@ cwd is enough.
 
 Or have a look at the rustdocs for `xtask_lib` <a href="/api/xtask_lib/">here</a>.
 
-## Tasks
+### Tasks
 
 The devenv environment uses [tasks](https://devenv.sh/tasks/) to manage build dependencies.
 Tasks are defined in `devenv.nix` and can be run with `devenv tasks run <task>`.
 
-### Available Tasks
+#### Available Tasks
 
 | Task                | What it runs                                                      | Dependencies        |
 | ------------------- | ----------------------------------------------------------------- | ------------------- |
@@ -141,7 +141,7 @@ Tasks are defined in `devenv.nix` and can be run with `devenv tasks run <task>`.
 `cadmuscli:install` also runs before `docs:build`, and reruns when xtask
 sources change or the PATH binary is missing.
 
-### How Tasks Work
+#### How Tasks Work
 
 Tasks with dependencies automatically run their dependencies first. For example:
 
@@ -154,7 +154,7 @@ devenv tasks run build:kobo
 have changed. `website:install` uses `execIfModified` on `website/package.json`
 and `website/package-lock.json`.
 
-## Kobo Build Notes
+### Kobo Build Notes
 
 - Run `cadmuscli setup` before host-side Cargo commands. `cadmuscli
   build-kobo` also ensures the ARM SQLite artifacts, but running setup up
@@ -167,7 +167,7 @@ and `website/package-lock.json`.
 See [Website](website/index.md) and [User guide](website/user-guide.md) for building, serving,
 editing, and deploying the documentation site.
 
-## Running Tests
+### Running Tests
 
 Tests require the `TEST_ROOT_DIR` environment variable to be set. The easiest way to run the
 full test matrix is:
@@ -192,7 +192,7 @@ TEST_ROOT_DIR=$(pwd) cargo test
 `TEST_ROOT_DIR` is automatically configured in CI but must be set manually when running
 `cargo test` directly.
 
-## Test Coverage
+### Test Coverage
 
 CI runs instrumented tests across the full feature matrix and uploads merged reports to
 [Codecov](https://app.codecov.io/github/ogkevin/cadmus). Patch coverage is enforced as a required status check — the
@@ -230,9 +230,9 @@ host; use `kobo` only via the `build-kobo` skill (cross-compiles for ARM).
 
 CI uploads require a `CODECOV_TOKEN` repository secret (one-time setup on codecov.io).
 
-## Platform Support
+### Platform Support
 
-### Linux (Full Support)
+#### Linux (Full Support)
 
 Linux provides full development capabilities including:
 
@@ -242,7 +242,7 @@ Linux provides full development capabilities including:
 
 The Linaro toolchain is automatically added to `PATH` and provides `arm-linux-gnueabihf-*` commands.
 
-### macOS (Full Support)
+#### macOS (Full Support)
 
 macOS supports full development capabilities including:
 
@@ -250,12 +250,12 @@ macOS supports full development capabilities including:
 - Cross-compilation for Kobo devices using the Linaro ARM toolchain
 - Git hooks (actionlint, shellcheck, shfmt, rumdl, prettier)
 
-#### macOS-Specific Notes
+##### macOS-Specific Notes
 
 **MuPDF build**: On macOS, the native build script manually gathers pkg-config CFLAGS for system
 libraries because MuPDF's build system doesn't properly detect them on Darwin.
 
-## Observability Stack
+### Observability Stack
 
 The devenv includes a full observability stack for development:
 
@@ -280,14 +280,14 @@ Services available after `devenv up`:
 
 For more details on telemetry, see [Telemetry](telemetry/index.md).
 
-## Troubleshooting
+### Troubleshooting
 
-### Shell takes a long time to start
+#### Shell takes a long time to start
 
 The first `devenv shell` invocation downloads and builds dependencies, which can take several
 minutes. Subsequent invocations are cached and should be fast.
 
-### Tests fail with "TEST_ROOT_DIR must be set"
+#### Tests fail with "TEST_ROOT_DIR must be set"
 
 Set the environment variable before running tests:
 
@@ -295,7 +295,7 @@ Set the environment variable before running tests:
 TEST_ROOT_DIR=$(pwd) cargo test
 ```
 
-### `libsqlite3-sys` fails with `sqlite3.h` not found
+#### `libsqlite3-sys` fails with `sqlite3.h` not found
 
 Custom SQLite has not been built yet. Inside `devenv shell`, run:
 
@@ -305,7 +305,7 @@ cadmuscli setup
 
 Then retry the build or `cadmuscli run-emulator`.
 
-## Local Configuration
+### Local Configuration
 
 Create `devenv.local.nix` to override settings without modifying the tracked configuration:
 

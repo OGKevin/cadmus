@@ -24,7 +24,7 @@ msgstr ""
 msgid "Test builds"
 msgstr ""
 
-#: src/SUMMARY.md:7 src/installation/ota.md:1 src/fonts.md:114
+#: src/SUMMARY.md:7 src/installation/ota.md:1 src/fonts.md:118
 msgid "OTA updates"
 msgstr ""
 
@@ -44,7 +44,7 @@ msgstr ""
 msgid "Uninstalling Cadmus"
 msgstr ""
 
-#: src/SUMMARY.md:12 src/SUMMARY.md:18 src/settings/index.md:1 src/fonts.md:108
+#: src/SUMMARY.md:12 src/SUMMARY.md:18 src/settings/index.md:1 src/fonts.md:112
 #: src/ui/settings/index.md:1
 msgid "Settings"
 msgstr ""
@@ -1832,7 +1832,7 @@ msgid ""
 "extensions."
 msgstr ""
 
-#: src/settings/index.md:976
+#: src/settings/index.md:976 src/ui/settings/index.md:38
 msgid "Libraries"
 msgstr ""
 
@@ -2383,70 +2383,102 @@ msgid "Menus, settings, and other app text"
 msgstr ""
 
 #: src/fonts.md:56
-msgid "Noto Serif"
+msgid "Noto Sans JP"
 msgstr ""
 
 #: src/fonts.md:56
+msgid "Japanese labels on the Settings screen"
+msgstr ""
+
+#: src/fonts.md:57
+msgid "Noto Sans KR"
+msgstr ""
+
+#: src/fonts.md:57
+msgid "Korean labels on the Settings screen"
+msgstr ""
+
+#: src/fonts.md:58
+msgid "Noto Sans SC"
+msgstr ""
+
+#: src/fonts.md:58
+msgid "Simplified Chinese labels on the Settings screen"
+msgstr ""
+
+#: src/fonts.md:59
+msgid "Noto Sans TC"
+msgstr ""
+
+#: src/fonts.md:59
+msgid "Traditional Chinese labels on the Settings screen"
+msgstr ""
+
+#: src/fonts.md:60
+msgid "Noto Serif"
+msgstr ""
+
+#: src/fonts.md:60
 msgid "Serif text in the app interface"
 msgstr ""
 
-#: src/fonts.md:57
+#: src/fonts.md:61
 msgid "Source Code Pro"
 msgstr ""
 
-#: src/fonts.md:57
+#: src/fonts.md:61
 msgid "Monospace in the app and code blocks in books"
 msgstr ""
 
-#: src/fonts.md:58
+#: src/fonts.md:62
 msgid "Varela Round"
 msgstr ""
 
-#: src/fonts.md:58
+#: src/fonts.md:62
 msgid "On-screen keyboard"
 msgstr ""
 
-#: src/fonts.md:59
+#: src/fonts.md:63
 msgid "Cormorant"
 msgstr ""
 
-#: src/fonts.md:59
+#: src/fonts.md:63
 msgid "Startup and intermission screens"
 msgstr ""
 
-#: src/fonts.md:60
+#: src/fonts.md:64
 msgid "Parisienne"
 msgstr ""
 
-#: src/fonts.md:60
+#: src/fonts.md:64
 msgid "Decorative cursive text in EPUB/HTML content"
 msgstr ""
 
-#: src/fonts.md:61
+#: src/fonts.md:65
 msgid "Delius"
 msgstr ""
 
-#: src/fonts.md:61
+#: src/fonts.md:65
 msgid "Decorative fantasy text in EPUB/HTML content"
 msgstr ""
 
-#: src/fonts.md:63
+#: src/fonts.md:67
 msgid "Changing the font while reading"
 msgstr ""
 
-#: src/fonts.md:65
+#: src/fonts.md:69
 msgid "Open a book in the reader."
 msgstr ""
 
-#: src/fonts.md:66
+#: src/fonts.md:70
 msgid "Tap the **font family** button in the reader toolbar."
 msgstr ""
 
-#: src/fonts.md:67
+#: src/fonts.md:71
 msgid "Select a font from the list."
 msgstr ""
 
-#: src/fonts.md:69
+#: src/fonts.md:73
 msgid ""
 "The menu shows fonts from Cadmus's packaged collection and any fonts in your "
 "custom font directory (see below). When you select a font, Cadmus resolves "
@@ -2454,36 +2486,36 @@ msgid ""
 "fonts](#how-cadmus-resolves-fonts)."
 msgstr ""
 
-#: src/fonts.md:73
+#: src/fonts.md:77
 msgid "How Cadmus resolves fonts"
 msgstr ""
 
-#: src/fonts.md:75
+#: src/fonts.md:79
 msgid ""
 "When you pick a font in the reader or reopen a book with a saved "
 "[`font-family`](settings/index.md#readerfont-family), Cadmus looks for that "
 "family name in two places, **in this order**:"
 msgstr ""
 
-#: src/fonts.md:79
+#: src/fonts.md:83
 msgid ""
 "**Packaged fonts** — shipped with Cadmus and updated via "
 "[OTA](installation/ota.md)"
 msgstr ""
 
-#: src/fonts.md:80
+#: src/fonts.md:84
 msgid ""
 "**Your custom font directory** — "
 "[`reader.font-path`](settings/index.md#readerfont-path) (default "
 "`/mnt/onboard/fonts/`)"
 msgstr ""
 
-#: src/fonts.md:83
+#: src/fonts.md:87
 msgid ""
 "If the same family name exists in both places, the **packaged** copy is used."
 msgstr ""
 
-#: src/fonts.md:85
+#: src/fonts.md:89
 msgid ""
 "Your chosen family replaces Cadmus's default **serif** stack for reflowable "
 "books. Paragraphs the book styles as sans-serif, monospace, cursive, or "
@@ -2491,35 +2523,35 @@ msgid ""
 "family name, the previous font is kept."
 msgstr ""
 
-#: src/fonts.md:90
+#: src/fonts.md:94
 msgid "Installing additional fonts"
 msgstr ""
 
-#: src/fonts.md:92
+#: src/fonts.md:96
 msgid ""
 "To add your own fonts, copy `.ttf` or `.otf` files into your custom font "
 "directory (by default at the root of your Kobo device):"
 msgstr ""
 
-#: src/fonts.md:103
+#: src/fonts.md:107
 msgid "Cadmus scans that directory recursively, so fonts can live in subfolders."
 msgstr ""
 
-#: src/fonts.md:105
+#: src/fonts.md:109
 msgid ""
 "Point Cadmus at your custom directory with "
 "[`reader.font-path`](settings/index.md#readerfont-path) if you use a "
 "different location."
 msgstr ""
 
-#: src/fonts.md:110
+#: src/fonts.md:114
 msgid ""
 "Font options can also be set in your settings file. See the [Reader "
 "settings](settings/index.md#reader) section for `font-family`, `font-path`, "
 "`font-size`, and related entries."
 msgstr ""
 
-#: src/fonts.md:116
+#: src/fonts.md:120
 msgid ""
 "[OTA updates](installation/ota.md) replace Cadmus-packaged fonts before "
 "installing the new release. Cadmus removes **each shipped font file "
@@ -2528,7 +2560,7 @@ msgid ""
 "update if they are not part of the release."
 msgstr ""
 
-#: src/fonts.md:122
+#: src/fonts.md:126
 msgid ""
 "Under normal use, your custom fonts live in a **separate directory** "
 "([`reader.font-path`](settings/index.md#readerfont-path), default "
@@ -2628,95 +2660,102 @@ msgid "The title will indicate the mode."
 msgstr ""
 
 #: src/ui/keyboard.md:3
-msgid ""
-"The on-screen keyboard lets you type text for searches, dictionary lookups, "
-"and other input fields."
+msgid "Both keyboards stay while Cadmus moves to the new Settings screen."
 msgstr ""
 
-#: src/ui/keyboard.md:6
-msgid "Basics"
+#: src/ui/keyboard.md:5
+msgid ""
+"The reader and search keyboard has a combine key (_CMB_). The Settings "
+"keyboard is the text dialog in Settings. It has no combine key."
 msgstr ""
 
 #: src/ui/keyboard.md:8
+msgid "Reader and search"
+msgstr ""
+
+#: src/ui/keyboard.md:10
 msgid "**Lock modifier keys** — Tap _ALT_ or _SHIFT_ twice to lock them on."
 msgstr ""
 
-#: src/ui/keyboard.md:9
+#: src/ui/keyboard.md:11
 msgid ""
 "**Combine key (CMB)** — Press _CMB_ followed by two keys to type accented or "
 "special characters (see [Combination Sequences](#combination-sequences) "
 "below). For example, `CMB o e` produces _œ_."
 msgstr ""
 
-#: src/ui/keyboard.md:12
+#: src/ui/keyboard.md:14
 msgid ""
 "**Delete / motion keys** — Tap and hold to act on whole words instead of "
 "individual characters."
 msgstr ""
 
-#: src/ui/keyboard.md:14
+#: src/ui/keyboard.md:16
 msgid "**Keyboard layouts** — Tap and hold the space bar to switch layouts."
 msgstr ""
 
-#: src/ui/keyboard.md:16
-msgid "Inputting Accented Characters"
-msgstr ""
-
 #: src/ui/keyboard.md:18
-msgid ""
-"Cadmus supports these through **combination sequences** using the _CMB_ key. "
-"See [Combination Sequences](#combination-sequences)."
+msgid "Accented characters"
 msgstr ""
 
-#: src/ui/keyboard.md:21
-msgid "How to type an accented character"
-msgstr ""
-
-#: src/ui/keyboard.md:23
+#: src/ui/keyboard.md:20
 msgid "Press the **CMB** key."
 msgstr ""
 
-#: src/ui/keyboard.md:24
+#: src/ui/keyboard.md:21
 msgid "Press the **base letter** (e.g. `e`)."
 msgstr ""
 
-#: src/ui/keyboard.md:25
+#: src/ui/keyboard.md:22
 msgid "Press the **accent modifier** (e.g. `'` for acute)."
 msgstr ""
 
-#: src/ui/keyboard.md:27
+#: src/ui/keyboard.md:24
 msgid "Example: `CMB e '` produces **é**."
 msgstr ""
 
-#: src/ui/keyboard.md:29
+#: src/ui/keyboard.md:26
+msgid "Settings keyboard"
+msgstr ""
+
+#: src/ui/keyboard.md:28
+msgid ""
+"Hold a letter key on the Settings keyboard. Cadmus shows that letter's "
+"accented forms. Tap the one you want. There is no _CMB_ key on this "
+"keyboard, so a combination sequence cannot be entered there."
+msgstr ""
+
+#: src/ui/keyboard.md:32
 msgid "Combination Sequences"
 msgstr ""
 
-#: src/ui/keyboard.md:31
+#: src/ui/keyboard.md:34
 msgid ""
-"Press _CMB_ followed by the two keys listed below to produce the "
-"corresponding character."
+"On the reader and search keyboard, press _CMB_ followed by the two keys "
+"listed below."
 msgstr ""
 
-#: src/ui/keyboard.md:77
+#: src/ui/keyboard.md:80
 msgid "Custom Keyboard Layouts"
 msgstr ""
 
-#: src/ui/keyboard.md:79
-msgid "Keyboard layouts are defined as JSON files with the following structure:"
+#: src/ui/keyboard.md:82
+msgid ""
+"A custom layout JSON file supplies the keys for both the reader and search "
+"keyboard and the Settings keyboard. The file has this structure:"
 msgstr ""
 
-#: src/ui/keyboard.md:81
+#: src/ui/keyboard.md:85
 msgid "**name** — Display name shown in the keyboard layouts menu."
 msgstr ""
 
-#: src/ui/keyboard.md:82
+#: src/ui/keyboard.md:86
 msgid ""
 "**outputs** — List of output keys for each modifier combination (_none_, "
 "_shift_, _alt_, _shift+alt_)."
 msgstr ""
 
-#: src/ui/keyboard.md:84
+#: src/ui/keyboard.md:88
 msgid ""
 "**keys** — Description of each key. Special key names: _Shift_ (_Sft_), "
 "_Return_ (_Ret_), _Alternate_ (_Alt_), _Combine_ (_Cmb_), _MoveFwd_ "
@@ -2724,7 +2763,7 @@ msgid ""
 "_DelBwd_ (_DelB_, _DB_), _Space_ (_Spc_). Use _▢_ to mark output keys."
 msgstr ""
 
-#: src/ui/keyboard.md:88
+#: src/ui/keyboard.md:92
 msgid "**widths** — Width/height ratio for each key. The key gap ratio is 0.06."
 msgstr ""
 
@@ -2908,34 +2947,36 @@ msgid ""
 msgstr ""
 
 #: src/ui/settings/index.md:16
-msgid "**Libraries** — add, edit, or remove your book libraries"
-msgstr ""
-
-#: src/ui/settings/index.md:17
 msgid "**Dictionaries** — download and manage offline dictionaries"
 msgstr ""
 
-#: src/ui/settings/index.md:18
-msgid "**Import** — control how new books are picked up automatically"
+#: src/ui/settings/index.md:17
+msgid "**Libraries** — add, edit, or remove your book libraries"
 msgstr ""
 
-#: src/ui/settings/index.md:19
-msgid "**OTA** — download Cadmus updates directly to your Kobo"
+#: src/ui/settings/index.md:18
+msgid ""
+"**Intermission Screens** — pictures shown while Cadmus sleeps, powers off, "
+"or while connected to a computer"
 msgstr ""
 
 #: src/ui/settings/index.md:20
+msgid "**Import** — control how new books are picked up automatically"
+msgstr ""
+
+#: src/ui/settings/index.md:21
 msgid "**Telemetry** — logging options"
 msgstr ""
 
-#: src/ui/settings/index.md:22
+#: src/ui/settings/index.md:23
 msgid "Power"
 msgstr ""
 
-#: src/ui/settings/index.md:24
+#: src/ui/settings/index.md:25
 msgid "Use the **Power** tab for sleep-related options:"
 msgstr ""
 
-#: src/ui/settings/index.md:26
+#: src/ui/settings/index.md:27
 msgid ""
 "**Soft Suspend**, **Use LED to Indicate Soft Suspend**, and **Soft Suspend "
 "Release Grace** — shown only when the device supports soft suspend. Soft "
@@ -2946,16 +2987,51 @@ msgid ""
 "immediately)."
 msgstr ""
 
-#: src/ui/settings/index.md:33
+#: src/ui/settings/index.md:34
 msgid "**Auto Suspend** — minutes of inactivity before a full suspend."
 msgstr ""
 
-#: src/ui/settings/index.md:34
+#: src/ui/settings/index.md:35
 msgid "**Auto Power Off** — days of inactivity before power off."
 msgstr ""
 
-#: src/ui/settings/index.md:35
+#: src/ui/settings/index.md:36
 msgid "**Enable Sleep Cover** — suspend when the cover closes."
+msgstr ""
+
+#: src/ui/settings/index.md:40
+msgid ""
+"Hold a library, then tap Delete. The last library cannot be deleted. You can "
+"delete the library you have open. When you leave Settings, Home switches to "
+"the library that takes its place."
+msgstr ""
+
+#: src/ui/settings/index.md:44
+msgid "Intermission Screens"
+msgstr ""
+
+#: src/ui/settings/index.md:46
+msgid ""
+"Use the **Intermission Screens** tab to choose what Cadmus shows between "
+"activities:"
+msgstr ""
+
+#: src/ui/settings/index.md:49
+msgid "**Suspend Screen** — picture while the device sleeps"
+msgstr ""
+
+#: src/ui/settings/index.md:50
+msgid "**Power Off Screen** — picture while the device powers off"
+msgstr ""
+
+#: src/ui/settings/index.md:51
+msgid "**Share Screen** — picture while connected to a computer"
+msgstr ""
+
+#: src/ui/settings/index.md:52
+msgid ""
+"**Fill Color** — White or Black behind that picture. Custom is shown only "
+"when your settings file already holds another color."
 msgstr ""
 
 #: src/ui/settings/dictionaries.md:3

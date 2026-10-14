@@ -2,114 +2,36 @@ use std::time::Instant;
 
 use anyhow::Context as _;
 
+use super::slint;
 use super::slint::generated::StartupWindow;
-use super::slint::{self, Session, SlintView};
-use super::{Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, View};
-use crate::device::{AppContext, AppDevice, DeviceHardware as _};
-use crate::framebuffer::{Framebuffer, UpdateMode};
-use crate::geom::Rectangle;
+use crate::device::{AppDevice, DeviceHardware as _};
 
-/// Full-screen startup view, hosted by the shared Slint session.
+fn new_startup_window() -> anyhow::Result<StartupWindow> {
+    StartupWindow::new().context("failed to create slint startup window")
+}
+
+/// Presents the startup frame, then drops the Slint session.
 ///
-/// The first frame is presented before the rest of startup. Drop the view
-/// when startup finishes so Home can take the screen.
-pub struct StartupScreen {
-    id: Id,
-    rect: Rectangle,
-    children: Vec<Box<dyn View>>,
-    ui: Session<StartupWindow>,
-}
-
-fn startup_window(family: &str) -> anyhow::Result<StartupWindow> {
-    let ui = StartupWindow::new().context("failed to create slint startup window")?;
-    ui.set_font_family(family.into());
-    Ok(ui)
-}
-
-impl StartupScreen {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(device)))]
-    pub async fn open(device: &mut AppDevice) -> anyhow::Result<StartupScreen> {
-        let started = Instant::now();
-        let rect = device.framebuffer().rect();
-        let ui = slint::open(device, startup_window)?;
-        {
-            let fb = device.framebuffer_mut();
-            ui.present(fb)?;
-        }
-        tracing::info!(
-            renderer = "slint",
-            duration_ms = elapsed_ms(started),
-            "startup screen presented"
-        );
-        Ok(StartupScreen {
-            id: ID_FEEDER.next(),
-            rect,
-            children: Vec::new(),
-            ui,
-        })
+/// The panel keeps the image. The session holds a full-screen frame, so it
+/// is released before the rest of startup.
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(device)))]
+pub fn open(device: &mut AppDevice) -> anyhow::Result<()> {
+    let started = Instant::now();
+    let ui = slint::open(device, |_| new_startup_window())?;
+    {
+        let fb = device.framebuffer_mut();
+        ui.present(fb)?;
     }
+    tracing::info!(
+        renderer = "slint",
+        duration_ms = elapsed_ms(started),
+        "startup screen presented"
+    );
+    Ok(())
 }
 
 fn elapsed_ms(started: Instant) -> u64 {
     u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
-}
-
-#[async_trait::async_trait(?Send)]
-impl View for StartupScreen {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, _bus, rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
-    async fn handle_event(
-        &mut self,
-        evt: &Event,
-        _hub: &Hub,
-        _bus: &mut Bus,
-        rq: &mut RenderQueue,
-        _context: &mut AppContext,
-    ) -> bool {
-        if let Event::Device(device_event) = evt
-            && self.forward_device(*device_event)
-        {
-            rq.add(RenderData::new(self.id, self.rect, UpdateMode::Full));
-        }
-        true
-    }
-
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, context)))]
-    fn render(&self, context: &mut AppContext, rect: Rectangle) {
-        self.blit_frame(context, &rect);
-    }
-
-    fn might_rotate(&self) -> bool {
-        false
-    }
-
-    fn rect(&self) -> &Rectangle {
-        &self.rect
-    }
-
-    fn rect_mut(&mut self) -> &mut Rectangle {
-        &mut self.rect
-    }
-
-    fn children(&self) -> &Vec<Box<dyn View>> {
-        &self.children
-    }
-
-    fn children_mut(&mut self) -> &mut Vec<Box<dyn View>> {
-        &mut self.children
-    }
-
-    fn id(&self) -> Id {
-        self.id
-    }
-}
-
-#[async_trait::async_trait(?Send)]
-impl SlintView for StartupScreen {
-    type Component = StartupWindow;
-
-    fn session(&self) -> Option<&Session<StartupWindow>> {
-        Some(&self.ui)
-    }
 }
 
 #[cfg(test)]
@@ -121,6 +43,12 @@ mod tests {
     use crate::color::Color;
     use crate::framebuffer::{Framebuffer, Pixmap, UpdateMode};
     use crate::geom::Rectangle;
+
+    fn startup_window(family: &str) -> anyhow::Result<super::StartupWindow> {
+        let ui = super::new_startup_window()?;
+        ui.set_font_family(family.into());
+        Ok(ui)
+    }
 
     struct RecordingFramebuffer {
         pixmap: Pixmap,
@@ -217,14 +145,8 @@ mod tests {
         let font = font_bytes();
         for (width, height, dpi) in [(600, 800, 167_u16), (1072, 1448, 300)] {
             let mut fb = RecordingFramebuffer::new(width, height);
-            let ui = crate::view::slint::open_with_font(
-                dpi,
-                width,
-                height,
-                &font,
-                super::startup_window,
-            )
-            .expect("startup session");
+            let ui = crate::view::slint::open_with_font(dpi, width, height, &font, startup_window)
+                .expect("startup session");
             ui.present(&mut fb).expect("startup frame");
             let rect = fb.rect();
             assert_eq!((fb.width(), fb.height()), (width, height));
@@ -250,7 +172,7 @@ mod tests {
     #[test]
     fn startup_message_follows_the_bundled_french_translation() {
         let font = font_bytes();
-        let ui = crate::view::slint::open_with_font(167, 600, 800, &font, super::startup_window)
+        let ui = crate::view::slint::open_with_font(167, 600, 800, &font, startup_window)
             .expect("startup session");
         slint::select_bundled_translation("en").expect("english catalog");
         assert_eq!(ui.component().get_message().as_str(), "Cadmus starting up…");

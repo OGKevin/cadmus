@@ -1,7 +1,10 @@
+import { InkMetrics } from "../widgets/ink/metrics.slint";
+
 export component StartupWindow inherits Window {
     out property <string> message: @tr("Cadmus starting up…");
-    // Layout inside `new()` measures this text before Rust can set the family.
-    in property <string> font-family: "Noto Sans";
+    // Cormorant, the face for the startup sentence. Tests that register one
+    // font file override this family.
+    in property <string> font-family: "Cormorant";
 
     background: #ffffff;
 
@@ -9,7 +12,7 @@ export component StartupWindow inherits Window {
         text: root.message;
         color: #1a1a1a;
         font-family: root.font-family;
-        font-size: 72px;
+        font-size: 38px * InkMetrics.dp;
         wrap: word-wrap;
         horizontal-alignment: center;
         vertical-alignment: center;
