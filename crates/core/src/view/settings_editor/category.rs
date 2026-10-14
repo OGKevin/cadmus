@@ -1,5 +1,5 @@
 use super::kinds::SettingKind;
-use super::kinds::dictionary::DictionaryInfo;
+use super::kinds::dictionary;
 use super::kinds::general::{
     AutoFrontlight, AutoFrontlightBrightness, AutoFrontlightManualCoordinates, AutoShare, AutoTime,
     ButtonScheme, DbBackupRetentionSetting, KeyboardLayout, Locale, NtpServer, SettingsRetention,
@@ -22,52 +22,19 @@ use super::kinds::reader::{
 use super::kinds::telemetry::{LogLevel, LoggingEnabled};
 use crate::device::AppContext;
 use crate::device::soft_suspend::SoftSuspendBackend as _;
-use crate::dictionary::{DictionaryEntry, MonolingualDictionaryService, dictionary_label};
-use crate::fl;
-use std::collections::{BTreeMap, BTreeSet};
+use crate::dictionary::MonolingualDictionaryService;
 
-/// Categories of settings available in the settings editor.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Category {
-    /// General device settings (locale, keyboard layout, etc.)
-    General,
-    /// Power and sleep settings (auto-suspend, sleep cover, etc.)
-    Power,
-    /// Reader behavior settings (finished action, etc.)
-    Reader,
-    /// Library management settings
-    Libraries,
-    /// Intermission screen display settings
-    Intermissions,
-    /// Import behavior settings
-    Import,
-    /// Telemetry and logging settings
-    Telemetry,
-    /// Monolingual dictionary download and management
-    Dictionaries,
-}
+use crate::view::settings_editor::SettingsCategory;
 
-impl Category {
-    /// Returns the display label for this category.
-    pub fn label(&self) -> String {
-        match self {
-            Category::General => fl!("settings-category-general"),
-            Category::Power => fl!("settings-category-power"),
-            Category::Reader => fl!("settings-category-reader"),
-            Category::Libraries => fl!("settings-category-libraries"),
-            Category::Intermissions => fl!("settings-category-intermissions"),
-            Category::Import => fl!("settings-category-import"),
-            Category::Telemetry => fl!("settings-category-telemetry"),
-            Category::Dictionaries => fl!("settings-category-dictionaries"),
-        }
-    }
-
+/// The category enum is the one Slint generates. [`SettingsCategory::all`] is
+/// the order the hardware buttons step through, matching `setting_line.slint`.
+impl SettingsCategory {
     /// Returns the list of setting kinds for this category.
     ///
     /// Each element is a heap-allocated [`SettingKind`] that fully describes
     /// the label, current value, widget type, and tap event for one row.
     ///
-    /// `dict_service` is used only by the [`Category::Dictionaries`] variant.
+    /// `dict_service` is used only by the [`SettingsCategory::Dictionaries`] variant.
     /// All other categories ignore it. Passing `None` for a `Dictionaries`
     /// category produces an empty list and logs a warning.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(context, dict_service)))]
@@ -77,7 +44,7 @@ impl Category {
         dict_service: Option<&MonolingualDictionaryService>,
     ) -> Vec<Box<dyn SettingKind>> {
         match self {
-            Category::General => vec![
+            SettingsCategory::General => vec![
                 Box::new(Locale),
                 Box::new(AutoShare),
                 Box::new(AutoTime),
@@ -92,7 +59,7 @@ impl Category {
                 Box::new(DbBackupRetentionSetting),
                 Box::new(StartupModeSetting),
             ],
-            Category::Power => {
+            SettingsCategory::Power => {
                 let mut rows: Vec<Box<dyn SettingKind>> = Vec::new();
                 if context.inhibitor.is_supported() {
                     rows.push(Box::new(AutosleepModeSetting::new(
@@ -106,28 +73,28 @@ impl Category {
                 rows.push(Box::new(SleepCover));
                 rows
             }
-            Category::Reader => vec![
+            SettingsCategory::Reader => vec![
                 Box::new(FontFamily),
                 Box::new(FinishedActionSetting),
                 Box::new(DitheredKindsSetting),
                 Box::new(RefreshRateInfo),
             ],
-            Category::Libraries => (0..context.settings.libraries.len())
+            SettingsCategory::Libraries => (0..context.settings.libraries.len())
                 .map(|i| Box::new(LibraryInfo(i)) as Box<dyn SettingKind>)
                 .collect(),
-            Category::Intermissions => vec![
+            SettingsCategory::Intermissions => vec![
                 Box::new(IntermissionSuspend),
                 Box::new(IntermissionPowerOff),
                 Box::new(IntermissionShare),
                 Box::new(IntermissionFillColor),
             ],
-            Category::Import => vec![
+            SettingsCategory::Import => vec![
                 Box::new(ForceFullImport),
                 Box::new(ImportSyncMetadata),
                 Box::new(MetadataKindsSetting),
                 Box::new(AllowedKindsSetting),
             ],
-            Category::Telemetry => {
+            SettingsCategory::Telemetry => {
                 let rows: Vec<Box<dyn SettingKind>> =
                     vec![Box::new(LoggingEnabled), Box::new(LogLevel)];
 
@@ -159,81 +126,33 @@ impl Category {
                 }
                 rows
             }
-            Category::Dictionaries => {
+            SettingsCategory::Dictionaries => {
                 let Some(service) = dict_service else {
                     tracing::warn!(
                         "No MonolingualDictionaryService provided for Dictionaries category"
                     );
                     return Vec::new();
                 };
-
-                let available: BTreeMap<String, DictionaryEntry> = if context.online {
-                    match (service.get_available_dictionaries()).await {
-                        Ok(dicts) => dicts.into_iter().collect(),
-                        Err(e) => {
-                            tracing::warn!(error = %e, "Failed to load available dictionaries");
-                            BTreeMap::new()
-                        }
-                    }
-                } else {
-                    match (service.get_cached_available_dictionaries()).await {
-                        Ok(dicts) => dicts.into_iter().collect(),
-                        Err(e) => {
-                            tracing::warn!(
-                                error = %e,
-                                "Failed to load cached available dictionaries"
-                            );
-                            BTreeMap::new()
-                        }
-                    }
-                };
-
-                let installed: BTreeSet<String> = match (service.get_installed_dictionaries()).await
-                {
-                    Ok(dicts) => dicts.into_iter().collect(),
-                    Err(e) => {
-                        tracing::warn!(error = %e, "Failed to load installed dictionaries");
-                        BTreeSet::new()
-                    }
-                };
-
-                let mut all_langs: Vec<&str> = available
-                    .keys()
-                    .map(String::as_str)
-                    .chain(installed.iter().map(String::as_str))
-                    .collect();
-                all_langs.sort();
-                all_langs.dedup();
-
-                let mut rows = Vec::with_capacity(all_langs.len());
-                for lang in all_langs {
-                    let is_installed = installed.contains(lang);
-                    let update_available = is_installed && service.is_update_available(lang).await;
-                    let is_installing = service.is_installing(lang);
-                    rows.push(Box::new(DictionaryInfo {
-                        label: dictionary_label(lang, available.get(lang)),
-                        lang: lang.to_owned(),
-                        is_installed,
-                        update_available,
-                        is_installing,
-                    }) as Box<dyn SettingKind>);
-                }
-                rows
+                dictionary::load_infos(context, service)
+                    .await
+                    .into_iter()
+                    .map(|info| Box::new(info) as Box<dyn SettingKind>)
+                    .collect()
             }
         }
     }
 
     /// Returns all available categories.
-    pub fn all() -> Vec<Category> {
+    pub fn all() -> Vec<SettingsCategory> {
         vec![
-            Category::General,
-            Category::Power,
-            Category::Reader,
-            Category::Dictionaries,
-            Category::Libraries,
-            Category::Intermissions,
-            Category::Import,
-            Category::Telemetry,
+            SettingsCategory::General,
+            SettingsCategory::Power,
+            SettingsCategory::Reader,
+            SettingsCategory::Dictionaries,
+            SettingsCategory::Libraries,
+            SettingsCategory::Intermissions,
+            SettingsCategory::Import,
+            SettingsCategory::Telemetry,
         ]
     }
 
@@ -252,7 +171,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn power_omits_soft_suspend_settings_when_unsupported() {
         let context = create_test_context().await;
-        let identities: Vec<_> = Category::Power
+        let identities: Vec<_> = SettingsCategory::Power
             .settings(&context, None)
             .await
             .iter()
@@ -274,7 +193,7 @@ mod tests {
     async fn power_includes_soft_suspend_settings_when_supported() {
         let mut context = create_test_context().await;
         let _linux = crate::context::test_helpers::install_linux_soft_suspend(&mut context);
-        let identities: Vec<_> = Category::Power
+        let identities: Vec<_> = SettingsCategory::Power
             .settings(&context, None)
             .await
             .iter()
@@ -297,7 +216,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn reader_includes_font_family() {
         let context = create_test_context().await;
-        let identities: Vec<_> = Category::Reader
+        let identities: Vec<_> = SettingsCategory::Reader
             .settings(&context, None)
             .await
             .iter()

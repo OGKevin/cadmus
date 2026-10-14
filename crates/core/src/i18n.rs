@@ -56,7 +56,7 @@ pub fn init(locale: Option<&LanguageIdentifier>) {
 ///
 /// ```ignore
 /// // This example uses the crate-internal fl! macro.
-/// let label = crate::fl!("startup-loading");
+/// let label = crate::fl!("cancel");
 /// ```
 #[macro_export]
 macro_rules! fl {
@@ -80,8 +80,8 @@ macro_rules! fl {
 ///
 /// ```
 /// # use cadmus_core::fl_or;
-/// # let dynamic_id = "startup-loading";
-/// fl_or!(dynamic_id, "Loading…");
+/// # let dynamic_id = "cancel";
+/// fl_or!(dynamic_id, "Cancel");
 /// fl_or!(dynamic_id, "Features: …", features = "kobo");
 /// ```
 #[macro_export]
@@ -119,7 +119,7 @@ mod tests {
 
     #[test]
     fn fl_or_known_id_ignores_fallback() {
-        assert_eq!(fl_or!("startup-loading", "unused"), fl!("startup-loading"));
+        assert_eq!(fl_or!("cancel", "unused"), fl!("cancel"));
     }
 
     #[test]
@@ -129,10 +129,10 @@ mod tests {
 
     #[test]
     fn fl_or_accepts_runtime_string_id() {
-        let id = String::from("startup-loading");
-        assert_eq!(fl_or!(id, "unused"), fl!("startup-loading"));
-        let id = "startup-loading";
-        assert_eq!(fl_or!(id, "unused"), fl!("startup-loading"));
+        let id = String::from("cancel");
+        assert_eq!(fl_or!(id, "unused"), fl!("cancel"));
+        let id = "cancel";
+        assert_eq!(fl_or!(id, "unused"), fl!("cancel"));
     }
 
     #[test]

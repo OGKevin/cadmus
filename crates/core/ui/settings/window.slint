@@ -1,0 +1,142 @@
+import { SettingLine, SettingRow, SettingsCategory } from "setting_line.slint";
+import { DictionaryPageIo } from "categories/dictionaries.slint";
+import { GeneralPageIo } from "categories/general.slint";
+import { ImportPageIo } from "categories/import.slint";
+import { IntermissionPageIo } from "categories/intermission.slint";
+import { LibraryPageIo } from "categories/libraries.slint";
+import { PowerPageIo } from "categories/power.slint";
+import { ReaderPageIo } from "categories/reader.slint";
+import { TelemetryPageIo } from "categories/telemetry.slint";
+import {
+    ChoiceSheetIo,
+    ChoiceSheetOverlay,
+    ConfirmSheetIo,
+    ConfirmSheetOverlay,
+    FileBrowserIo,
+    FileBrowserOverlay,
+    TextSheetIo,
+    TextSheetOverlay,
+} from "../widgets/overlays.slint";
+import { LibraryEditor, LibraryEditorIo } from "editors/library_editor.slint";
+import { RefreshRates, RefreshRatesIo } from "editors/refresh_rates.slint";
+import { ChromeIcons } from "../icons/icons.slint";
+import { MaterialPalette } from "../widgets/ink/palette.slint";
+import { InkAppBar } from "../widgets/ink/app_bar.slint";
+import { CategoryBar } from "shell/category_bar.slint";
+import { SettingsChrome } from "shell/chrome.slint";
+import { SettingsFooter } from "shell/footer.slint";
+import { SettingsPages } from "shell/pages.slint";
+import { Hairline } from "../widgets/hairline.slint";
+
+export {
+    SettingLine,
+    SettingRow,
+    SettingsCategory,
+    SettingsChrome,
+    GeneralPageIo,
+    PowerPageIo,
+    ReaderPageIo,
+    DictionaryPageIo,
+    LibraryPageIo,
+    IntermissionPageIo,
+    ImportPageIo,
+    TelemetryPageIo,
+    FileBrowserIo,
+    LibraryEditorIo,
+    RefreshRatesIo,
+    TextSheetIo,
+    ChoiceSheetIo,
+    ConfirmSheetIo,
+}
+
+// Shell only: category, page, and the three chrome callbacks.
+// Each category and overlay lists its own values and callbacks on its global.
+export component SettingsWindow inherits Window {
+    in-out property <SettingsCategory> category: SettingsCategory.general;
+    in-out property <int> page: 0;
+    in property <string> font-family: "Noto Sans";
+
+    callback back-pressed();
+    callback category-pressed(SettingsCategory);
+    callback action-pressed();
+
+    property <length> window-height: SettingsChrome.window-height;
+    property <bool> show-action: root.category == SettingsCategory.libraries;
+    property <int> active-count:
+        root.category == SettingsCategory.general ? GeneralPageIo.row-count :
+        root.category == SettingsCategory.power ? PowerPageIo.row-count :
+        root.category == SettingsCategory.reader ? ReaderPageIo.row-count :
+        root.category == SettingsCategory.dictionaries ? DictionaryPageIo.row-count :
+        root.category == SettingsCategory.libraries ? LibraryPageIo.row-count :
+        root.category == SettingsCategory.intermissions ? IntermissionPageIo.row-count :
+        root.category == SettingsCategory.import ? ImportPageIo.row-count :
+        TelemetryPageIo.row-count;
+    // The app bar and the footer stay on every category, including pages
+    // that fit in one screen. Their height is reserved up front so the
+    // row window does not jump when the pager appears.
+    property <length> top-chrome: header.min-height + header-rule.height + category-bar.bar-height + content-rule.height;
+    property <length> reserved: root.top-chrome + footer.bar-height;
+    // Rows that fit between the chrome and the footer.
+    out property <int> per-page: Math.max(1, Math.floor((root.window-height - root.reserved) / 121px));
+    property <int> page-count: Math.max(1, Math.ceil(root.active-count * 1.0 / Math.max(1, root.per-page)));
+
+    changed category => {
+        root.page = 0;
+    }
+    changed page-count => {
+        if (root.page >= root.page-count) {
+            root.page = Math.max(0, root.page-count - 1);
+        }
+    }
+
+    default-font-family: root.font-family;
+    background: #ffffff;
+
+    VerticalLayout {
+        header := InkAppBar {
+            title: @tr("Settings");
+            leading-icon: ChromeIcons.arrow-back;
+            leading-clicked => {
+                root.back-pressed();
+            }
+        }
+
+        header-rule := Hairline {
+            line-color: MaterialPalette.outline;
+        }
+
+        category-bar := CategoryBar {
+            category <=> root.category;
+            category-pressed(category) => {
+                root.category-pressed(category);
+            }
+        }
+
+        content-rule := Hairline {
+            line-color: MaterialPalette.outline;
+        }
+
+        SettingsPages {
+            vertical-stretch: 1;
+            category: root.category;
+            page: root.page;
+            per-page: root.per-page;
+        }
+
+        footer := SettingsFooter {
+            page <=> root.page;
+            page-count: root.page-count;
+            show-action: root.show-action;
+            action-pressed => {
+                root.action-pressed();
+            }
+        }
+    }
+
+    if LibraryEditorIo.open: LibraryEditor {}
+    if RefreshRatesIo.open: RefreshRates {}
+    if FileBrowserIo.open: FileBrowserOverlay {}
+    if ConfirmSheetIo.open: ConfirmSheetOverlay {}
+    if ChoiceSheetIo.open: ChoiceSheetOverlay {}
+    if TextSheetIo.open: TextSheetOverlay {}
+}

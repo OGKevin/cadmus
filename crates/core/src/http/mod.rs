@@ -123,6 +123,10 @@ pub struct Client {
 
 impl Client {
     pub fn new() -> Result<Self, HttpError> {
+        // rustls will not pick a provider when both `ring` and `aws-lc-rs`
+        // are linked. Installing here keeps a process that builds a client
+        // before startup — each nextest process, for example — from panicking.
+        crate::crypto::init_crypto_provider();
         let root_store = build_root_store();
 
         let tls_config = rustls::ClientConfig::builder()

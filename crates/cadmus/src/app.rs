@@ -60,6 +60,8 @@ use std::collections::VecDeque;
 use std::env;
 use std::path::PathBuf;
 use std::time::Instant;
+#[cfg(feature = "tracing")]
+use tracing::Instrument;
 use tracing::{error, info, warn};
 
 pub const APP_NAME: &str = "Cadmus";
@@ -440,6 +442,43 @@ async fn open_document(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+async fn open_last_reading(
+    view: &mut Box<dyn View>,
+    history: &mut Vec<HistoryItem>,
+    updating: &mut Vec<UpdateData>,
+    tx: &Hub,
+    bus: &mut Bus,
+    rq: &mut RenderQueue,
+    context: &mut AppContext,
+) {
+    if context.settings.startup_mode == StartupMode::LastFile
+        && let Some(info) = context.library.most_recently_opened_reading_book().await
+    {
+        open_document(
+            Box::new(info),
+            view,
+            history,
+            updating,
+            tx,
+            bus,
+            rq,
+            context,
+        )
+        .await;
+    }
+}
+
+async fn open_startup_screen(device: &mut AppDevice) -> Option<StartupScreen> {
+    match StartupScreen::open(device).await {
+        Ok(screen) => Some(screen),
+        Err(error) => {
+            error!(error = %error, "slint startup render failed");
+            None
+        }
+    }
+}
+
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(device, settings, fonts, database, status_led, dictionary_db), level = tracing::Level::TRACE))]
 async fn build_context(
     device: AppDevice,
@@ -525,7 +564,7 @@ pub async fn run() -> Result<(), Error> {
     info!(cwd = ?startup_cwd, "startup diagnostics");
     device.clean_tmp_dir();
 
-    let mut fonts = Fonts::load(&device.install_dir()).context("can't load fonts")?;
+    let fonts = Fonts::load(&device.install_dir()).context("can't load fonts")?;
 
     let status_led = StatusLed::new(device.device_leds());
     let startup_led = status_led.install(
@@ -536,12 +575,13 @@ pub async fn run() -> Result<(), Error> {
             off: std::time::Duration::from_millis(500),
         },
     );
-    {
-        #[cfg(feature = "tracing")]
-        let _span = tracing::trace_span!(parent: &start_span, "startup-screen").entered();
 
-        StartupScreen::show(&mut device, &mut fonts).ok();
-    };
+    #[cfg(feature = "tracing")]
+    let startup_screen = open_startup_screen(&mut device)
+        .instrument(tracing::trace_span!(parent: &start_span, "startup-screen"))
+        .await;
+    #[cfg(not(feature = "tracing"))]
+    let startup_screen = open_startup_screen(&mut device).await;
 
     let mut database = Database::new(device.resolve_db_path())
         .await
@@ -604,12 +644,13 @@ pub async fn run() -> Result<(), Error> {
         dictionary_pool,
     );
 
+    drop(startup_screen);
+
     let mut history: Vec<HistoryItem> = Vec::new();
     let mut rq = RenderQueue::new();
+    let mut updating = Vec::new();
     let mut view: Box<dyn View> =
         Box::new(Home::new(context.device.framebuffer().rect(), &mut rq, &mut context).await?);
-
-    let mut updating = Vec::new();
 
     let version = get_version();
     info!(
@@ -630,21 +671,16 @@ pub async fn run() -> Result<(), Error> {
 
     let mut bus = VecDeque::with_capacity(4);
 
-    if context.settings.startup_mode == StartupMode::LastFile
-        && let Some(info) = context.library.most_recently_opened_reading_book().await
-    {
-        open_document(
-            Box::new(info),
-            &mut view,
-            &mut history,
-            &mut updating,
-            &tx,
-            &mut bus,
-            &mut rq,
-            &mut context,
-        )
-        .await;
-    }
+    open_last_reading(
+        &mut view,
+        &mut history,
+        &mut updating,
+        &tx,
+        &mut bus,
+        &mut rq,
+        &mut context,
+    )
+    .await;
 
     context.wifi_session.set_hub(tx.clone());
 

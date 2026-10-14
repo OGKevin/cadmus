@@ -398,6 +398,14 @@ impl TestDevice {
         }
     }
 
+    /// Replaces the framebuffer size. Tests use this for a device-sized window.
+    pub fn with_screen(mut self, width: u32, height: u32, dpi: u16) -> Self {
+        self.dims = (width, height);
+        self.dpi = dpi;
+        self.framebuffer = Pixmap::new(width, height, 1);
+        self
+    }
+
     /// Returns the WiFi test double for lifecycle assertion helpers.
     pub fn wifi_manager_for_test(&self) -> &TestWifiManager {
         self.wifi_manager.as_ref()

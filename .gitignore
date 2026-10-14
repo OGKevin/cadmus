@@ -54,3 +54,8 @@ cadmus.sqlite
 .idea
 .wrangler
 .cadmus
+
+# Installed by devenv from the Slint release. Do not commit.
+/.agents/skills/slint
+/.cursor/mcp.json
+/opencode.jsonc

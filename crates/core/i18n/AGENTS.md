@@ -15,6 +15,17 @@
 - Missing keys in a locale fall back to `en-GB` at runtime until Crowdin
   syncs them.
 
+## Slint screens
+
+Static copy in a `.slint` file uses `@tr("English")`; the English text is the
+source string. `cadmus-translate` extracts those strings with
+`slint-tr-extractor` into `ui/lang/cadmus-core.pot`. Crowdin translates that
+template into `ui/lang/<lang>/LC_MESSAGES/cadmus-core.po`, which the build
+bundles (`--no-default-translation-context`, so no `msgctxt`).
+
+Do not hand-edit the `.po` files. Runtime values, including setting rows and
+category names, stay in Fluent.
+
 ## Runtime message IDs
 
 - `fl!("kebab-case-id")` is checked at compile time; unknown IDs fail the build.

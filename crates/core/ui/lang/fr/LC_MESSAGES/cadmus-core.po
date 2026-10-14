@@ -1,0 +1,118 @@
+# French copy of strings that already exist in i18n/fr/cadmus_core.ftl.
+# Do not add a msgstr that was not already translated there.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Cadmus starting up…"
+msgstr "Cadmus démarre…"
+
+msgid "Cancel"
+msgstr "Annuler"
+
+msgid "Language"
+msgstr "Langue"
+
+msgid "Enable Auto Share"
+msgstr "Activer Partage Auto"
+
+msgid "Automatic Time Sync"
+msgstr "Synchronisation automatique de l'horloge"
+
+msgid "NTP Server"
+msgstr "Serveur NTP"
+
+msgid "Automatic Frontlight"
+msgstr "Éclairage automatique"
+
+msgid "Auto Night Brightness"
+msgstr "Luminosité nocturne automatique"
+
+msgid "Manual Coordinates"
+msgstr "Coordonnées manuelles"
+
+msgid "WiFi Idle Timeout (minutes)"
+msgstr "Délai de réponse maximum du Wifi (minutes)"
+
+msgid "Button Scheme"
+msgstr "Schéma des boutons"
+
+msgid "Keyboard Layout"
+msgstr "Disposition du clavier"
+
+msgid "Settings Retention"
+msgstr "Rétention des paramètres"
+
+msgid "DB Backup Retention"
+msgstr "Rétention de sauvegardes de la base de données"
+
+msgid "Startup Mode"
+msgstr "Mode de démarrage"
+
+msgid "Auto Suspend (minutes)"
+msgstr "Mise en veille Auto (minutes)"
+
+msgid "Auto Power Off (days)"
+msgstr "Extinction Auto (jours)"
+
+msgid "Enable Sleep Cover"
+msgstr "Activer Sleep Cover"
+
+msgid "End of Book Action"
+msgstr "Action Fin de Livre"
+
+msgid "Dithered File Types"
+msgstr "Types de fichiers divisés"
+
+msgid "Refresh Rate"
+msgstr "Taux de rafraîchissement"
+
+msgid "Regular"
+msgstr "Normal"
+
+msgid "Inverted"
+msgstr "Inversé"
+
+msgid "Suspend Screen"
+msgstr "Écran de veille"
+
+msgid "Power Off Screen"
+msgstr "Écran d'extinction"
+
+msgid "Share Screen"
+msgstr "Écran de partage des données"
+
+msgid "Name"
+msgstr "Nom"
+
+msgid "Path"
+msgstr "Chemin"
+
+msgid "Force Full Import"
+msgstr "Importation totale forcée"
+
+msgid "Sync Metadata"
+msgstr "Synchroniser Metadata"
+
+msgid "Indexed File Types"
+msgstr "Types de fichiers indexés"
+
+msgid "Enable Logging"
+msgstr "Activer le Logging"
+
+msgid "Log Level"
+msgstr "Niveau de Log"
+
+msgid "OTLP Endpoint"
+msgstr "Endpoint OTLP"
+
+msgid "Pyroscope Endpoint"
+msgstr "Endpoint Pyroscope"
+
+msgid "Enable Kernel Log"
+msgstr "Activer les Logs Kernel"
+
+msgid "Enable D-Bus Log"
+msgstr "Activer les Logs D-Bus"
