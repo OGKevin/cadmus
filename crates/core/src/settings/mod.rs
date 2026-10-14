@@ -480,6 +480,11 @@ impl Settings {
     }
 
     /// Ensures at least one library exists, so views can index `libraries`.
+    ///
+    /// [`crate::settings::versioned::SettingsManager::load`] calls
+    /// [`Settings::sanitize`] before the app rejects an empty list with
+    /// "no libraries found". An empty file becomes one default library
+    /// instead of failing startup.
     pub(crate) fn sanitize_libraries(&mut self) -> bool {
         if self.libraries.is_empty() {
             self.libraries.push(LibrarySettings::default());

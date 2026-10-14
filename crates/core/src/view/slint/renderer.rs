@@ -12,14 +12,18 @@
 //! session methods advance timers and animations on that thread.
 //!
 //! Components generated from `ui/cadmus.slint` are in [`super::generated`].
-//! Fonts are loaded from the install directory; CJK families are registered as
-//! script fallbacks when available.
+//! Fonts are loaded from the install directory. CJK families are script
+//! fallbacks when those files exist, and Noto Sans covers Cyrillic.
+//!
+//! `i_slint_common` and `i_slint_core` are referenced so `image-decoders` and
+//! `svg` stay on the Slint core the generated UI calls. Without that edge,
+//! embedded SVG icons do not link.
 
 use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
 use rgb::FromSlice as _;
@@ -33,8 +37,6 @@ use crate::input::{ButtonCode, ButtonStatus, DeviceEvent, FingerStatus};
 use crate::view::{Event, Hub};
 
 use i_slint_common as _;
-// Keeps `image-decoders` and `svg` unified onto the Slint core the generated
-// UI calls. Without them, embedded SVG icons do not link.
 use i_slint_core as _;
 
 thread_local! {
@@ -43,6 +45,10 @@ thread_local! {
     /// Last `fonts/` directory registered on this thread. Startup and settings
     /// share one install dir, so the second open skips the scan.
     static LOADED_FONTS: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
+    /// Epoch for [`SoftwarePlatform::duration_since_start`].
+    static CLOCK_START: Cell<Option<Instant>> = const { Cell::new(None) };
+    #[cfg(test)]
+    static CLOCK_OFFSET: Cell<Duration> = const { Cell::new(Duration::ZERO) };
 }
 
 const APP_FAMILY: &str = "Noto Sans";
@@ -54,20 +60,54 @@ const CJK_FALLBACK_FAMILIES: &[&str] = &[
 ];
 const CJK_SCRIPTS: &[[u8; 4]] = &[*b"Hani", *b"Hira", *b"Kana", *b"Hang", *b"Bopo"];
 
+fn monotonic_now() -> Duration {
+    let start = CLOCK_START.with(|cell| match cell.get() {
+        Some(start) => start,
+        None => {
+            let start = Instant::now();
+            cell.set(Some(start));
+            start
+        }
+    });
+    let elapsed = Instant::now().saturating_duration_since(start);
+    #[cfg(test)]
+    let elapsed = elapsed.saturating_add(CLOCK_OFFSET.with(Cell::get));
+    elapsed
+}
+
+/// Moves this thread's Slint clock forward by `by`.
+///
+/// Hold tests add the interval here and then pump. The next timer update sees
+/// the added time, so the test does not sleep.
+#[cfg(test)]
+pub(crate) fn advance_test_clock(by: Duration) {
+    let _ = monotonic_now();
+    CLOCK_OFFSET.with(|cell| cell.set(cell.get().saturating_add(by)));
+}
+
 struct SoftwarePlatform;
+
+/// Window whose frame buffer is kept between renders.
+///
+/// Slint then repaints only the region that changed instead of the whole window.
+fn reused_window() -> Rc<MinimalSoftwareWindow> {
+    MinimalSoftwareWindow::new(RepaintBufferType::ReusedBuffer)
+}
 
 impl Platform for SoftwarePlatform {
     fn create_window_adapter(&self) -> Result<Rc<dyn WindowAdapter>, slint::PlatformError> {
-        // The frame buffer is kept between renders. Slint then repaints only
-        // the region that changed instead of the whole window.
-        let window = MinimalSoftwareWindow::new(RepaintBufferType::ReusedBuffer);
+        let window = reused_window();
         WINDOW.with(|slot| *slot.borrow_mut() = Some(window.clone()));
         Ok(window)
+    }
+
+    fn duration_since_start(&self) -> Duration {
+        monotonic_now()
     }
 }
 
 /// One Slint component rendered into the Cadmus framebuffer.
-pub(crate) struct Session<C: ComponentHandle> {
+pub struct Session<C: ComponentHandle> {
     component: C,
     window: Rc<MinimalSoftwareWindow>,
     /// The current frame. Slint renders into it in place; with
@@ -171,6 +211,9 @@ impl<C: ComponentHandle> Session<C> {
     }
 
     /// Draws and presents the first frame as a full-screen update.
+    ///
+    /// The panel already shows this frame, so its dirty rectangles are cleared
+    /// and left out of the next queue.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     pub(crate) fn present(&self, fb: &mut dyn Framebuffer) -> Result<()> {
         pump();
@@ -181,13 +224,34 @@ impl<C: ComponentHandle> Session<C> {
         self.blit(fb)?;
         let rect = fb.rect();
         fb.update(&rect, UpdateMode::Full)?;
-        // The panel already shows this frame. Leave it out of the next queue.
         self.dirty.borrow_mut().clear();
         Ok(())
     }
 
     pub(crate) fn component(&self) -> &C {
         &self.component
+    }
+
+    /// Physical pixel size captured for this session.
+    pub(crate) fn size(&self) -> (u32, u32) {
+        (self.width, self.height)
+    }
+
+    /// Points the software window at a new framebuffer size.
+    ///
+    /// The old frame is the previous orientation, so it is dropped. The next
+    /// redraw fills the new buffer.
+    #[cfg_attr(feature = "tracing", tracing::instrument(level = "debug", skip(self)))]
+    pub(crate) fn resize(&mut self, width: u32, height: u32) {
+        if width == 0 || height == 0 || (self.width == width && self.height == height) {
+            return;
+        }
+        self.width = width;
+        self.height = height;
+        *self.frame.borrow_mut() = Pixmap::new(width, height, 3);
+        self.dirty.borrow_mut().clear();
+        self.window
+            .set_size(slint::PhysicalSize::new(width, height));
     }
 
     /// Requests a redraw and captures the frame if Slint rendered one.
@@ -233,11 +297,12 @@ impl<C: ComponentHandle> Session<C> {
     }
 
     /// Dispatches a supported device event and captures any resulting frame.
+    ///
+    /// Slint's clock is advanced before the event. A timer started by this
+    /// event would otherwise count from the previous input, and a hold that
+    /// came due while the finger was still would fire after the release.
     #[cfg_attr(feature = "tracing", tracing::instrument(level = "trace", skip_all, fields(event = ?event), ret))]
     pub(crate) fn handle_device(&self, event: DeviceEvent) -> bool {
-        // Bring Slint's clock up to date first. A timer started by this event
-        // would otherwise count from the previous input, and a hold that came
-        // due while the finger was still would fire after the release.
         pump();
         match event {
             DeviceEvent::Finger {
@@ -323,7 +388,7 @@ impl<C: ComponentHandle> Session<C> {
         }
         self.wake.set(Some(due));
         let hub = hub.clone();
-        tokio::spawn(async move {
+        crate::runtime::current_handle().spawn(async move {
             tokio::time::sleep(delay).await;
             hub.send(Event::SlintTimer.into()).ok();
         });
@@ -376,7 +441,8 @@ fn read_app_font(install_dir: &Path) -> Result<Vec<u8>> {
     std::fs::read(&path).with_context(|| format!("failed to read slint font {}", path.display()))
 }
 
-/// Registers install fonts and configures CJK script fallbacks when available.
+/// Registers install fonts. CJK files become script fallbacks when present.
+/// Noto Sans is the Cyrillic fallback even when those files are absent.
 #[cfg_attr(
     feature = "tracing",
     tracing::instrument(skip_all, fields(path = %install_dir.display()))
@@ -388,16 +454,7 @@ fn register_install_fonts(install_dir: &Path) -> Result<String> {
     if !already {
         let files = font_files(&fonts_dir);
         tracing::debug!(fonts = files.len(), "registering install fonts");
-        #[cfg(test)]
-        {
-            for path in &files {
-                register_font_file(path)?;
-            }
-        }
-        #[cfg(not(test))]
-        {
-            slint::fontique_011::shared_collection().load_fonts_from_paths(files.iter());
-        }
+        slint::fontique_011::shared_collection().load_fonts_from_paths(files.iter());
         install_cjk_fallbacks();
         LOADED_FONTS.with(|slot| *slot.borrow_mut() = Some(fonts_dir));
     }
@@ -427,35 +484,37 @@ fn font_files(dir: &Path) -> Vec<PathBuf> {
     files
 }
 
-#[cfg(test)]
-fn register_font_file(path: &Path) -> Result<String> {
-    let bytes = std::fs::read(path)
-        .with_context(|| format!("failed to read slint font {}", path.display()))?;
-    register_font(&bytes)
-}
-
 fn install_cjk_fallbacks() {
     let mut collection = slint::fontique_011::shared_collection();
     let ids: Vec<_> = CJK_FALLBACK_FAMILIES
         .iter()
         .filter_map(|name| collection.family_id(name))
         .collect();
-    if ids.is_empty() {
-        return;
-    }
-    collection.append_generic_families(
-        slint::fontique_011::fontique::GenericFamily::SansSerif,
-        ids.iter().copied(),
-    );
-    for script in CJK_SCRIPTS {
-        collection.append_fallbacks(
-            slint::fontique_011::fontique::FallbackKey::new(
-                slint::fontique_011::fontique::Script::from_bytes(*script),
-                None,
-            ),
+    if !ids.is_empty() {
+        collection.append_generic_families(
+            slint::fontique_011::fontique::GenericFamily::SansSerif,
             ids.iter().copied(),
         );
+        for script in CJK_SCRIPTS {
+            collection.append_fallbacks(
+                slint::fontique_011::fontique::FallbackKey::new(
+                    slint::fontique_011::fontique::Script::from_bytes(*script),
+                    None,
+                ),
+                ids.iter().copied(),
+            );
+        }
     }
+    let Some(app) = collection.family_id(APP_FAMILY) else {
+        return;
+    };
+    collection.append_fallbacks(
+        slint::fontique_011::fontique::FallbackKey::new(
+            slint::fontique_011::fontique::Script::from_bytes(*b"Cyrl"),
+            None,
+        ),
+        std::iter::once(app),
+    );
 }
 
 /// Advances Slint timers and animations on the current thread.
@@ -548,45 +607,64 @@ fn dirty_rects(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use slint::fontique_011::fontique::{FallbackKey, Script};
+    use slint::fontique_011::fontique::{Collection, FallbackKey, FamilyId, Script, SourceKind};
 
     fn copy_font(dest_dir: &Path, dest_name: &str, src: &Path) {
         std::fs::copy(src, dest_dir.join(dest_name))
             .unwrap_or_else(|error| panic!("copy {} -> {dest_name}: {error}", src.display()));
     }
 
-    #[test]
-    fn install_fonts_put_cjk_faces_on_the_fallback_chain() {
+    fn temp_font_dir(copies: &[(&str, &str)]) -> tempfile::TempDir {
+        super::LOADED_FONTS.with(|slot| *slot.borrow_mut() = None);
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let tmp = tempfile::tempdir().expect("tempdir");
         let fonts = tmp.path().join("fonts");
         std::fs::create_dir_all(&fonts).expect("fonts dir");
-        copy_font(
-            &fonts,
-            "NotoSans-Regular.ttf",
-            &root.join("fonts/NotoSans-Regular.ttf"),
+        for (dest_name, rel) in copies {
+            copy_font(&fonts, dest_name, &root.join(rel));
+        }
+        tmp
+    }
+
+    fn family_from_dir(collection: &mut Collection, name: &str, fonts_dir: &Path) -> FamilyId {
+        let Some(family) = collection.family_by_name(name) else {
+            panic!("{name} was not registered");
+        };
+        assert!(
+            family
+                .fonts()
+                .iter()
+                .any(|font| match font.source().kind() {
+                    SourceKind::Path(path) => path.starts_with(fonts_dir),
+                    SourceKind::Memory(_) => false,
+                }),
+            "{name} was not loaded from {}",
+            fonts_dir.display(),
         );
-        copy_font(
-            &fonts,
-            "NotoSansJP.ttf",
-            &root.join("thirdparty/google-fonts/ofl/notosansjp/NotoSansJP[wght].ttf"),
-        );
-        copy_font(
-            &fonts,
-            "NotoSansKR.ttf",
-            &root.join("thirdparty/google-fonts/ofl/notosanskr/NotoSansKR[wght].ttf"),
-        );
+        family.id()
+    }
+
+    #[test]
+    fn install_fonts_put_cjk_faces_on_the_fallback_chain() {
+        let tmp = temp_font_dir(&[
+            ("NotoSans-Regular.ttf", "fonts/NotoSans-Regular.ttf"),
+            (
+                "NotoSansJP.ttf",
+                "thirdparty/google-fonts/ofl/notosansjp/NotoSansJP[wght].ttf",
+            ),
+            (
+                "NotoSansKR.ttf",
+                "thirdparty/google-fonts/ofl/notosanskr/NotoSansKR[wght].ttf",
+            ),
+        ]);
+        let fonts = tmp.path().join("fonts");
 
         let family = register_install_fonts(tmp.path()).expect("register install fonts");
         assert_eq!(family, APP_FAMILY);
 
         let mut collection = slint::fontique_011::shared_collection();
-        let jp = collection
-            .family_id("Noto Sans JP")
-            .expect("Noto Sans JP was not registered");
-        let kr = collection
-            .family_id("Noto Sans KR")
-            .expect("Noto Sans KR was not registered");
+        let jp = family_from_dir(&mut collection, "Noto Sans JP", &fonts);
+        let kr = family_from_dir(&mut collection, "Noto Sans KR", &fonts);
         let hira = FallbackKey::new(Script::from_bytes(*b"Hira"), None);
         assert!(
             collection.fallback_families(hira).any(|id| id == jp),
@@ -596,6 +674,30 @@ mod tests {
         assert!(
             collection.fallback_families(hang).any(|id| id == kr),
             "Hangul fallbacks omit Noto Sans KR"
+        );
+    }
+
+    #[test]
+    fn install_fonts_register_the_keyboard_and_display_faces() {
+        let tmp = temp_font_dir(&[
+            ("NotoSans-Regular.ttf", "fonts/NotoSans-Regular.ttf"),
+            ("NotoSans-Bold.ttf", "fonts/NotoSans-Bold.ttf"),
+            ("VarelaRound-Regular.ttf", "fonts/VarelaRound-Regular.ttf"),
+            ("Cormorant-Regular.ttf", "fonts/Cormorant-Regular.ttf"),
+        ]);
+        let fonts = tmp.path().join("fonts");
+
+        let family = register_install_fonts(tmp.path()).expect("register install fonts");
+        assert_eq!(family, APP_FAMILY);
+
+        let mut collection = slint::fontique_011::shared_collection();
+        family_from_dir(&mut collection, "Varela Round", &fonts);
+        family_from_dir(&mut collection, "Cormorant", &fonts);
+        let noto = family_from_dir(&mut collection, "Noto Sans", &fonts);
+        let cyrl = FallbackKey::new(Script::from_bytes(*b"Cyrl"), None);
+        assert!(
+            collection.fallback_families(cyrl).any(|id| id == noto),
+            "Cyrillic fallbacks omit Noto Sans"
         );
     }
 }

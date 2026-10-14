@@ -39,8 +39,7 @@ export component CategoryBar inherits Rectangle {
         tabs.current-index = root.category-index(root.category);
     }
 
-    // Eight labels wrap onto extra rows on the narrower devices
-    // (Mini is 900 logical px). The bar grows with the rows.
+    // Labels wrap when the next one does not fit. The bar grows with the rows.
     tabs := InkTabBar {
         width: 100%;
         labels: [

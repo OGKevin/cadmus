@@ -18,7 +18,7 @@ use crate::view::settings_editor::kinds::reader::{
     RefreshRateInvertedSetting, RefreshRateRegularSetting,
 };
 use crate::view::slint::generated::{PagedLine, RefreshRatesIo, SettingsWindow};
-use crate::view::slint::{CallbackQueue, changed_model, connect};
+use crate::view::slint::{CallbackQueue, Overlay, changed_model, connect};
 use crate::view::{Bus, EntryId, EntryKind, Event, ViewId};
 
 /// One callback from the refresh-rate editor.
@@ -171,6 +171,28 @@ impl RefreshRates {
     }
 }
 
+impl Overlay<SettingsWindow> for RefreshRates {
+    fn is_open(&self) -> bool {
+        self.open
+    }
+
+    fn close(&mut self) {
+        if self.kind.is_some() {
+            self.close_kind();
+        } else {
+            RefreshRates::close(self);
+        }
+    }
+
+    fn pages(&self) -> bool {
+        self.open && self.kind.is_none()
+    }
+
+    fn bump(&mut self, window: &SettingsWindow, delta: i32) {
+        RefreshRates::bump(window, delta);
+    }
+}
+
 #[async_trait::async_trait(?Send)]
 impl Component for RefreshRates {
     type Window = SettingsWindow;
@@ -201,6 +223,10 @@ impl Component for RefreshRates {
             io.set_page(0);
         }
         io.set_open(self.open);
+        io.set_heading(fl!("settings-reader-refresh-rate").into());
+        io.set_regular_label(fl!("settings-reader-refresh-rate-regular").into());
+        io.set_inverted_label(fl!("settings-reader-refresh-rate-inverted").into());
+        io.set_accept_label(fl!("ok").into());
         io.set_regular(
             context
                 .settings
@@ -374,7 +400,291 @@ fn kind_lines(context: &AppContext) -> Vec<PagedLine> {
                 label: ext.to_string().to_uppercase().into(),
                 value: format!("{regular} / {inverted}").into(),
                 selected: false,
+                description: Default::default(),
+                selectable: true,
+                checking: false,
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use slint::ComponentHandle;
+    use slint::Model;
+
+    use super::super::settings_env;
+    use super::super::text_limits;
+    use super::super::{Sheet, Waiting};
+    use super::{Action, Component, RefreshRates, Step};
+    use crate::document::file_extension::FileExtension;
+    use crate::fl;
+    use crate::settings::RefreshRatePair;
+    use crate::view::slint::generated::{PagedLine, RefreshRatesIo};
+    use crate::view::{EntryId, EntryKind};
+
+    fn kind_at(kinds: &slint::ModelRc<PagedLine>, index: usize) -> PagedLine {
+        kinds
+            .row_data(index)
+            .unwrap_or_else(|| panic!("missing kind {index}"))
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn sync_shows_the_rates_and_resets_the_page_when_closed() {
+        let (mut context, session) = super::super::shell::open_test_session().await;
+        let window = session.component();
+        context.settings.reader.refresh_rate.global.regular = 12;
+        context.settings.reader.refresh_rate.global.inverted = 3;
+        context.settings.reader.refresh_rate.by_kind.insert(
+            FileExtension::Epub,
+            RefreshRatePair {
+                regular: 4,
+                inverted: 5,
+            },
+        );
+
+        let mut rates = RefreshRates::new();
+        rates.show();
+        rates.sync(window, &context);
+        let io = window.global::<RefreshRatesIo>();
+        assert!(io.get_open());
+        assert!(!io.get_kind_open());
+        assert_eq!(
+            io.get_heading().as_str(),
+            fl!("settings-reader-refresh-rate")
+        );
+        assert_eq!(io.get_regular().as_str(), "12");
+        assert_eq!(io.get_inverted().as_str(), "3");
+        assert_eq!(io.get_kinds().row_count(), 1);
+        let kind = kind_at(&io.get_kinds(), 0);
+        assert_eq!(kind.label.as_str(), "EPUB");
+        assert_eq!(kind.value.as_str(), "4 / 5");
+        assert!(!kind.selected);
+
+        RefreshRates::bump(window, 2);
+        rates.sync(window, &context);
+        assert_eq!(window.global::<RefreshRatesIo>().get_page(), 2);
+
+        rates.close();
+        rates.sync(window, &context);
+        let io = window.global::<RefreshRatesIo>();
+        assert!(!io.get_open());
+        assert_eq!(io.get_page(), 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn callbacks_edit_the_global_rate_and_one_kind() {
+        let (mut context, session) = super::super::shell::open_test_session().await;
+        let window = session.component();
+        let mut rates = RefreshRates::new();
+        rates.wire(window);
+        rates.show();
+
+        window.global::<RefreshRatesIo>().invoke_regular_pressed();
+        window.global::<RefreshRatesIo>().invoke_inverted_pressed();
+        window.global::<RefreshRatesIo>().invoke_add_pressed();
+        window.global::<RefreshRatesIo>().invoke_kind_pressed(0);
+        assert!(matches!(
+            rates.take().as_slice(),
+            [
+                Action::Regular,
+                Action::Inverted,
+                Action::Add,
+                Action::KindPressed(0)
+            ]
+        ));
+
+        let (hub, _rx) = crate::view::hub_channel();
+        let mut bus = crate::view::Bus::new();
+        let regular = {
+            let mut env = settings_env(&hub, &mut bus, &mut context);
+            rates.apply(Action::Regular, &mut env).await
+        };
+        let Step::Ask(
+            Waiting::RefreshRegular,
+            Sheet::Text {
+                initial, limits, ..
+            },
+        ) = regular
+        else {
+            panic!("regular press did not open the rate field");
+        };
+        assert_eq!(
+            initial,
+            context
+                .settings
+                .reader
+                .refresh_rate
+                .global
+                .regular
+                .to_string()
+        );
+        assert_eq!(limits, text_limits::REFRESH_RATE);
+
+        rates.apply_regular("15".into(), &mut context);
+        rates.apply_regular("nope".into(), &mut context);
+        rates.sync(window, &context);
+        assert_eq!(
+            window.global::<RefreshRatesIo>().get_regular().as_str(),
+            "15"
+        );
+        assert_eq!(context.settings.reader.refresh_rate.global.regular, 15);
+
+        let inverted = {
+            let mut env = settings_env(&hub, &mut bus, &mut context);
+            rates.apply(Action::Inverted, &mut env).await
+        };
+        let Step::Ask(Waiting::RefreshInverted, Sheet::Text { initial, .. }) = inverted else {
+            panic!("inverted press did not open the rate field");
+        };
+        assert_eq!(
+            initial,
+            context
+                .settings
+                .reader
+                .refresh_rate
+                .global
+                .inverted
+                .to_string()
+        );
+        rates.apply_inverted("4".into(), &mut context);
+        assert_eq!(context.settings.reader.refresh_rate.global.inverted, 4);
+
+        let add = {
+            let mut env = settings_env(&hub, &mut bus, &mut context);
+            rates.apply(Action::Add, &mut env).await
+        };
+        let Step::Ask(Waiting::AddKind, Sheet::Choice { entries, .. }) = add else {
+            panic!("add did not open the format list");
+        };
+        assert_eq!(entries.len(), FileExtension::all().len());
+        assert!(entries.iter().any(|entry| matches!(
+            entry,
+            EntryKind::Command(_, EntryId::EditRefreshRateByKind(FileExtension::Epub))
+        )));
+
+        let missing = {
+            let mut env = settings_env(&hub, &mut bus, &mut context);
+            rates.apply(Action::KindPressed(0), &mut env).await
+        };
+        assert!(matches!(missing, Step::Idle));
+        assert!(!rates.kind_is_open());
+
+        rates.open_kind(FileExtension::Epub, &context);
+        rates.apply_kind_text(true, "9".into());
+        rates.apply_kind_text(true, "256".into());
+        rates.apply_kind_text(false, "1".into());
+        rates.sync(window, &context);
+        let io = window.global::<RefreshRatesIo>();
+        assert!(io.get_kind_open());
+        assert_eq!(io.get_kind_title().as_str(), "EPUB");
+        assert_eq!(io.get_kind_regular().as_str(), "9");
+        assert_eq!(io.get_kind_inverted().as_str(), "1");
+
+        let kind_regular = {
+            let mut env = settings_env(&hub, &mut bus, &mut context);
+            rates.apply(Action::KindRegularPressed, &mut env).await
+        };
+        let Step::Ask(
+            Waiting::KindRegular,
+            Sheet::Text {
+                initial, limits, ..
+            },
+        ) = kind_regular
+        else {
+            panic!("kind regular press did not open the rate field");
+        };
+        assert_eq!(initial, "9");
+        assert_eq!(limits, text_limits::REFRESH_RATE);
+
+        let kind_inverted = {
+            let mut env = settings_env(&hub, &mut bus, &mut context);
+            rates.apply(Action::KindInvertedPressed, &mut env).await
+        };
+        let Step::Ask(
+            Waiting::KindInverted,
+            Sheet::Text {
+                initial, limits, ..
+            },
+        ) = kind_inverted
+        else {
+            panic!("kind inverted press did not open the rate field");
+        };
+        assert_eq!(initial, "1");
+        assert_eq!(limits, text_limits::REFRESH_RATE);
+
+        let accepted = {
+            let mut env = settings_env(&hub, &mut bus, &mut context);
+            rates.apply(Action::KindAccepted, &mut env).await
+        };
+        assert!(matches!(accepted, Step::Redraw));
+        assert!(!rates.kind_is_open());
+        assert_eq!(
+            context
+                .settings
+                .reader
+                .refresh_rate
+                .by_kind
+                .get(&FileExtension::Epub)
+                .map(|pair| (pair.regular, pair.inverted)),
+            Some((9, 1))
+        );
+        rates.sync(window, &context);
+        let kind = kind_at(&window.global::<RefreshRatesIo>().get_kinds(), 0);
+        assert_eq!(kind.label.as_str(), "EPUB");
+        assert_eq!(kind.value.as_str(), "9 / 1");
+
+        let again = {
+            let mut env = settings_env(&hub, &mut bus, &mut context);
+            rates.apply(Action::Add, &mut env).await
+        };
+        let Step::Ask(Waiting::AddKind, Sheet::Choice { entries, .. }) = again else {
+            panic!("add did not open the remaining formats");
+        };
+        assert_eq!(entries.len(), FileExtension::all().len() - 1);
+        assert!(entries.iter().all(|entry| !matches!(
+            entry,
+            EntryKind::Command(_, EntryId::EditRefreshRateByKind(FileExtension::Epub))
+        )));
+
+        let held = {
+            let mut env = settings_env(&hub, &mut bus, &mut context);
+            rates.apply(Action::KindHeld(0), &mut env).await
+        };
+        let Step::Ask(Waiting::DeleteKind(ext), Sheet::Choice { entries, .. }) = held else {
+            panic!("holding a kind did not offer delete");
+        };
+        assert_eq!(ext, FileExtension::Epub);
+        assert!(matches!(
+            entries.as_slice(),
+            [EntryKind::Command(
+                _,
+                EntryId::DeleteRefreshRateByKind(FileExtension::Epub)
+            )]
+        ));
+
+        rates.delete_kind(FileExtension::Epub, &mut context);
+        rates.sync(window, &context);
+        assert_eq!(window.global::<RefreshRatesIo>().get_kinds().row_count(), 0);
+
+        rates.open_kind(FileExtension::Pdf, &context);
+        let dismissed_kind = {
+            let mut env = settings_env(&hub, &mut bus, &mut context);
+            rates.apply(Action::KindDismissed, &mut env).await
+        };
+        assert!(matches!(dismissed_kind, Step::Redraw));
+        assert!(!rates.kind_is_open());
+        assert!(rates.is_open());
+
+        window.global::<RefreshRatesIo>().invoke_dismissed();
+        assert!(matches!(rates.take().as_slice(), [Action::Dismissed]));
+        let dismissed = {
+            let mut env = settings_env(&hub, &mut bus, &mut context);
+            rates.apply(Action::Dismissed, &mut env).await
+        };
+        assert!(matches!(dismissed, Step::Redraw));
+        assert!(!rates.is_open());
+        rates.sync(window, &context);
+        assert!(!window.global::<RefreshRatesIo>().get_open());
+    }
 }

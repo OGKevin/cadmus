@@ -6,8 +6,10 @@ an event that reaches the root without being captured is broadcast later. The
 module comment in [`mod.rs`](mod.rs) is the rule for z-order and that walk.
 
 Slint screens do not use that tree. Cadmus drives a generated window from the
-view loop, then blits the captured frame. The shared host is [`slint`](slint/):
-opening a session, forwarding device events, and the callback queue.
+view loop, then blits the captured frame. [`SlintHost`](slint/host.rs) owns the
+session, Back/Home/menu, timers, and resize. A screen implements
+[`SlintScreen`](slint/host.rs). Shared chrome is `InkWindow` plus `InkScaffold`;
+screen size lives on `InkScreen`.
 
 ## Where a Slint piece lives
 
@@ -20,7 +22,9 @@ callbacks. It does not know which screen placed it.
 A screen's markup lives in its own folder. Settings is `ui/settings/`. Startup
 is `ui/startup/`. The four shared overlays (option list, confirmation dialog,
 file browser, text dialog) and the `*Io` globals that bind them live together in
-`ui/widgets/overlays.slint`, so a second screen imports them instead of
+`ui/widgets/overlays.slint`. `ui/cadmus.slint` re-exports those globals.
+`ui/settings/window.slint` uses the overlays and does not export the globals
+again, so a second screen imports them from the widgets file instead of
 redeclaring them.
 
 The confirmation dialog is a centered card, like the option list. A tap on the
@@ -45,7 +49,7 @@ Rust follows the same split:
   the result to apply. `Waiting` remembers which control opened the shared
   sheet. [`Flow`](slint/mod.rs) is only the renderer instruction (`Idle` or
   `Redraw`); `dispatch` reduces `Step` to it.
-- The next screen gets its own folder under `view/` and under `ui/`. It reuses
+- Another screen gets its own folder under `view/` and under `ui/`. It reuses
   the overlays by constructing them with its own row type and window. It
   does not grow a second copy of the file browser or the confirmation dialog.
 
@@ -57,13 +61,24 @@ polls the view tree.
 
 Sync only what is on screen. Settings copies the shell, the visible category
 page, and the open overlays into the window. Models go through
-[`changed_model`](slint/model.rs), which keeps the current model when the rows
-did not change, so an unchanged list is not re-set and does not dirty the frame.
+[`changed_model`](slint/model.rs). A list of the same length is updated in
+place, so one changed row does not rebuild the others or drop their widget
+state. A different length replaces the model.
 
-Slint timers (press-and-hold) need the view loop awake. After input and after
-each tick the screen calls `Session::wake_for_timers`, which sends
-`Event::SlintTimer` when Slint's next timer is due. Handle that event with
-`Session::tick`. Do not add per-widget workarounds for a hold that fires late.
+Slint timers (press-and-hold) need the view loop awake. [`SlintView::drive`](slint/mod.rs)
+forwards one event, applies queued callbacks, and queues dirty rectangles.
+[`SlintView::on_timer`](slint/mod.rs) does that for `Event::SlintTimer`. Both
+call `Session::wake_for_timers`, which posts that event when Slint's next
+timer is due. The wait is a detached task, not a [`Job`](../runtime.rs):
+there is nothing to cancel, and a late event is ignored once the screen is
+gone. Handle the event with `Session::tick`. Do not add per-widget workarounds
+for a hold that fires late.
+
+Settings uses those methods for every event except the category and page
+buttons. The press that changes the category or the page remembers that
+button and swallows only its release and repeats. Forwarding that release
+turns it into an arrow key and opens the first row. A button whose press was
+forwarded is released normally, so the keyboard is not left held down.
 
 The text dialog's keyboard is as tall as the reader keyboard and sits just
 above the bottom edge. The field floats above it. A pressed key is drawn
@@ -82,16 +97,29 @@ and drain them. Add a piece to that list rather than repeating the walk.
 
 Static copy drawn by a `.slint` file is `@tr("English")`. `cadmus-translate`
 extracts those strings into `ui/lang`. Crowdin owns the translations. Do not
-hand-edit the `.po` files.
+hand-edit the `.po` files. The category names and the file chooser's "Up" and
+"Select this folder" stay `@tr`. They have no Fluent twin.
 
 Strings chosen at runtime, including setting rows and notifications, use
-`fl!`. The rules are in [`i18n/AGENTS.md`](../../i18n/AGENTS.md).
+`fl!`. A static category page is a row model: the label is
+[`SettingKind::label`](settings_editor/kinds/mod.rs), not a second `@tr`
+string. Cancel and OK on the confirmation dialog and the text dialog, and the
+library and refresh-rate labels that already have `fl!` keys, are set from
+Rust (`cancel`, `ok`, and the `settings-*` keys). The rules are in
+[`i18n/AGENTS.md`](../../i18n/AGENTS.md).
 
 ## Widgets
 
 Do not import the upstream Material component library. Copy a widget into
 `ui/widgets/` and change it for this panel. Glyphs copied from Material keep
 the MIT notice in [`ui/icons`](../../ui/icons/MATERIAL-LICENSE.md).
+
+A layout length is dp: `Npx * InkMetrics.dp` from
+[`ui/widgets/ink/metrics.slint`](../../ui/widgets/ink/metrics.slint). One dp
+is 1/160 inch. Screen size and the reader-keyboard block stay logical pixels.
+Rust writes those from the framebuffer and from the reader keyboard.
+
+`InkMetrics.hairline`, `frame`, `radius`, `mark`, and `mark-radius` are logical pixels too. Rust writes a length that the framebuffer scale turns into a whole physical pixel. Slint's software renderer truncates a border to whole physical pixels and rounds a rectangle's position, so anything else draws an uneven stroke.
 
 ## Tooling
 

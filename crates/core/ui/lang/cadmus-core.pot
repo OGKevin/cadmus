@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
-"POT-Creation-Date: 2026-10-12 07:25+0000\n"
+"POT-Creation-Date: 2026-10-20 06:09+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -12,225 +12,50 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-#: crates/core/ui/settings/categories/general.slint:31
-msgid "Language"
-msgstr ""
-
-#: crates/core/ui/settings/categories/general.slint:40
-msgid "Enable Auto Share"
-msgstr ""
-
-#: crates/core/ui/settings/categories/general.slint:49
-msgid "Automatic Time Sync"
-msgstr ""
-
-#: crates/core/ui/settings/categories/general.slint:58
-msgid "NTP Server"
-msgstr ""
-
-#: crates/core/ui/settings/categories/general.slint:67
-msgid "Automatic Frontlight"
-msgstr ""
-
-#: crates/core/ui/settings/categories/general.slint:76
-msgid "Auto Night Brightness"
-msgstr ""
-
-#: crates/core/ui/settings/categories/general.slint:85
-msgid "Manual Coordinates"
-msgstr ""
-
-#: crates/core/ui/settings/categories/general.slint:94
-msgid "WiFi Idle Timeout (minutes)"
-msgstr ""
-
-#: crates/core/ui/settings/categories/general.slint:103
-msgid "Button Scheme"
-msgstr ""
-
-#: crates/core/ui/settings/categories/general.slint:112
-msgid "Keyboard Layout"
-msgstr ""
-
-#: crates/core/ui/settings/categories/general.slint:121
-msgid "Settings Retention"
-msgstr ""
-
-#: crates/core/ui/settings/categories/general.slint:130
-msgid "DB Backup Retention"
-msgstr ""
-
-#: crates/core/ui/settings/categories/general.slint:139
-msgid "Startup Mode"
-msgstr ""
-
-#: crates/core/ui/settings/categories/import.slint:21
-msgid "Force Full Import"
-msgstr ""
-
-#: crates/core/ui/settings/categories/import.slint:30
-msgid "Sync Metadata"
-msgstr ""
-
-#: crates/core/ui/settings/categories/import.slint:39
-msgid "Indexed File Types"
-msgstr ""
-
-#: crates/core/ui/settings/categories/intermission.slint:22
-msgid "Suspend Screen"
-msgstr ""
-
-#: crates/core/ui/settings/categories/intermission.slint:31
-msgid "Power Off Screen"
-msgstr ""
-
-#: crates/core/ui/settings/categories/intermission.slint:40
-msgid "Share Screen"
-msgstr ""
-
-#: crates/core/ui/settings/categories/intermission.slint:49
-msgid "Fill Color"
-msgstr ""
-
-#: crates/core/ui/settings/categories/power.slint:27
-msgid "Soft Suspend"
-msgstr ""
-
-#: crates/core/ui/settings/categories/power.slint:37
-msgid "Use LED to Indicate Soft Suspend"
-msgstr ""
-
-#: crates/core/ui/settings/categories/power.slint:47
-msgid "Soft Suspend Release Grace (seconds)"
-msgstr ""
-
-#: crates/core/ui/settings/categories/power.slint:56
-msgid "Auto Suspend (minutes)"
-msgstr ""
-
-#: crates/core/ui/settings/categories/power.slint:65
-msgid "Auto Power Off (days)"
-msgstr ""
-
-#: crates/core/ui/settings/categories/power.slint:74
-msgid "Enable Sleep Cover"
-msgstr ""
-
-#: crates/core/ui/settings/categories/reader.slint:22
-msgid "Font Family"
-msgstr ""
-
-#: crates/core/ui/settings/categories/reader.slint:31
-#: crates/core/ui/settings/categories/reader.slint:31
-msgid "End of Book Action"
-msgstr ""
-
-#: crates/core/ui/settings/categories/reader.slint:40
-msgid "Dithered File Types"
-msgstr ""
-
-#: crates/core/ui/settings/categories/reader.slint:49
-#: crates/core/ui/settings/categories/reader.slint:49
-msgid "Refresh Rate"
-msgstr ""
-
-#: crates/core/ui/settings/categories/telemetry.slint:36
-msgid "Enable Logging"
-msgstr ""
-
-#: crates/core/ui/settings/categories/telemetry.slint:45
-msgid "Log Level"
-msgstr ""
-
-#: crates/core/ui/settings/categories/telemetry.slint:55
-msgid "OTLP Endpoint"
-msgstr ""
-
-#: crates/core/ui/settings/categories/telemetry.slint:65
-msgid "Pyroscope Endpoint"
-msgstr ""
-
-#: crates/core/ui/settings/categories/telemetry.slint:75
-msgid "Enable Kernel Log"
-msgstr ""
-
-#: crates/core/ui/settings/categories/telemetry.slint:85
-msgid "Enable D-Bus Log"
-msgstr ""
-
-#: crates/core/ui/settings/editors/library_editor.slint:41
-msgid "Name"
-msgstr ""
-
-#: crates/core/ui/settings/editors/library_editor.slint:49
-msgid "Path"
-msgstr ""
-
-#: crates/core/ui/settings/editors/library_editor.slint:69
-#: crates/core/ui/settings/editors/library_editor.slint:69
-#: crates/core/ui/settings/editors/library_editor.slint:69
-msgid "OK"
-msgstr ""
-
-#: crates/core/ui/settings/editors/refresh_rates.slint:68
-#: crates/core/ui/settings/editors/refresh_rates.slint:68
-msgid "Regular"
-msgstr ""
-
-#: crates/core/ui/settings/editors/refresh_rates.slint:76
-#: crates/core/ui/settings/editors/refresh_rates.slint:76
-msgid "Inverted"
-msgstr ""
-
-#: crates/core/ui/settings/shell/category_bar.slint:47
+#: crates/core/ui/settings/shell/category_bar.slint:46
 msgid "General"
 msgstr ""
 
-#: crates/core/ui/settings/shell/category_bar.slint:48
+#: crates/core/ui/settings/shell/category_bar.slint:47
 msgid "Power"
 msgstr ""
 
-#: crates/core/ui/settings/shell/category_bar.slint:49
+#: crates/core/ui/settings/shell/category_bar.slint:48
 msgid "Reader"
 msgstr ""
 
-#: crates/core/ui/settings/shell/category_bar.slint:50
+#: crates/core/ui/settings/shell/category_bar.slint:49
 msgid "Dictionaries"
 msgstr ""
 
-#: crates/core/ui/settings/shell/category_bar.slint:51
+#: crates/core/ui/settings/shell/category_bar.slint:50
 msgid "Libraries"
 msgstr ""
 
-#: crates/core/ui/settings/shell/category_bar.slint:52
+#: crates/core/ui/settings/shell/category_bar.slint:51
 msgid "Intermission Screens"
 msgstr ""
 
-#: crates/core/ui/settings/shell/category_bar.slint:53
+#: crates/core/ui/settings/shell/category_bar.slint:52
 msgid "Import"
 msgstr ""
 
-#: crates/core/ui/settings/shell/category_bar.slint:54
+#: crates/core/ui/settings/shell/category_bar.slint:53
 msgid "Telemetry"
 msgstr ""
 
-#: crates/core/ui/settings/window.slint:92
+#: crates/core/ui/settings/window.slint:95
 msgid "Settings"
 msgstr ""
 
-#: crates/core/ui/startup/window.slint:2
+#: crates/core/ui/startup/window.slint:4
 msgid "Cadmus starting up…"
 msgstr ""
 
-#: crates/core/ui/widgets/confirm_sheet.slint:41
-#: crates/core/ui/widgets/confirm_sheet.slint:41
-msgid "Cancel"
-msgstr ""
-
-#: crates/core/ui/widgets/file_chooser.slint:45
+#: crates/core/ui/widgets/file_chooser.slint:46
 msgid "Up"
 msgstr ""
 
-#: crates/core/ui/widgets/file_chooser.slint:62
+#: crates/core/ui/widgets/file_chooser.slint:63
 msgid "Select this folder"
 msgstr ""

@@ -11,10 +11,10 @@
 
 use std::marker::PhantomData;
 
-pub mod choice_sheet;
-pub mod confirm_sheet;
-pub mod file_browser;
-pub mod text_sheet;
+pub(in crate::view) mod choice_sheet;
+pub(in crate::view) mod confirm_sheet;
+pub(in crate::view) mod file_browser;
+pub(in crate::view) mod text_sheet;
 
 /// Names the window an overlay binds to.
 ///
@@ -22,4 +22,4 @@ pub mod text_sheet;
 /// and [`crate::view::slint::Component::sync`] receive `&W`. This marker is
 /// what puts that window in the overlay's type, so a screen can construct
 /// `ChoiceSheet<ItsRow, ItsWindow>`.
-pub type WindowOf<W> = PhantomData<W>;
+pub(in crate::view) type WindowOf<W> = PhantomData<W>;

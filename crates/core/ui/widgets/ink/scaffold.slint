@@ -1,0 +1,49 @@
+import { ChromeIcons } from "../../icons/icons.slint";
+import { Hairline } from "../hairline.slint";
+import { MaterialPalette } from "palette.slint";
+import { InkAppBar } from "app_bar.slint";
+import { InkMetrics } from "metrics.slint";
+import { TouchLabel } from "../touch_label.slint";
+
+// App bar, hairline, then the screen body. An optional action label sits
+// under the body. Use-site children go between the hairline and that bar.
+
+export component InkScaffold inherits Rectangle {
+    in property <string> title;
+    in property <bool> back-enabled: true;
+    in property <string> action-label;
+    callback back-pressed();
+    callback action-clicked();
+
+    property <image> no-icon;
+    background: MaterialPalette.surface;
+
+    VerticalLayout {
+        width: 100%;
+        height: 100%;
+
+        InkAppBar {
+            title: root.title;
+            leading-icon: root.back-enabled ? ChromeIcons.arrow-back : root.no-icon;
+            leading-clicked => {
+                if (root.back-enabled) {
+                    root.back-pressed();
+                }
+            }
+        }
+
+        Hairline {
+            line-color: MaterialPalette.outline;
+        }
+
+        @children
+
+        if root.action-label != "": TouchLabel {
+            height: InkMetrics.row;
+            label: root.action-label;
+            clicked => {
+                root.action-clicked();
+            }
+        }
+    }
+}
