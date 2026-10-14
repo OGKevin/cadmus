@@ -38,6 +38,20 @@
       "groupSlug": "rust-non-major"
     },
     {
+      "description": "Keep the Slint crates and the devenv skill input on one release. A tag bump still needs `devenv update slint` so devenv.lock matches, and new viewer tarball hashes in devenv.nix.",
+      "matchManagers": ["cargo"],
+      "matchPackageNames": ["slint", "slint-build", "i-slint-core", "i-slint-common"],
+      "groupName": "slint",
+      "groupSlug": "slint"
+    },
+    {
+      "description": "devenv.yaml `slint` input. Grouped with the Slint crates.",
+      "matchManagers": ["custom.regex"],
+      "matchDepNames": ["slint-ui/slint"],
+      "groupName": "slint",
+      "groupSlug": "slint"
+    },
+    {
       "description": "sntpc-net-std version pins to a matching sntpc release",
       "matchManagers": ["cargo"],
       "matchPackageNames": ["sntpc", "sntpc-net-std"],
@@ -150,6 +164,17 @@
     }
   ],
   "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^devenv\\.yaml$/"],
+      "matchStrings": [
+        "url: github:slint-ui/slint/v(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)"
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "slint-ui/slint",
+      "extractVersionTemplate": "^v(?<version>.+)$",
+      "versioningTemplate": "semver"
+    },
     {
       "customType": "regex",
       "managerFilePatterns": [

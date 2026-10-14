@@ -1,0 +1,24 @@
+// Colors for the hand-built chrome.
+//
+// Kaleido (Libra Colour, Clara Colour) tints a gray plane through a filter.
+// A pale fill across a bar looks dirty, and blue is the weakest filter, so
+// large surfaces stay white and text stays black. Color is the orange
+// primary: the tab underline, the chosen-row dot, the action button, and
+// filled primary buttons.
+// Rust sets `chromatic` when the device reports more than one color sample.
+// A gray panel uses the same shapes in black.
+
+export global MaterialPalette {
+    in property <bool> chromatic: false;
+
+    out property <color> primary: root.chromatic ? rgb(220, 80, 20) : #000000;
+    out property <color> on-primary: #ffffff;
+    out property <color> surface: #ffffff;
+    out property <color> on-surface: #000000;
+    out property <color> on-surface-variant: #000000;
+    out property <color> bar: #ffffff;
+    out property <color> selected: #ffffff;
+    out property <color> outline: #000000;
+    out property <color> disabled: #5c5c5c;
+    out property <color> divider: #d0d0d0;
+}

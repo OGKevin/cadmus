@@ -1,0 +1,28 @@
+import { MaterialPalette } from "ink/palette.slint";
+
+export component TouchLabel inherits Rectangle {
+    in property <string> label;
+    in property <length> font-size: 34px;
+    in property <color> label-color: MaterialPalette.on-surface;
+    in property <TextHorizontalAlignment> text-alignment: center;
+    callback clicked();
+
+    Text {
+        text: root.label;
+        font-size: root.font-size;
+        color: root.label-color;
+        horizontal-alignment: root.text-alignment;
+        vertical-alignment: center;
+        overflow: elide;
+        width: 100%;
+        height: 100%;
+    }
+
+    TouchArea {
+        width: 100%;
+        height: 100%;
+        clicked => {
+            root.clicked();
+        }
+    }
+}

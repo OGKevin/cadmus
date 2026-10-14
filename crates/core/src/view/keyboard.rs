@@ -1,5 +1,5 @@
-use super::BIG_BAR_HEIGHT;
 use super::key::{Key, KeyKind};
+use super::{BIG_BAR_HEIGHT, THICKNESS_MEDIUM};
 use super::{
     Bus, EntryId, Event, Hub, ID_FEEDER, Id, KeyboardEvent, RenderData, RenderQueue, TextKind, View,
 };
@@ -9,7 +9,7 @@ use crate::device::DeviceHardware as _;
 use crate::device::DeviceIdentity as _;
 use crate::framebuffer::Framebuffer as _;
 use crate::framebuffer::UpdateMode;
-use crate::geom::{Dir, Rectangle};
+use crate::geom::{Dir, LinearDir, Rectangle};
 use crate::gesture::GestureEvent;
 use crate::input::DeviceEvent;
 use crate::unit::scale_by_dpi;
@@ -18,6 +18,106 @@ use rustc_hash::FxHashMap;
 use serde::Deserialize;
 
 const PADDING_RATIO: f32 = 0.06;
+/// A key at least this many units wide uses the long label.
+const WIDE_KEY: f32 = 1.8;
+/// Accent forms shown for one held key. The strip has no room for more.
+const MAX_HOLD_VARIANTS: usize = 16;
+
+/// Key size and gaps for a keyboard of `width` by `height`, in the same pixels.
+struct RowMetrics {
+    key_height: f32,
+    padding: f32,
+    rows_height: f32,
+}
+
+fn widest_row(layout: &Layout) -> f32 {
+    layout
+        .widths
+        .iter()
+        .map(|row| (row.len() + 1) as f32 * PADDING_RATIO + row.iter().sum::<f32>())
+        .max_by(|a, b| a.partial_cmp(b).expect("Found NaNs"))
+        .expect("Missing row widths")
+}
+
+fn row_metrics(width: f32, height: f32, layout: &Layout) -> RowMetrics {
+    let rows_count = layout.keys.len() as f32;
+    let key_height = (width / widest_row(layout))
+        .min(height / (rows_count + PADDING_RATIO * (rows_count + 1.0)));
+    let padding = PADDING_RATIO * key_height;
+    let rows_height = key_height * rows_count + padding * (rows_count + 1.0);
+    RowMetrics {
+        key_height,
+        padding,
+        rows_height,
+    }
+}
+
+/// The reader keyboard's key size and the height of its block, in the logical
+/// pixels Slint uses. The block is what [`Keyboard`] keeps after it gives
+/// unused whole bars back to the page.
+pub(crate) struct KeyboardSpan {
+    pub key_height: f32,
+    pub key_gap: f32,
+    pub block_height: f32,
+}
+
+/// Whole bars given back to the page, and the block that remains.
+///
+/// `allocated` and `bar` are in the same pixels. The reader reserves three
+/// big bars for the keyboard, then returns every whole bar the keys do not use.
+fn shrink_to_bars(allocated: i32, rows_height: f32, bar: i32) -> (i32, i32) {
+    let bar = bar.max(1);
+    let rows = rows_height.round().max(0.0) as i32;
+    let gap = allocated.saturating_sub(rows) / bar;
+    let returned = gap * bar;
+    (returned, allocated - returned)
+}
+
+struct PlacedRows {
+    key_height: f32,
+    padding: f32,
+    top: i32,
+    start_y: f32,
+}
+
+/// Key size and the first row's top after unused bars are returned.
+fn place_rows(rect: &Rectangle, layout: &Layout, dpi: u16) -> PlacedRows {
+    let metrics = row_metrics(rect.width() as f32, rect.height() as f32, layout);
+    let bar = scale_by_dpi(BIG_BAR_HEIGHT, dpi) as i32;
+    let (returned, block) = shrink_to_bars(rect.height() as i32, metrics.rows_height, bar);
+    let top = rect.min.y + returned;
+    let start_y = top as f32 + metrics.padding + (block as f32 - metrics.rows_height) / 2.0;
+    PlacedRows {
+        key_height: metrics.key_height,
+        padding: metrics.padding,
+        top,
+        start_y,
+    }
+}
+
+fn row_start_x(min_x: i32, width: u32, padding: f32, key_height: f32, widths: &[f32]) -> f32 {
+    let row_width = (widths.len() + 1) as f32 * padding + widths.iter().sum::<f32>() * key_height;
+    min_x as f32 + padding + (width as f32 - row_width) / 2.0
+}
+
+/// How tall the reader keyboard is for a screen `width` pixels wide at `dpi`.
+///
+/// The reader reserves three big bars, then [`shrink_to_bars`] gives unused
+/// whole bars back to the page.
+pub(crate) fn reader_keyboard_span(width: u32, dpi: u16, layout: &Layout) -> KeyboardSpan {
+    let dpi = dpi.max(1);
+    let big = scale_by_dpi(BIG_BAR_HEIGHT, dpi) as i32;
+    let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
+    let allocated = 3 * big - thickness;
+    let metrics = row_metrics(width as f32, allocated as f32, layout);
+    let (_, block) = shrink_to_bars(allocated, metrics.rows_height, big);
+    let logical = crate::unit::BASE_DPI / dpi as f32;
+    KeyboardSpan {
+        key_height: metrics.key_height * logical,
+        key_gap: metrics.padding * logical,
+        block_height: block as f32 * logical,
+    }
+}
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -29,7 +129,7 @@ pub struct Layout {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-enum ModifierState {
+pub(crate) enum ModifierState {
     #[default]
     Off,
     Once,
@@ -37,7 +137,7 @@ enum ModifierState {
 }
 
 impl ModifierState {
-    fn is_engaged(self) -> bool {
+    pub(crate) fn is_engaged(self) -> bool {
         !matches!(self, ModifierState::Off)
     }
 
@@ -45,11 +145,11 @@ impl ModifierState {
         matches!(self, ModifierState::Once)
     }
 
-    fn is_locked(self) -> bool {
+    pub(crate) fn is_locked(self) -> bool {
         matches!(self, ModifierState::Locked)
     }
 
-    fn cycle(self) -> ModifierState {
+    pub(crate) fn cycle(self) -> ModifierState {
         match self {
             ModifierState::Off => ModifierState::Once,
             ModifierState::Once => ModifierState::Locked,
@@ -58,7 +158,7 @@ impl ModifierState {
     }
 
     /// Releases a pending single-press modifier, leaving locked ones engaged.
-    fn release(self) -> ModifierState {
+    pub(crate) fn release(self) -> ModifierState {
         if self.is_once() {
             ModifierState::Off
         } else {
@@ -108,45 +208,31 @@ impl Keyboard {
             level += 2;
         }
 
-        let max_width = layout
-            .widths
-            .iter()
-            .map(|row| (row.len() + 1) as f32 * PADDING_RATIO + row.iter().sum::<f32>())
-            .max_by(|a, b| a.partial_cmp(&b).expect("Found NaNs"))
-            .expect("Missing row widths");
-
-        let kh_1 = (rect.width() as f32) / max_width;
-        let rows_count = layout.keys.len();
-        let kh_2 =
-            (rect.height() as f32) / (rows_count as f32 + PADDING_RATIO * (rows_count + 1) as f32);
-        let key_height = kh_1.min(kh_2);
-        let padding = PADDING_RATIO * key_height;
-
-        let rows_height = key_height * rows_count as f32 + padding * (rows_count + 1) as f32;
-        let big_height = scale_by_dpi(BIG_BAR_HEIGHT, dpi) as i32;
-        let height_gap = (rect.height() - rows_height.round() as u32) / big_height as u32;
-        rect.min.y += height_gap as i32 * big_height;
+        let placed = place_rows(rect, &layout, dpi);
+        rect.min.y = placed.top;
         context.kb_rect = *rect;
 
-        let start_y = rect.min.y as f32 + padding + (rect.height() as f32 - rows_height) / 2.0;
-
         for (i, row) in layout.keys.iter().enumerate() {
-            let y = start_y + i as f32 * (padding + key_height);
-            let row_width = (layout.widths[i].len() + 1) as f32 * padding
-                + layout.widths[i].iter().sum::<f32>() * key_height;
-            let start_x = rect.min.x as f32 + padding + (rect.width() as f32 - row_width) / 2.0;
+            let y = placed.start_y + i as f32 * (placed.padding + placed.key_height);
+            let start_x = row_start_x(
+                rect.min.x,
+                rect.width(),
+                placed.padding,
+                placed.key_height,
+                &layout.widths[i],
+            );
             let mut dx = 0.0;
             let mut dj = 0;
 
             for (j, kind) in row.iter().enumerate() {
-                let key_width = layout.widths[i][j] * key_height;
+                let key_width = layout.widths[i][j] * placed.key_height;
                 let x = start_x + dx;
-                dx += key_width + padding;
+                dx += key_width + placed.padding;
                 let key_rect = rect![
                     x.round() as i32,
                     y.round() as i32,
                     (x + key_width).round() as i32,
-                    (y + key_height).round() as i32
+                    (y + placed.key_height).round() as i32
                 ];
                 let kind = match kind {
                     KeyKind::Output(c) if *c != ' ' => {
@@ -427,45 +513,30 @@ impl View for Keyboard {
         context: &mut AppContext,
     ) {
         let dpi = context.device.dpi();
-        let max_width = self
-            .layout
-            .widths
-            .iter()
-            .map(|row| (row.len() + 1) as f32 * PADDING_RATIO + row.iter().sum::<f32>())
-            .max_by(|a, b| a.partial_cmp(b).expect("Found NaNs"))
-            .expect("Missing row widths");
-
-        let kh_1 = (rect.width() as f32) / max_width;
-        let rows_count = self.layout.keys.len();
-        let kh_2 =
-            (rect.height() as f32) / (rows_count as f32 + PADDING_RATIO * (rows_count + 1) as f32);
-        let key_height = kh_1.min(kh_2);
-        let padding = PADDING_RATIO * key_height;
-
-        let rows_height = key_height * rows_count as f32 + padding * (rows_count + 1) as f32;
-        let big_height = scale_by_dpi(BIG_BAR_HEIGHT, dpi) as i32;
-        let height_gap = (rect.height() - rows_height.round() as u32) / big_height as u32;
-        rect.min.y += height_gap as i32 * big_height;
-
-        let start_y = rect.min.y as f32 + padding + (rect.height() as f32 - rows_height) / 2.0;
+        let placed = place_rows(&rect, &self.layout, dpi);
+        rect.min.y = placed.top;
         let mut index = 0;
 
         for (i, row) in self.layout.keys.iter().enumerate() {
-            let y = start_y + i as f32 * (padding + key_height);
-            let row_width = (self.layout.widths[i].len() + 1) as f32 * padding
-                + self.layout.widths[i].iter().sum::<f32>() * key_height;
-            let start_x = rect.min.x as f32 + padding + (rect.width() as f32 - row_width) / 2.0;
+            let y = placed.start_y + i as f32 * (placed.padding + placed.key_height);
+            let start_x = row_start_x(
+                rect.min.x,
+                rect.width(),
+                placed.padding,
+                placed.key_height,
+                &self.layout.widths[i],
+            );
             let mut dx = 0.0;
 
             for j in 0..row.len() {
-                let key_width = self.layout.widths[i][j] * key_height;
+                let key_width = self.layout.widths[i][j] * placed.key_height;
                 let x = start_x + dx;
-                dx += key_width + padding;
+                dx += key_width + placed.padding;
                 let key_rect = rect![
                     x.round() as i32,
                     y.round() as i32,
                     (x + key_width).round() as i32,
-                    (y + key_height).round() as i32
+                    (y + placed.key_height).round() as i32
                 ];
                 self.children[index].resize(key_rect, hub, rq, context);
                 index += 1;
@@ -654,6 +725,307 @@ lazy_static! {
     };
 }
 
+/// What a key on the Slint keyboard does. Character keys insert [`KeyFace::insert`].
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum FaceAction {
+    Character,
+    DeleteBack,
+    DeleteForward,
+    Shift,
+    Alternate,
+    Submit,
+    MoveBack,
+    MoveForward,
+    MoveStart,
+    MoveEnd,
+    Dismiss,
+    Ignore,
+}
+
+/// One key, already resolved for the current shift and alternate state.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct KeyFace {
+    pub label: String,
+    pub insert: String,
+    pub stretch: f32,
+    pub engaged: bool,
+    pub compact: bool,
+    pub holdable: bool,
+    pub action: FaceAction,
+}
+
+/// The layout named in settings, or the bundled English layout when that
+/// name is not loaded yet.
+pub(crate) fn selected_layout(context: &AppContext) -> Layout {
+    let name = &context.settings.keyboard_layout;
+    if let Some(layout) = context.keyboard_layouts.get(name) {
+        return layout.clone();
+    }
+    context
+        .keyboard_layouts
+        .get("English")
+        .cloned()
+        .unwrap_or_else(fallback_english)
+}
+
+fn fallback_english() -> Layout {
+    serde_json::from_str(include_str!("../../../../keyboard-layouts/english.json"))
+        .expect("bundled english keyboard layout")
+}
+
+/// Accented and special forms of `base`, in sequence order.
+///
+/// A form is a combination whose first character is `base`. Holding that
+/// key offers these instead of the combine key.
+pub(crate) fn variants_for(base: char) -> Vec<char> {
+    let mut found: Vec<(&str, char)> = DEFAULT_COMBINATIONS
+        .iter()
+        .filter(|(sequence, _)| {
+            let mut chars = sequence.chars();
+            chars.next() == Some(base) && chars.next().is_some() && chars.next().is_none()
+        })
+        .map(|(sequence, result)| (*sequence, *result))
+        .collect();
+    found.sort_by(|left, right| left.0.cmp(right.0));
+    let mut variants = Vec::new();
+    for (_, ch) in found {
+        if ch != base && !variants.contains(&ch) {
+            variants.push(ch);
+        }
+        if variants.len() == MAX_HOLD_VARIANTS {
+            break;
+        }
+    }
+    variants
+}
+
+/// The keys to draw for `layout` at the current modifiers.
+///
+/// Output placeholders read the matching layer. The combine key is omitted:
+/// accented characters come from [`variants_for`] on a held key.
+pub(crate) fn key_faces(
+    layout: &Layout,
+    shift: ModifierState,
+    alternate: ModifierState,
+) -> Vec<Vec<KeyFace>> {
+    let mut level = 0;
+    if shift.is_engaged() {
+        level += 1;
+    }
+    if alternate.is_engaged() {
+        level += 2;
+    }
+
+    layout
+        .keys
+        .iter()
+        .enumerate()
+        .map(|(row_index, row)| {
+            let mut output_index = 0usize;
+            row.iter()
+                .enumerate()
+                .filter_map(|(column, kind)| {
+                    let width = layout
+                        .widths
+                        .get(row_index)
+                        .and_then(|widths| widths.get(column))
+                        .copied()
+                        .unwrap_or(1.0);
+                    key_face(
+                        FaceQuery {
+                            layout,
+                            level,
+                            row_index,
+                            width,
+                            shift,
+                            alternate,
+                        },
+                        *kind,
+                        &mut output_index,
+                    )
+                })
+                .collect()
+        })
+        .collect()
+}
+
+struct FaceQuery<'a> {
+    layout: &'a Layout,
+    level: usize,
+    row_index: usize,
+    width: f32,
+    shift: ModifierState,
+    alternate: ModifierState,
+}
+
+fn wide_label(width: f32, long: &str, short: &str) -> String {
+    if width >= WIDE_KEY {
+        long.to_owned()
+    } else {
+        short.to_owned()
+    }
+}
+
+fn key_face(query: FaceQuery<'_>, kind: KeyKind, output_index: &mut usize) -> Option<KeyFace> {
+    let FaceQuery {
+        layout,
+        level,
+        row_index,
+        width,
+        shift,
+        alternate,
+    } = query;
+    match kind {
+        KeyKind::Combine => None,
+        KeyKind::Output(ch) if ch != ' ' => {
+            let shown = layout
+                .outputs
+                .get(level)
+                .and_then(|rows| rows.get(row_index))
+                .and_then(|row| row.get(*output_index))
+                .copied()
+                .unwrap_or(ch);
+            *output_index += 1;
+            Some(character_key(shown, width))
+        }
+        KeyKind::Output(_) => Some(space_key(width)),
+        KeyKind::Delete(LinearDir::Backward) => Some(special(
+            wide_label(
+                width,
+                &crate::fl!("keyboard-key-delete"),
+                &crate::fl!("keyboard-key-delete-short"),
+            ),
+            FaceAction::DeleteBack,
+            width,
+            false,
+        )),
+        KeyKind::Delete(LinearDir::Forward) => Some(special(
+            crate::fl!("keyboard-key-delete-forward"),
+            FaceAction::DeleteForward,
+            width,
+            false,
+        )),
+        KeyKind::Shift => Some(special(
+            wide_label(
+                width,
+                &crate::fl!("keyboard-key-shift"),
+                &crate::fl!("keyboard-key-shift-short"),
+            ),
+            FaceAction::Shift,
+            width,
+            shift.is_locked(),
+        )),
+        KeyKind::Alternate => Some(special(
+            crate::fl!("keyboard-key-alternate"),
+            FaceAction::Alternate,
+            width,
+            alternate.is_locked(),
+        )),
+        KeyKind::Return => Some(special(
+            wide_label(
+                width,
+                &crate::fl!("keyboard-key-return"),
+                &crate::fl!("keyboard-key-return-short"),
+            ),
+            FaceAction::Submit,
+            width,
+            false,
+        )),
+        KeyKind::Move(LinearDir::Backward) => Some(special(
+            crate::fl!("keyboard-key-move-back"),
+            FaceAction::MoveBack,
+            width,
+            false,
+        )),
+        KeyKind::Move(LinearDir::Forward) => Some(special(
+            crate::fl!("keyboard-key-move-forward"),
+            FaceAction::MoveForward,
+            width,
+            false,
+        )),
+        KeyKind::ArrowLeft => Some(special(
+            crate::fl!("keyboard-key-arrow-left"),
+            FaceAction::MoveBack,
+            width,
+            false,
+        )),
+        KeyKind::ArrowRight => Some(special(
+            crate::fl!("keyboard-key-arrow-right"),
+            FaceAction::MoveForward,
+            width,
+            false,
+        )),
+        KeyKind::ArrowUp => Some(special(
+            crate::fl!("keyboard-key-arrow-up"),
+            FaceAction::MoveStart,
+            width,
+            false,
+        )),
+        KeyKind::ArrowDown => Some(special(
+            crate::fl!("keyboard-key-arrow-down"),
+            FaceAction::MoveEnd,
+            width,
+            false,
+        )),
+        KeyKind::Escape => Some(special(
+            crate::fl!("keyboard-key-escape"),
+            FaceAction::Dismiss,
+            width,
+            false,
+        )),
+        KeyKind::Tab => Some(special(
+            crate::fl!("keyboard-key-tab"),
+            FaceAction::Ignore,
+            width,
+            false,
+        )),
+        KeyKind::Control => Some(special(
+            crate::fl!("keyboard-key-control"),
+            FaceAction::Ignore,
+            width,
+            false,
+        )),
+    }
+}
+
+fn character_key(ch: char, width: f32) -> KeyFace {
+    let label = ch.to_string();
+    KeyFace {
+        insert: label.clone(),
+        compact: false,
+        holdable: !variants_for(ch).is_empty(),
+        label,
+        stretch: width,
+        engaged: false,
+        action: FaceAction::Character,
+    }
+}
+
+fn space_key(width: f32) -> KeyFace {
+    KeyFace {
+        label: crate::fl!("keyboard-key-space"),
+        insert: " ".to_string(),
+        stretch: width,
+        engaged: false,
+        compact: true,
+        holdable: !variants_for(' ').is_empty(),
+        action: FaceAction::Character,
+    }
+}
+
+fn special(label: String, action: FaceAction, width: f32, engaged: bool) -> KeyFace {
+    let compact = label.chars().count() > 1;
+    KeyFace {
+        label,
+        insert: String::new(),
+        stretch: width,
+        engaged,
+        compact,
+        holdable: false,
+        action,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -693,5 +1065,132 @@ mod tests {
         assert_eq!(state.alternate, ModifierState::Off);
         assert_eq!(state.control, ModifierState::Off);
         assert!(!state.combine);
+    }
+
+    fn layout(name: &str) -> Layout {
+        let path = format!("../../../../keyboard-layouts/{name}.json");
+        let text = match name {
+            "english" => include_str!("../../../../keyboard-layouts/english.json"),
+            "russian" => include_str!("../../../../keyboard-layouts/russian.json"),
+            "terminal" => include_str!("../../../../keyboard-layouts/terminal.json"),
+            _ => panic!("unknown layout {path}"),
+        };
+        serde_json::from_str(text).unwrap_or_else(|error| panic!("{name}: {error}"))
+    }
+
+    #[test]
+    fn english_letters_follow_the_layout_and_label_space_and_delete() {
+        let rows = key_faces(&layout("english"), ModifierState::Off, ModifierState::Off);
+        assert_eq!(rows[0][0].insert, "q");
+        assert!(!rows[0][0].holdable, "q has no accented forms");
+        let e = rows
+            .iter()
+            .flatten()
+            .find(|key| key.insert == "e")
+            .expect("e");
+        assert!(e.holdable, "e should offer accented forms");
+        assert_eq!(rows[1][0].action, FaceAction::DeleteBack);
+        assert_eq!(rows[1][0].label, crate::fl!("keyboard-key-delete-short"));
+        assert_eq!(rows[1][1].insert, "a");
+        assert_eq!(rows[2][0].label, crate::fl!("keyboard-key-shift"));
+        let space = rows
+            .iter()
+            .flatten()
+            .find(|key| key.insert == " ")
+            .expect("space");
+        assert_eq!(space.label, crate::fl!("keyboard-key-space"));
+        assert!(rows.iter().flatten().all(|key| key.label != "CMB"));
+    }
+
+    #[test]
+    fn english_alternate_layer_is_digits() {
+        let rows = key_faces(
+            &layout("english"),
+            ModifierState::Off,
+            ModifierState::Locked,
+        );
+        assert_eq!(rows[0][0].insert, "1");
+        assert!(rows[0][0].holdable, "1 offers fraction forms");
+    }
+
+    #[test]
+    fn shift_lock_engages_the_shift_key_and_uppercases() {
+        let rows = key_faces(
+            &layout("english"),
+            ModifierState::Locked,
+            ModifierState::Off,
+        );
+        assert_eq!(rows[0][0].insert, "Q");
+        assert!(rows[2][0].engaged);
+    }
+
+    #[test]
+    fn russian_layout_uses_cyrillic_and_a_short_shift_label() {
+        let rows = key_faces(&layout("russian"), ModifierState::Off, ModifierState::Off);
+        assert_eq!(rows[0][0].insert, "й");
+        assert_eq!(rows[2][0].label, crate::fl!("keyboard-key-shift-short"));
+        assert_eq!(rows[2][0].action, FaceAction::Shift);
+    }
+
+    #[test]
+    fn terminal_layout_shows_escape_arrows_and_the_symbol_layer() {
+        let rows = key_faces(&layout("terminal"), ModifierState::Off, ModifierState::Off);
+        let labels: Vec<&str> = rows
+            .iter()
+            .flatten()
+            .map(|key| key.label.as_str())
+            .collect();
+        let escape = crate::fl!("keyboard-key-escape");
+        let control = crate::fl!("keyboard-key-control");
+        let space = crate::fl!("keyboard-key-space");
+        assert!(labels.contains(&escape.as_str()));
+        assert!(labels.contains(&control.as_str()));
+        assert!(labels.contains(&space.as_str()));
+        let shifted = key_faces(
+            &layout("terminal"),
+            ModifierState::Locked,
+            ModifierState::Locked,
+        );
+        assert_eq!(shifted[0][0].insert, "~");
+    }
+
+    #[test]
+    fn reader_keyboard_on_a_libra_is_three_bars_with_square_keys() {
+        let span = reader_keyboard_span(1264, 300, &layout("english"));
+        assert!(
+            (span.block_height - 487.0).abs() < 0.1,
+            "block {}",
+            span.block_height
+        );
+        assert!(
+            (100.0..115.0).contains(&span.key_height),
+            "key {}",
+            span.key_height
+        );
+        assert!((span.key_gap - span.key_height * PADDING_RATIO).abs() < 0.1);
+    }
+
+    #[test]
+    fn reader_keyboard_on_a_narrow_screen_drops_one_bar() {
+        let span = reader_keyboard_span(600, 300, &layout("english"));
+        assert!(
+            (span.block_height - 324.0).abs() < 0.1,
+            "block {}",
+            span.block_height
+        );
+        assert!(
+            (50.0..53.0).contains(&span.key_height),
+            "key {}",
+            span.key_height
+        );
+    }
+
+    #[test]
+    fn holding_e_offers_the_acute_and_not_the_capital() {
+        let variants = variants_for('e');
+        assert!(variants.contains(&'é'));
+        assert!(!variants.contains(&'É'));
+        assert!(variants_for('E').contains(&'É'));
+        assert!(variants_for(' ').is_empty());
     }
 }

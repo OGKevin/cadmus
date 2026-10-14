@@ -57,6 +57,10 @@ This guide covers setup on both Linux and macOS.
    cadmuscli run-emulator
    ```
 
+   Startup is a Slint screen shown while the app initialises. It closes on its
+   own when startup finishes and the library opens, including the last-read book
+   when that startup mode is selected. The settings editor is a Slint screen too.
+
 ## Emulator GitHub Authentication
 
 Debug builds (`cadmuscli run-emulator`) can skip GitHub device flow by setting
@@ -93,6 +97,7 @@ Once inside the devenv shell, these commands are available:
 | `cadmus-docs-serve`         | Serve website locally on port 3000                          |
 | `cadmus-docs-preview`       | `wrangler dev` for `website/out` (Workers, matches CI)      |
 | `cadmus-translate`          | Generate the docs translation template (.pot)               |
+| `cadmus-slint-view`         | Preview the settings Slint UI (MCP on :9315)                |
 | `cadmus-test-coverage`      | Run tests with coverage instrumentation                     |
 | `cadmus-coverage-show`      | Open project-wide HTML coverage report                      |
 | `cadmus-coverage-diff`      | Open patch coverage HTML vs `origin/$CADMUS_DEFAULT_BRANCH` |

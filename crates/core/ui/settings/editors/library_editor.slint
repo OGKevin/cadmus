@@ -1,0 +1,75 @@
+import { ActionBar } from "../../widgets/action_bar.slint";
+import { ScreenHeader } from "../../widgets/screen_header.slint";
+import { ValueRow } from "../../widgets/value_row.slint";
+
+// Library editor fields and callbacks. Rust sets these; the window does not.
+export global LibraryEditorIo {
+    in property <bool> open: false;
+    in property <string> heading;
+    in property <string> library-name;
+    in property <string> path;
+    in property <string> finished;
+    callback dismissed();
+    callback accepted();
+    callback name-pressed();
+    callback path-pressed();
+    callback finished-pressed();
+}
+
+export component LibraryEditor inherits Rectangle {
+    width: 100%;
+    height: 100%;
+    background: #ffffff;
+
+    TouchArea {
+        width: 100%;
+        height: 100%;
+    }
+
+    VerticalLayout {
+        width: 100%;
+        height: 100%;
+
+        ScreenHeader {
+            heading: LibraryEditorIo.heading;
+            back-pressed => {
+                LibraryEditorIo.dismissed();
+            }
+        }
+
+        ValueRow {
+            label: @tr("Name");
+            value: LibraryEditorIo.library-name;
+            pressed => {
+                LibraryEditorIo.name-pressed();
+            }
+        }
+
+        ValueRow {
+            label: @tr("Path");
+            value: LibraryEditorIo.path;
+            pressed => {
+                LibraryEditorIo.path-pressed();
+            }
+        }
+
+        ValueRow {
+            label: @tr("End of Book Action");
+            value: LibraryEditorIo.finished;
+            pressed => {
+                LibraryEditorIo.finished-pressed();
+            }
+        }
+
+        Rectangle {
+            vertical-stretch: 1;
+        }
+
+        ActionBar {
+            label: @tr("OK");
+            clicked => {
+                LibraryEditorIo.accepted();
+            }
+        }
+    }
+}
