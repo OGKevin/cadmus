@@ -20,7 +20,9 @@ callbacks. It does not know which screen placed it.
 A screen's markup lives in its own folder. Settings is `ui/settings/`. Startup
 is `ui/startup/`. The four shared overlays (option list, confirmation dialog,
 file browser, text dialog) and the `*Io` globals that bind them live together in
-`ui/widgets/overlays.slint`, so a second screen imports them instead of
+`ui/widgets/overlays.slint`. `ui/cadmus.slint` re-exports those globals.
+`ui/settings/window.slint` uses the overlays and does not export the globals
+again, so a second screen imports them from the widgets file instead of
 redeclaring them.
 
 The confirmation dialog is a centered card, like the option list. A tap on the
@@ -60,10 +62,20 @@ page, and the open overlays into the window. Models go through
 [`changed_model`](slint/model.rs), which keeps the current model when the rows
 did not change, so an unchanged list is not re-set and does not dirty the frame.
 
-Slint timers (press-and-hold) need the view loop awake. After input and after
-each tick the screen calls `Session::wake_for_timers`, which sends
-`Event::SlintTimer` when Slint's next timer is due. Handle that event with
-`Session::tick`. Do not add per-widget workarounds for a hold that fires late.
+Slint timers (press-and-hold) need the view loop awake. [`SlintView::drive`](slint/mod.rs)
+forwards one event, applies queued callbacks, and queues dirty rectangles.
+[`SlintView::on_timer`](slint/mod.rs) does that for `Event::SlintTimer`. Both
+call `Session::wake_for_timers`, which posts that event when Slint's next
+timer is due. The wait is a detached task, not a [`Job`](../runtime.rs):
+there is nothing to cancel, and a late event is ignored once the screen is
+gone. Handle the event with `Session::tick`. Do not add per-widget workarounds
+for a hold that fires late.
+
+Settings uses those methods for every event except the category and page
+buttons. The press that changes the category or the page remembers that
+button and swallows only its release and repeats. Forwarding that release
+turns it into an arrow key and opens the first row. A button whose press was
+forwarded is released normally, so the keyboard is not left held down.
 
 The text dialog's keyboard is as tall as the reader keyboard and sits just
 above the bottom edge. The field floats above it. A pressed key is drawn
@@ -82,16 +94,29 @@ and drain them. Add a piece to that list rather than repeating the walk.
 
 Static copy drawn by a `.slint` file is `@tr("English")`. `cadmus-translate`
 extracts those strings into `ui/lang`. Crowdin owns the translations. Do not
-hand-edit the `.po` files.
+hand-edit the `.po` files. The category names and the file chooser's "Up" and
+"Select this folder" stay `@tr`. They have no Fluent twin.
 
 Strings chosen at runtime, including setting rows and notifications, use
-`fl!`. The rules are in [`i18n/AGENTS.md`](../../i18n/AGENTS.md).
+`fl!`. A static category page is a row model: the label is
+[`SettingKind::label`](settings_editor/kinds/mod.rs), not a second `@tr`
+string. Cancel and OK on the confirmation dialog and the text dialog, and the
+library and refresh-rate labels that already have `fl!` keys, are set from
+Rust (`cancel`, `ok`, and the `settings-*` keys). The rules are in
+[`i18n/AGENTS.md`](../../i18n/AGENTS.md).
 
 ## Widgets
 
 Do not import the upstream Material component library. Copy a widget into
 `ui/widgets/` and change it for this panel. Glyphs copied from Material keep
 the MIT notice in [`ui/icons`](../../ui/icons/MATERIAL-LICENSE.md).
+
+A layout length is dp: `Npx * InkMetrics.dp` from
+[`ui/widgets/ink/metrics.slint`](../../ui/widgets/ink/metrics.slint). One dp
+is 1/160 inch. Screen size and the reader-keyboard block stay logical pixels.
+Rust writes those from the framebuffer and from the reader keyboard.
+
+`InkMetrics.hairline`, `frame`, `radius`, and `mark` are logical pixels too. Rust writes a length that the framebuffer scale turns into a whole physical pixel. Slint's software renderer truncates a border to whole physical pixels and rounds a rectangle's position, so anything else draws an uneven stroke.
 
 ## Tooling
 

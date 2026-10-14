@@ -1,13 +1,9 @@
-import { PagedSetting } from "paged_row.slint";
-import { SettingRow } from "../setting_line.slint";
+import { StaticPage } from "static_page.slint";
+import { SettingRow, StaticLine } from "../setting_line.slint";
 
-// Reader's values and row callback. Rust sets these; the window does not.
 export global ReaderPageIo {
-    out property <int> row-count: 4;
-    in property <string> font-family;
-    in property <string> finished-action;
-    in property <string> dithered-kinds;
-    in property <string> refresh-rate;
+    in property <[StaticLine]> rows;
+    out property <int> row-count: rows.length;
     callback row-pressed(SettingRow);
 }
 
@@ -15,39 +11,13 @@ export component ReaderPage inherits VerticalLayout {
     in property <int> page;
     in property <int> per-page;
 
-    PagedSetting {
-        slot: 0;
+    StaticPage {
+        vertical-stretch: 1;
+        rows: ReaderPageIo.rows;
         page: root.page;
         per-page: root.per-page;
-        label: @tr("Font Family");
-        value: ReaderPageIo.font-family;
-        pressed => { ReaderPageIo.row-pressed(SettingRow.font-family); }
-    }
-
-    PagedSetting {
-        slot: 1;
-        page: root.page;
-        per-page: root.per-page;
-        label: @tr("End of Book Action");
-        value: ReaderPageIo.finished-action;
-        pressed => { ReaderPageIo.row-pressed(SettingRow.finished-action); }
-    }
-
-    PagedSetting {
-        slot: 2;
-        page: root.page;
-        per-page: root.per-page;
-        label: @tr("Dithered File Types");
-        value: ReaderPageIo.dithered-kinds;
-        pressed => { ReaderPageIo.row-pressed(SettingRow.dithered-kinds); }
-    }
-
-    PagedSetting {
-        slot: 3;
-        page: root.page;
-        per-page: root.per-page;
-        label: @tr("Refresh Rate");
-        value: ReaderPageIo.refresh-rate;
-        pressed => { ReaderPageIo.row-pressed(SettingRow.refresh-rate); }
+        row-pressed(row) => {
+            ReaderPageIo.row-pressed(row);
+        }
     }
 }

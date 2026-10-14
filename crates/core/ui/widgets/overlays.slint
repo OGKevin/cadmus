@@ -47,6 +47,7 @@ export component ChoiceSheetOverlay inherits Rectangle {
 export global ConfirmSheetIo {
     in property <bool> open: false;
     in property <string> message;
+    in property <string> cancel-label;
     in property <string> accept-label;
     callback dismissed();
     callback accepted();
@@ -60,6 +61,7 @@ export component ConfirmSheetOverlay inherits Rectangle {
         width: 100%;
         height: 100%;
         message: ConfirmSheetIo.message;
+        cancel-label: ConfirmSheetIo.cancel-label;
         accept-label: ConfirmSheetIo.accept-label;
         dismissed => {
             ConfirmSheetIo.dismissed();
@@ -108,10 +110,13 @@ export component FileBrowserOverlay inherits Rectangle {
 export global TextSheetIo {
     in property <bool> open: false;
     in property <string> label;
+    in property <string> cancel-label;
+    in property <string> accept-label;
     in property <string> text-before;
     in property <string> text-after;
     in property <[[KeyCap]]> rows;
     in property <[string]> variants;
+    // Logical pixels from the reader keyboard. Rust sets them. Not dp.
     in property <length> block-height: 480px;
     in property <length> key-height: 64px;
     in property <length> key-gap: 4px;
@@ -137,6 +142,8 @@ export component TextSheetOverlay inherits Rectangle {
         window-width: root.width;
         window-height: root.height;
         label: TextSheetIo.label;
+        cancel-label: TextSheetIo.cancel-label;
+        accept-label: TextSheetIo.accept-label;
         text-before: TextSheetIo.text-before;
         text-after: TextSheetIo.text-after;
         rows: TextSheetIo.rows;

@@ -191,3 +191,189 @@ fn dictionary_lines(rows: &[DictionaryInfo], context: &AppContext) -> Vec<Settin
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use slint::ComponentHandle;
+    use slint::Model;
+
+    use super::super::notification;
+    use super::super::setting;
+    use super::super::settings_env;
+    use super::super::{Sheet, Waiting};
+    use super::{Action, Component, Dictionaries, Step};
+    use crate::dictionary::{MonolingualDictionaryService, reconcile_installed_dictionaries};
+    use crate::fl;
+    use crate::settings::WifiMode;
+    use crate::view::slint::generated::{DictionaryPageIo, SettingLine};
+    use crate::view::{EntryId, Event};
+
+    fn line_at(rows: &slint::ModelRc<SettingLine>, index: usize) -> SettingLine {
+        rows.row_data(index)
+            .unwrap_or_else(|| panic!("missing dictionary {index}"))
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn without_a_service_a_press_does_nothing() {
+        let (mut context, session) = super::super::shell::open_test_session().await;
+        let window = session.component();
+        let mut page = Dictionaries::new(None);
+        page.wire(window);
+        page.reload(&context).await;
+        page.sync(window, &context);
+        assert_eq!(
+            window.global::<DictionaryPageIo>().get_rows().row_count(),
+            0
+        );
+
+        window.global::<DictionaryPageIo>().invoke_row_pressed(0);
+        assert!(matches!(page.take().as_slice(), [Action::Press(0)]));
+        let (hub, _rx) = crate::view::hub_channel();
+        let mut bus = crate::view::Bus::new();
+        let step = {
+            let mut env = settings_env(&hub, &mut bus, &mut context);
+            page.apply(Action::Press(0), &mut env).await
+        };
+        assert!(matches!(step, Step::Idle));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn an_installed_dictionary_opens_a_choice_and_delete_removes_it() {
+        let (mut context, session) = super::super::shell::open_test_session().await;
+        let window = session.component();
+        context.online = false;
+        context.settings.wifi = WifiMode::Off;
+
+        let dir = tempfile::tempdir().expect("dictionary dir");
+        let lang_dir = dir.path().join("reader-dict").join("en");
+        tokio::fs::create_dir_all(&lang_dir)
+            .await
+            .expect("lang dir");
+        tokio::fs::write(lang_dir.join("dict.index"), [])
+            .await
+            .expect("index");
+        tokio::fs::write(lang_dir.join("dict.dict"), [])
+            .await
+            .expect("dict");
+        reconcile_installed_dictionaries(&context.database, dir.path())
+            .await
+            .expect("register dictionary");
+        let service = MonolingualDictionaryService::new(&context.database, dir.path())
+            .expect("dictionary service");
+
+        let mut page = Dictionaries::new(Some(service));
+        page.wire(window);
+        page.reload(&context).await;
+        page.sync(window, &context);
+
+        let rows = window.global::<DictionaryPageIo>().get_rows();
+        assert_eq!(rows.row_count(), 1);
+        let line = line_at(&rows, 0);
+        assert_eq!(line.label.as_str(), "en");
+        assert_eq!(line.value.as_str(), fl!("settings-dictionaries-installed"));
+
+        window.global::<DictionaryPageIo>().invoke_row_pressed(0);
+        assert!(matches!(page.take().as_slice(), [Action::Press(0)]));
+
+        let (hub, mut rx) = crate::view::hub_channel();
+        let mut bus = crate::view::Bus::new();
+        let pressed = {
+            let mut env = settings_env(&hub, &mut bus, &mut context);
+            page.apply(Action::Press(0), &mut env).await
+        };
+        let Step::Ask(Waiting::Dictionary, Sheet::Choice { title, entries }) = pressed else {
+            panic!("the installed dictionary did not open a choice");
+        };
+        assert_eq!(title, "en");
+        let ids: Vec<EntryId> = entries.iter().filter_map(setting::entry_id).collect();
+        assert_eq!(
+            ids,
+            vec![
+                EntryId::RequestDictionaryDownload("en".into()),
+                EntryId::DeleteDictionary("en".into()),
+            ]
+        );
+
+        let missing = {
+            let mut env = settings_env(&hub, &mut bus, &mut context);
+            page.apply(Action::Press(1), &mut env).await
+        };
+        assert!(matches!(missing, Step::Idle));
+
+        let offline = {
+            let mut env = settings_env(&hub, &mut bus, &mut context);
+            page.apply_choice(&EntryId::RequestDictionaryDownload("en".into()), &mut env)
+                .await
+        };
+        assert!(matches!(offline, Step::Idle));
+        assert_eq!(notification(&mut rx), fl!("notification-not-online"));
+
+        let deleted = {
+            let mut env = settings_env(&hub, &mut bus, &mut context);
+            page.apply_choice(&EntryId::DeleteDictionary("en".into()), &mut env)
+                .await
+        };
+        assert!(matches!(deleted, Step::Redraw));
+        page.sync(window, &context);
+        assert_eq!(
+            window.global::<DictionaryPageIo>().get_rows().row_count(),
+            0
+        );
+        assert!(
+            !tokio::fs::try_exists(&lang_dir)
+                .await
+                .expect("stat dictionary dir")
+        );
+        let reindex = rx.try_recv().expect("missing reindex");
+        assert!(matches!(reindex.event, Event::ReindexDictionaries));
+
+        context.online = true;
+        let download = {
+            let mut env = settings_env(&hub, &mut bus, &mut context);
+            page.apply_choice(&EntryId::RequestDictionaryDownload("en".into()), &mut env)
+                .await
+        };
+        let Step::Ask(Waiting::Download(lang), Sheet::Confirm { message, accept }) = download
+        else {
+            panic!("an online download did not ask for confirmation");
+        };
+        assert_eq!(lang, "en");
+        assert_eq!(
+            message,
+            fl!("settings-dictionaries-confirm-download", lang = "en")
+        );
+        assert_eq!(
+            accept,
+            fl!("settings-dictionaries-confirm-download-confirm")
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn start_download_stays_idle_offline_and_does_not_start_without_metadata() {
+        let (mut context, _session) = super::super::shell::open_test_session().await;
+        context.online = false;
+        context.settings.wifi = WifiMode::Off;
+        let dir = tempfile::tempdir().expect("dictionary dir");
+        let service = MonolingualDictionaryService::new(&context.database, dir.path())
+            .expect("dictionary service");
+        let mut page = Dictionaries::new(Some(service));
+        let (hub, mut rx) = crate::view::hub_channel();
+        let mut bus = crate::view::Bus::new();
+
+        let offline = {
+            let mut env = settings_env(&hub, &mut bus, &mut context);
+            page.start_download("en", &mut env).await
+        };
+        assert!(matches!(offline, Step::Idle));
+        assert_eq!(notification(&mut rx), fl!("notification-not-online"));
+        assert!(page.job().is_none());
+
+        context.online = true;
+        let online = {
+            let mut env = settings_env(&hub, &mut bus, &mut context);
+            page.start_download("en", &mut env).await
+        };
+        assert!(matches!(online, Step::Redraw));
+        assert!(page.job().is_none());
+    }
+}

@@ -3,7 +3,7 @@
 //! Each setting is a small struct that implements [`SettingKind`]. The trait
 //! describes the current value, which interaction to offer (`ActionLabel`,
 //! `Toggle`, or `SubMenu`), and how a tap changes [`Settings`].
-//! The Slint category files own the row labels.
+//! The row label is [`SettingKind::label`], drawn from the page model.
 //!
 //! [`SettingIdentity`] identifies a setting in [`SettingsEvent::UpdateValue`].
 

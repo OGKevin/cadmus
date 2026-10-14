@@ -38,7 +38,7 @@
       "groupSlug": "rust-non-major"
     },
     {
-      "description": "Keep the Slint crates and the devenv skill input on one release. A tag bump still needs `devenv update slint` so devenv.lock matches, and new viewer tarball hashes in devenv.nix.",
+      "description": "Keep the Slint crates and the devenv skill input on one release. devenv.nix takes the viewer version from that input and checks it against the crate pin. A tag bump still needs `devenv update slint` so devenv.lock matches, and new viewer tarball hashes in devenv.nix.",
       "matchManagers": ["cargo"],
       "matchPackageNames": ["slint", "slint-build", "i-slint-core", "i-slint-common"],
       "groupName": "slint",

@@ -27,17 +27,17 @@ export component ChoiceSheet inherits Rectangle {
     height: 100%;
 
     // Fixed so the page size does not depend on a measured layout.
-    property <length> row-height: 90px;
-    property <length> title-height: 48px;
-    property <length> inset: 40px;
-    property <length> gap: 30px;
-    property <length> frame: 3px;
+    property <length> row-height: 48px * InkMetrics.dp;
+    property <length> title-height: 26px * InkMetrics.dp;
+    property <length> inset: 21px * InkMetrics.dp;
+    property <length> gap: 16px * InkMetrics.dp;
+    property <length> frame: InkMetrics.frame;
     property <length> dialog-max: root.height - 2 * root.inset;
     // The border sits inside the dialog, so the rows share what is left of it.
     property <length> content-max: root.dialog-max - 2 * root.frame;
     // Room for rows when every entry is on one page, and when the bar is showing.
     property <length> room-plain: root.content-max - 2 * root.inset - root.title-height - root.gap;
-    property <length> room-paged: root.content-max - root.inset - root.title-height - root.gap - 2px - InkMetrics.bottom-bar;
+    property <length> room-paged: root.content-max - root.inset - root.title-height - root.gap - InkMetrics.hairline - InkMetrics.bottom-bar;
     property <int> fit-plain: Math.max(1, Math.floor(root.room-plain / root.row-height));
     property <int> fit-paged: Math.max(1, Math.floor(root.room-paged / root.row-height));
     property <bool> paged: root.entries.length > root.fit-plain;
@@ -80,7 +80,7 @@ export component ChoiceSheet inherits Rectangle {
                 max-height: root.dialog-max;
                 background: MaterialPalette.surface;
                 border-width: root.frame;
-                border-radius: 9px;
+                border-radius: InkMetrics.radius;
                 border-color: MaterialPalette.on-surface;
                 clip: true;
 
@@ -105,7 +105,7 @@ export component ChoiceSheet inherits Rectangle {
                         Text {
                             height: root.title-height;
                             text: root.title;
-                            font-size: 38px;
+                            font-size: 20px * InkMetrics.dp;
                             color: MaterialPalette.on-surface;
                             vertical-alignment: center;
                             overflow: elide;
@@ -132,21 +132,21 @@ export component ChoiceSheet inherits Rectangle {
                                     HorizontalLayout {
                                         width: 100%;
                                         height: 100%;
-                                        spacing: 12px;
+                                        spacing: 6px * InkMetrics.dp;
 
                                         // The mark stays in the row when nothing
                                         // is checked, so labels share a left edge.
                                         Rectangle {
-                                            width: 8px;
-                                            height: 8px;
-                                            border-radius: 4px;
+                                            width: InkMetrics.mark;
+                                            height: InkMetrics.mark;
+                                            border-radius: InkMetrics.mark-radius;
                                             background: entry.checked ? MaterialPalette.primary : transparent;
                                             y: (parent.height - self.height) / 2;
                                         }
 
                                         Text {
                                             text: entry.label;
-                                            font-size: 34px;
+                                            font-size: InkMetrics.body;
                                             color: MaterialPalette.on-surface;
                                             vertical-alignment: center;
                                             horizontal-stretch: 1;

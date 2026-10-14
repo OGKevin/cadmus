@@ -1,13 +1,9 @@
-import { PagedSetting } from "paged_row.slint";
-import { SettingRow } from "../setting_line.slint";
+import { StaticPage } from "static_page.slint";
+import { SettingRow, StaticLine } from "../setting_line.slint";
 
-// Intermission's values and row callback. Rust sets these; the window does not.
 export global IntermissionPageIo {
-    out property <int> row-count: 4;
-    in property <string> suspend;
-    in property <string> power-off;
-    in property <string> share;
-    in property <string> fill-color;
+    in property <[StaticLine]> rows;
+    out property <int> row-count: rows.length;
     callback row-pressed(SettingRow);
 }
 
@@ -15,39 +11,13 @@ export component IntermissionPage inherits VerticalLayout {
     in property <int> page;
     in property <int> per-page;
 
-    PagedSetting {
-        slot: 0;
+    StaticPage {
+        vertical-stretch: 1;
+        rows: IntermissionPageIo.rows;
         page: root.page;
         per-page: root.per-page;
-        label: @tr("Suspend Screen");
-        value: IntermissionPageIo.suspend;
-        pressed => { IntermissionPageIo.row-pressed(SettingRow.intermission-suspend); }
-    }
-
-    PagedSetting {
-        slot: 1;
-        page: root.page;
-        per-page: root.per-page;
-        label: @tr("Power Off Screen");
-        value: IntermissionPageIo.power-off;
-        pressed => { IntermissionPageIo.row-pressed(SettingRow.intermission-power-off); }
-    }
-
-    PagedSetting {
-        slot: 2;
-        page: root.page;
-        per-page: root.per-page;
-        label: @tr("Share Screen");
-        value: IntermissionPageIo.share;
-        pressed => { IntermissionPageIo.row-pressed(SettingRow.intermission-share); }
-    }
-
-    PagedSetting {
-        slot: 3;
-        page: root.page;
-        per-page: root.per-page;
-        label: @tr("Fill Color");
-        value: IntermissionPageIo.fill-color;
-        pressed => { IntermissionPageIo.row-pressed(SettingRow.intermission-fill-color); }
+        row-pressed(row) => {
+            IntermissionPageIo.row-pressed(row);
+        }
     }
 }

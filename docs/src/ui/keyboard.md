@@ -1,9 +1,13 @@
 # Keyboard
 
-The on-screen keyboard lets you type text for searches, dictionary lookups, and
-other input fields.
+Cadmus is moving from the raw UI to the Slint UI. Both keyboards stay during
+that move.
 
-## Basics
+The raw UI keyboard is the reader and search keyboard. It has a combine key
+(_CMB_). The Slint UI keyboard is the Settings text dialog. It has no combine
+key: hold a letter and tap the accented form.
+
+## Raw UI
 
 - **Lock modifier keys** — Tap _ALT_ or _SHIFT_ twice to lock them on.
 - **Combine key (CMB)** — Press _CMB_ followed by two keys to type accented or
@@ -13,12 +17,7 @@ other input fields.
   individual characters.
 - **Keyboard layouts** — Tap and hold the space bar to switch layouts.
 
-## Inputting Accented Characters
-
-Cadmus supports these through **combination sequences** using the
-_CMB_ key. See [Combination Sequences](#combination-sequences).
-
-### How to type an accented character
+### Accented characters
 
 1. Press the **CMB** key.
 2. Press the **base letter** (e.g. `e`).
@@ -26,10 +25,15 @@ _CMB_ key. See [Combination Sequences](#combination-sequences).
 
 Example: `CMB e '` produces **é**.
 
+## Slint UI
+
+Hold a letter in a Settings text field. Cadmus shows that letter's accented
+forms. Tap the one you want. There is no _CMB_ key on this keyboard, so a
+combination sequence cannot be entered there.
+
 ## Combination Sequences
 
-Press _CMB_ followed by the two keys listed below to produce the corresponding
-character.
+On the raw UI keyboard, press _CMB_ followed by the two keys listed below.
 
 <!-- i18n:skip-start -->
 
@@ -76,7 +80,7 @@ character.
 
 ## Custom Keyboard Layouts
 
-Keyboard layouts are defined as JSON files with the following structure:
+Raw UI keyboard layouts are JSON files with the following structure:
 
 - **name** — Display name shown in the keyboard layouts menu.
 - **outputs** — List of output keys for each modifier combination (_none_,

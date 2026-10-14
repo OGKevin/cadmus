@@ -58,8 +58,6 @@ use std::collections::VecDeque;
 use std::env;
 use std::path::PathBuf;
 use std::time::Instant;
-#[cfg(feature = "tracing")]
-use tracing::Instrument;
 use tracing::{error, info, warn};
 
 pub const APP_NAME: &str = "Cadmus";
@@ -377,8 +375,8 @@ async fn open_last_reading(
     }
 }
 
-async fn open_startup_screen(device: &mut AppDevice) -> Option<StartupScreen> {
-    match StartupScreen::open(device).await {
+fn open_startup_screen(device: &mut AppDevice) -> Option<StartupScreen> {
+    match StartupScreen::open(device) {
         Ok(screen) => Some(screen),
         Err(error) => {
             error!(error = %error, "slint startup render failed");
@@ -473,11 +471,10 @@ pub async fn run() -> Result<(), Error> {
     );
 
     #[cfg(feature = "tracing")]
-    let startup_screen = open_startup_screen(&mut device)
-        .instrument(tracing::trace_span!(parent: &start_span, "startup-screen"))
-        .await;
+    let startup_screen = tracing::trace_span!(parent: &start_span, "startup-screen")
+        .in_scope(|| open_startup_screen(&mut device));
     #[cfg(not(feature = "tracing"))]
-    let startup_screen = open_startup_screen(&mut device).await;
+    let startup_screen = open_startup_screen(&mut device);
 
     let mut database = Database::new(device.resolve_db_path())
         .await

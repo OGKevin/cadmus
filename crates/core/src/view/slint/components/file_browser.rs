@@ -18,7 +18,7 @@ use crate::view::slint::{CallbackQueue, changed_model, connect};
 
 /// Whether the browser lists files too, or only directories.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Mode {
+pub(in crate::view) enum Mode {
     File,
     Directory,
 }
@@ -33,7 +33,7 @@ struct Entry {
 
 /// One callback from the file browser.
 #[derive(Debug)]
-pub enum Action {
+pub(in crate::view) enum Action {
     /// The row at this index, starting at 0, was tapped.
     Press(usize),
     /// The parent directory was requested.
@@ -45,7 +45,7 @@ pub enum Action {
 }
 
 /// What the screen does after one callback.
-pub enum Outcome {
+pub(in crate::view) enum Outcome {
     /// Nothing further.
     Idle,
     /// The listing changed.
@@ -57,7 +57,7 @@ pub enum Outcome {
 }
 
 /// State of one open file browser.
-pub struct FileBrowser<W> {
+pub(in crate::view) struct FileBrowser<W> {
     state: Option<State>,
     queue: CallbackQueue<Action>,
     window: super::WindowOf<W>,
@@ -70,7 +70,7 @@ struct State {
 }
 
 impl<W> FileBrowser<W> {
-    pub fn new() -> Self {
+    pub(in crate::view) fn new() -> Self {
         Self {
             state: None,
             queue: CallbackQueue::new(),
@@ -78,7 +78,7 @@ impl<W> FileBrowser<W> {
         }
     }
 
-    pub fn is_open(&self) -> bool {
+    pub(in crate::view) fn is_open(&self) -> bool {
         self.state.is_some()
     }
 
@@ -91,7 +91,7 @@ impl<W> FileBrowser<W> {
             fields(path = %start.display(), ?mode)
         )
     )]
-    pub async fn open(&mut self, start: PathBuf, mode: Mode) {
+    pub(in crate::view) async fn open(&mut self, start: PathBuf, mode: Mode) {
         tracing::debug!("file browser opened");
         self.load(start, mode).await;
     }
@@ -101,7 +101,7 @@ impl<W> FileBrowser<W> {
         feature = "tracing",
         tracing::instrument(name = "file_browser.close", skip_all)
     )]
-    pub fn close(&mut self) {
+    pub(in crate::view) fn close(&mut self) {
         if self.state.take().is_some() {
             tracing::debug!("file browser closed");
         }
@@ -183,7 +183,7 @@ where
     for<'a> FileBrowserIo<'a>: Global<'a, W>,
 {
     /// Moves the visible page by `delta`. The list clamps it.
-    pub fn bump(window: &W, delta: i32) {
+    pub(in crate::view) fn bump(window: &W, delta: i32) {
         let io = window.global::<FileBrowserIo>();
         io.set_page(io.get_page().saturating_add(delta).max(0));
     }
@@ -215,6 +215,10 @@ where
         self.queue.drain()
     }
 
+    /// Copies the open directory into the window.
+    ///
+    /// A new directory starts on its first page. The same directory keeps the
+    /// page the reader is on.
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(
@@ -232,7 +236,6 @@ where
             return;
         };
         let path = state.path.display().to_string();
-        // A new directory starts on its first page.
         if io.get_path().as_str() != path {
             io.set_page(0);
         }
@@ -273,6 +276,20 @@ where
     }
 }
 
+/// Whether `entry` is a directory, following a symlink.
+///
+/// [`tokio::fs::DirEntry::file_type`] does not follow a symlink, so a link to
+/// a directory would be listed as a file. [`tokio::fs::metadata`] follows it.
+async fn entry_is_directory(entry: &tokio::fs::DirEntry, file_type: std::fs::FileType) -> bool {
+    if file_type.is_symlink() {
+        tokio::fs::metadata(entry.path())
+            .await
+            .is_ok_and(|metadata| metadata.is_dir())
+    } else {
+        file_type.is_dir()
+    }
+}
+
 #[cfg_attr(
     feature = "tracing",
     tracing::instrument(name = "file_browser.list", fields(path = %path.display(), ?mode))
@@ -294,15 +311,7 @@ async fn list_files(path: &Path, mode: Mode) -> Vec<Entry> {
         let Ok(file_type) = entry.file_type().await else {
             continue;
         };
-        // A symlink needs the stat that follows it to know what it points at.
-        let is_dir = if file_type.is_symlink() {
-            entry
-                .metadata()
-                .await
-                .is_ok_and(|metadata| metadata.is_dir())
-        } else {
-            file_type.is_dir()
-        };
+        let is_dir = entry_is_directory(&entry, file_type).await;
         if mode == Mode::Directory && !is_dir {
             continue;
         }
@@ -318,4 +327,52 @@ async fn list_files(path: &Path, mode: Mode) -> Vec<Entry> {
             is_dir,
         })
         .collect()
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use std::os::unix::fs::symlink;
+
+    use super::*;
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_symlink_to_a_directory_is_listed_as_a_directory() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let books = root.path().join("books");
+        std::fs::create_dir(&books).expect("books");
+        std::fs::write(books.join("a.txt"), b"hi").expect("file");
+        symlink(&books, root.path().join("link")).expect("dir link");
+        symlink(books.join("a.txt"), root.path().join("file-link")).expect("file link");
+        symlink("missing", root.path().join("broken")).expect("broken link");
+
+        let directories = list_files(root.path(), Mode::Directory).await;
+        let labels: Vec<_> = directories
+            .iter()
+            .map(|entry| entry.label.as_str())
+            .collect();
+        assert!(labels.contains(&"books/"), "{labels:?}");
+        assert!(labels.contains(&"link/"), "{labels:?}");
+        assert!(
+            directories.iter().all(|entry| entry.is_dir),
+            "a file was listed in directory mode: {labels:?}"
+        );
+
+        let files = list_files(root.path(), Mode::File).await;
+        assert!(
+            files
+                .iter()
+                .any(|entry| entry.label == "file-link" && !entry.is_dir),
+            "a symlink to a file was not listed as a file"
+        );
+        assert!(
+            files
+                .iter()
+                .any(|entry| entry.label == "link/" && entry.is_dir),
+            "a symlink to a directory was not followed"
+        );
+        assert!(
+            files.iter().any(|entry| entry.label == "broken"),
+            "a broken symlink should stay a file"
+        );
+    }
 }

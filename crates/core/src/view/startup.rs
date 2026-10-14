@@ -28,7 +28,7 @@ fn startup_window(family: &str) -> anyhow::Result<StartupWindow> {
 
 impl StartupScreen {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(device)))]
-    pub async fn open(device: &mut AppDevice) -> anyhow::Result<StartupScreen> {
+    pub fn open(device: &mut AppDevice) -> anyhow::Result<StartupScreen> {
         let started = Instant::now();
         let rect = device.framebuffer().rect();
         let ui = slint::open(device, startup_window)?;

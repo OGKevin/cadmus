@@ -1,4 +1,5 @@
 import { TouchLabel } from "touch_label.slint";
+import { InkMetrics } from "ink/metrics.slint";
 import { MaterialPalette } from "ink/palette.slint";
 
 // A question in a centered card. The page underneath stays. A tap
@@ -6,6 +7,7 @@ import { MaterialPalette } from "ink/palette.slint";
 // accepts.
 export component ConfirmSheet inherits Rectangle {
     in property <string> message;
+    in property <string> cancel-label;
     in property <string> accept-label;
     callback dismissed();
     callback accepted();
@@ -13,11 +15,11 @@ export component ConfirmSheet inherits Rectangle {
     width: 100%;
     height: 100%;
 
-    property <length> margin: 32px;
-    property <length> inset: 28px;
-    property <length> gap: 24px;
-    property <length> frame: 3px;
-    property <length> card-width: Math.min(840px, Math.max(280px, root.width - 2 * root.margin));
+    property <length> margin: 17px * InkMetrics.dp;
+    property <length> inset: 15px * InkMetrics.dp;
+    property <length> gap: 13px * InkMetrics.dp;
+    property <length> frame: InkMetrics.frame;
+    property <length> card-width: Math.min(448px * InkMetrics.dp, Math.max(149px * InkMetrics.dp, root.width - 2 * root.margin));
 
     TouchArea {
         width: 100%;
@@ -37,7 +39,7 @@ export component ConfirmSheet inherits Rectangle {
         height: root.inset + message.height + root.gap + buttons.height + root.inset;
         background: MaterialPalette.surface;
         border-width: root.frame;
-        border-radius: 9px;
+        border-radius: InkMetrics.radius;
         border-color: MaterialPalette.on-surface;
         clip: true;
 
@@ -52,7 +54,7 @@ export component ConfirmSheet inherits Rectangle {
             y: root.inset;
             width: parent.width - 2 * root.inset;
             text: root.message;
-            font-size: 38px;
+            font-size: 20px * InkMetrics.dp;
             wrap: word-wrap;
             color: MaterialPalette.on-surface;
         }
@@ -61,15 +63,15 @@ export component ConfirmSheet inherits Rectangle {
             x: root.inset;
             y: message.y + message.height + root.gap;
             width: parent.width - 2 * root.inset;
-            height: 84px;
-            spacing: 16px;
+            height: 45px * InkMetrics.dp;
+            spacing: 9px * InkMetrics.dp;
 
             TouchLabel {
                 horizontal-stretch: 1;
-                height: 84px;
-                border-width: 2px;
+                height: 45px * InkMetrics.dp;
+                border-width: InkMetrics.hairline;
                 border-color: MaterialPalette.on-surface;
-                label: @tr("Cancel");
+                label: root.cancel-label;
                 clicked => {
                     root.dismissed();
                 }
@@ -77,7 +79,7 @@ export component ConfirmSheet inherits Rectangle {
 
             TouchLabel {
                 horizontal-stretch: 1;
-                height: 84px;
+                height: 45px * InkMetrics.dp;
                 background: MaterialPalette.primary;
                 label: root.accept-label;
                 label-color: MaterialPalette.on-primary;

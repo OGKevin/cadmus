@@ -1,37 +1,26 @@
 import { Hairline } from "hairline.slint";
+import { HoldTouch } from "hold_touch.slint";
+import { InkMetrics } from "ink/metrics.slint";
 import { MaterialPalette } from "ink/palette.slint";
 
-// The hold timer starts stopped. A Slint timer runs by default, and one
-// left running calls `held` on the next pump, which is the next tap.
-// `restart` does nothing while the timer is stopped.
 export component ValueRow inherits Rectangle {
     in property <string> label;
     in property <string> value;
+    in property <bool> holdable: false;
     callback pressed();
     callback held();
 
-    property <bool> suppress-click: false;
-    height: 121px;
-
-    hold-timer := Timer {
-        interval: 600ms;
-        running: false;
-        triggered => {
-            hold-timer.stop();
-            root.suppress-click = true;
-            root.held();
-        }
-    }
+    height: InkMetrics.row;
 
     HorizontalLayout {
         height: 100%;
-        padding-left: 30px;
-        padding-right: 30px;
-        spacing: 20px;
+        padding-left: 16px * InkMetrics.dp;
+        padding-right: 16px * InkMetrics.dp;
+        spacing: 11px * InkMetrics.dp;
 
         Text {
             text: root.label;
-            font-size: 34px;
+            font-size: InkMetrics.body;
             color: MaterialPalette.on-surface;
             vertical-alignment: center;
             horizontal-stretch: 1;
@@ -40,7 +29,7 @@ export component ValueRow inherits Rectangle {
 
         Text {
             text: root.value;
-            font-size: 34px;
+            font-size: InkMetrics.body;
             color: MaterialPalette.on-surface;
             vertical-alignment: center;
             horizontal-alignment: right;
@@ -50,32 +39,20 @@ export component ValueRow inherits Rectangle {
     }
 
     Hairline {
-        y: parent.height - 2px;
+        y: parent.height - self.height;
         width: 100%;
         line-color: MaterialPalette.divider;
     }
 
-    TouchArea {
+    HoldTouch {
         width: 100%;
         height: 100%;
-        pointer-event(event) => {
-            if (event.kind == PointerEventKind.down) {
-                root.suppress-click = false;
-                if (hold-timer.running) {
-                    hold-timer.restart();
-                } else {
-                    hold-timer.running = true;
-                }
-            }
-            if (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) {
-                hold-timer.stop();
-            }
+        holdable: root.holdable;
+        tapped => {
+            root.pressed();
         }
-        clicked => {
-            if (!root.suppress-click) {
-                root.pressed();
-            }
-            root.suppress-click = false;
+        held => {
+            root.held();
         }
     }
 }

@@ -14,15 +14,15 @@ use crate::device::AppContext;
 use crate::view::{Bus, Hub};
 
 /// Services a component can use while it handles one callback.
-pub struct Env<'a> {
-    pub(crate) hub: &'a Hub,
-    pub(crate) bus: &'a mut Bus,
-    pub(crate) context: &'a mut AppContext,
+pub(in crate::view) struct Env<'a> {
+    pub(in crate::view) hub: &'a Hub,
+    pub(in crate::view) bus: &'a mut Bus,
+    pub(in crate::view) context: &'a mut AppContext,
 }
 
 /// State, callbacks, and effects for one piece of a Slint screen.
 #[async_trait::async_trait(?Send)]
-pub trait Component {
+pub(in crate::view) trait Component {
     /// Generated window this component binds to.
     type Window;
 

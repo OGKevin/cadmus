@@ -7,7 +7,7 @@ use slint::ComponentHandle;
 use super::setting::{self, PressedRow};
 use super::{Component, Env, Step};
 use crate::device::AppContext;
-use crate::view::slint::generated::{ImportPageIo, SettingRow, SettingsWindow};
+use crate::view::slint::generated::{ImportPageIo, SettingRow, SettingsCategory, SettingsWindow};
 use crate::view::slint::{CallbackQueue, connect};
 
 pub(super) struct ImportPage {
@@ -39,9 +39,10 @@ impl Component for ImportPage {
 
     fn sync(&mut self, window: &SettingsWindow, context: &AppContext) {
         let io = window.global::<ImportPageIo>();
-        io.set_force_full_import(setting::text(SettingRow::ForceFullImport, context));
-        io.set_sync_metadata(setting::text(SettingRow::ImportSyncMetadata, context));
-        io.set_allowed_kinds(setting::text(SettingRow::AllowedKinds, context));
+        if let Some(rows) = setting::publish_rows(&io.get_rows(), SettingsCategory::Import, context)
+        {
+            io.set_rows(rows);
+        }
     }
 
     async fn apply(&mut self, row: SettingRow, env: &mut Env<'_>) -> Step {

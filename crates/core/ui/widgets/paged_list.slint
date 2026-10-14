@@ -1,5 +1,6 @@
 import { ChromeIcons } from "../icons/icons.slint";
 import { Hairline } from "hairline.slint";
+import { HoldTouch } from "hold_touch.slint";
 import { InkBottomBar } from "ink/bottom_bar.slint";
 import { InkMetrics } from "ink/metrics.slint";
 import { MaterialPalette } from "ink/palette.slint";
@@ -12,36 +13,23 @@ export struct PagedLine {
 
 // One choice or file row. The selected row keeps black text and adds a
 // dot, colored only when the panel can show it. A press does not paint
-// a second state. The hold timer starts stopped. A Slint timer runs by
-// default, and one left running calls `held` on the next pump. `restart`
-// does nothing while the timer is stopped. One hold per press: a timer
-// repeats until stopped.
+// a second state. Hold is off unless the list says the row has one.
 component InkListRow inherits Rectangle {
     in property <string> label;
     in property <string> value;
     in property <bool> selected;
+    in property <bool> holdable: false;
     callback pressed();
     callback held();
 
-    property <bool> suppress-click: false;
-    height: 121px;
+    height: InkMetrics.row;
     background: MaterialPalette.surface;
-
-    hold-timer := Timer {
-        interval: 600ms;
-        running: false;
-        triggered => {
-            hold-timer.stop();
-            root.suppress-click = true;
-            root.held();
-        }
-    }
 
     HorizontalLayout {
         height: 100%;
         padding-left: 16px * InkMetrics.dp;
         padding-right: self.padding-left;
-        spacing: 16px;
+        spacing: 9px * InkMetrics.dp;
 
         Text {
             text: root.label;
@@ -80,40 +68,30 @@ component InkListRow inherits Rectangle {
         line-color: MaterialPalette.outline;
     }
 
-    TouchArea {
+    HoldTouch {
         width: 100%;
         height: 100%;
-        pointer-event(event) => {
-            if (event.kind == PointerEventKind.down) {
-                root.suppress-click = false;
-                if (hold-timer.running) {
-                    hold-timer.restart();
-                } else {
-                    hold-timer.running = true;
-                }
-            }
-            if (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) {
-                hold-timer.stop();
-            }
+        holdable: root.holdable;
+        tapped => {
+            root.pressed();
         }
-        clicked => {
-            if (!root.suppress-click) {
-                root.pressed();
-            }
-            root.suppress-click = false;
+        held => {
+            root.held();
         }
     }
 }
 
-// One page of rows, with the bottom bar always on the screen edge. Page
-// buttons are LeftArrow and RightArrow, which is what the device forward
-// and back buttons send. Only the visible page gets a row. A hidden row
+// One page of rows, with the bottom bar always on the screen edge. The
+// hardware page buttons are handled in Rust, so this list does not also
+// listen for arrow keys. Only the visible page gets a row. A hidden row
 // would still build its text, rule, and hold timer.
-export component PagedList inherits FocusScope {
+export component PagedList inherits Rectangle {
     in property <[PagedLine]> lines;
     in property <int> per-page: 1;
     in-out property <int> page: 0;
     in property <bool> show-action: false;
+    in property <bool> holdable: false;
+    in property <image> action-icon: ChromeIcons.add;
     callback line-pressed(int);
     callback line-held(int);
     callback action-clicked();
@@ -135,26 +113,6 @@ export component PagedList inherits FocusScope {
         }
     }
 
-    init => {
-        root.focus();
-    }
-
-    key-pressed(event) => {
-        if (event.text == Key.RightArrow) {
-            if (root.page + 1 < root.page-count) {
-                root.page += 1;
-            }
-            accept
-        } else if (event.text == Key.LeftArrow) {
-            if (root.page > 0) {
-                root.page -= 1;
-            }
-            accept
-        } else {
-            reject
-        }
-    }
-
     VerticalLayout {
         width: 100%;
         height: 100%;
@@ -166,7 +124,7 @@ export component PagedList inherits FocusScope {
             for line[index] in root.lines: Rectangle {
                 property <bool> shown:
                     index >= root.page * root.page-size && index < (root.page + 1) * root.page-size;
-                height: shown ? 121px : 0px;
+                height: shown ? InkMetrics.row : 0px;
 
                 if shown: InkListRow {
                     width: 100%;
@@ -174,6 +132,7 @@ export component PagedList inherits FocusScope {
                     label: line.label;
                     value: line.value;
                     selected: line.selected;
+                    holdable: root.holdable;
                     pressed => {
                         root.line-pressed(index);
                     }
@@ -192,7 +151,7 @@ export component PagedList inherits FocusScope {
             next-icon: ChromeIcons.chevron-forward;
             next-enabled: root.page + 1 < root.page-count;
             show-action: root.show-action;
-            action-icon: ChromeIcons.add;
+            action-icon: root.action-icon;
             previous-clicked => {
                 if (root.page > 0) {
                     root.page -= 1;

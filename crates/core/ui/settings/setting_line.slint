@@ -54,3 +54,11 @@ export enum SettingRow {
     enable-kern-log,
     enable-dbus-log,
 }
+
+// One static settings row. `row` is the identity the tap reports, so the
+// page does not number its slots by hand.
+export struct StaticLine {
+    label: string,
+    value: string,
+    row: SettingRow,
+}

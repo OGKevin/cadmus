@@ -14,15 +14,15 @@ use crate::view::slint::generated::{ChoiceEntry, ChoiceSheetIo};
 use crate::view::slint::{CallbackQueue, changed_model, connect};
 
 /// One row of an option list, carrying the screen's value for that row.
-pub struct Row<T> {
-    pub label: String,
-    pub checked: bool,
-    pub value: T,
+pub(in crate::view) struct Row<T> {
+    pub(in crate::view) label: String,
+    pub(in crate::view) checked: bool,
+    pub(in crate::view) value: T,
 }
 
 /// One callback from the option list.
 #[derive(Debug)]
-pub enum Action {
+pub(in crate::view) enum Action {
     /// The entry at this index, starting at 0, was tapped.
     Picked(usize),
     /// A tap outside the dialog closed it.
@@ -30,7 +30,7 @@ pub enum Action {
 }
 
 /// What the screen does after one callback.
-pub enum Outcome<T> {
+pub(in crate::view) enum Outcome<T> {
     /// Nothing further.
     Idle,
     /// The reader closed the list.
@@ -41,7 +41,7 @@ pub enum Outcome<T> {
 }
 
 /// State of one open option list.
-pub struct ChoiceSheet<T, W> {
+pub(in crate::view) struct ChoiceSheet<T, W> {
     open: bool,
     title: String,
     rows: Vec<Row<T>>,
@@ -52,7 +52,7 @@ pub struct ChoiceSheet<T, W> {
 }
 
 impl<T, W> ChoiceSheet<T, W> {
-    pub fn new() -> Self {
+    pub(in crate::view) fn new() -> Self {
         Self {
             open: false,
             title: String::new(),
@@ -63,7 +63,7 @@ impl<T, W> ChoiceSheet<T, W> {
         }
     }
 
-    pub fn is_open(&self) -> bool {
+    pub(in crate::view) fn is_open(&self) -> bool {
         self.open
     }
 
@@ -76,7 +76,7 @@ impl<T, W> ChoiceSheet<T, W> {
             fields(rows = rows.len(), title = %title)
         )
     )]
-    pub fn open(&mut self, title: String, rows: Vec<Row<T>>) {
+    pub(in crate::view) fn open(&mut self, title: String, rows: Vec<Row<T>>) {
         tracing::debug!("option list opened");
         self.open = true;
         self.title = title;
@@ -89,7 +89,7 @@ impl<T, W> ChoiceSheet<T, W> {
         feature = "tracing",
         tracing::instrument(name = "choice_sheet.set_rows", skip_all, fields(rows = rows.len()))
     )]
-    pub fn set_rows(&mut self, rows: Vec<Row<T>>) {
+    pub(in crate::view) fn set_rows(&mut self, rows: Vec<Row<T>>) {
         self.rows = rows;
     }
 
@@ -98,7 +98,7 @@ impl<T, W> ChoiceSheet<T, W> {
         feature = "tracing",
         tracing::instrument(name = "choice_sheet.close", skip_all)
     )]
-    pub fn close(&mut self) {
+    pub(in crate::view) fn close(&mut self) {
         if !self.open {
             return;
         }
@@ -122,6 +122,19 @@ impl<T, W> ChoiceSheet<T, W> {
             }
         }
     }
+
+    fn handle(&mut self, action: Action) -> Outcome<T>
+    where
+        T: Clone,
+    {
+        match action {
+            Action::Picked(index) => self.pick(index),
+            Action::Dismissed => {
+                self.close();
+                Outcome::Dismissed
+            }
+        }
+    }
 }
 
 impl<T, W> ChoiceSheet<T, W>
@@ -130,7 +143,7 @@ where
     for<'a> ChoiceSheetIo<'a>: Global<'a, W>,
 {
     /// Moves the visible page by `delta`. The sheet clamps it.
-    pub fn bump(window: &W, delta: i32) {
+    pub(in crate::view) fn bump(window: &W, delta: i32) {
         let io = window.global::<ChoiceSheetIo>();
         io.set_page(io.get_page().saturating_add(delta).max(0));
     }
@@ -195,12 +208,47 @@ where
         tracing::instrument(name = "choice_sheet.apply", skip_all, fields(action = ?action))
     )]
     async fn apply(&mut self, action: Action, _env: &mut Env<'_>) -> Outcome<T> {
-        match action {
-            Action::Picked(index) => self.pick(index),
-            Action::Dismissed => {
-                self.close();
-                Outcome::Dismissed
-            }
-        }
+        self.handle(action)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sheet() -> ChoiceSheet<&'static str, ()> {
+        ChoiceSheet::new()
+    }
+
+    fn one_row() -> Vec<Row<&'static str>> {
+        vec![Row {
+            label: "English".into(),
+            checked: true,
+            value: "en",
+        }]
+    }
+
+    #[test]
+    fn picking_a_row_leaves_the_list_open() {
+        let mut sheet = sheet();
+        sheet.open("Language".into(), one_row());
+        assert!(matches!(
+            sheet.handle(Action::Picked(0)),
+            Outcome::Picked("en")
+        ));
+        assert!(sheet.is_open(), "picking a row closed the list");
+        assert!(matches!(sheet.handle(Action::Picked(3)), Outcome::Idle));
+        assert!(sheet.is_open(), "an unknown row closed the list");
+    }
+
+    #[test]
+    fn dismissing_closes_the_list() {
+        let mut sheet = sheet();
+        sheet.open("Language".into(), one_row());
+        assert!(matches!(
+            sheet.handle(Action::Dismissed),
+            Outcome::Dismissed
+        ));
+        assert!(!sheet.is_open());
     }
 }

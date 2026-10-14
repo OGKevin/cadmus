@@ -7,7 +7,9 @@ use slint::ComponentHandle;
 use super::setting::{self, PressedRow};
 use super::{Component, Env, Step};
 use crate::device::AppContext;
-use crate::view::slint::generated::{IntermissionPageIo, SettingRow, SettingsWindow};
+use crate::view::slint::generated::{
+    IntermissionPageIo, SettingRow, SettingsCategory, SettingsWindow,
+};
 use crate::view::slint::{CallbackQueue, connect};
 
 pub(super) struct IntermissionPage {
@@ -39,10 +41,11 @@ impl Component for IntermissionPage {
 
     fn sync(&mut self, window: &SettingsWindow, context: &AppContext) {
         let io = window.global::<IntermissionPageIo>();
-        io.set_suspend(setting::text(SettingRow::IntermissionSuspend, context));
-        io.set_power_off(setting::text(SettingRow::IntermissionPowerOff, context));
-        io.set_share(setting::text(SettingRow::IntermissionShare, context));
-        io.set_fill_color(setting::text(SettingRow::IntermissionFillColor, context));
+        if let Some(rows) =
+            setting::publish_rows(&io.get_rows(), SettingsCategory::Intermissions, context)
+        {
+            io.set_rows(rows);
+        }
     }
 
     async fn apply(&mut self, row: SettingRow, env: &mut Env<'_>) -> Step {

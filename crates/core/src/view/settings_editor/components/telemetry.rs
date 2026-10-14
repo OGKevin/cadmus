@@ -1,13 +1,16 @@
 //! Rust side of `TelemetryPage`.
 //!
-//! Row values, the feature flags, and the row callback live on [`TelemetryPageIo`].
+//! Row values and the row callback live on [`TelemetryPageIo`]. Rust omits a
+//! row whose setting this build does not include.
 
 use slint::ComponentHandle;
 
 use super::setting::{self, PressedRow};
 use super::{Component, Env, Step};
 use crate::device::AppContext;
-use crate::view::slint::generated::{SettingRow, SettingsWindow, TelemetryPageIo};
+use crate::view::slint::generated::{
+    SettingRow, SettingsCategory, SettingsWindow, TelemetryPageIo,
+};
 use crate::view::slint::{CallbackQueue, connect};
 
 pub(super) struct TelemetryPage {
@@ -39,19 +42,93 @@ impl Component for TelemetryPage {
 
     fn sync(&mut self, window: &SettingsWindow, context: &AppContext) {
         let io = window.global::<TelemetryPageIo>();
-        io.set_show_otlp(cfg!(feature = "tracing"));
-        io.set_show_pyroscope(cfg!(feature = "profiling"));
-        io.set_show_kern_log(cfg!(all(feature = "test", feature = "kobo")));
-        io.set_show_dbus_log(cfg!(all(feature = "test", feature = "kobo")));
-        io.set_logging_enabled(setting::text(SettingRow::LoggingEnabled, context));
-        io.set_log_level(setting::text(SettingRow::LogLevel, context));
-        io.set_otlp_endpoint(setting::text(SettingRow::OtlpEndpoint, context));
-        io.set_pyroscope_endpoint(setting::text(SettingRow::PyroscopeEndpoint, context));
-        io.set_enable_kern_log(setting::text(SettingRow::EnableKernLog, context));
-        io.set_enable_dbus_log(setting::text(SettingRow::EnableDbusLog, context));
+        if let Some(rows) =
+            setting::publish_rows(&io.get_rows(), SettingsCategory::Telemetry, context)
+        {
+            io.set_rows(rows);
+        }
     }
 
     async fn apply(&mut self, row: SettingRow, env: &mut Env<'_>) -> Step {
         setting::activate(PressedRow::Setting(row), env)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use slint::ComponentHandle;
+
+    use super::super::setting::{self, PressedRow};
+    use super::super::settings_env;
+    use super::super::{Sheet, Waiting};
+    use super::{Component, Step, TelemetryPage};
+    use crate::fl;
+    use crate::view::slint::generated::{SettingRow, TelemetryPageIo};
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn sync_publishes_telemetry_and_a_tap_applies_the_row() {
+        let (mut context, session) = super::super::shell::open_test_session().await;
+        let window = session.component();
+        let mut page = TelemetryPage::new();
+        page.wire(window);
+        context.settings.logging.enabled = true;
+        page.sync(window, &context);
+
+        let io = window.global::<TelemetryPageIo>();
+        let rows = io.get_rows();
+        let expected = [
+            SettingRow::LoggingEnabled,
+            SettingRow::LogLevel,
+            #[cfg(feature = "tracing")]
+            SettingRow::OtlpEndpoint,
+            #[cfg(feature = "profiling")]
+            SettingRow::PyroscopeEndpoint,
+            #[cfg(all(feature = "test", feature = "kobo"))]
+            SettingRow::EnableKernLog,
+            #[cfg(all(feature = "test", feature = "kobo"))]
+            SettingRow::EnableDbusLog,
+        ];
+        assert_eq!(setting::row_ids(&rows), expected);
+        assert_eq!(
+            setting::row_value(&rows, SettingRow::LoggingEnabled),
+            fl!("settings-general-toggle-on")
+        );
+
+        io.invoke_row_pressed(SettingRow::LogLevel);
+        io.invoke_row_pressed(SettingRow::LoggingEnabled);
+        assert!(matches!(
+            page.take().as_slice(),
+            [SettingRow::LogLevel, SettingRow::LoggingEnabled]
+        ));
+
+        let (hub, _rx) = crate::view::hub_channel();
+        let mut bus = crate::view::Bus::new();
+        let level = {
+            let mut env = settings_env(&hub, &mut bus, &mut context);
+            page.apply(SettingRow::LogLevel, &mut env).await
+        };
+        let Step::Ask(
+            Waiting::SettingChoice(PressedRow::Setting(SettingRow::LogLevel)),
+            Sheet::Choice { entries, .. },
+        ) = level
+        else {
+            panic!("log level did not open a choice");
+        };
+        assert!(!entries.is_empty());
+
+        let toggled = {
+            let mut env = settings_env(&hub, &mut bus, &mut context);
+            page.apply(SettingRow::LoggingEnabled, &mut env).await
+        };
+        assert!(matches!(toggled, Step::Redraw));
+        assert!(!context.settings.logging.enabled);
+        page.sync(window, &context);
+        assert_eq!(
+            setting::row_value(
+                &window.global::<TelemetryPageIo>().get_rows(),
+                SettingRow::LoggingEnabled,
+            ),
+            fl!("settings-general-toggle-off")
+        );
     }
 }

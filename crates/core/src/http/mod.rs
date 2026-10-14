@@ -122,10 +122,14 @@ pub struct Client {
 }
 
 impl Client {
+    /// Builds a client and installs the process-wide rustls provider.
+    ///
+    /// rustls will not pick a provider when both `ring` and `aws-lc-rs` are
+    /// linked. Installing here, not only in `app::run`, keeps a process that
+    /// builds a client before startup — each nextest process, for example —
+    /// from panicking. A later call is ignored; see
+    /// [`crate::crypto::init_crypto_provider`].
     pub fn new() -> Result<Self, HttpError> {
-        // rustls will not pick a provider when both `ring` and `aws-lc-rs`
-        // are linked. Installing here keeps a process that builds a client
-        // before startup — each nextest process, for example — from panicking.
         crate::crypto::init_crypto_provider();
         let root_store = build_root_store();
 

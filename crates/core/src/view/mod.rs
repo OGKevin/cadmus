@@ -574,9 +574,6 @@ pub enum Event {
     SelectSettingsCategory(settings_editor::SettingsCategory),
     UpdateSettings(Box<settings::Settings>),
     EditLibrary(usize),
-    UpdateLibrary(usize, Box<settings::LibrarySettings>),
-    AddLibrary,
-    DeleteLibrary(usize),
     /// Open the refresh rate editor (global + per-kind overrides).
     OpenRefreshRateEditor,
     /// Open the per-kind refresh rate editor for the given file extension.

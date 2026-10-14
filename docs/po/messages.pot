@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-09-20T19:00:13+02:00\n"
+"POT-Creation-Date: 2026-10-17T13:42:35+02:00\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -24,7 +24,7 @@ msgstr ""
 msgid "Test builds"
 msgstr ""
 
-#: src/SUMMARY.md:7 src/installation/ota.md:1 src/fonts.md:114
+#: src/SUMMARY.md:7 src/installation/ota.md:1 src/fonts.md:118
 msgid "OTA updates"
 msgstr ""
 
@@ -44,7 +44,7 @@ msgstr ""
 msgid "Uninstalling Cadmus"
 msgstr ""
 
-#: src/SUMMARY.md:12 src/SUMMARY.md:18 src/settings/index.md:1 src/fonts.md:108
+#: src/SUMMARY.md:12 src/SUMMARY.md:18 src/settings/index.md:1 src/fonts.md:112
 #: src/ui/settings/index.md:1
 msgid "Settings"
 msgstr ""
@@ -131,110 +131,138 @@ msgid "Development Environment"
 msgstr ""
 
 #: src/SUMMARY.md:38
-msgid "SSH"
+msgid "Third-party libraries"
 msgstr ""
 
 #: src/SUMMARY.md:39
-msgid "Code Style and Linting"
+msgid "Patch tiers"
 msgstr ""
 
 #: src/SUMMARY.md:40
-msgid "Event System"
+msgid "MuPDF"
 msgstr ""
 
 #: src/SUMMARY.md:41
-msgid "WiFi Leases"
+msgid "HarfBuzz"
 msgstr ""
 
 #: src/SUMMARY.md:42
-msgid "Device"
+msgid "Gumbo"
 msgstr ""
 
 #: src/SUMMARY.md:43
-msgid "Time and RTC"
+msgid "DjVuLibre"
 msgstr ""
 
 #: src/SUMMARY.md:44
-msgid "Suspend"
+msgid "SQLite"
 msgstr ""
 
 #: src/SUMMARY.md:45
-msgid "Suspend orchestrator"
+msgid "SSH"
 msgstr ""
 
 #: src/SUMMARY.md:46
-msgid "Soft suspend"
+msgid "Code Style and Linting"
 msgstr ""
 
 #: src/SUMMARY.md:47
-msgid "Inhibitor"
+msgid "Event System"
 msgstr ""
 
 #: src/SUMMARY.md:48
-msgid "Kobo suspend"
+msgid "WiFi Leases"
 msgstr ""
 
-#: src/SUMMARY.md:49 src/settings/index.md:1168
-msgid "Telemetry"
+#: src/SUMMARY.md:49
+msgid "Device"
 msgstr ""
 
 #: src/SUMMARY.md:50
-msgid "Logging"
+msgid "Time and RTC"
 msgstr ""
 
 #: src/SUMMARY.md:51
-msgid "Tracing"
+msgid "Suspend"
 msgstr ""
 
 #: src/SUMMARY.md:52
-msgid "Profiling"
+msgid "Suspend orchestrator"
 msgstr ""
 
 #: src/SUMMARY.md:53
-msgid "Website"
+msgid "Soft suspend"
 msgstr ""
 
 #: src/SUMMARY.md:54
-msgid "User guide"
+msgid "Inhibitor"
 msgstr ""
 
 #: src/SUMMARY.md:55
-msgid "Translations"
+msgid "Kobo suspend"
 msgstr ""
 
-#: src/SUMMARY.md:56
-msgid "For developers"
+#: src/SUMMARY.md:56 src/settings/index.md:1168
+msgid "Telemetry"
 msgstr ""
 
 #: src/SUMMARY.md:57
-msgid "SQLite & SQLx"
+msgid "Logging"
 msgstr ""
 
 #: src/SUMMARY.md:58
-msgid "Library Database"
+msgid "Tracing"
 msgstr ""
 
 #: src/SUMMARY.md:59
-msgid "Runtime Migrations"
+msgid "Profiling"
+msgstr ""
+
+#: src/SUMMARY.md:60
+msgid "Website"
+msgstr ""
+
+#: src/SUMMARY.md:61
+msgid "User guide"
+msgstr ""
+
+#: src/SUMMARY.md:62
+msgid "Translations"
 msgstr ""
 
 #: src/SUMMARY.md:63
-msgid "Investigations"
+msgid "For developers"
+msgstr ""
+
+#: src/SUMMARY.md:64
+msgid "SQLite & SQLx"
 msgstr ""
 
 #: src/SUMMARY.md:65
-msgid "Intro"
+msgid "Library Database"
 msgstr ""
 
 #: src/SUMMARY.md:66
+msgid "Runtime Migrations"
+msgstr ""
+
+#: src/SUMMARY.md:70
+msgid "Investigations"
+msgstr ""
+
+#: src/SUMMARY.md:72
+msgid "Intro"
+msgstr ""
+
+#: src/SUMMARY.md:73
 msgid "DHCP IP Address Changes on WiFi Toggle"
 msgstr ""
 
-#: src/SUMMARY.md:67
+#: src/SUMMARY.md:74
 msgid "Reading IP and ESSID via dhcpcd-dbus"
 msgstr ""
 
-#: src/SUMMARY.md:68
+#: src/SUMMARY.md:75
 msgid "Soft suspend via autosleep and wake_lock"
 msgstr ""
 
@@ -2351,74 +2379,106 @@ msgid "Noto Sans"
 msgstr ""
 
 #: src/fonts.md:55
-msgid "Menus, settings, and other app text"
+msgid "Menus, settings, startup, and other app text"
 msgstr ""
 
 #: src/fonts.md:56
+msgid "Noto Sans JP"
+msgstr ""
+
+#: src/fonts.md:56
+msgid "Japanese labels in settings and other Slint UI"
+msgstr ""
+
+#: src/fonts.md:57
+msgid "Noto Sans KR"
+msgstr ""
+
+#: src/fonts.md:57
+msgid "Korean labels in settings and other Slint UI"
+msgstr ""
+
+#: src/fonts.md:58
+msgid "Noto Sans SC"
+msgstr ""
+
+#: src/fonts.md:58
+msgid "Simplified Chinese labels in Slint UI"
+msgstr ""
+
+#: src/fonts.md:59
+msgid "Noto Sans TC"
+msgstr ""
+
+#: src/fonts.md:59
+msgid "Traditional Chinese labels in Slint UI"
+msgstr ""
+
+#: src/fonts.md:60
 msgid "Noto Serif"
 msgstr ""
 
-#: src/fonts.md:56
+#: src/fonts.md:60
 msgid "Serif text in the app interface"
 msgstr ""
 
-#: src/fonts.md:57
+#: src/fonts.md:61
 msgid "Source Code Pro"
 msgstr ""
 
-#: src/fonts.md:57
+#: src/fonts.md:61
 msgid "Monospace in the app and code blocks in books"
 msgstr ""
 
-#: src/fonts.md:58
+#: src/fonts.md:62
 msgid "Varela Round"
 msgstr ""
 
-#: src/fonts.md:58
+#: src/fonts.md:62
 msgid "On-screen keyboard"
 msgstr ""
 
-#: src/fonts.md:59
+#: src/fonts.md:63
 msgid "Cormorant"
 msgstr ""
 
-#: src/fonts.md:59
-msgid "Startup and intermission screens"
+#: src/fonts.md:63
+msgid "Intermission screens"
 msgstr ""
 
-#: src/fonts.md:60
+#: src/fonts.md:64
 msgid "Parisienne"
 msgstr ""
 
-#: src/fonts.md:60
+#: src/fonts.md:64
 msgid "Decorative cursive text in EPUB/HTML content"
 msgstr ""
 
-#: src/fonts.md:61
+#: src/fonts.md:65
 msgid "Delius"
 msgstr ""
 
-#: src/fonts.md:61
+#: src/fonts.md:65
 msgid "Decorative fantasy text in EPUB/HTML content"
 msgstr ""
 
-#: src/fonts.md:63
+#: src/fonts.md:67
 msgid "Changing the font while reading"
 msgstr ""
 
-#: src/fonts.md:65
+#: src/fonts.md:69
 msgid "Open a book in the reader."
 msgstr ""
 
-#: src/fonts.md:66
+#: src/fonts.md:70
 msgid "Tap the **font family** button in the reader toolbar."
 msgstr ""
 
-#: src/fonts.md:67
+#: src/fonts.md:71
 msgid "Select a font from the list."
 msgstr ""
 
-#: src/fonts.md:69
+#: src/fonts.md:73
 msgid ""
 "The menu shows fonts from Cadmus's packaged collection and any fonts in your "
 "custom font directory (see below). When you select a font, Cadmus resolves "
@@ -2426,36 +2486,36 @@ msgid ""
 "fonts](#how-cadmus-resolves-fonts)."
 msgstr ""
 
-#: src/fonts.md:73
+#: src/fonts.md:77
 msgid "How Cadmus resolves fonts"
 msgstr ""
 
-#: src/fonts.md:75
+#: src/fonts.md:79
 msgid ""
 "When you pick a font in the reader or reopen a book with a saved "
 "[`font-family`](settings/index.md#readerfont-family), Cadmus looks for that "
 "family name in two places, **in this order**:"
 msgstr ""
 
-#: src/fonts.md:79
+#: src/fonts.md:83
 msgid ""
 "**Packaged fonts** — shipped with Cadmus and updated via "
 "[OTA](installation/ota.md)"
 msgstr ""
 
-#: src/fonts.md:80
+#: src/fonts.md:84
 msgid ""
 "**Your custom font directory** — "
 "[`reader.font-path`](settings/index.md#readerfont-path) (default "
 "`/mnt/onboard/fonts/`)"
 msgstr ""
 
-#: src/fonts.md:83
+#: src/fonts.md:87
 msgid ""
 "If the same family name exists in both places, the **packaged** copy is used."
 msgstr ""
 
-#: src/fonts.md:85
+#: src/fonts.md:89
 msgid ""
 "Your chosen family replaces Cadmus's default **serif** stack for reflowable "
 "books. Paragraphs the book styles as sans-serif, monospace, cursive, or "
@@ -2463,35 +2523,35 @@ msgid ""
 "family name, the previous font is kept."
 msgstr ""
 
-#: src/fonts.md:90
+#: src/fonts.md:94
 msgid "Installing additional fonts"
 msgstr ""
 
-#: src/fonts.md:92
+#: src/fonts.md:96
 msgid ""
 "To add your own fonts, copy `.ttf` or `.otf` files into your custom font "
 "directory (by default at the root of your Kobo device):"
 msgstr ""
 
-#: src/fonts.md:103
+#: src/fonts.md:107
 msgid "Cadmus scans that directory recursively, so fonts can live in subfolders."
 msgstr ""
 
-#: src/fonts.md:105
+#: src/fonts.md:109
 msgid ""
 "Point Cadmus at your custom directory with "
 "[`reader.font-path`](settings/index.md#readerfont-path) if you use a "
 "different location."
 msgstr ""
 
-#: src/fonts.md:110
+#: src/fonts.md:114
 msgid ""
 "Font options can also be set in your settings file. See the [Reader "
 "settings](settings/index.md#reader) section for `font-family`, `font-path`, "
 "`font-size`, and related entries."
 msgstr ""
 
-#: src/fonts.md:116
+#: src/fonts.md:120
 msgid ""
 "[OTA updates](installation/ota.md) replace Cadmus-packaged fonts before "
 "installing the new release. Cadmus removes **each shipped font file "
@@ -2500,7 +2560,7 @@ msgid ""
 "update if they are not part of the release."
 msgstr ""
 
-#: src/fonts.md:122
+#: src/fonts.md:126
 msgid ""
 "Under normal use, your custom fonts live in a **separate directory** "
 "([`reader.font-path`](settings/index.md#readerfont-path), default "
@@ -2601,94 +2661,101 @@ msgstr ""
 
 #: src/ui/keyboard.md:3
 msgid ""
-"The on-screen keyboard lets you type text for searches, dictionary lookups, "
-"and other input fields."
+"Cadmus is moving from the raw UI to the Slint UI. Both keyboards stay during "
+"that move."
 msgstr ""
 
 #: src/ui/keyboard.md:6
-msgid "Basics"
+msgid ""
+"The raw UI keyboard is the reader and search keyboard. It has a combine key "
+"(_CMB_). The Slint UI keyboard is the Settings text dialog. It has no "
+"combine key: hold a letter and tap the accented form."
 msgstr ""
 
-#: src/ui/keyboard.md:8
+#: src/ui/keyboard.md:10
+msgid "Raw UI"
+msgstr ""
+
+#: src/ui/keyboard.md:12
 msgid "**Lock modifier keys** — Tap _ALT_ or _SHIFT_ twice to lock them on."
 msgstr ""
 
-#: src/ui/keyboard.md:9
+#: src/ui/keyboard.md:13
 msgid ""
 "**Combine key (CMB)** — Press _CMB_ followed by two keys to type accented or "
 "special characters (see [Combination Sequences](#combination-sequences) "
 "below). For example, `CMB o e` produces _œ_."
 msgstr ""
 
-#: src/ui/keyboard.md:12
+#: src/ui/keyboard.md:16
 msgid ""
 "**Delete / motion keys** — Tap and hold to act on whole words instead of "
 "individual characters."
 msgstr ""
 
-#: src/ui/keyboard.md:14
+#: src/ui/keyboard.md:18
 msgid "**Keyboard layouts** — Tap and hold the space bar to switch layouts."
 msgstr ""
 
-#: src/ui/keyboard.md:16
-msgid "Inputting Accented Characters"
+#: src/ui/keyboard.md:20
+msgid "Accented characters"
 msgstr ""
 
-#: src/ui/keyboard.md:18
-msgid ""
-"Cadmus supports these through **combination sequences** using the _CMB_ key. "
-"See [Combination Sequences](#combination-sequences)."
-msgstr ""
-
-#: src/ui/keyboard.md:21
-msgid "How to type an accented character"
-msgstr ""
-
-#: src/ui/keyboard.md:23
+#: src/ui/keyboard.md:22
 msgid "Press the **CMB** key."
 msgstr ""
 
-#: src/ui/keyboard.md:24
+#: src/ui/keyboard.md:23
 msgid "Press the **base letter** (e.g. `e`)."
 msgstr ""
 
-#: src/ui/keyboard.md:25
+#: src/ui/keyboard.md:24
 msgid "Press the **accent modifier** (e.g. `'` for acute)."
 msgstr ""
 
-#: src/ui/keyboard.md:27
+#: src/ui/keyboard.md:26
 msgid "Example: `CMB e '` produces **é**."
 msgstr ""
 
-#: src/ui/keyboard.md:29
+#: src/ui/keyboard.md:28
+msgid "Slint UI"
+msgstr ""
+
+#: src/ui/keyboard.md:30
+msgid ""
+"Hold a letter in a Settings text field. Cadmus shows that letter's accented "
+"forms. Tap the one you want. There is no _CMB_ key on this keyboard, so a "
+"combination sequence cannot be entered there."
+msgstr ""
+
+#: src/ui/keyboard.md:34
 msgid "Combination Sequences"
 msgstr ""
 
-#: src/ui/keyboard.md:31
+#: src/ui/keyboard.md:36
 msgid ""
-"Press _CMB_ followed by the two keys listed below to produce the "
-"corresponding character."
-msgstr ""
-
-#: src/ui/keyboard.md:77
-msgid "Custom Keyboard Layouts"
-msgstr ""
-
-#: src/ui/keyboard.md:79
-msgid "Keyboard layouts are defined as JSON files with the following structure:"
+"On the raw UI keyboard, press _CMB_ followed by the two keys listed below."
 msgstr ""
 
 #: src/ui/keyboard.md:81
+msgid "Custom Keyboard Layouts"
+msgstr ""
+
+#: src/ui/keyboard.md:83
+msgid "Raw UI keyboard layouts are JSON files with the following structure:"
+msgstr ""
+
+#: src/ui/keyboard.md:85
 msgid "**name** — Display name shown in the keyboard layouts menu."
 msgstr ""
 
-#: src/ui/keyboard.md:82
+#: src/ui/keyboard.md:86
 msgid ""
 "**outputs** — List of output keys for each modifier combination (_none_, "
 "_shift_, _alt_, _shift+alt_)."
 msgstr ""
 
-#: src/ui/keyboard.md:84
+#: src/ui/keyboard.md:88
 msgid ""
 "**keys** — Description of each key. Special key names: _Shift_ (_Sft_), "
 "_Return_ (_Ret_), _Alternate_ (_Alt_), _Combine_ (_Cmb_), _MoveFwd_ "
@@ -2696,7 +2763,7 @@ msgid ""
 "_DelBwd_ (_DelB_, _DB_), _Space_ (_Spc_). Use _▢_ to mark output keys."
 msgstr ""
 
-#: src/ui/keyboard.md:88
+#: src/ui/keyboard.md:92
 msgid "**widths** — Width/height ratio for each key. The key gap ratio is 0.06."
 msgstr ""
 
@@ -2880,34 +2947,36 @@ msgid ""
 msgstr ""
 
 #: src/ui/settings/index.md:16
-msgid "**Libraries** — add, edit, or remove your book libraries"
-msgstr ""
-
-#: src/ui/settings/index.md:17
 msgid "**Dictionaries** — download and manage offline dictionaries"
 msgstr ""
 
-#: src/ui/settings/index.md:18
-msgid "**Import** — control how new books are picked up automatically"
+#: src/ui/settings/index.md:17
+msgid "**Libraries** — add, edit, or remove your book libraries"
 msgstr ""
 
-#: src/ui/settings/index.md:19
-msgid "**OTA** — download Cadmus updates directly to your Kobo"
+#: src/ui/settings/index.md:18
+msgid ""
+"**Intermission Screens** — pictures shown while Cadmus sleeps, powers off, "
+"or shares"
 msgstr ""
 
 #: src/ui/settings/index.md:20
+msgid "**Import** — control how new books are picked up automatically"
+msgstr ""
+
+#: src/ui/settings/index.md:21
 msgid "**Telemetry** — logging options"
 msgstr ""
 
-#: src/ui/settings/index.md:22
+#: src/ui/settings/index.md:23
 msgid "Power"
 msgstr ""
 
-#: src/ui/settings/index.md:24
+#: src/ui/settings/index.md:25
 msgid "Use the **Power** tab for sleep-related options:"
 msgstr ""
 
-#: src/ui/settings/index.md:26
+#: src/ui/settings/index.md:27
 msgid ""
 "**Soft Suspend**, **Use LED to Indicate Soft Suspend**, and **Soft Suspend "
 "Release Grace** — shown only when the device supports soft suspend. Soft "
@@ -2918,16 +2987,42 @@ msgid ""
 "immediately)."
 msgstr ""
 
-#: src/ui/settings/index.md:33
+#: src/ui/settings/index.md:34
 msgid "**Auto Suspend** — minutes of inactivity before a full suspend."
 msgstr ""
 
-#: src/ui/settings/index.md:34
+#: src/ui/settings/index.md:35
 msgid "**Auto Power Off** — days of inactivity before power off."
 msgstr ""
 
-#: src/ui/settings/index.md:35
+#: src/ui/settings/index.md:36
 msgid "**Enable Sleep Cover** — suspend when the cover closes."
+msgstr ""
+
+#: src/ui/settings/index.md:38
+msgid "Intermission Screens"
+msgstr ""
+
+#: src/ui/settings/index.md:40
+msgid ""
+"Use the **Intermission Screens** tab to choose what Cadmus shows between "
+"activities:"
+msgstr ""
+
+#: src/ui/settings/index.md:43
+msgid "**Suspend Screen** — picture while the device sleeps"
+msgstr ""
+
+#: src/ui/settings/index.md:44
+msgid "**Power Off Screen** — picture while the device powers off"
+msgstr ""
+
+#: src/ui/settings/index.md:45
+msgid "**Share Screen** — picture while Cadmus shares"
+msgstr ""
+
+#: src/ui/settings/index.md:46
+msgid "**Fill Color** — white, black, or a custom color behind that picture"
 msgstr ""
 
 #: src/ui/settings/dictionaries.md:3
@@ -2982,126 +3077,126 @@ msgstr ""
 msgid "Statuses"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:25
+#: src/ui/settings/dictionaries.md:30
 msgid "Status"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:25
+#: src/ui/settings/dictionaries.md:30
 msgid "What it means"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:27
+#: src/ui/settings/dictionaries.md:32
 msgid "Download"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:27
+#: src/ui/settings/dictionaries.md:32
 msgid "Not yet on your device — tap to download"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:28
+#: src/ui/settings/dictionaries.md:33
 msgid "Downloading"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:28
+#: src/ui/settings/dictionaries.md:33
 msgid "A download is in progress"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:29
+#: src/ui/settings/dictionaries.md:34
 msgid "Installed"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:29
+#: src/ui/settings/dictionaries.md:34
 msgid "Ready to use"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:30
+#: src/ui/settings/dictionaries.md:35
 msgid "Update Available"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:30
+#: src/ui/settings/dictionaries.md:35
 msgid "A newer version is available"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:32
+#: src/ui/settings/dictionaries.md:37
 msgid "Downloading a Dictionary"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:35
+#: src/ui/settings/dictionaries.md:40
 msgid ""
 "Your device must be connected to Wi-Fi before you can download a dictionary."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:37
+#: src/ui/settings/dictionaries.md:42
 msgid "Open **Main Menu → Settings → Dictionaries**."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:38
+#: src/ui/settings/dictionaries.md:43
 msgid "Find the language you want."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:39
+#: src/ui/settings/dictionaries.md:44
 msgid "Tap **Download** next to it."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:41
+#: src/ui/settings/dictionaries.md:46
 msgid ""
 "A progress notification appears at the top of the screen while the file "
 "downloads. Once the download finishes, Cadmus begins "
 "[indexing](#how-indexing-works) the dictionary automatically."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:45
+#: src/ui/settings/dictionaries.md:50
 msgid "Updating a Dictionary"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:47
+#: src/ui/settings/dictionaries.md:52
 msgid "When a newer version is available the status shows **Update Available**."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:49 src/ui/settings/dictionaries.md:59
-#: src/ui/settings/dictionaries.md:64
+#: src/ui/settings/dictionaries.md:54 src/ui/settings/dictionaries.md:64
+#: src/ui/settings/dictionaries.md:69
 msgid "Tap the language row."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:50
+#: src/ui/settings/dictionaries.md:55
 msgid "Select **Update** from the menu."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:52
+#: src/ui/settings/dictionaries.md:57
 msgid "The updated dictionary replaces the old one automatically."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:54
+#: src/ui/settings/dictionaries.md:59
 msgid "Re-downloading a Dictionary"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:56
+#: src/ui/settings/dictionaries.md:61
 msgid ""
 "If a dictionary is already installed you can re-download it to get a fresh "
 "copy:"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:60
+#: src/ui/settings/dictionaries.md:65
 msgid "Select **Re-download** from the menu."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:62
+#: src/ui/settings/dictionaries.md:67
 msgid "Deleting a Dictionary"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:65
+#: src/ui/settings/dictionaries.md:70
 msgid "Select **Delete** from the menu."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:67
+#: src/ui/settings/dictionaries.md:72
 msgid "The dictionary files are removed from your device."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:69
+#: src/ui/settings/dictionaries.md:74
 msgid "How Indexing Works"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:71
+#: src/ui/settings/dictionaries.md:76
 msgid ""
 "After you download, update, or re-download a dictionary, Cadmus needs to "
 "**index** it before you can look up words. Indexing reads every word in the "
@@ -3110,74 +3205,74 @@ msgid ""
 "important on devices with limited memory."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:77
+#: src/ui/settings/dictionaries.md:82
 msgid ""
 "A notification with a progress bar appears at the top of the screen while "
 "indexing is in progress."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:81
+#: src/ui/settings/dictionaries.md:86
 msgid ""
 "You can keep reading while indexing runs in the background. Words that have "
 "already been indexed are available for lookup right away, so you may get "
 "partial results until indexing finishes."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:85
+#: src/ui/settings/dictionaries.md:90
 msgid "What happens when you restart your Kobo"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:87
+#: src/ui/settings/dictionaries.md:92
 msgid ""
 "If your Kobo restarts or shuts down while indexing is still running, Cadmus "
 "picks up where it left off the next time it starts. It does not start over "
 "from the beginning."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:91
+#: src/ui/settings/dictionaries.md:96
 msgid "When does re-indexing happen"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:93
+#: src/ui/settings/dictionaries.md:98
 msgid "Cadmus automatically re-indexes a dictionary when you:"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:95
+#: src/ui/settings/dictionaries.md:100
 msgid "**Update** it to a newer version"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:96
+#: src/ui/settings/dictionaries.md:101
 msgid "**Re-download** it"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:97
+#: src/ui/settings/dictionaries.md:102
 msgid "**Delete** it (the old index is removed)"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:99
+#: src/ui/settings/dictionaries.md:104
 msgid ""
 "You do not need to trigger indexing yourself. Cadmus handles indexing "
 "automatically when you **download**, **update**, **re-download**, or "
 "**delete** a dictionary from **Settings → Dictionaries**."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:103
+#: src/ui/settings/dictionaries.md:108
 msgid "Where Dictionaries are Stored"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:105
+#: src/ui/settings/dictionaries.md:110
 msgid ""
 "Cadmus stores dictionaries in different locations depending on whether your "
 "device has an SD card and whether you are using a test build:"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:119
+#: src/ui/settings/dictionaries.md:124
 msgid ""
 "Each language gets its own subfolder containing a `.dict.dz` (or `.dict`) "
 "and a `.index` file."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:122
+#: src/ui/settings/dictionaries.md:127
 msgid ""
 "If your SD card is already inserted when you upgrade Cadmus, your "
 "dictionaries are moved to the SD card automatically on the next boot. If you "

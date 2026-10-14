@@ -14,6 +14,10 @@
 //! Components generated from `ui/cadmus.slint` are in [`super::generated`].
 //! Fonts are loaded from the install directory; CJK families are registered as
 //! script fallbacks when available.
+//!
+//! `i_slint_common` and `i_slint_core` are referenced so `image-decoders` and
+//! `svg` stay on the Slint core the generated UI calls. Without that edge,
+//! embedded SVG icons do not link.
 
 use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
@@ -33,8 +37,6 @@ use crate::input::{ButtonCode, ButtonStatus, DeviceEvent, FingerStatus};
 use crate::view::{Event, Hub};
 
 use i_slint_common as _;
-// Keeps `image-decoders` and `svg` unified onto the Slint core the generated
-// UI calls. Without them, embedded SVG icons do not link.
 use i_slint_core as _;
 
 thread_local! {
@@ -56,11 +58,16 @@ const CJK_SCRIPTS: &[[u8; 4]] = &[*b"Hani", *b"Hira", *b"Kana", *b"Hang", *b"Bop
 
 struct SoftwarePlatform;
 
+/// Window whose frame buffer is kept between renders.
+///
+/// Slint then repaints only the region that changed instead of the whole window.
+fn reused_window() -> Rc<MinimalSoftwareWindow> {
+    MinimalSoftwareWindow::new(RepaintBufferType::ReusedBuffer)
+}
+
 impl Platform for SoftwarePlatform {
     fn create_window_adapter(&self) -> Result<Rc<dyn WindowAdapter>, slint::PlatformError> {
-        // The frame buffer is kept between renders. Slint then repaints only
-        // the region that changed instead of the whole window.
-        let window = MinimalSoftwareWindow::new(RepaintBufferType::ReusedBuffer);
+        let window = reused_window();
         WINDOW.with(|slot| *slot.borrow_mut() = Some(window.clone()));
         Ok(window)
     }
@@ -171,6 +178,9 @@ impl<C: ComponentHandle> Session<C> {
     }
 
     /// Draws and presents the first frame as a full-screen update.
+    ///
+    /// The panel already shows this frame, so its dirty rectangles are cleared
+    /// and left out of the next queue.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     pub(crate) fn present(&self, fb: &mut dyn Framebuffer) -> Result<()> {
         pump();
@@ -181,7 +191,6 @@ impl<C: ComponentHandle> Session<C> {
         self.blit(fb)?;
         let rect = fb.rect();
         fb.update(&rect, UpdateMode::Full)?;
-        // The panel already shows this frame. Leave it out of the next queue.
         self.dirty.borrow_mut().clear();
         Ok(())
     }
@@ -233,11 +242,12 @@ impl<C: ComponentHandle> Session<C> {
     }
 
     /// Dispatches a supported device event and captures any resulting frame.
+    ///
+    /// Slint's clock is advanced before the event. A timer started by this
+    /// event would otherwise count from the previous input, and a hold that
+    /// came due while the finger was still would fire after the release.
     #[cfg_attr(feature = "tracing", tracing::instrument(level = "trace", skip_all, fields(event = ?event), ret))]
     pub(crate) fn handle_device(&self, event: DeviceEvent) -> bool {
-        // Bring Slint's clock up to date first. A timer started by this event
-        // would otherwise count from the previous input, and a hold that came
-        // due while the finger was still would fire after the release.
         pump();
         match event {
             DeviceEvent::Finger {
@@ -323,7 +333,7 @@ impl<C: ComponentHandle> Session<C> {
         }
         self.wake.set(Some(due));
         let hub = hub.clone();
-        tokio::spawn(async move {
+        crate::runtime::current_handle().spawn(async move {
             tokio::time::sleep(delay).await;
             hub.send(Event::SlintTimer.into()).ok();
         });
@@ -388,16 +398,7 @@ fn register_install_fonts(install_dir: &Path) -> Result<String> {
     if !already {
         let files = font_files(&fonts_dir);
         tracing::debug!(fonts = files.len(), "registering install fonts");
-        #[cfg(test)]
-        {
-            for path in &files {
-                register_font_file(path)?;
-            }
-        }
-        #[cfg(not(test))]
-        {
-            slint::fontique_011::shared_collection().load_fonts_from_paths(files.iter());
-        }
+        slint::fontique_011::shared_collection().load_fonts_from_paths(files.iter());
         install_cjk_fallbacks();
         LOADED_FONTS.with(|slot| *slot.borrow_mut() = Some(fonts_dir));
     }
@@ -425,13 +426,6 @@ fn font_files(dir: &Path) -> Vec<PathBuf> {
         .collect();
     files.sort();
     files
-}
-
-#[cfg(test)]
-fn register_font_file(path: &Path) -> Result<String> {
-    let bytes = std::fs::read(path)
-        .with_context(|| format!("failed to read slint font {}", path.display()))?;
-    register_font(&bytes)
 }
 
 fn install_cjk_fallbacks() {

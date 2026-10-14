@@ -12,7 +12,7 @@ mod model;
 mod queue;
 mod renderer;
 
-pub(crate) use component::{Component, Env};
+pub(in crate::view) use component::{Component, Env};
 pub(crate) use model::changed_model;
 pub(crate) use queue::{CallbackQueue, connect};
 pub(crate) use renderer::Session;
@@ -43,11 +43,29 @@ use ::slint::ComponentHandle;
 use anyhow::Result;
 
 use crate::device::{AppContext, Device};
-use crate::framebuffer::Framebuffer as _;
-use crate::input::DeviceEvent;
-use crate::view::View;
+use crate::framebuffer::{Framebuffer as _, UpdateMode};
+use crate::input::{DeviceEvent, FingerStatus};
+use crate::view::{Bus, Hub, RenderData, RenderQueue, View};
+
+/// What one forwarded event did to the window, before callbacks are applied.
+///
+/// Crate-visible because [`SlintView::settle`] takes it. The fields stay
+/// private to this module.
+pub(crate) struct AfterInput {
+    /// Slint captured a frame for this event.
+    repainted: bool,
+    /// Leave that frame off the panel. A press preview waits for the release.
+    skip: bool,
+    /// The finger is down, so a keyboard key can flash.
+    finger_down: bool,
+}
 
 /// Shared event forwarding and frame blitting for Slint-backed views.
+///
+/// [`drive`](SlintView::drive) forwards one event, applies queued callbacks,
+/// and queues the dirty rectangles. [`on_timer`](SlintView::on_timer) does the
+/// same for a timer wake. A screen that handles a button itself, such as the
+/// settings category keys, calls these for every other event.
 #[async_trait::async_trait(?Send)]
 pub(crate) trait SlintView: View {
     /// Generated component this screen draws.
@@ -55,6 +73,32 @@ pub(crate) trait SlintView: View {
 
     /// The open session, if the screen has one.
     fn session(&self) -> Option<&Session<Self::Component>>;
+
+    /// Applies callbacks the window queued during the last dispatch.
+    ///
+    /// The default does nothing. A screen with a callback queue overrides this.
+    async fn apply_callbacks(
+        &mut self,
+        _hub: &Hub,
+        _bus: &mut Bus,
+        _context: &mut AppContext,
+    ) -> Flow {
+        Flow::Idle
+    }
+
+    /// Copies the screen's state into the window and captures a frame.
+    fn sync_window(&mut self, _context: &AppContext) {}
+
+    /// Whether the frame Slint just captured should stay off the panel.
+    fn skip_preview(&self, _finger_down: bool, _finger_preview: bool) -> bool {
+        false
+    }
+
+    /// Waveform for the rectangles [`queue_frame`](Self::queue_frame) is about
+    /// to add. `(mode, wait)`.
+    fn panel_refresh(&self, _finger_down: bool) -> (UpdateMode, bool) {
+        (UpdateMode::Gui, true)
+    }
 
     /// Copies `rect` of the captured Slint frame into the device framebuffer.
     #[cfg_attr(feature = "tracing", tracing::instrument(level = "trace", skip_all))]
@@ -80,6 +124,120 @@ pub(crate) trait SlintView: View {
     fn forward_device(&self, event: DeviceEvent) -> bool {
         self.session()
             .is_some_and(|session| session.handle_device(event))
+    }
+
+    /// Forwards `event`, applies what that queued, and queues the dirty rectangles.
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(level = "trace", skip_all, fields(event = ?event))
+    )]
+    async fn drive(
+        &mut self,
+        event: DeviceEvent,
+        hub: &Hub,
+        bus: &mut Bus,
+        rq: &mut RenderQueue,
+        context: &mut AppContext,
+    ) {
+        let finger_down = matches!(
+            event,
+            DeviceEvent::Finger {
+                status: FingerStatus::Down,
+                ..
+            }
+        );
+        let finger_preview = matches!(
+            event,
+            DeviceEvent::Finger {
+                status: FingerStatus::Down | FingerStatus::Motion,
+                ..
+            }
+        );
+        let after = AfterInput {
+            repainted: self.forward_device(event),
+            skip: self.skip_preview(finger_down, finger_preview),
+            finger_down,
+        };
+        self.settle(after, hub, bus, rq, context).await;
+    }
+
+    /// Runs due Slint timers, then the same settle path as [`drive`](Self::drive).
+    #[cfg_attr(feature = "tracing", tracing::instrument(level = "trace", skip_all))]
+    async fn on_timer(
+        &mut self,
+        hub: &Hub,
+        bus: &mut Bus,
+        rq: &mut RenderQueue,
+        context: &mut AppContext,
+    ) {
+        let repainted = self.session().is_some_and(|session| session.tick());
+        self.settle(
+            AfterInput {
+                repainted,
+                skip: false,
+                finger_down: false,
+            },
+            hub,
+            bus,
+            rq,
+            context,
+        )
+        .await;
+    }
+
+    /// Applies queued callbacks, copies the result back, and queues a panel update.
+    #[cfg_attr(feature = "tracing", tracing::instrument(level = "trace", skip_all))]
+    async fn settle(
+        &mut self,
+        after: AfterInput,
+        hub: &Hub,
+        bus: &mut Bus,
+        rq: &mut RenderQueue,
+        context: &mut AppContext,
+    ) {
+        let acted = self.apply_callbacks(hub, bus, context).await == Flow::Redraw;
+        if acted {
+            self.sync_window(context);
+            self.queue_frame(rq, after.finger_down);
+        } else if after.repainted && !after.skip {
+            self.queue_frame(rq, after.finger_down);
+        }
+        if let Some(session) = self.session() {
+            session.wake_for_timers(hub);
+        }
+    }
+
+    /// Queues one panel update for each rectangle Slint changed.
+    #[cfg_attr(feature = "tracing", tracing::instrument(level = "trace", skip_all))]
+    fn queue_frame(&self, rq: &mut RenderQueue, finger_down: bool) {
+        let Some(session) = self.session() else {
+            return;
+        };
+        let rects = session.take_dirty();
+        if rects.is_empty() {
+            tracing::trace!(
+                component = std::any::type_name::<Self::Component>(),
+                "slint frame had nothing dirty"
+            );
+            return;
+        }
+        let (mode, wait) = self.panel_refresh(finger_down);
+        tracing::trace!(
+            component = std::any::type_name::<Self::Component>(),
+            ?mode,
+            wait,
+            rects = rects.len(),
+            "slint queued a frame"
+        );
+        let id = self.id();
+        for rect in rects {
+            tracing::trace!(%rect, "slint dirty area");
+            if wait {
+                rq.add(RenderData::new(id, rect, mode));
+            } else {
+                rq.add(RenderData::no_wait(id, rect, mode));
+            }
+        }
     }
 }
 

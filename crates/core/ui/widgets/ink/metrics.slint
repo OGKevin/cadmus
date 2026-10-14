@@ -1,5 +1,8 @@
-// Material dp, mapped onto the 300 DPI design pixel used by the rest of
-// the UI. A dp is 1/160 inch. 300/160 keeps a 64dp bar at 120 design px.
+// Lengths are dp. One dp is 1/160 inch. `Npx * dp` is N dp, in the
+// 300 DPI logical pixel: the window scale is dpi/300, so the physical
+// size stays 1/160 inch. A bare `Npx` is that logical pixel, not a dp.
+// Screen size and the reader-keyboard block stay logical pixels,
+// because Rust writes those values.
 
 export global InkMetrics {
     out property <float> dp: 300 / 160;
@@ -18,7 +21,22 @@ export global InkMetrics {
     out property <length> tab-pad-top: 10px * root.dp;
     out property <length> tab-pad-bottom: 8px * root.dp;
 
+    // 64dp. The non-Slint bar (`SMALL_BAR_HEIGHT`) is 121 logical px,
+    // one pixel taller than this.
+    out property <length> row: 64px * root.dp;
+
+    // Rust writes these logical lengths. The software renderer truncates a
+    // border to whole physical pixels and rounds a rectangle's position, so a
+    // length that is not a whole framebuffer pixel draws an uneven stroke.
+    // Defaults are the 300 DPI sizes.
+    in property <length> hairline: 2px;
+    in property <length> frame: 3px;
+    in property <length> radius: 9px;
+    in property <length> mark: 8px;
+    in property <length> mark-radius: 4px;
+
     out property <length> title: 22px * root.dp;
+    out property <length> body: 18px * root.dp;
     out property <length> tab-label: 14px * root.dp;
     out property <length> bar-label: 16px * root.dp;
     out property <int> title-weight: 300;

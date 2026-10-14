@@ -1,4 +1,4 @@
-import { SettingLine, SettingRow, SettingsCategory } from "setting_line.slint";
+import { SettingLine, SettingRow, SettingsCategory, StaticLine } from "setting_line.slint";
 import { DictionaryPageIo } from "categories/dictionaries.slint";
 import { GeneralPageIo } from "categories/general.slint";
 import { ImportPageIo } from "categories/import.slint";
@@ -20,6 +20,7 @@ import {
 import { LibraryEditor, LibraryEditorIo } from "editors/library_editor.slint";
 import { RefreshRates, RefreshRatesIo } from "editors/refresh_rates.slint";
 import { ChromeIcons } from "../icons/icons.slint";
+import { InkMetrics } from "../widgets/ink/metrics.slint";
 import { MaterialPalette } from "../widgets/ink/palette.slint";
 import { InkAppBar } from "../widgets/ink/app_bar.slint";
 import { CategoryBar } from "shell/category_bar.slint";
@@ -32,6 +33,7 @@ export {
     SettingLine,
     SettingRow,
     SettingsCategory,
+    StaticLine,
     SettingsChrome,
     GeneralPageIo,
     PowerPageIo,
@@ -41,12 +43,8 @@ export {
     IntermissionPageIo,
     ImportPageIo,
     TelemetryPageIo,
-    FileBrowserIo,
     LibraryEditorIo,
     RefreshRatesIo,
-    TextSheetIo,
-    ChoiceSheetIo,
-    ConfirmSheetIo,
 }
 
 // Shell only: category, page, and the three chrome callbacks.
@@ -77,7 +75,7 @@ export component SettingsWindow inherits Window {
     property <length> top-chrome: header.min-height + header-rule.height + category-bar.bar-height + content-rule.height;
     property <length> reserved: root.top-chrome + footer.bar-height;
     // Rows that fit between the chrome and the footer.
-    out property <int> per-page: Math.max(1, Math.floor((root.window-height - root.reserved) / 121px));
+    out property <int> per-page: Math.max(1, Math.floor((root.window-height - root.reserved) / InkMetrics.row));
     property <int> page-count: Math.max(1, Math.ceil(root.active-count * 1.0 / Math.max(1, root.per-page)));
 
     changed category => {

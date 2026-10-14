@@ -7,9 +7,16 @@ import { MaterialPalette } from "widgets/ink/palette.slint";
 
 // Shared.
 export { MaterialPalette }
+export { InkMetrics } from "widgets/ink/metrics.slint";
 export { ChoiceEntry } from "widgets/choice_sheet.slint";
 export { KeyAction, KeyCap } from "widgets/keyboard.slint";
 export { PagedLine } from "widgets/paged_list.slint";
+export {
+    ChoiceSheetIo,
+    ConfirmSheetIo,
+    FileBrowserIo,
+    TextSheetIo,
+} from "widgets/overlays.slint";
 
 // Startup.
 export { StartupWindow } from "startup/window.slint";
@@ -29,10 +36,7 @@ export {
     IntermissionPageIo,
     ImportPageIo,
     TelemetryPageIo,
-    FileBrowserIo,
     LibraryEditorIo,
     RefreshRatesIo,
-    TextSheetIo,
-    ChoiceSheetIo,
-    ConfirmSheetIo,
+    StaticLine,
 } from "settings/window.slint";
