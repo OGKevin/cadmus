@@ -25,8 +25,8 @@
 
 ## Updating an existing test build
 
-Use the OTA feature to download updates from a PR number directly on your
-device. This lets you test changes without connecting to a computer.
+Use **Check for Updates**, then **PR Build**, to install an open pull request
+on your Kobo. This lets you test changes without connecting to a computer.
 
 ## Switching builds
 

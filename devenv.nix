@@ -528,7 +528,7 @@ in
     # Match `RUST_MIN_STACK_BYTES` in xtask `test.rs` (3 * 1024 * 1024 bytes).
     RUST_MIN_STACK = toString (3 * 1024 * 1024);
 
-    RUST_LOG = "cadmus_core=trace,cadmus=trace";
+    RUST_LOG = "info,cadmus_core=trace,cadmus=trace";
     RUST_BACKTRACE = "1";
     OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost:4318";
     PYROSCOPE_SERVER_URL = "http://localhost:4040";

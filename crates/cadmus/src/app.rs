@@ -43,7 +43,7 @@ use cadmus_core::view::frontlight::FrontlightWindow;
 use cadmus_core::view::home::Home;
 use cadmus_core::view::menu::{Menu, MenuKind};
 use cadmus_core::view::notification::Notification;
-use cadmus_core::view::ota::show_ota_view;
+use cadmus_core::view::ota::OtaView;
 use cadmus_core::view::reader::Reader;
 use cadmus_core::view::rotation_values::RotationValues;
 use cadmus_core::view::settings_editor::SettingsEditor;
@@ -927,18 +927,17 @@ pub async fn run() -> Result<(), Error> {
                 view = next_view;
             }
             Event::Select(EntryId::Launch(app_cmd)) => {
-                view.children_mut().retain(|child| !child.is::<Menu>());
                 let monochrome = context.device.framebuffer().monochrome();
-                let mut next_view: Box<dyn View> = match app_cmd {
+                let next_view: Option<Box<dyn View>> = match app_cmd {
                     AppCmd::Sketch => {
                         context.device.framebuffer_mut().set_monochrome(true);
-                        Box::new(Sketch::new(
+                        Some(Box::new(Sketch::new(
                             context.device.framebuffer().rect(),
                             &mut rq,
                             &mut context,
-                        ))
+                        )))
                     }
-                    AppCmd::Calculator => Box::new(
+                    AppCmd::Calculator => Some(Box::new(
                         Calculator::new(
                             context.device.framebuffer().rect(),
                             &tx,
@@ -946,45 +945,79 @@ pub async fn run() -> Result<(), Error> {
                             &mut context,
                         )
                         .await?,
-                    ),
+                    )),
                     AppCmd::Dictionary {
                         ref query,
                         ref language,
-                    } => Box::new(DictionaryApp::new(
+                    } => Some(Box::new(DictionaryApp::new(
                         context.device.framebuffer().rect(),
                         query,
                         language,
                         &tx,
                         &mut rq,
                         &mut context,
-                    )),
-                    AppCmd::TouchEvents => Box::new(TouchEvents::new(
+                    ))),
+                    AppCmd::TouchEvents => Some(Box::new(TouchEvents::new(
                         context.device.framebuffer().rect(),
                         &mut rq,
                         &mut context,
-                    )),
-                    AppCmd::RotationValues => Box::new(RotationValues::new(
+                    ))),
+                    AppCmd::RotationValues => Some(Box::new(RotationValues::new(
                         context.device.framebuffer().rect(),
                         &mut rq,
                         &mut context,
-                    )),
-                    AppCmd::SettingsEditor => Box::new(
+                    ))),
+                    AppCmd::SettingsEditor => Some(Box::new(
                         SettingsEditor::new(
                             context.device.framebuffer().rect(),
                             &mut rq,
                             &mut context,
                         )
                         .await,
-                    ),
+                    )),
+                    AppCmd::OtaUpdates => {
+                        if !context.online && !context.settings.wifi.allows_on_demand() {
+                            let notif = Notification::new(
+                                None,
+                                cadmus_core::fl_or!(
+                                    "notification-not-online",
+                                    "WiFi must be connected for this action."
+                                ),
+                                false,
+                                &tx,
+                                &mut rq,
+                                &mut context,
+                            );
+                            view.children_mut().push(Box::new(notif) as Box<dyn View>);
+                            None
+                        } else {
+                            Some(Box::new(
+                                OtaView::new(
+                                    context.device.framebuffer().rect(),
+                                    &mut rq,
+                                    &mut context,
+                                )
+                                .await,
+                            ))
+                        }
+                    }
                 };
-                transfer_notifications(view.as_mut(), next_view.as_mut(), &mut rq, &mut context);
-                history.push(HistoryItem {
-                    view,
-                    rotation: context.display.rotation,
-                    monochrome,
-                    dithered: context.device.framebuffer().dithered(),
-                });
-                view = next_view;
+                if let Some(mut next_view) = next_view {
+                    view.children_mut().retain(|child| !child.is::<Menu>());
+                    transfer_notifications(
+                        view.as_mut(),
+                        next_view.as_mut(),
+                        &mut rq,
+                        &mut context,
+                    );
+                    history.push(HistoryItem {
+                        view,
+                        rotation: context.display.rotation,
+                        monochrome,
+                        dithered: context.device.framebuffer().dithered(),
+                    });
+                    view = next_view;
+                }
             }
             Event::Back => {
                 if let Some(mut item) = history.pop() {
@@ -1144,9 +1177,6 @@ pub async fn run() -> Result<(), Error> {
             }
             Event::ReloadDictionaries => {
                 context.load_dictionaries().await;
-            }
-            Event::Select(EntryId::CheckForUpdates) => {
-                show_ota_view(view.as_mut(), &tx, &mut rq, &mut context);
             }
             Event::Select(EntryId::TakeScreenshot) => {
                 let name = Local::now().format("screenshot-%Y%m%d_%H%M%S.png");

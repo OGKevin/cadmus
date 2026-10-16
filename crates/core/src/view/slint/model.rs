@@ -1,6 +1,25 @@
 //! Slint model helpers.
 
-use slint::{Model, ModelRc, VecModel};
+use slint::{Model, ModelRc, SharedString, VecModel};
+
+use super::generated::PagedLine;
+
+/// One list row. `selectable` false dims it. `checking` shows the busy bar.
+pub(crate) fn paged_line(
+    label: impl Into<SharedString>,
+    description: impl Into<SharedString>,
+    selectable: bool,
+    checking: bool,
+) -> PagedLine {
+    PagedLine {
+        label: label.into(),
+        value: Default::default(),
+        selected: false,
+        description: description.into(),
+        selectable,
+        checking,
+    }
+}
 
 /// Builds a model of `rows`, or returns `None` when `current` already shows them.
 ///
