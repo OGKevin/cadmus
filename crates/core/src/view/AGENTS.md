@@ -56,6 +56,8 @@ Rust follows the same split:
   the result to apply. `Waiting` names the control that opened the shared
   sheet, and the sheet keeps it. [`Flow`](slint/mod.rs) is only the renderer
   instruction (`Idle` or `Redraw`); `dispatch` reduces `Step` to it.
+- [`ota`](ota/) is the Check for Updates screen. List, auth, and progress are
+  components. It reuses the same overlays and host as settings.
 - Another screen gets its own folder under `view/` and under `ui/`. It reuses
   the overlays by constructing them with its own row type and window. It
   does not grow a second copy of the file browser or the confirmation dialog.
@@ -119,7 +121,10 @@ released normally, so the keyboard is not left held down.
 
 The host owns the frame loop. A screen only says how a frame reaches the
 panel: its `refresh` hook fills a [`RefreshPlan`](slint/host.rs) with regions
-and their waveform, and the host queues them.
+and their waveform, and the host queues them. A progress bar reports the
+rectangle it occupies in the `InkBar` global. The screen scales that rectangle
+to physical pixels with [`pixel_scale`](slint/metrics.rs) and hands it to
+[`FastInk`](slint/waveform.rs), which keeps the physical one.
 
 The text dialog's keyboard is as tall as the reader keyboard and sits just
 above the bottom edge. The field floats above it. A pressed key is drawn black
