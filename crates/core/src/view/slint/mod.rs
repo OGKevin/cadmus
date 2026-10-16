@@ -14,10 +14,12 @@ mod metrics;
 mod model;
 mod overlay;
 mod page;
+mod paging;
 mod queue;
 mod renderer;
 #[cfg(test)]
 pub(crate) mod testing;
+mod waveform;
 
 pub(in crate::view) use component::Component;
 pub use component::Env;
@@ -28,10 +30,12 @@ pub(in crate::view) use metrics::pixel_scale;
 pub(crate) use model::{ListRow, changed_model, paged_line};
 pub(in crate::view) use overlay::{Asked, Overlay, OverlayStack};
 pub(in crate::view) use page::PagedIo;
+pub(in crate::view) use paging::Pager;
 pub(in crate::view) use queue::{CallbackQueue, connect};
 pub use renderer::Session;
 #[cfg(test)]
 pub(crate) use renderer::advance_test_clock;
+pub(in crate::view) use waveform::FastInk;
 
 /// What the view loop should do with the framebuffer after Slint callbacks.
 ///

@@ -8,6 +8,8 @@ use bytes::Bytes;
 use http::header::{ACCEPT, HeaderName, HeaderValue, USER_AGENT as USER_AGENT_HEADER};
 use http::{HeaderMap, StatusCode, Uri};
 use http_body_util::BodyExt;
+use octocrab::params::pulls::Sort;
+use octocrab::params::{Direction, State};
 use octocrab::service::middleware::auth_header::AuthHeaderLayer;
 use octocrab::service::middleware::base_uri::BaseUriLayer;
 use octocrab::service::middleware::extra_headers::ExtraHeadersLayer;
@@ -16,6 +18,7 @@ use reqwest_middleware::RequestBuilder;
 use secrecy::{ExposeSecret, SecretString};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
@@ -39,6 +42,12 @@ const DEVICE_URI: &str = "https://github.com";
 /// - `public_repo` — required to download Actions artifacts from public repositories
 ///   (`repo` also satisfies this requirement)
 pub const REQUIRED_SCOPES: &[&str] = &["public_repo"];
+
+/// GitHub page size while listing every open pull request.
+const OPEN_PULL_PAGE: u8 = 100;
+/// Stop after this many pages so a stuck link header cannot loop.
+/// Two thousand open pull requests is past what this repository lists.
+const OPEN_PULL_PAGE_CAP: u32 = 20;
 
 /// Returns whether `granted` satisfies a scope listed in [`REQUIRED_SCOPES`].
 ///
@@ -213,17 +222,18 @@ impl ApiRequest<'_> {
         } else {
             Some(self.headers)
         };
+        let url = self.url;
         let response = crab
-            ._get_with_headers(self.url, headers)
+            ._get_with_headers(url.as_str(), headers)
             .await
-            .map_err(map_octocrab)?;
+            .map_err(|error| map_octocrab(&url, error))?;
         let status = response.status();
         let headers = response.headers().clone();
         let body = response
             .into_body()
             .collect()
             .await
-            .map_err(map_octocrab)?
+            .map_err(|error| map_octocrab(&url, error))?
             .to_bytes();
         Ok(ApiResponse {
             status,
@@ -740,6 +750,224 @@ impl GithubClient {
             }
         }
     }
+
+    /// One page of open pull requests, newest update first.
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self), fields(per_page, page), err)
+    )]
+    pub(crate) async fn list_open_pulls(
+        &self,
+        per_page: u8,
+        page: u32,
+    ) -> Result<PullList, GithubRequestError> {
+        let crab = self.authenticated()?;
+        let listed = crab
+            .pulls(REPO_OWNER, REPO_NAME)
+            .list()
+            .state(State::Open)
+            .sort(Sort::Updated)
+            .direction(Direction::Descending)
+            .per_page(per_page)
+            .page(page)
+            .send()
+            .await
+            .map_err(|error| map_octocrab("list open pull requests", error))?;
+        let has_next = github_page_has_next(listed.next.is_some(), listed.items.len(), per_page);
+        let pulls: Vec<ListedPull> = listed
+            .items
+            .into_iter()
+            .map(|pull| ListedPull {
+                number: pull.number,
+                title: pull.title.unwrap_or_default(),
+                draft: pull.draft.unwrap_or(false),
+                head_sha: pull.head.sha,
+            })
+            .collect();
+        tracing::debug!(
+            pulls = pulls.len(),
+            has_next,
+            "open pull requests page listed"
+        );
+        Ok(PullList { pulls, has_next })
+    }
+
+    /// Every open pull request, newest activity first.
+    ///
+    /// Stops after [`OPEN_PULL_PAGE_CAP`] pages.
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), err))]
+    pub(crate) async fn list_all_open_pulls(&self) -> Result<Vec<ListedPull>, GithubRequestError> {
+        let mut all = Vec::new();
+        for page in 1..=OPEN_PULL_PAGE_CAP {
+            let listed = self
+                .list_open_pulls(OPEN_PULL_PAGE, page)
+                .await
+                .inspect_err(|error| {
+                    tracing::warn!(
+                        error = %error,
+                        page,
+                        "open pull list failed"
+                    );
+                })?;
+            let has_next = listed.has_next;
+            all.extend(listed.pulls);
+            if !has_next {
+                break;
+            }
+        }
+        tracing::debug!(pulls = all.len(), "open pull requests listed");
+        Ok(all)
+    }
+
+    /// Recent Cargo workflow runs triggered by a pull request.
+    ///
+    /// The hundred newest pull-request runs of `cargo.yml`. Each run keeps its
+    /// id so the install check can read that run's packages. A pull request
+    /// whose run is older than this list is not checked.
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), err))]
+    pub(crate) async fn list_cargo_pull_request_runs(
+        &self,
+    ) -> Result<Vec<ListedRun>, GithubRequestError> {
+        let crab = self.authenticated()?;
+        let listed = crab
+            .workflows(REPO_OWNER, REPO_NAME)
+            .list_runs("cargo.yml")
+            .event("pull_request")
+            .per_page(100u8)
+            .send()
+            .await
+            .map_err(|error| map_octocrab("list cargo pull-request runs", error))?;
+        let runs: Vec<ListedRun> = listed
+            .items
+            .into_iter()
+            .map(|run| ListedRun {
+                id: run.id.into_inner(),
+                name: run.name,
+                head_sha: run.head_sha,
+                status: run.status,
+                conclusion: run.conclusion,
+            })
+            .collect();
+        tracing::debug!(runs = runs.len(), "cargo pull-request runs listed");
+        Ok(runs)
+    }
+
+    /// Packages uploaded by one workflow run.
+    ///
+    /// One page of 100. A Cargo run uploads a handful of packages.
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self), fields(run_id), err)
+    )]
+    pub(crate) async fn list_run_artifacts(
+        &self,
+        run_id: u64,
+    ) -> Result<Vec<ListedArtifact>, GithubRequestError> {
+        let crab = self.authenticated()?;
+        let listed = crab
+            .actions()
+            .list_workflow_run_artifacts(REPO_OWNER, REPO_NAME, run_id.into())
+            .per_page(100u8)
+            .send()
+            .await
+            .map_err(|error| map_octocrab("list workflow run artifacts", error))?;
+        let Some(page) = listed.value else {
+            return Ok(Vec::new());
+        };
+        let artifacts: Vec<ListedArtifact> = page
+            .items
+            .into_iter()
+            .map(|artifact| ListedArtifact {
+                id: artifact.id.into_inner(),
+                name: artifact.name,
+                size_in_bytes: u64::try_from(artifact.size_in_bytes).unwrap_or(u64::MAX),
+                expired: artifact.expired,
+            })
+            .collect();
+        tracing::debug!(artifacts = artifacts.len(), "workflow run artifacts listed");
+        Ok(artifacts)
+    }
+}
+
+/// Cadmus repository the OTA picker reads.
+const REPO_OWNER: &str = "ogkevin";
+const REPO_NAME: &str = "cadmus";
+
+/// One page of open pull requests.
+#[derive(Debug)]
+pub(crate) struct PullList {
+    /// Pull requests on this page.
+    pub pulls: Vec<ListedPull>,
+    /// GitHub has another page.
+    pub has_next: bool,
+}
+
+/// Fields of a pull request the picker keeps.
+#[derive(Debug)]
+pub(crate) struct ListedPull {
+    /// Pull request number.
+    pub number: u64,
+    /// Title, or empty when GitHub omitted it.
+    pub title: String,
+    /// Draft pull request.
+    pub draft: bool,
+    /// Head commit SHA.
+    pub head_sha: String,
+}
+
+/// Fields of a workflow run the picker keeps.
+#[derive(Debug)]
+pub(crate) struct ListedRun {
+    /// GitHub workflow run id.
+    pub id: u64,
+    /// Workflow name.
+    pub name: String,
+    /// Commit the run built.
+    pub head_sha: String,
+    /// GitHub status.
+    pub status: String,
+    /// GitHub conclusion, when the run has one.
+    pub conclusion: Option<String>,
+}
+
+/// One run per head, in `heads` order.
+///
+/// `runs` is newest first, as GitHub returns them. A completed success wins.
+/// An in-progress run is used when that head has no success in the list.
+/// A head that only failed is skipped.
+pub(crate) fn install_artifact_runs<'a>(
+    runs: &'a [ListedRun],
+    heads: &[&str],
+) -> Vec<&'a ListedRun> {
+    let mut seen = HashSet::new();
+    let mut chosen = Vec::new();
+    for head in heads {
+        if !seen.insert(*head) {
+            continue;
+        }
+        let mut matching = runs.iter().filter(|run| run.head_sha == *head);
+        let run = matching
+            .clone()
+            .find(|run| run.status == "completed" && run.conclusion.as_deref() == Some("success"))
+            .or_else(|| matching.find(|run| run.status == "in_progress"));
+        if let Some(run) = run {
+            chosen.push(run);
+        }
+    }
+    chosen
+}
+
+/// Fields of an artifact the picker keeps.
+#[derive(Debug)]
+pub(crate) struct ListedArtifact {
+    /// Artifact id.
+    pub id: u64,
+    /// Artifact name.
+    pub name: String,
+    /// Size in bytes.
+    pub size_in_bytes: u64,
+    /// GitHub has expired the artifact.
+    pub expired: bool,
 }
 
 #[derive(Serialize)]
@@ -786,8 +1014,17 @@ fn build_octocrab(
     }
 }
 
-fn map_octocrab(error: octocrab::Error) -> GithubRequestError {
-    match error {
+fn github_page_has_next(link: bool, count: usize, per_page: u8) -> bool {
+    link || count == usize::from(per_page)
+}
+
+/// Turns an octocrab failure into something a log can act on.
+///
+/// `octocrab::Error::GitHub`'s own `Display` is only the variant name, so
+/// every API failure would otherwise read as "GitHub" with no status or body.
+/// The status code and GitHub's own message come from its source instead.
+fn map_octocrab(request: &str, error: octocrab::Error) -> GithubRequestError {
+    let mapped = match error {
         octocrab::Error::Service { source, .. } => match source.downcast::<TransportError>() {
             Ok(error) => match *error {
                 TransportError::Middleware(error) => GithubRequestError::Middleware(error),
@@ -795,8 +1032,14 @@ fn map_octocrab(error: octocrab::Error) -> GithubRequestError {
             },
             Err(error) => GithubRequestError::Message(error.to_string()),
         },
+        octocrab::Error::GitHub { source, .. } => GithubRequestError::Message(format!(
+            "HTTP {} from GitHub: {source}",
+            source.status_code
+        )),
         other => GithubRequestError::Message(other.to_string()),
-    }
+    };
+    tracing::debug!(request, error = %mapped, "github request failed");
+    mapped
 }
 
 fn verify_transport(error: GithubRequestError) -> VerifyScopesError {
@@ -809,6 +1052,42 @@ fn verify_transport(error: GithubRequestError) -> VerifyScopesError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn listed_run(id: u64, head_sha: &str, status: &str, conclusion: Option<&str>) -> ListedRun {
+        ListedRun {
+            id,
+            name: "Cargo".into(),
+            head_sha: head_sha.into(),
+            status: status.into(),
+            conclusion: conclusion.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn install_artifact_runs_picks_one_run_per_head() {
+        let runs = vec![
+            listed_run(10, "aaa", "in_progress", None),
+            listed_run(9, "aaa", "completed", Some("success")),
+            listed_run(8, "bbb", "completed", Some("failure")),
+            listed_run(7, "bbb", "in_progress", None),
+            listed_run(6, "ccc", "completed", Some("success")),
+            listed_run(5, "ddd", "completed", Some("failure")),
+        ];
+        let heads = ["aaa", "bbb", "aaa", "ddd"];
+        let picked: Vec<u64> = install_artifact_runs(&runs, &heads)
+            .iter()
+            .map(|run| run.id)
+            .collect();
+        assert_eq!(picked, vec![9, 7]);
+    }
+
+    #[test]
+    fn a_full_page_counts_as_having_a_next_page() {
+        assert!(github_page_has_next(false, 10, 10));
+        assert!(!github_page_has_next(false, 9, 10));
+        assert!(github_page_has_next(true, 3, 10));
+        assert!(!github_page_has_next(false, 0, 10));
+    }
 
     #[test]
     fn grants_required_scope_accepts_public_repo() {

@@ -1,11 +1,14 @@
 // Arrow and chevron glyphs are copied from Slint Material 1.1.0 into this
 // directory, next to this file. MIT, Copyright (c) 2026 SixtyFPS GmbH.
 // See MATERIAL-LICENSE.md. That library does not ship an add icon, so
-// `add.svg` is a plain plus. `@image-url` loads these files relative to here.
+// `add.svg` is a plain plus. `refresh.svg` is the Material Icons refresh
+// glyph (Apache-2.0, Copyright Google). `@image-url` loads these files
+// relative to here.
 
 export global ChromeIcons {
     out property <image> arrow-back: @image-url("arrow_back.svg");
     out property <image> chevron-backward: @image-url("chevron_backward.svg");
     out property <image> chevron-forward: @image-url("chevron_forward.svg");
     out property <image> add: @image-url("add.svg");
+    out property <image> refresh: @image-url("refresh.svg");
 }

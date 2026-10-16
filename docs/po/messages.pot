@@ -114,7 +114,7 @@ msgstr ""
 msgid "Database Backup"
 msgstr ""
 
-#: src/SUMMARY.md:30 src/installation/ota.md:96 src/troubleshooting/index.md:1
+#: src/SUMMARY.md:30 src/installation/ota.md:102 src/troubleshooting/index.md:1
 msgid "Troubleshooting"
 msgstr ""
 
@@ -387,7 +387,7 @@ msgid ""
 "out changes that haven't been released yet"
 msgstr ""
 
-#: src/installation/index.md:25 src/installation/ota.md:90
+#: src/installation/index.md:25 src/installation/ota.md:96
 msgid "First-time setup"
 msgstr ""
 
@@ -552,8 +552,9 @@ msgstr ""
 
 #: src/installation/test-builds.md:28
 msgid ""
-"Use the OTA feature to download updates from a PR number directly on your "
-"device. This lets you test changes without connecting to a computer."
+"Use **Check for Updates**, then **PR Build**, to install an open pull "
+"request on your Kobo. This lets you test changes without connecting to a "
+"computer."
 msgstr ""
 
 #: src/installation/test-builds.md:31
@@ -683,7 +684,7 @@ msgid "**PR Build**"
 msgstr ""
 
 #: src/installation/ota.md:48
-msgid "Test a specific pull request"
+msgid "Pick an open pull request that has a finished build"
 msgstr ""
 
 #: src/installation/ota.md:51
@@ -725,79 +726,92 @@ msgstr ""
 
 #: src/installation/ota.md:70
 msgid ""
-"Select **PR Build** to try out a specific change before it's released. Enter "
-"the PR number when prompted. If you haven't authenticated before, Cadmus "
-"will guide you through the GitHub sign-in process. See "
-"[Authentication](#authentication) for details."
+"Select **PR Build** to try a change before it is released. Cadmus lists the "
+"open pull requests right away, newest activity first. Each row shows the "
+"title and the pull request number. A short bar on the row means Cadmus is "
+"still checking whether that change can be installed."
 msgstr ""
 
-#: src/installation/ota.md:76
+#: src/installation/ota.md:75
 msgid ""
-"Find the PR number in the GitHub URL. For example, in "
-"`github.com/OGKevin/cadmus/pull/42` the PR number is **42**."
+"When a build is ready, you can tap the row. A draft is labelled, and you can "
+"still install it when a build is ready. Rows that are still building, "
+"failed, or have no build stay on the list but cannot be installed."
 msgstr ""
 
 #: src/installation/ota.md:79
+msgid ""
+"Use the arrows to see more pull requests. Use the refresh button to load the "
+"list again."
+msgstr ""
+
+#: src/installation/ota.md:82
+msgid ""
+"If you haven't signed in before, Cadmus will guide you through GitHub "
+"sign-in. See [Authentication](#authentication) for details."
+msgstr ""
+
+#: src/installation/ota.md:85
 msgid "Normal vs test builds"
 msgstr ""
 
-#: src/installation/ota.md:81
+#: src/installation/ota.md:87
 msgid ""
 "OTA works for both types of builds. The type you're currently using "
 "determines what gets downloaded:"
 msgstr ""
 
-#: src/installation/ota.md:84
+#: src/installation/ota.md:90
 msgid "**Normal builds** update to `KoboRoot.tgz` in `/mnt/onboard/.adds/cadmus`"
 msgstr ""
 
-#: src/installation/ota.md:85
+#: src/installation/ota.md:91
 msgid ""
 "**Test builds** update to `KoboRoot-test.tgz` in "
 "`/mnt/onboard/.adds/cadmus-tst`"
 msgstr ""
 
-#: src/installation/ota.md:87
+#: src/installation/ota.md:93
 msgid ""
 "See the [available packages](./index.md#available-packages) table for all "
 "options."
 msgstr ""
 
-#: src/installation/ota.md:92
+#: src/installation/ota.md:98
 msgid ""
 "OTA only works for updating an existing installation. To install Cadmus for "
 "the first time, follow the [installation guide](./index.md) or the [test "
 "builds guide](./test-builds.md) to copy a KoboRoot file via USB."
 msgstr ""
 
-#: src/installation/ota.md:98
+#: src/installation/ota.md:104
 msgid "\"Insufficient disk space\" error"
 msgstr ""
 
-#: src/installation/ota.md:100
+#: src/installation/ota.md:106
 msgid ""
 "If Cadmus shows an error like _\"Insufficient disk space: need 100MB, have "
 "XMB\"_ while downloading an update:"
 msgstr ""
 
-#: src/installation/ota.md:103
+#: src/installation/ota.md:109
 msgid "Cadmus downloads update files into a `tmp` folder:"
 msgstr ""
 
-#: src/installation/ota.md:104
+#: src/installation/ota.md:110
 msgid "**With SD card**: `/mnt/sd/.cadmus/tmp` (uses SD card space)"
 msgstr ""
 
-#: src/installation/ota.md:105
+#: src/installation/ota.md:111
 msgid ""
 "**Without SD card**: `/mnt/onboard/.adds/cadmus/tmp` (uses internal storage)"
 msgstr ""
 
-#: src/installation/ota.md:106
+#: src/installation/ota.md:112
 msgid "If you see this error and have an SD card inserted, the card may be full"
 msgstr ""
 
-#: src/installation/ota.md:107
+#: src/installation/ota.md:113
 msgid ""
 "If you do not have an SD card, free up space on internal storage by deleting "
 "books or other files you do not need"

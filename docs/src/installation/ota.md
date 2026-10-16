@@ -41,11 +41,11 @@ saved to disk so you won't need to sign in again.
 Open **Main Menu → Check for Updates**. You'll see options for where to get the
 update from:
 
-| Source             | Description                                    |
-| ------------------ | ---------------------------------------------- |
-| **Stable Release** | Latest official release from GitHub            |
-| **Main Branch**    | Latest development build (most recent changes) |
-| **PR Build**       | Test a specific pull request                   |
+| Source             | Description                                         |
+| ------------------ | --------------------------------------------------- |
+| **Stable Release** | Latest official release from GitHub                 |
+| **Main Branch**    | Latest development build (most recent changes)      |
+| **PR Build**       | Pick an open pull request that has a finished build |
 
 > [!NOTE]
 > The _Stable Release_ option is not shown in test builds.
@@ -67,14 +67,20 @@ user-added files will be preserved.
 
 ## Testing a pull request
 
-Select **PR Build** to try out a specific change before it's released. Enter the
-PR number when prompted. If you haven't authenticated before, Cadmus will guide
-you through the GitHub sign-in process. See [Authentication](#authentication)
-for details.
+Select **PR Build** to try a change before it is released. Cadmus lists the open
+pull requests right away, newest activity first. Each row shows the title and
+the pull request number. A short bar on the row means Cadmus is still
+checking whether that change can be installed.
 
-> [!TIP]
-> Find the PR number in the GitHub URL. For example, in
-> `github.com/OGKevin/cadmus/pull/42` the PR number is **42**.
+When a build is ready, you can tap the row. A draft is labelled, and you can
+still install it when a build is ready. Rows that are still building, failed,
+or have no build stay on the list but cannot be installed.
+
+Use the arrows to see more pull requests. Use the refresh button to load the
+list again.
+
+If you haven't signed in before, Cadmus will guide you through GitHub sign-in.
+See [Authentication](#authentication) for details.
 
 ## Normal vs test builds
 
