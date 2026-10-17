@@ -1,0 +1,3628 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: cadmus\n"
+"POT-Creation-Date: 2026-09-20T19:00:13+02:00\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: it\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Crowdin-Project: cadmus\n"
+"X-Crowdin-Project-ID: 906735\n"
+"X-Crowdin-Language: it\n"
+"X-Crowdin-File: /docs/po/messages.pot\n"
+"X-Crowdin-File-ID: 51\n"
+"Language-Team: Italian\n"
+"PO-Revision-Date: 2026-10-04 18:20\n"
+
+#: src/SUMMARY.md:1
+msgid "Overview"
+msgstr ""
+
+#: src/SUMMARY.md:3
+msgid "User Guide"
+msgstr ""
+
+#: src/SUMMARY.md:5 src/installation/index.md:1
+msgid "Installation"
+msgstr ""
+
+#: src/SUMMARY.md:6 src/installation/test-builds.md:1
+msgid "Test builds"
+msgstr ""
+
+#: src/SUMMARY.md:7 src/installation/ota.md:1 src/fonts.md:114
+msgid "OTA updates"
+msgstr ""
+
+#: src/SUMMARY.md:8
+msgid "Manually install PR builds"
+msgstr ""
+
+#: src/SUMMARY.md:9 src/installation/migration.md:1
+msgid "Migrating from Plato"
+msgstr ""
+
+#: src/SUMMARY.md:10
+msgid "Using with KFMon"
+msgstr ""
+
+#: src/SUMMARY.md:11 src/installation/uninstall.md:1
+msgid "Uninstalling Cadmus"
+msgstr ""
+
+#: src/SUMMARY.md:12 src/SUMMARY.md:18 src/settings/index.md:1 src/fonts.md:108
+#: src/ui/settings/index.md:1
+msgid "Settings"
+msgstr ""
+
+#: src/SUMMARY.md:13 src/fonts.md:1
+msgid "Fonts"
+msgstr ""
+
+#: src/SUMMARY.md:14 src/ui/index.md:1
+msgid "User Interface"
+msgstr ""
+
+#: src/SUMMARY.md:15 src/ui/filechooser.md:1
+msgid "File Chooser"
+msgstr ""
+
+#: src/SUMMARY.md:16 src/ui/keyboard.md:1
+msgid "Keyboard"
+msgstr ""
+
+#: src/SUMMARY.md:17 src/ui/dictionary.md:1
+msgid "Dictionary"
+msgstr ""
+
+#: src/SUMMARY.md:19 src/installation/migration.md:118
+#: src/ui/settings/dictionaries.md:1
+msgid "Dictionaries"
+msgstr ""
+
+#: src/SUMMARY.md:20 src/library/index.md:1
+msgid "Library"
+msgstr ""
+
+#: src/SUMMARY.md:21
+msgid "Importing"
+msgstr ""
+
+#: src/SUMMARY.md:22 src/settings/index.md:642 src/reader/index.md:1
+msgid "Reader"
+msgstr ""
+
+#: src/SUMMARY.md:23 src/reader/reflowable.md:1
+msgid "Reflowable books"
+msgstr ""
+
+#: src/SUMMARY.md:24 src/reader/paged.md:1
+msgid "Paged books"
+msgstr ""
+
+#: src/SUMMARY.md:25 src/wifi.md:1
+msgid "WiFi"
+msgstr ""
+
+#: src/SUMMARY.md:26 src/time-sync.md:1
+msgid "Automatic Time Syncing"
+msgstr ""
+
+#: src/SUMMARY.md:27 src/auto-frontlight.md:1
+msgid "Automatic Frontlight"
+msgstr ""
+
+#: src/SUMMARY.md:28 src/soft-suspend.md:1 src/soft-suspend.md:83
+msgid "Soft Suspend"
+msgstr ""
+
+#: src/SUMMARY.md:29 src/database-backup.md:1
+msgid "Database Backup"
+msgstr ""
+
+#: src/SUMMARY.md:30 src/installation/ota.md:96 src/troubleshooting/index.md:1
+msgid "Troubleshooting"
+msgstr ""
+
+#: src/SUMMARY.md:31
+msgid "CHANGELOG"
+msgstr ""
+
+#: src/SUMMARY.md:35
+msgid "Contributor Guide"
+msgstr ""
+
+#: src/SUMMARY.md:37
+msgid "Development Environment"
+msgstr ""
+
+#: src/SUMMARY.md:38
+msgid "SSH"
+msgstr ""
+
+#: src/SUMMARY.md:39
+msgid "Code Style and Linting"
+msgstr ""
+
+#: src/SUMMARY.md:40
+msgid "Event System"
+msgstr ""
+
+#: src/SUMMARY.md:41
+msgid "WiFi Leases"
+msgstr ""
+
+#: src/SUMMARY.md:42
+msgid "Device"
+msgstr ""
+
+#: src/SUMMARY.md:43
+msgid "Time and RTC"
+msgstr ""
+
+#: src/SUMMARY.md:44
+msgid "Suspend"
+msgstr ""
+
+#: src/SUMMARY.md:45
+msgid "Suspend orchestrator"
+msgstr ""
+
+#: src/SUMMARY.md:46
+msgid "Soft suspend"
+msgstr ""
+
+#: src/SUMMARY.md:47
+msgid "Inhibitor"
+msgstr ""
+
+#: src/SUMMARY.md:48
+msgid "Kobo suspend"
+msgstr ""
+
+#: src/SUMMARY.md:49 src/settings/index.md:1168
+msgid "Telemetry"
+msgstr ""
+
+#: src/SUMMARY.md:50
+msgid "Logging"
+msgstr ""
+
+#: src/SUMMARY.md:51
+msgid "Tracing"
+msgstr ""
+
+#: src/SUMMARY.md:52
+msgid "Profiling"
+msgstr ""
+
+#: src/SUMMARY.md:53
+msgid "Website"
+msgstr ""
+
+#: src/SUMMARY.md:54
+msgid "User guide"
+msgstr ""
+
+#: src/SUMMARY.md:55
+msgid "Translations"
+msgstr ""
+
+#: src/SUMMARY.md:56
+msgid "For developers"
+msgstr ""
+
+#: src/SUMMARY.md:57
+msgid "SQLite & SQLx"
+msgstr ""
+
+#: src/SUMMARY.md:58
+msgid "Library Database"
+msgstr ""
+
+#: src/SUMMARY.md:59
+msgid "Runtime Migrations"
+msgstr ""
+
+#: src/SUMMARY.md:63
+msgid "Investigations"
+msgstr ""
+
+#: src/SUMMARY.md:65
+msgid "Intro"
+msgstr ""
+
+#: src/SUMMARY.md:66
+msgid "DHCP IP Address Changes on WiFi Toggle"
+msgstr ""
+
+#: src/SUMMARY.md:67
+msgid "Reading IP and ESSID via dhcpcd-dbus"
+msgstr ""
+
+#: src/SUMMARY.md:68
+msgid "Soft suspend via autosleep and wake_lock"
+msgstr ""
+
+#: src/index.md:3
+msgid "Cadmus"
+msgstr ""
+
+#: src/index.md:5
+msgid "_Cadmus_ is a document reader for _Kobo_'s e-readers."
+msgstr ""
+
+#: src/index.md:9
+msgid "Documentation"
+msgstr ""
+
+#: src/index.md:11
+msgid "This site is the primary source of documentation for Cadmus. Use the sidebar to navigate, or start at the overview for installation, usage, and workflows."
+msgstr ""
+
+#: src/index.md:14
+msgid "Supported firmwares"
+msgstr ""
+
+#: src/index.md:16
+msgid "Any 4._X_._Y_ firmware, with _X_ ≥ 6, will do."
+msgstr ""
+
+#: src/index.md:18
+msgid "Supported devices"
+msgstr ""
+
+#: src/index.md:46
+msgid "Supported formats"
+msgstr ""
+
+#: src/index.md:48
+msgid "PDF, CBZ, FB2, MOBI, XPS, TXT, JPEG, JPG, PNG, WEBP and SVG via [MuPDF](https://mupdf.com/index.html)."
+msgstr ""
+
+#: src/index.md:49
+msgid "ePUB through a built-in renderer."
+msgstr ""
+
+#: src/index.md:50
+msgid "DJVU via [DjVuLibre](http://djvu.sourceforge.net/index.html)."
+msgstr ""
+
+#: src/index.md:52
+msgid "Features"
+msgstr ""
+
+#: src/index.md:54
+msgid "Crop the margins."
+msgstr ""
+
+#: src/index.md:55
+msgid "Continuous fit-to-width zoom mode with line preserving cuts."
+msgstr ""
+
+#: src/index.md:56
+msgid "Rotate the screen (portrait ↔ landscape)."
+msgstr ""
+
+#: src/index.md:57
+msgid "Adjust the contrast."
+msgstr ""
+
+#: src/index.md:58
+msgid "Define words using _dictd_ dictionaries."
+msgstr ""
+
+#: src/index.md:59
+msgid "Annotations, highlights and bookmarks."
+msgstr ""
+
+#: src/index.md:60
+msgid "Retrieve articles from online sources through hooks."
+msgstr ""
+
+#: src/index.md:62
+msgid "Screenshots"
+msgstr ""
+
+#: src/index.md:73
+msgid "Acknowledgments"
+msgstr ""
+
+#: src/index.md:75
+msgid "Cadmus is a fork of [Plato](https://github.com/baskerville/plato), a document reader created by Bastien Dejean."
+msgstr ""
+
+#: src/installation/index.md:3
+msgid "Cadmus comes in different packages. Pick the one that matches your needs."
+msgstr ""
+
+#: src/installation/index.md:5
+msgid "Available packages"
+msgstr ""
+
+#: src/installation/index.md:18
+msgid "Which one should I pick?"
+msgstr ""
+
+#: src/installation/index.md:20
+msgid "**Normal installs**: Use `KoboRoot.tgz` or `KoboRoot-nm.tgz`"
+msgstr ""
+
+#: src/installation/index.md:21
+msgid "**If you use NickelMenu**: Pick a package that includes it (`-nm` versions)"
+msgstr ""
+
+#: src/installation/index.md:22
+msgid "**Testing a new feature**: Use test packages (`-test` versions) for trying out changes that haven't been released yet"
+msgstr ""
+
+#: src/installation/index.md:25 src/installation/ota.md:90
+msgid "First-time setup"
+msgstr ""
+
+#: src/installation/index.md:27
+msgid "Go to the [latest release](https://github.com/OGKevin/cadmus/releases/latest)."
+msgstr ""
+
+#: src/installation/index.md:28
+msgid "Download the package you want from the table above."
+msgstr ""
+
+#: src/installation/index.md:29 src/installation/index.md:54
+#: src/installation/uninstall.md:5
+msgid "Connect your Kobo to your computer via USB."
+msgstr ""
+
+#: src/installation/index.md:30
+msgid "Rename the downloaded file to `KoboRoot.tgz`."
+msgstr ""
+
+#: src/installation/index.md:31
+msgid "Copy that renamed file to `/mnt/onboard/.kobo/KoboRoot.tgz` on the device."
+msgstr ""
+
+#: src/installation/index.md:32 src/installation/test-builds.md:15
+msgid "Eject the device and reboot."
+msgstr ""
+
+#: src/installation/index.md:35
+msgid "You must rename the file to `KoboRoot.tgz` before copying it to your Kobo. For example, `KoboRoot-nm.tgz` and `KoboRoot-test.tgz` will not install until you rename them."
+msgstr ""
+
+#: src/installation/index.md:39
+msgid "Updating"
+msgstr ""
+
+#: src/installation/index.md:41
+msgid "There are two ways to update Cadmus once it's installed."
+msgstr ""
+
+#: src/installation/index.md:43
+msgid "Wirelessly (OTA)"
+msgstr ""
+
+#: src/installation/index.md:45
+msgid "The easiest way — no computer needed, just WiFi. Open **Main Menu → Check for Updates** and follow the prompts. See [OTA updates](./ota.md) for details."
+msgstr ""
+
+#: src/installation/index.md:49
+msgid "Via USB"
+msgstr ""
+
+#: src/installation/index.md:51
+msgid "You can also update by copying a new package over USB, the same way you did the first-time install."
+msgstr ""
+
+#: src/installation/index.md:55
+msgid "When Cadmus asks \"Share storage via USB?\", tap **Share**."
+msgstr ""
+
+#: src/installation/index.md:56
+msgid "Download the package you want from the [latest release](https://github.com/OGKevin/cadmus/releases/latest)."
+msgstr ""
+
+#: src/installation/index.md:57
+msgid "Copy it to `/mnt/onboard/.kobo/KoboRoot.tgz` on your Kobo."
+msgstr ""
+
+#: src/installation/index.md:58
+msgid "Eject and disconnect the USB cable."
+msgstr ""
+
+#: src/installation/index.md:61
+msgid "Always name the file `KoboRoot.tgz` on the device, regardless of which package you downloaded (e.g. `KoboRoot-nm.tgz` must be renamed)."
+msgstr ""
+
+#: src/installation/index.md:64
+msgid "Cadmus detects the file automatically and reboots your Kobo to install the update. You don't need to do anything else."
+msgstr ""
+
+#: src/installation/index.md:67
+msgid "Uninstalling"
+msgstr ""
+
+#: src/installation/index.md:69
+msgid "See [Uninstalling Cadmus](./uninstall.md)."
+msgstr ""
+
+#: src/installation/test-builds.md:3
+msgid "First-time install"
+msgstr ""
+
+#: src/installation/test-builds.md:5
+msgid "Open the [Cadmus GitHub Actions page](https://github.com/OGKevin/cadmus/actions/workflows/cargo.yml)."
+msgstr ""
+
+#: src/installation/test-builds.md:6
+msgid "Select the run for the change you want to test."
+msgstr ""
+
+#: src/installation/test-builds.md:7
+msgid "Download the package that matches your setup:"
+msgstr ""
+
+#: src/installation/test-builds.md:8
+msgid "`cadmus-kobo-test-<suffix>` — test build only"
+msgstr ""
+
+#: src/installation/test-builds.md:9
+msgid "`cadmus-kobo-nm-test-<suffix>` — test build + NickelMenu ![Download from GitHub Actions](./screenshots/artifacts.png)"
+msgstr ""
+
+#: src/installation/test-builds.md:11 src/installation/manual-pr-install.md:17
+msgid "Extract the download if your browser saved it as a zip."
+msgstr ""
+
+#: src/installation/test-builds.md:12
+msgid "Rename the package to `KoboRoot.tgz`."
+msgstr ""
+
+#: src/installation/test-builds.md:13
+msgid "Copy that renamed file to: `/mnt/onboard/.kobo/KoboRoot.tgz`"
+msgstr ""
+
+#: src/installation/test-builds.md:18
+msgid "Test packages such as `KoboRoot-test.tgz` and `KoboRoot-nm-test.tgz` must be renamed to `KoboRoot.tgz` before you copy them to your Kobo."
+msgstr ""
+
+#: src/installation/test-builds.md:22
+msgid "Runs also include `cadmus-kobo-test-tracing-<suffix>` (and a NickelMenu variant). That is a debug package with extra diagnostics. Install it the same way over USB. Wireless updates will not install it."
+msgstr ""
+
+#: src/installation/test-builds.md:26
+msgid "Updating an existing test build"
+msgstr ""
+
+#: src/installation/test-builds.md:28
+msgid "Use the OTA feature to download updates from a PR number directly on your device. This lets you test changes without connecting to a computer."
+msgstr ""
+
+#: src/installation/test-builds.md:31
+msgid "Switching builds"
+msgstr ""
+
+#: src/installation/test-builds.md:33
+msgid "When both the main and test builds are installed, open the Exit menu and choose **Switch to Test** or **Switch to Main**. Cadmus hands off to the other install without going through Nickel. Quit still returns you to Nickel as usual."
+msgstr ""
+
+#: src/installation/ota.md:3
+msgid "Once Cadmus is installed, you can update it wirelessly without connecting to a computer. The OTA (Over-The-Air) feature downloads updates directly from GitHub."
+msgstr ""
+
+#: src/installation/ota.md:6
+msgid "What you need"
+msgstr ""
+
+#: src/installation/ota.md:8
+msgid "A WiFi connection"
+msgstr ""
+
+#: src/installation/ota.md:9
+msgid "At least **20% battery** — Cadmus refuses to start an update below this level (the same floor Kobo firmware uses before installing an update package)"
+msgstr ""
+
+#: src/installation/ota.md:12
+msgid "During an update"
+msgstr ""
+
+#: src/installation/ota.md:14
+msgid "While Cadmus downloads and installs an update, the **status LED pulses** when one is available. Sleep, power-off, and reboot are blocked until the update finishes, fails, or you cancel the download. See [Soft Suspend](../soft-suspend.md#status-led-indicator) for how this relates to the steady LED used for soft suspend."
+msgstr ""
+
+#: src/installation/ota.md:20
+msgid "Authentication"
+msgstr ""
+
+#: src/installation/ota.md:22
+msgid "Main branch and PR builds require a GitHub account. Stable releases are public and need no authentication."
+msgstr ""
+
+#: src/installation/ota.md:25
+msgid "The first time you request a main branch or PR build, Cadmus will show a screen with a URL and a short code:"
+msgstr ""
+
+#: src/installation/ota.md:28
+msgid "Go to the URL shown on screen"
+msgstr ""
+
+#: src/installation/ota.md:29
+msgid "Enter the code shown on your device"
+msgstr ""
+
+#: src/installation/ota.md:30
+msgid "Sign in to GitHub and approve the request"
+msgstr ""
+
+#: src/installation/ota.md:32
+msgid "Cadmus detects the approval automatically and starts the download. The token is saved to disk so you won't need to sign in again."
+msgstr ""
+
+#: src/installation/ota.md:37
+msgid "![ota-pick](./screenshots/ota-pick.png)"
+msgstr ""
+
+#: src/installation/ota.md:37
+msgid "![auth](./screenshots/device-auth.png)"
+msgstr ""
+
+#: src/installation/ota.md:39
+msgid "How to update"
+msgstr ""
+
+#: src/installation/ota.md:41
+msgid "Open **Main Menu → Check for Updates**. You'll see options for where to get the update from:"
+msgstr ""
+
+#: src/installation/ota.md:44 src/installation/migration.md:51
+msgid "Source"
+msgstr ""
+
+#: src/installation/ota.md:44
+msgid "Description"
+msgstr ""
+
+#: src/installation/ota.md:46
+msgid "**Stable Release**"
+msgstr ""
+
+#: src/installation/ota.md:46
+msgid "Latest official release from GitHub"
+msgstr ""
+
+#: src/installation/ota.md:47
+msgid "**Main Branch**"
+msgstr ""
+
+#: src/installation/ota.md:47
+msgid "Latest development build (most recent changes)"
+msgstr ""
+
+#: src/installation/ota.md:48
+msgid "**PR Build**"
+msgstr ""
+
+#: src/installation/ota.md:48
+msgid "Test a specific pull request"
+msgstr ""
+
+#: src/installation/ota.md:51
+msgid "The _Stable Release_ option is not shown in test builds."
+msgstr ""
+
+#: src/installation/ota.md:53
+msgid "Updating from the main branch"
+msgstr ""
+
+#: src/installation/ota.md:55
+msgid "Select **Main Branch** to get the most recent development build. This includes changes that have been merged but not yet released officially."
+msgstr ""
+
+#: src/installation/ota.md:58
+msgid "If you haven't authenticated before, Cadmus will guide you through the GitHub sign-in process. See [Authentication](#authentication) for details."
+msgstr ""
+
+#: src/installation/ota.md:61
+msgid "The update downloads from GitHub, installs automatically, and reboots the device to finish."
+msgstr ""
+
+#: src/installation/ota.md:64
+msgid "Before that reboot, Cadmus removes the files it previously installed so the new package can replace them cleanly. Your custom fonts, icons, and other user-added files will be preserved."
+msgstr ""
+
+#: src/installation/ota.md:68
+msgid "Testing a pull request"
+msgstr ""
+
+#: src/installation/ota.md:70
+msgid "Select **PR Build** to try out a specific change before it's released. Enter the PR number when prompted. If you haven't authenticated before, Cadmus will guide you through the GitHub sign-in process. See [Authentication](#authentication) for details."
+msgstr ""
+
+#: src/installation/ota.md:76
+msgid "Find the PR number in the GitHub URL. For example, in `github.com/OGKevin/cadmus/pull/42` the PR number is **42**."
+msgstr ""
+
+#: src/installation/ota.md:79
+msgid "Normal vs test builds"
+msgstr ""
+
+#: src/installation/ota.md:81
+msgid "OTA works for both types of builds. The type you're currently using determines what gets downloaded:"
+msgstr ""
+
+#: src/installation/ota.md:84
+msgid "**Normal builds** update to `KoboRoot.tgz` in `/mnt/onboard/.adds/cadmus`"
+msgstr ""
+
+#: src/installation/ota.md:85
+msgid "**Test builds** update to `KoboRoot-test.tgz` in `/mnt/onboard/.adds/cadmus-tst`"
+msgstr ""
+
+#: src/installation/ota.md:87
+msgid "See the [available packages](./index.md#available-packages) table for all options."
+msgstr ""
+
+#: src/installation/ota.md:92
+msgid "OTA only works for updating an existing installation. To install Cadmus for the first time, follow the [installation guide](./index.md) or the [test builds guide](./test-builds.md) to copy a KoboRoot file via USB."
+msgstr ""
+
+#: src/installation/ota.md:98
+msgid "\"Insufficient disk space\" error"
+msgstr ""
+
+#: src/installation/ota.md:100
+msgid "If Cadmus shows an error like _\"Insufficient disk space: need 100MB, have XMB\"_ while downloading an update:"
+msgstr ""
+
+#: src/installation/ota.md:103
+msgid "Cadmus downloads update files into a `tmp` folder:"
+msgstr ""
+
+#: src/installation/ota.md:104
+msgid "**With SD card**: `/mnt/sd/.cadmus/tmp` (uses SD card space)"
+msgstr ""
+
+#: src/installation/ota.md:105
+msgid "**Without SD card**: `/mnt/onboard/.adds/cadmus/tmp` (uses internal storage)"
+msgstr ""
+
+#: src/installation/ota.md:106
+msgid "If you see this error and have an SD card inserted, the card may be full"
+msgstr ""
+
+#: src/installation/ota.md:107
+msgid "If you do not have an SD card, free up space on internal storage by deleting books or other files you do not need"
+msgstr ""
+
+#: src/installation/manual-pr-install.md:1
+msgid "Manually install PR build"
+msgstr ""
+
+#: src/installation/manual-pr-install.md:3
+msgid "To manually install a PR build, follow these steps:"
+msgstr ""
+
+#: src/installation/manual-pr-install.md:5
+msgid "Open the PR you want to install"
+msgstr ""
+
+#: src/installation/manual-pr-install.md:6
+msgid "Press the checks tab ![pr checks](screenshots/pr-checks.png)"
+msgstr ""
+
+#: src/installation/manual-pr-install.md:8
+msgid "Press the cargo job ![cargo job](screenshots/pr-cargo-job.png)"
+msgstr ""
+
+#: src/installation/manual-pr-install.md:10
+msgid "Scroll to the files and download the package you want:"
+msgstr ""
+
+#: src/installation/manual-pr-install.md:11
+msgid "`cadmus-kobo-<suffix>` — Cadmus only"
+msgstr ""
+
+#: src/installation/manual-pr-install.md:12
+msgid "`cadmus-kobo-nm-<suffix>` — Cadmus + NickelMenu"
+msgstr ""
+
+#: src/installation/manual-pr-install.md:13
+msgid "`cadmus-kobo-test-tracing-<suffix>` — test build with extra diagnostics (USB only; see [Test builds](test-builds.md))"
+msgstr ""
+
+#: src/installation/manual-pr-install.md:15
+msgid "`cadmus-kobo-nm-test-tracing-<suffix>` — same, plus NickelMenu ![Download from GitHub Actions](screenshots/artifacts.png)"
+msgstr ""
+
+#: src/installation/manual-pr-install.md:19
+msgid "Afterward, follow the [installation](index.md) instructions accordingly."
+msgstr ""
+
+#: src/installation/migration.md:3
+msgid "Cadmus is a fork of Plato and uses the same `Settings.toml` format, so migrating is mostly a matter of copying your settings file across."
+msgstr ""
+
+#: src/installation/migration.md:6
+msgid "Copy your settings"
+msgstr ""
+
+#: src/installation/migration.md:17
+msgid "Copy the file as-is into the Cadmus folder so it is named `Settings.toml` (for example, `/mnt/onboard/.adds/cadmus/Settings.toml` or `/mnt/onboard/.adds/cadmus-tst/Settings.toml`). The `[[libraries]]` section is the most important part, it tells Cadmus where your books live and drives the reading-progress import on first launch. On first launch, Cadmus will move this file into its `Settings/` folder automatically."
+msgstr ""
+
+#: src/installation/migration.md:22
+msgid "If your SD card is already inserted when you upgrade, Cadmus automatically moves your settings, logs, and dictionaries to `/mnt/sd/.cadmus/` (or `/mnt/sd/.cadmus-tst/` for test builds) on the next boot."
+msgstr ""
+
+#: src/installation/migration.md:27
+msgid "If you insert an SD card **after** Cadmus has already run, the automatic migration will not run. You will need to copy your data manually — see [Moving data to an SD card](#moving-data-to-an-sd-card) below."
+msgstr ""
+
+#: src/installation/migration.md:43
+msgid "Make sure each `[[libraries]]` entry has the correct `path` and `name`. If a path doesn't match what's on disk, Cadmus skips that library's import."
+msgstr ""
+
+#: src/installation/migration.md:46
+msgid "What happens on first launch"
+msgstr ""
+
+#: src/installation/migration.md:48
+msgid "When Cadmus starts for the first time it automatically imports your data from each library listed in settings:"
+msgstr ""
+
+#: src/installation/migration.md:51
+msgid "What's imported"
+msgstr ""
+
+#: src/installation/migration.md:53
+msgid "`.metadata.json`"
+msgstr ""
+
+#: src/installation/migration.md:53
+msgid "Book metadata (title, author, …) and reading progress"
+msgstr ""
+
+#: src/installation/migration.md:54
+msgid "`.reading-states/<fp>.json`"
+msgstr ""
+
+#: src/installation/migration.md:54
+msgid "Reading progress for books not already covered by the above"
+msgstr ""
+
+#: src/installation/migration.md:56
+msgid "Both database mode and filesystem mode libraries are handled. Cadmus reads `.reading-states/` in all cases, so current page, bookmarks, and annotations carry over regardless of which mode you used in Plato."
+msgstr ""
+
+#: src/installation/migration.md:61
+msgid "The original `.metadata.json` and `.reading-states/` files are not modified or deleted during import. Once you have confirmed everything looks right in Cadmus, you can safely delete them. Keeping these files means your Plato progress remains intact. If you decide to go back to Plato, you can do so without losing your original Plato reading states. Though keep in mind that any progress you make in Cadmus will not sync back to Plato."
+msgstr ""
+
+#: src/installation/migration.md:69
+msgid "Cadmus also removes the `.thumbnail-previews/` folder and regenerates thumbnails itself."
+msgstr ""
+
+#: src/installation/migration.md:72
+msgid "Library hooks"
+msgstr ""
+
+#: src/installation/migration.md:74
+msgid "Plato library hooks that emit `{\"type\": \"setWifi\", \"enable\": …}` are not supported in Cadmus. WiFi control for plugins will return with the plugin system ([\\#423](https://github.com/OGKevin/cadmus/issues/423))."
+msgstr ""
+
+#: src/installation/migration.md:78
+msgid "Re-running the import"
+msgstr ""
+
+#: src/installation/migration.md:80
+msgid "If the import went wrong (for example, the library path was incorrect in settings), you can start it fresh:"
+msgstr ""
+
+#: src/installation/migration.md:83
+msgid "Delete the Cadmus SQLite database:"
+msgstr ""
+
+#: src/installation/migration.md:94
+msgid "Restart Cadmus — the import will run again from scratch."
+msgstr ""
+
+#: src/installation/migration.md:96
+msgid "If something still looks wrong after re-running, check the logs for details. See [Troubleshooting](../troubleshooting/index.md) for where to find them."
+msgstr ""
+
+#: src/installation/migration.md:99
+msgid "Moving data to an SD card"
+msgstr ""
+
+#: src/installation/migration.md:101
+msgid "If you insert an SD card after Cadmus has already run, you need to move your data manually. Cadmus will use the SD card for new data once it detects the card, but your existing files stay in internal storage until you move them."
+msgstr ""
+
+#: src/installation/migration.md:106
+msgid "Do these operations while Cadmus is not running!"
+msgstr ""
+
+#: src/installation/migration.md:108
+msgid "In other words, do this while the Nickel/KOReader/etc is running."
+msgstr ""
+
+#: src/installation/migration.md:110
+msgid "Connect your Kobo to your computer"
+msgstr ""
+
+#: src/installation/migration.md:111
+msgid "Copy the following from internal storage to the SD card:"
+msgstr ""
+
+#: src/installation/migration.md:113
+msgid "What to move"
+msgstr ""
+
+#: src/installation/migration.md:113
+msgid "From (internal)"
+msgstr ""
+
+#: src/installation/migration.md:113
+msgid "To (SD card)"
+msgstr ""
+
+#: src/installation/migration.md:115
+msgid "Settings directory"
+msgstr ""
+
+#: src/installation/migration.md:115
+msgid "`/mnt/onboard/.adds/cadmus/Settings/`"
+msgstr ""
+
+#: src/installation/migration.md:115
+msgid "`/mnt/sd/.cadmus/Settings/`"
+msgstr ""
+
+#: src/installation/migration.md:116
+msgid "Settings file"
+msgstr ""
+
+#: src/installation/migration.md:116
+msgid "`/mnt/onboard/.adds/cadmus/Settings.toml`"
+msgstr ""
+
+#: src/installation/migration.md:116
+msgid "`/mnt/sd/.cadmus/Settings.toml`"
+msgstr ""
+
+#: src/installation/migration.md:117 src/troubleshooting/index.md:3
+msgid "Logs"
+msgstr ""
+
+#: src/installation/migration.md:117
+msgid "`/mnt/onboard/.adds/cadmus/logs/`"
+msgstr ""
+
+#: src/installation/migration.md:117
+msgid "`/mnt/sd/.cadmus/logs/`"
+msgstr ""
+
+#: src/installation/migration.md:118
+msgid "`/mnt/onboard/.adds/cadmus/dictionaries/`"
+msgstr ""
+
+#: src/installation/migration.md:118
+msgid "`/mnt/sd/.cadmus/dictionaries/`"
+msgstr ""
+
+#: src/installation/migration.md:119
+msgid "Database"
+msgstr ""
+
+#: src/installation/migration.md:119
+msgid "`/mnt/onboard/.adds/cadmus/cadmus.sqlite`"
+msgstr ""
+
+#: src/installation/migration.md:119
+msgid "`/mnt/sd/.cadmus/cadmus.sqlite`"
+msgstr ""
+
+#: src/installation/migration.md:122
+msgid "Use the test paths (`cadmus-tst` / `.cadmus-tst`) if you are on a test build."
+msgstr ""
+
+#: src/installation/migration.md:124
+msgid "Restart Cadmus. It will pick up the files from the SD card automatically."
+msgstr ""
+
+#: src/installation/kfmon.md:1
+msgid "Using Cadmus with KFMon"
+msgstr ""
+
+#: src/installation/kfmon.md:3
+msgid "[KFMon](https://github.com/NiLuJe/kfmon) is a launcher that starts apps when you open certain icon files on your Kobo. If you already use KFMon with readers like Plato or KOReader, you may run into a conflict when you install Cadmus."
+msgstr ""
+
+#: src/installation/kfmon.md:8
+msgid "The problem"
+msgstr ""
+
+#: src/installation/kfmon.md:10
+msgid "KFMon watches PNG files in the library. When Cadmus opens one of those watched PNG files — for example, while showing a cover or importing a book — KFMon thinks you tapped the icon and launches the matching reader. This can leave you with two readers running at the same time, such as both Plato and Cadmus."
+msgstr ""
+
+#: src/installation/kfmon.md:15
+msgid "The fix: add a Cadmus KFMon watch"
+msgstr ""
+
+#: src/installation/kfmon.md:17
+msgid "Add a KFMon watch that points to Cadmus. This tells KFMon about Cadmus, so it blocks other launches while Cadmus is already running."
+msgstr ""
+
+#: src/installation/kfmon.md:20
+msgid "Place the Cadmus icon somewhere on your Kobo, for example:"
+msgstr ""
+
+#: src/installation/kfmon.md:30
+msgid "If you don't have an icon, create or copy a PNG image to use as the launcher icon."
+msgstr ""
+
+#: src/installation/kfmon.md:33
+msgid "Create a new file on your Kobo:"
+msgstr ""
+
+#: src/installation/kfmon.md:43
+msgid "Paste this into the file, changing the `filename` value to match your icon path:"
+msgstr ""
+
+#: src/installation/kfmon.md:69
+msgid "Reboot your Kobo."
+msgstr ""
+
+#: src/installation/kfmon.md:72
+msgid "The `block_spawns = 1` line is the key setting. It stops KFMon from launching another reader while Cadmus is already open."
+msgstr ""
+
+#: src/installation/kfmon.md:75
+msgid "Pick one launcher method"
+msgstr ""
+
+#: src/installation/kfmon.md:77
+msgid "Cadmus can be launched by either NickelMenu or KFMon, but try to avoid both at once. If you use KFMon, install a non-NickelMenu package from the [Installation page](./index.md) (`KoboRoot.tgz` or `KoboRoot-test.tgz`) instead of the `KoboRoot-nm.tgz` or `KoboRoot-nm-test.tgz` packages. Using both can create duplicate icons and make conflicts harder to diagnose."
+msgstr ""
+
+#: src/installation/kfmon.md:83
+msgid "Temporarily disable KFMon"
+msgstr ""
+
+#: src/installation/kfmon.md:85
+msgid "If you need to stop KFMon from launching anything for a short time — for example, while troubleshooting — you can create a blank `BLOCK` file:"
+msgstr ""
+
+#: src/installation/kfmon.md:96
+msgid "Remove the file when you want KFMon to work again:"
+msgstr ""
+
+#: src/installation/uninstall.md:3
+msgid "To remove Cadmus from your Kobo:"
+msgstr ""
+
+#: src/installation/uninstall.md:6
+msgid "Delete the Cadmus folder from `.adds`:"
+msgstr ""
+
+#: src/installation/uninstall.md:17
+msgid "If you installed a package that included NickelMenu, delete the Cadmus menu entry too:"
+msgstr ""
+
+#: src/installation/uninstall.md:29
+msgid "Eject the device and disconnect the USB cable."
+msgstr ""
+
+#: src/installation/uninstall.md:32
+msgid "If you no longer need NickelMenu at all, you can remove it separately."
+msgstr ""
+
+#: src/settings/index.md:3
+msgid "Cadmus reads settings from `Settings/Settings-*.toml`. Settings can be changed via **Main Menu → Settings**, which opens the built-in settings editor."
+msgstr ""
+
+#: src/settings/index.md:6
+msgid "**Legend:**"
+msgstr ""
+
+#: src/settings/index.md:8
+msgid "✏️ Editable in the settings editor"
+msgstr ""
+
+#: src/settings/index.md:9
+msgid "🔑 Required for feature to work"
+msgstr ""
+
+#: src/settings/index.md:10
+msgid "🧪 Only available in test builds"
+msgstr ""
+
+#: src/settings/index.md:11
+msgid "📱 Kobo"
+msgstr ""
+
+#: src/settings/index.md:13
+msgid "Example Full Config"
+msgstr ""
+
+#: src/settings/index.md:315
+msgid "General Settings"
+msgstr ""
+
+#: src/settings/index.md:317
+msgid "`keyboard-layout`"
+msgstr ""
+
+#: src/settings/index.md:319 src/settings/index.md:335
+#: src/settings/index.md:349 src/settings/index.md:368
+#: src/settings/index.md:383 src/settings/index.md:397
+#: src/settings/index.md:419 src/settings/index.md:435
+#: src/settings/index.md:487 src/settings/index.md:562
+#: src/settings/index.md:578 src/settings/index.md:594
+#: src/settings/index.md:610 src/settings/index.md:626
+#: src/settings/index.md:650 src/settings/index.md:805
+#: src/settings/index.md:916 src/settings/index.md:954
+#: src/settings/index.md:978 src/settings/index.md:995
+#: src/settings/index.md:1001 src/settings/index.md:1007
+#: src/settings/index.md:1015 src/settings/index.md:1040
+#: src/settings/index.md:1058 src/settings/index.md:1071
+#: src/settings/index.md:1079 src/settings/index.md:1087
+#: src/settings/index.md:1111 src/settings/index.md:1139
+#: src/settings/index.md:1196 src/settings/index.md:1211
+msgid "✏️"
+msgstr ""
+
+#: src/settings/index.md:321
+msgid "Keyboard layout to use for text input."
+msgstr ""
+
+#: src/settings/index.md:323
+msgid "Possible values: `\"English\"`, `\"Russian\"`."
+msgstr ""
+
+#: src/settings/index.md:333
+msgid "`sleep-cover`"
+msgstr ""
+
+#: src/settings/index.md:337
+msgid "Handle the magnetic sleep cover event."
+msgstr ""
+
+#: src/settings/index.md:347
+msgid "`auto-share`"
+msgstr ""
+
+#: src/settings/index.md:351
+msgid "Automatically enter shared mode when connected to a computer, skipping the \"Share storage via USB?\" prompt."
+msgstr ""
+
+#: src/settings/index.md:355
+msgid "Turn this on if you update Cadmus via USB often — you won't have to confirm the sharing dialog each time you plug in."
+msgstr ""
+
+#: src/settings/index.md:366
+msgid "`auto-time`"
+msgstr ""
+
+#: src/settings/index.md:370
+msgid "Automatically synchronize the device time via NTP when WiFi connects. This will also set the correct timezone. Uses the configured `ntp-server` and ipapi.co."
+msgstr ""
+
+#: src/settings/index.md:381
+msgid "`ntp-server`"
+msgstr ""
+
+#: src/settings/index.md:385
+msgid "Hostname or IP of the NTP server used for automatic and manual time sync. Port 123 is fixed."
+msgstr ""
+
+#: src/settings/index.md:395
+msgid "`auto-frontlight`"
+msgstr ""
+
+#: src/settings/index.md:399
+msgid "Automatically adjust the frontlight warmth and brightness based on the sun's position at the device's location."
+msgstr ""
+
+#: src/settings/index.md:401
+msgid "During the day warmth is at its minimum."
+msgstr ""
+
+#: src/settings/index.md:402
+msgid "Around sunrise and sunset warmth ramps gradually between zero and full."
+msgstr ""
+
+#: src/settings/index.md:403
+msgid "After sunset brightness is reduced to `auto-frontlight-night-brightness` and warmth stays at its maximum until sunrise."
+msgstr ""
+
+#: src/settings/index.md:406
+msgid "Coordinates are auto-detected during each time sync (via ipapi.co) and stored in `auto-frontlight-last-coordinates`. Set `auto-frontlight-manual-coordinates` to override the detected location."
+msgstr ""
+
+#: src/settings/index.md:417
+msgid "`auto-frontlight-night-brightness`"
+msgstr ""
+
+#: src/settings/index.md:421
+msgid "Frontlight brightness level (0.0–100.0) applied when the sun is below the horizon."
+msgstr ""
+
+#: src/settings/index.md:423
+msgid "This setting is optional. When not set, a default of `1.0` is used."
+msgstr ""
+
+#: src/settings/index.md:433
+msgid "`auto-frontlight-manual-coordinates`"
+msgstr ""
+
+#: src/settings/index.md:437
+msgid "GPS coordinates `[latitude, longitude]` to use for sun-position calculations instead of the auto-detected location. Takes priority over `auto-frontlight-last-coordinates`."
+msgstr ""
+
+#: src/settings/index.md:440
+msgid "This setting is optional."
+msgstr ""
+
+#: src/settings/index.md:450
+msgid "`auto-frontlight-last-coordinates`"
+msgstr ""
+
+#: src/settings/index.md:452
+msgid "GPS coordinates `[latitude, longitude]` last detected during a time sync. Written automatically — do not edit this by hand; set `auto-frontlight-manual-coordinates` to override the location instead."
+msgstr ""
+
+#: src/settings/index.md:455
+msgid "This setting is optional and managed automatically."
+msgstr ""
+
+#: src/settings/index.md:465
+msgid "`wifi`"
+msgstr ""
+
+#: src/settings/index.md:467
+msgid "Radio button in the top menu."
+msgstr ""
+
+#: src/settings/index.md:469
+msgid "WiFi operating mode:"
+msgstr ""
+
+#: src/settings/index.md:471
+msgid "`off` — radio stays powered down; on-demand features cannot enable it"
+msgstr ""
+
+#: src/settings/index.md:472
+msgid "`always-on` — radio stays enabled (legacy `wifi = true`)"
+msgstr ""
+
+#: src/settings/index.md:473
+msgid "`auto` — enable when a feature needs the network, then power down after idle"
+msgstr ""
+
+#: src/settings/index.md:475
+msgid "Legacy boolean values still load: `true` becomes `always-on`, `false` becomes `off`."
+msgstr ""
+
+#: src/settings/index.md:485
+msgid "`wifi-idle-timeout`"
+msgstr ""
+
+#: src/settings/index.md:489
+msgid "Number of minutes after the last Auto-mode WiFi use before the radio is powered down."
+msgstr ""
+
+#: src/settings/index.md:491
+msgid "Zero means disable as soon as the last WiFi lease is released."
+msgstr ""
+
+#: src/settings/index.md:492
+msgid "Only applies when `wifi = \"auto\"`."
+msgstr ""
+
+#: src/settings/index.md:493
+msgid "Minimum non-zero value is `0.5` (30 seconds). The idle poller checks every 30 seconds, so shorter positive timeouts are raised to `0.5` when settings are loaded or edited."
+msgstr ""
+
+#: src/settings/index.md:505
+msgid "`autosleep-mode`"
+msgstr ""
+
+#: src/settings/index.md:507 src/settings/index.md:526
+#: src/settings/index.md:543
+msgid "✏️ 📱"
+msgstr ""
+
+#: src/settings/index.md:509
+msgid "Soft-suspend target written to the kernel autosleep interface. See [Soft Suspend](../soft-suspend.md). The settings editor shows Soft Suspend only when the device supports it; on unsupported hosts this key has no effect."
+msgstr ""
+
+#: src/settings/index.md:513
+msgid "Possible values: `\"off\"` (default), `\"freeze\"`, `\"mem\"`."
+msgstr ""
+
+#: src/settings/index.md:514
+msgid "Unsupported values for your device fall back to `\"off\"`."
+msgstr ""
+
+#: src/settings/index.md:524
+msgid "`indicate-autosleep-led`"
+msgstr ""
+
+#: src/settings/index.md:528
+msgid "When soft suspend is armed, keep the status LED on while the device is awake. Hidden in the settings editor when soft suspend is unsupported."
+msgstr ""
+
+#: src/settings/index.md:531
+msgid "Default: `false`."
+msgstr ""
+
+#: src/settings/index.md:541
+msgid "`autosleep-grace`"
+msgstr ""
+
+#: src/settings/index.md:545
+msgid "Seconds to keep the soft-suspend wake lock after the last Cadmus lease drops. See [Soft Suspend](../soft-suspend.md). Hidden in the settings editor when soft suspend is unsupported."
+msgstr ""
+
+#: src/settings/index.md:549
+msgid "Default: `5.0`."
+msgstr ""
+
+#: src/settings/index.md:550
+msgid "Zero unlocks immediately."
+msgstr ""
+
+#: src/settings/index.md:560
+msgid "`auto-suspend`"
+msgstr ""
+
+#: src/settings/index.md:564
+msgid "Number of minutes of inactivity after which the device will automatically go to sleep."
+msgstr ""
+
+#: src/settings/index.md:566 src/settings/index.md:582
+msgid "Zero means never."
+msgstr ""
+
+#: src/settings/index.md:576
+msgid "`auto-power-off`"
+msgstr ""
+
+#: src/settings/index.md:580
+msgid "Delay in days after which a suspended device will power off."
+msgstr ""
+
+#: src/settings/index.md:592
+msgid "`button-scheme`"
+msgstr ""
+
+#: src/settings/index.md:596
+msgid "Defines how the back and forward buttons are mapped to page forward and page backward actions."
+msgstr ""
+
+#: src/settings/index.md:598
+msgid "Possible values: `\"natural\"`, `\"inverted\"`."
+msgstr ""
+
+#: src/settings/index.md:608
+msgid "`locale`"
+msgstr ""
+
+#: src/settings/index.md:612
+msgid "The preferred language for the user interface, using BCP 47 format (e.g., `\"en-US\"`, `\"de-DE\"`)."
+msgstr ""
+
+#: src/settings/index.md:614
+msgid "This setting is optional. When not set, `en-GB` is used."
+msgstr ""
+
+#: src/settings/index.md:624
+msgid "`startup-mode`"
+msgstr ""
+
+#: src/settings/index.md:628
+msgid "What to show when Cadmus starts."
+msgstr ""
+
+#: src/settings/index.md:630
+msgid "`\"home\"` — open the home screen (default)."
+msgstr ""
+
+#: src/settings/index.md:631
+msgid "`\"last-file\"` — re-open the last book you were reading. If there is no unfinished book in the selected library, the home screen is shown instead."
+msgstr ""
+
+#: src/settings/index.md:644
+msgid "Settings that control the reading experience. How Cadmus loads [reflowable](../reader/reflowable.md) and [paged](../reader/paged.md) books is described in the [Reader](../reader/index.md) section."
+msgstr ""
+
+#: src/settings/index.md:648
+msgid "`reader.finished`"
+msgstr ""
+
+#: src/settings/index.md:652
+msgid "What to do when you finish reading a book."
+msgstr ""
+
+#: src/settings/index.md:654 src/settings/index.md:673
+#: src/settings/index.md:691 src/settings/index.md:709
+#: src/settings/index.md:727 src/settings/index.md:746
+#: src/settings/index.md:842 src/settings/index.md:1020
+msgid "Possible values:"
+msgstr ""
+
+#: src/settings/index.md:656
+msgid "`\"notify\"` (show a notification)"
+msgstr ""
+
+#: src/settings/index.md:657
+msgid "`\"close\"` (close the book and go back)"
+msgstr ""
+
+#: src/settings/index.md:658
+msgid "`\"go-to-next\"` (open the next book in the library)."
+msgstr ""
+
+#: src/settings/index.md:669
+msgid "`reader.south-east-corner`"
+msgstr ""
+
+#: src/settings/index.md:671
+msgid "Action when you tap the south-east corner of the screen."
+msgstr ""
+
+#: src/settings/index.md:675
+msgid "`\"go-to-page\"`"
+msgstr ""
+
+#: src/settings/index.md:676 src/settings/index.md:712
+#: src/settings/index.md:730 src/settings/index.md:749
+msgid "`\"next-page\"`"
+msgstr ""
+
+#: src/settings/index.md:687
+msgid "`reader.bottom-right-gesture`"
+msgstr ""
+
+#: src/settings/index.md:689
+msgid "Action for the bottom-right corner gesture."
+msgstr ""
+
+#: src/settings/index.md:693
+msgid "`\"toggle-dithered\"`"
+msgstr ""
+
+#: src/settings/index.md:694
+msgid "`\"toggle-inverted\"`"
+msgstr ""
+
+#: src/settings/index.md:705
+msgid "`reader.south-strip`"
+msgstr ""
+
+#: src/settings/index.md:707
+msgid "Action when you tap the south strip."
+msgstr ""
+
+#: src/settings/index.md:711
+msgid "`\"toggle-bars\"`"
+msgstr ""
+
+#: src/settings/index.md:723
+msgid "`reader.west-strip`"
+msgstr ""
+
+#: src/settings/index.md:725
+msgid "Action when you tap the west strip."
+msgstr ""
+
+#: src/settings/index.md:729 src/settings/index.md:748
+msgid "`\"previous-page\"`"
+msgstr ""
+
+#: src/settings/index.md:731 src/settings/index.md:750
+msgid "`\"none\"`"
+msgstr ""
+
+#: src/settings/index.md:742
+msgid "`reader.east-strip`"
+msgstr ""
+
+#: src/settings/index.md:744
+msgid "Action when you tap the east strip."
+msgstr ""
+
+#: src/settings/index.md:761
+msgid "`reader.strip-width`"
+msgstr ""
+
+#: src/settings/index.md:763
+msgid "Width ratio of the side and bottom strip touch regions, relative to `min(W, H) / 2`."
+msgstr ""
+
+#: src/settings/index.md:775
+msgid "`reader.corner-width`"
+msgstr ""
+
+#: src/settings/index.md:777
+msgid "Width ratio of the corner touch regions, relative to `min(W, H) / 2`."
+msgstr ""
+
+#: src/settings/index.md:788
+msgid "`reader.font-path`"
+msgstr ""
+
+#: src/settings/index.md:790
+msgid "The directory Cadmus scans for additional reading fonts. Bundled Cadmus fonts are always available regardless of this setting. See [Fonts](../fonts.md) for details on installing custom fonts."
+msgstr ""
+
+#: src/settings/index.md:803
+msgid "`reader.font-family`"
+msgstr ""
+
+#: src/settings/index.md:807
+msgid "The default reading font family name. New installs default to `Libron`. Existing configurations using `Libertinus Serif` continue to work because Libertinus remains bundled."
+msgstr ""
+
+#: src/settings/index.md:820
+msgid "`reader.font-size`"
+msgstr ""
+
+#: src/settings/index.md:822
+msgid "The default font size in points, plus the minimum and maximum sizes available while reading."
+msgstr ""
+
+#: src/settings/index.md:836
+msgid "See [Fonts](../fonts.md) for more info."
+msgstr ""
+
+#: src/settings/index.md:838
+msgid "`reader.text-align`"
+msgstr ""
+
+#: src/settings/index.md:840
+msgid "Default text alignment for reflowable books."
+msgstr ""
+
+#: src/settings/index.md:844
+msgid "`\"left\"`"
+msgstr ""
+
+#: src/settings/index.md:845
+msgid "`\"right\"`"
+msgstr ""
+
+#: src/settings/index.md:846
+msgid "`\"center\"`"
+msgstr ""
+
+#: src/settings/index.md:847
+msgid "`\"justify\"`"
+msgstr ""
+
+#: src/settings/index.md:858
+msgid "`reader.margin-width`"
+msgstr ""
+
+#: src/settings/index.md:860
+msgid "Default page margin width in millimeters, plus the minimum and maximum values available while reading."
+msgstr ""
+
+#: src/settings/index.md:874
+msgid "`reader.line-height`"
+msgstr ""
+
+#: src/settings/index.md:876
+msgid "Default line height for reflowable books, in ems."
+msgstr ""
+
+#: src/settings/index.md:887
+msgid "`reader.continuous-fit-to-width`"
+msgstr ""
+
+#: src/settings/index.md:889
+msgid "Scroll mode used for fit-to-width zoom when a document is first opened."
+msgstr ""
+
+#: src/settings/index.md:900
+msgid "`reader.ignore-document-css`"
+msgstr ""
+
+#: src/settings/index.md:902
+msgid "When `true`, Cadmus ignores stylesheets embedded in reflowable documents and uses Cadmus viewer styles only."
+msgstr ""
+
+#: src/settings/index.md:914
+msgid "`reader.dithered-kinds`"
+msgstr ""
+
+#: src/settings/index.md:918
+msgid "File extensions rendered with dithering by default when opened for the first time."
+msgstr ""
+
+#: src/settings/index.md:930
+msgid "`reader.paragraph-breaker`"
+msgstr ""
+
+#: src/settings/index.md:932
+msgid "Controls how Cadmus breaks paragraphs in reflowable text."
+msgstr ""
+
+#: src/settings/index.md:934
+msgid "`hyphen-penalty`"
+msgstr ""
+
+#: src/settings/index.md:936
+msgid "Penalty for hyphenated lines. The maximum value is `10000`."
+msgstr ""
+
+#: src/settings/index.md:938
+msgid "`stretch-tolerance`"
+msgstr ""
+
+#: src/settings/index.md:940
+msgid "How much inter-word spacing may stretch or shrink when justifying lines."
+msgstr ""
+
+#: src/settings/index.md:952
+msgid "`reader.refresh-rate`"
+msgstr ""
+
+#: src/settings/index.md:956
+msgid "How often Cadmus fully refreshes the screen while you turn pages. `regular` applies when colors are not inverted; `inverted` applies when they are. Use `0` to never force a full refresh on that schedule."
+msgstr ""
+
+#: src/settings/index.md:960
+msgid "Optional `by-kind` entries override the global pair for specific file extensions."
+msgstr ""
+
+#: src/settings/index.md:976
+msgid "Libraries"
+msgstr ""
+
+#: src/settings/index.md:980
+msgid "Document library configuration. Each library has a name, path, and mode."
+msgstr ""
+
+#: src/settings/index.md:993
+msgid "`libraries.name`"
+msgstr ""
+
+#: src/settings/index.md:997
+msgid "Display name for the library."
+msgstr ""
+
+#: src/settings/index.md:999
+msgid "`libraries.path`"
+msgstr ""
+
+#: src/settings/index.md:1003
+msgid "Directory path containing documents."
+msgstr ""
+
+#: src/settings/index.md:1005
+msgid "`libraries.mode`"
+msgstr ""
+
+#: src/settings/index.md:1009
+msgid "Library indexing mode."
+msgstr ""
+
+#: src/settings/index.md:1011
+msgid "Possible values: `\"database\"`, `\"filesystem\"`."
+msgstr ""
+
+#: src/settings/index.md:1013
+msgid "`libraries.finished`"
+msgstr ""
+
+#: src/settings/index.md:1017
+msgid "Override the `reader.finished` setting for this specific library. When set, this takes precedence over the global reader setting."
+msgstr ""
+
+#: src/settings/index.md:1022
+msgid "`\"notify\"`"
+msgstr ""
+
+#: src/settings/index.md:1023
+msgid "`\"close\"`"
+msgstr ""
+
+#: src/settings/index.md:1024
+msgid "`\"go-to-next\"`."
+msgstr ""
+
+#: src/settings/index.md:1025
+msgid "Leave unset to inherit the global `reader.finished` setting."
+msgstr ""
+
+#: src/settings/index.md:1038
+msgid "Intermissions"
+msgstr ""
+
+#: src/settings/index.md:1042
+msgid "Defines the images displayed when entering an intermission state."
+msgstr ""
+
+#: src/settings/index.md:1056
+msgid "`intermissions.suspend`"
+msgstr ""
+
+#: src/settings/index.md:1060
+msgid "Image displayed when the device enters sleep mode."
+msgstr ""
+
+#: src/settings/index.md:1062
+msgid "Setting this to `\"calendar:\"` also enables the calendar refresh: every 5 minutes, the device wakes, shows the calendar, and then goes back to sleep automatically."
+msgstr ""
+
+#: src/settings/index.md:1066
+msgid "Possible values: `\"logo:\"` (built-in logo), `\"cover:\"` (current book cover), `\"calendar:\"` (built-in calendar), or a path to a custom image file."
+msgstr ""
+
+#: src/settings/index.md:1069
+msgid "`intermissions.power-off`"
+msgstr ""
+
+#: src/settings/index.md:1073
+msgid "Image displayed when the device powers off."
+msgstr ""
+
+#: src/settings/index.md:1075 src/settings/index.md:1083
+msgid "Possible values: `\"logo:\"` (built-in logo), `\"cover:\"` (current book cover), or a path to a custom image file."
+msgstr ""
+
+#: src/settings/index.md:1077
+msgid "`intermissions.share`"
+msgstr ""
+
+#: src/settings/index.md:1081
+msgid "Image displayed when entering USB sharing mode."
+msgstr ""
+
+#: src/settings/index.md:1085
+msgid "`intermissions.fill-color`"
+msgstr ""
+
+#: src/settings/index.md:1089
+msgid "Background color for unused screen area when the suspend, power-off, or share screen uses the built-in logo, the current book cover, or a custom image. This does not affect blank, inverted-blank, or calendar intermission screens."
+msgstr ""
+
+#: src/settings/index.md:1093
+msgid "Default: `{ gray = 255 }` (white)"
+msgstr ""
+
+#: src/settings/index.md:1094
+msgid "In **Settings → Intermissions → Fill Color**, choose **White** or **Black**"
+msgstr ""
+
+#: src/settings/index.md:1095
+msgid "Advanced: any valid color value accepted elsewhere in settings, for example `{ rgb = [128, 64, 32] }` (no color picker in the UI)"
+msgstr ""
+
+#: src/settings/index.md:1098
+msgid "Import"
+msgstr ""
+
+#: src/settings/index.md:1100
+msgid "These settings control how Cadmus imports documents from your device. They are available in the **Settings → Import** menu."
+msgstr ""
+
+#: src/settings/index.md:1103
+msgid "Import scanning happens automatically on startup using incremental file checking — files are only re-scanned if their modification time or size has changed since the last import."
+msgstr ""
+
+#: src/settings/index.md:1106
+msgid "To trigger a full re-scan of all files regardless of cached values, use the **Force Full Import** action button in the Import settings category."
+msgstr ""
+
+#: src/settings/index.md:1109
+msgid "`import.sync-metadata`"
+msgstr ""
+
+#: src/settings/index.md:1113
+msgid "Re-extract metadata (title, author, etc.) whenever a document changes."
+msgstr ""
+
+#: src/settings/index.md:1124
+msgid "`import.metadata-kinds`"
+msgstr ""
+
+#: src/settings/index.md:1126
+msgid "File extensions of documents whose metadata is extracted during import."
+msgstr ""
+
+#: src/settings/index.md:1137
+msgid "`import.allowed-kinds`"
+msgstr ""
+
+#: src/settings/index.md:1141
+msgid "File extensions of documents considered during the import process."
+msgstr ""
+
+#: src/settings/index.md:1152
+msgid "OTA"
+msgstr ""
+
+#: src/settings/index.md:1154
+msgid "The OTA feature downloads builds from GitHub."
+msgstr ""
+
+#: src/settings/index.md:1156
+msgid "Authentication for main branch and PR builds uses **GitHub device auth flow**. When you select a build that requires authentication, Cadmus will display a short code and a URL. Visit `github.com/login/device` on any device, enter the code, and Cadmus will automatically continue the download once you authorize."
+msgstr ""
+
+#: src/settings/index.md:1162
+msgid "The token is saved to disk after the first authorization so you will not be prompted again on subsequent downloads."
+msgstr ""
+
+#: src/settings/index.md:1165
+msgid "For step-by-step instructions with screenshots, see the [OTA updates](../installation/ota.md) guide."
+msgstr ""
+
+#: src/settings/index.md:1170
+msgid "Cadmus writes JSON logs to disk. When the build enables the `tracing` feature, it can also export logs to an OpenTelemetry endpoint."
+msgstr ""
+
+#: src/settings/index.md:1173
+msgid "These settings are available in the **Settings → Telemetry** menu."
+msgstr ""
+
+#: src/settings/index.md:1176
+msgid "Changes to these settings only take effect after restarting Cadmus. The application initializes telemetry on startup."
+msgstr ""
+
+#: src/settings/index.md:1179
+msgid "`logging`"
+msgstr ""
+
+#: src/settings/index.md:1194
+msgid "`logging.enabled`"
+msgstr ""
+
+#: src/settings/index.md:1198
+msgid "Enable or disable structured JSON logging."
+msgstr ""
+
+#: src/settings/index.md:1209
+msgid "`logging.level`"
+msgstr ""
+
+#: src/settings/index.md:1213
+msgid "Minimum log level to record."
+msgstr ""
+
+#: src/settings/index.md:1215
+msgid "Possible values: `\"trace\"`, `\"debug\"`, `\"info\"`, `\"warn\"`, `\"error\"`."
+msgstr ""
+
+#: src/settings/index.md:1226
+msgid "`logging.max-files`"
+msgstr ""
+
+#: src/settings/index.md:1228
+msgid "Number of log files to keep. Only the most recent N files are kept — older ones are deleted automatically when Cadmus starts."
+msgstr ""
+
+#: src/settings/index.md:1231 src/settings/index.md:1326
+msgid "Default: `3`"
+msgstr ""
+
+#: src/settings/index.md:1232
+msgid "Set to `0` to keep all log files."
+msgstr ""
+
+#: src/settings/index.md:1243
+msgid "`logging.otlp-endpoint`"
+msgstr ""
+
+#: src/settings/index.md:1245
+msgid "✏️ (only when the `tracing` feature is enabled)"
+msgstr ""
+
+#: src/settings/index.md:1247
+msgid "Optional OTLP endpoint for exporting logs to an OpenTelemetry collector."
+msgstr ""
+
+#: src/settings/index.md:1258 src/settings/index.md:1279
+msgid "Environment override:"
+msgstr ""
+
+#: src/settings/index.md:1260
+msgid "`OTEL_EXPORTER_OTLP_ENDPOINT` takes precedence over `logging.otlp-endpoint`."
+msgstr ""
+
+#: src/settings/index.md:1262
+msgid "`logging.pyroscope-endpoint`"
+msgstr ""
+
+#: src/settings/index.md:1264
+msgid "✏️ (only when the `profiling` feature is enabled)"
+msgstr ""
+
+#: src/settings/index.md:1266
+msgid "Optional Pyroscope server URL for continuous profiling. When set, Cadmus starts both a heap profiling agent (via jemalloc) and a CPU profiling agent (via pprof) that push profiles to this endpoint."
+msgstr ""
+
+#: src/settings/index.md:1281
+msgid "`PYROSCOPE_SERVER_URL` takes precedence over `logging.pyroscope-endpoint`."
+msgstr ""
+
+#: src/settings/index.md:1283
+msgid "`logging.enable-kern-log`"
+msgstr ""
+
+#: src/settings/index.md:1285 src/settings/index.md:1301
+msgid "🧪 📱 ✏️"
+msgstr ""
+
+#: src/settings/index.md:1287
+msgid "Captures kernel logs via `logread -F` and forwards them to structured logging with the target `cadmus_core::logging:kern`."
+msgstr ""
+
+#: src/settings/index.md:1299
+msgid "`logging.enable-dbus-log`"
+msgstr ""
+
+#: src/settings/index.md:1303
+msgid "Captures D-Bus signals via the built-in zbus-based DbusMonitorTask and forwards them to structured logging."
+msgstr ""
+
+#: src/settings/index.md:1315
+msgid "Settings Retention"
+msgstr ""
+
+#: src/settings/index.md:1317
+msgid "Cadmus stores each version's settings in a separate file in the `Settings/` directory (for example, `Settings-v1.2.3.toml`). This ensures backward and forward compatibility when you upgrade."
+msgstr ""
+
+#: src/settings/index.md:1321
+msgid "`settings-retention`"
+msgstr ""
+
+#: src/settings/index.md:1323
+msgid "Number of recent version settings files to keep. Only the most recent N version files are kept. When a new version is saved, older versions beyond this limit are deleted automatically."
+msgstr ""
+
+#: src/settings/index.md:1327
+msgid "Set to `0` to keep all version files"
+msgstr ""
+
+#: src/settings/index.md:1337
+msgid "`db-backup-retention`"
+msgstr ""
+
+#: src/settings/index.md:1339
+msgid "Number of database backups to keep. When a new backup is created and the total would exceed this limit, the oldest backups are deleted automatically."
+msgstr ""
+
+#: src/settings/index.md:1342 src/database-backup.md:76
+msgid "Default: `2`"
+msgstr ""
+
+#: src/settings/index.md:1343 src/database-backup.md:77
+msgid "Set to `0` to disable backups entirely."
+msgstr ""
+
+#: src/settings/index.md:1345
+msgid "See [Database Backup](../database-backup.md) for more details."
+msgstr ""
+
+#: src/fonts.md:3
+msgid "Cadmus ships with reading fonts optimized for e-ink displays, plus additional fonts for the app interface and in-book HTML fallbacks. You can switch fonts while reading or install your own."
+msgstr ""
+
+#: src/fonts.md:7
+msgid "Pre-installed reading fonts"
+msgstr ""
+
+#: src/fonts.md:9
+msgid "Cadmus's reading fonts come from two open-source projects:"
+msgstr ""
+
+#: src/fonts.md:11
+msgid "[ebook-fonts](https://github.com/nicoverbruggen/ebook-fonts) by Nico Verbruggen — reading fonts tuned for e-ink displays, including dyslexia-friendly **NV Disleksio**. See the [interactive showcase](https://ebook-fonts.nicoverbruggen.be/) to preview them."
+msgstr ""
+
+#: src/fonts.md:14
+msgid "[Libertinus](https://github.com/alerque/libertinus) — classic serif, sans, and mono families, plus Nico's metric-tweaked **NV Libertinus** from the ebook-fonts extra collection."
+msgstr ""
+
+#: src/fonts.md:17
+msgid "ebook-fonts (Core Collection)"
+msgstr ""
+
+#: src/fonts.md:19 src/fonts.md:33 src/fonts.md:39 src/fonts.md:53
+msgid "Font"
+msgstr ""
+
+#: src/fonts.md:19 src/fonts.md:33 src/fonts.md:39
+msgid "Style"
+msgstr ""
+
+#: src/fonts.md:21
+msgid "Libron"
+msgstr ""
+
+#: src/fonts.md:21
+msgid "Serif (default)"
+msgstr ""
+
+#: src/fonts.md:22
+msgid "Sourcerer"
+msgstr ""
+
+#: src/fonts.md:22 src/fonts.md:23 src/fonts.md:24 src/fonts.md:25
+#: src/fonts.md:27 src/fonts.md:41 src/fonts.md:42
+msgid "Serif"
+msgstr ""
+
+#: src/fonts.md:23
+msgid "Cartisse"
+msgstr ""
+
+#: src/fonts.md:24
+msgid "NV Charis"
+msgstr ""
+
+#: src/fonts.md:25
+msgid "NV Garamond"
+msgstr ""
+
+#: src/fonts.md:26
+msgid "NV Bitter"
+msgstr ""
+
+#: src/fonts.md:26
+msgid "Slab serif"
+msgstr ""
+
+#: src/fonts.md:27
+msgid "NV Palatium"
+msgstr ""
+
+#: src/fonts.md:28
+msgid "NV Jost"
+msgstr ""
+
+#: src/fonts.md:28 src/fonts.md:43
+msgid "Sans"
+msgstr ""
+
+#: src/fonts.md:29
+msgid "NV Legible Next"
+msgstr ""
+
+#: src/fonts.md:29
+msgid "Sans (accessibility)"
+msgstr ""
+
+#: src/fonts.md:31
+msgid "ebook-fonts (Extra Collection)"
+msgstr ""
+
+#: src/fonts.md:35
+msgid "NV Disleksio"
+msgstr ""
+
+#: src/fonts.md:35
+msgid "Sans (dyslexia)"
+msgstr ""
+
+#: src/fonts.md:37
+msgid "Libertinus"
+msgstr ""
+
+#: src/fonts.md:41
+msgid "NV Libertinus"
+msgstr ""
+
+#: src/fonts.md:42
+msgid "Libertinus Serif"
+msgstr ""
+
+#: src/fonts.md:43
+msgid "Libertinus Sans"
+msgstr ""
+
+#: src/fonts.md:44
+msgid "Libertinus Mono"
+msgstr ""
+
+#: src/fonts.md:44
+msgid "Monospace"
+msgstr ""
+
+#: src/fonts.md:46
+msgid "Other packaged fonts"
+msgstr ""
+
+#: src/fonts.md:48
+msgid "Cadmus also ships fonts from [Noto](https://github.com/notofonts/noto-fonts), [Source Code Pro](https://github.com/adobe-fonts/source-code-pro), and [Google Fonts](https://github.com/googlefonts/google-fonts) for the app interface and HTML rendering fallbacks:"
+msgstr ""
+
+#: src/fonts.md:53
+msgid "Used for"
+msgstr ""
+
+#: src/fonts.md:55
+msgid "Noto Sans"
+msgstr ""
+
+#: src/fonts.md:55
+msgid "Menus, settings, and other app text"
+msgstr ""
+
+#: src/fonts.md:56
+msgid "Noto Serif"
+msgstr ""
+
+#: src/fonts.md:56
+msgid "Serif text in the app interface"
+msgstr ""
+
+#: src/fonts.md:57
+msgid "Source Code Pro"
+msgstr ""
+
+#: src/fonts.md:57
+msgid "Monospace in the app and code blocks in books"
+msgstr ""
+
+#: src/fonts.md:58
+msgid "Varela Round"
+msgstr ""
+
+#: src/fonts.md:58
+msgid "On-screen keyboard"
+msgstr ""
+
+#: src/fonts.md:59
+msgid "Cormorant"
+msgstr ""
+
+#: src/fonts.md:59
+msgid "Startup and intermission screens"
+msgstr ""
+
+#: src/fonts.md:60
+msgid "Parisienne"
+msgstr ""
+
+#: src/fonts.md:60
+msgid "Decorative cursive text in EPUB/HTML content"
+msgstr ""
+
+#: src/fonts.md:61
+msgid "Delius"
+msgstr ""
+
+#: src/fonts.md:61
+msgid "Decorative fantasy text in EPUB/HTML content"
+msgstr ""
+
+#: src/fonts.md:63
+msgid "Changing the font while reading"
+msgstr ""
+
+#: src/fonts.md:65
+msgid "Open a book in the reader."
+msgstr ""
+
+#: src/fonts.md:66
+msgid "Tap the **font family** button in the reader toolbar."
+msgstr ""
+
+#: src/fonts.md:67
+msgid "Select a font from the list."
+msgstr ""
+
+#: src/fonts.md:69
+msgid "The menu shows fonts from Cadmus's packaged collection and any fonts in your custom font directory (see below). When you select a font, Cadmus resolves the family name using the order described in [How Cadmus resolves fonts](#how-cadmus-resolves-fonts)."
+msgstr ""
+
+#: src/fonts.md:73
+msgid "How Cadmus resolves fonts"
+msgstr ""
+
+#: src/fonts.md:75
+msgid "When you pick a font in the reader or reopen a book with a saved [`font-family`](settings/index.md#readerfont-family), Cadmus looks for that family name in two places, **in this order**:"
+msgstr ""
+
+#: src/fonts.md:79
+msgid "**Packaged fonts** — shipped with Cadmus and updated via [OTA](installation/ota.md)"
+msgstr ""
+
+#: src/fonts.md:80
+msgid "**Your custom font directory** — [`reader.font-path`](settings/index.md#readerfont-path) (default `/mnt/onboard/fonts/`)"
+msgstr ""
+
+#: src/fonts.md:83
+msgid "If the same family name exists in both places, the **packaged** copy is used."
+msgstr ""
+
+#: src/fonts.md:85
+msgid "Your chosen family replaces Cadmus's default **serif** stack for reflowable books. Paragraphs the book styles as sans-serif, monospace, cursive, or fantasy keep those respective packaged fallbacks. If Cadmus cannot find the family name, the previous font is kept."
+msgstr ""
+
+#: src/fonts.md:90
+msgid "Installing additional fonts"
+msgstr ""
+
+#: src/fonts.md:92
+msgid "To add your own fonts, copy `.ttf` or `.otf` files into your custom font directory (by default at the root of your Kobo device):"
+msgstr ""
+
+#: src/fonts.md:103
+msgid "Cadmus scans that directory recursively, so fonts can live in subfolders."
+msgstr ""
+
+#: src/fonts.md:105
+msgid "Point Cadmus at your custom directory with [`reader.font-path`](settings/index.md#readerfont-path) if you use a different location."
+msgstr ""
+
+#: src/fonts.md:110
+msgid "Font options can also be set in your settings file. See the [Reader settings](settings/index.md#reader) section for `font-family`, `font-path`, `font-size`, and related entries."
+msgstr ""
+
+#: src/fonts.md:116
+msgid "[OTA updates](installation/ota.md) replace Cadmus-packaged fonts before installing the new release. Cadmus removes **each shipped font file individually** — it does not delete the whole `fonts/` directory — so any extra files you placed in Cadmus's install `fonts/` folder survive the update if they are not part of the release."
+msgstr ""
+
+#: src/fonts.md:122
+msgid "Under normal use, your custom fonts live in a **separate directory** ([`reader.font-path`](settings/index.md#readerfont-path), default `/mnt/onboard/fonts/`) and are never touched by OTA. Packaged fonts stay in Cadmus's install directory."
+msgstr ""
+
+#: src/ui/index.md:3
+msgid "This section explains the different parts of Cadmus you interact with while reading and managing your books."
+msgstr ""
+
+#: src/ui/index.md:6
+msgid "[File Chooser](filechooser.md)"
+msgstr ""
+
+#: src/ui/index.md:7
+msgid "[Keyboard](keyboard.md)"
+msgstr ""
+
+#: src/ui/index.md:8
+msgid "[Dictionary](dictionary.md)"
+msgstr ""
+
+#: src/ui/index.md:9
+msgid "[Settings](settings/index.md)"
+msgstr ""
+
+#: src/ui/filechooser.md:3
+msgid "The file chooser helps you pick files or folders. It appears when you need to select a file or folder. e.g to pick a screen saver."
+msgstr ""
+
+#: src/ui/filechooser.md:6
+msgid "![File chooser](./screenshots/filechooser.png)"
+msgstr ""
+
+#: src/ui/filechooser.md:8
+msgid "How It Works"
+msgstr ""
+
+#: src/ui/filechooser.md:10
+msgid "The file chooser has three main parts:"
+msgstr ""
+
+#: src/ui/filechooser.md:12
+msgid "**Top Bar** - Shows what you're selecting (\"Select File\", \"Select Folder\", etc.) and a close button"
+msgstr ""
+
+#: src/ui/filechooser.md:13
+msgid "**Navigation Bar** - Shows folders you can tap to browse deeper"
+msgstr ""
+
+#: src/ui/filechooser.md:14
+msgid "**File List** - Shows files in the current folder (or a special \"Select this folder\" option)"
+msgstr ""
+
+#: src/ui/filechooser.md:16
+msgid "Navigation"
+msgstr ""
+
+#: src/ui/filechooser.md:18
+msgid "Tap any folder name in the navigation bar to open it. The bar expands automatically if there are many folders. Tap and drag the separator line below the folders to resize the navigation area."
+msgstr ""
+
+#: src/ui/filechooser.md:22
+msgid "Selection Modes"
+msgstr ""
+
+#: src/ui/filechooser.md:24
+msgid "The file chooser adapts based on what you need:"
+msgstr ""
+
+#: src/ui/filechooser.md:26
+msgid "File selection mode"
+msgstr ""
+
+#: src/ui/filechooser.md:27
+msgid "Folder selection mode"
+msgstr ""
+
+#: src/ui/filechooser.md:28
+msgid "File or folder selection mode"
+msgstr ""
+
+#: src/ui/filechooser.md:30
+msgid "The title will indicate the mode."
+msgstr ""
+
+#: src/ui/keyboard.md:3
+msgid "The on-screen keyboard lets you type text for searches, dictionary lookups, and other input fields."
+msgstr ""
+
+#: src/ui/keyboard.md:6
+msgid "Basics"
+msgstr ""
+
+#: src/ui/keyboard.md:8
+msgid "**Lock modifier keys** — Tap _ALT_ or _SHIFT_ twice to lock them on."
+msgstr ""
+
+#: src/ui/keyboard.md:9
+msgid "**Combine key (CMB)** — Press _CMB_ followed by two keys to type accented or special characters (see [Combination Sequences](#combination-sequences) below). For example, `CMB o e` produces _œ_."
+msgstr ""
+
+#: src/ui/keyboard.md:12
+msgid "**Delete / motion keys** — Tap and hold to act on whole words instead of individual characters."
+msgstr ""
+
+#: src/ui/keyboard.md:14
+msgid "**Keyboard layouts** — Tap and hold the space bar to switch layouts."
+msgstr ""
+
+#: src/ui/keyboard.md:16
+msgid "Inputting Accented Characters"
+msgstr ""
+
+#: src/ui/keyboard.md:18
+msgid "Cadmus supports these through **combination sequences** using the _CMB_ key. See [Combination Sequences](#combination-sequences)."
+msgstr ""
+
+#: src/ui/keyboard.md:21
+msgid "How to type an accented character"
+msgstr ""
+
+#: src/ui/keyboard.md:23
+msgid "Press the **CMB** key."
+msgstr ""
+
+#: src/ui/keyboard.md:24
+msgid "Press the **base letter** (e.g. `e`)."
+msgstr ""
+
+#: src/ui/keyboard.md:25
+msgid "Press the **accent modifier** (e.g. `'` for acute)."
+msgstr ""
+
+#: src/ui/keyboard.md:27
+msgid "Example: `CMB e '` produces **é**."
+msgstr ""
+
+#: src/ui/keyboard.md:29
+msgid "Combination Sequences"
+msgstr ""
+
+#: src/ui/keyboard.md:31
+msgid "Press _CMB_ followed by the two keys listed below to produce the corresponding character."
+msgstr ""
+
+#: src/ui/keyboard.md:77
+msgid "Custom Keyboard Layouts"
+msgstr ""
+
+#: src/ui/keyboard.md:79
+msgid "Keyboard layouts are defined as JSON files with the following structure:"
+msgstr ""
+
+#: src/ui/keyboard.md:81
+msgid "**name** — Display name shown in the keyboard layouts menu."
+msgstr ""
+
+#: src/ui/keyboard.md:82
+msgid "**outputs** — List of output keys for each modifier combination (_none_, _shift_, _alt_, _shift+alt_)."
+msgstr ""
+
+#: src/ui/keyboard.md:84
+msgid "**keys** — Description of each key. Special key names: _Shift_ (_Sft_), _Return_ (_Ret_), _Alternate_ (_Alt_), _Combine_ (_Cmb_), _MoveFwd_ (_MoveF_, _MF_), _MoveBwd_ (_MoveB_, _MB_), _DelFwd_ (_DelF_, _DF_), _DelBwd_ (_DelB_, _DB_), _Space_ (_Spc_). Use _▢_ to mark output keys."
+msgstr ""
+
+#: src/ui/keyboard.md:88
+msgid "**widths** — Width/height ratio for each key. The key gap ratio is 0.06."
+msgstr ""
+
+#: src/ui/dictionary.md:3
+msgid "Look up word definitions while you read. Dictionaries are stored on your device and work without an internet connection once downloaded."
+msgstr ""
+
+#: src/ui/dictionary.md:7
+msgid "Download a dictionary first — see [Dictionaries](settings/dictionaries.md) for how to install one."
+msgstr ""
+
+#: src/ui/dictionary.md:10
+msgid "Looking Up Words While Reading"
+msgstr ""
+
+#: src/ui/dictionary.md:12
+msgid "Long press on a word"
+msgstr ""
+
+#: src/ui/dictionary.md:14
+msgid "Tap and hold a word until it highlights."
+msgstr ""
+
+#: src/ui/dictionary.md:15
+msgid "Keep holding a moment longer until the dictionary opens with that word."
+msgstr ""
+
+#: src/ui/dictionary.md:17
+msgid "From a text selection"
+msgstr ""
+
+#: src/ui/dictionary.md:19
+msgid "Tap and hold a word want to define."
+msgstr ""
+
+#: src/ui/dictionary.md:20
+msgid "When the word highlights, a menu opens"
+msgstr ""
+
+#: src/ui/dictionary.md:21
+msgid "Tap **Define**."
+msgstr ""
+
+#: src/ui/dictionary.md:23
+msgid "Opening the Dictionary App"
+msgstr ""
+
+#: src/ui/dictionary.md:25
+msgid "You can also open the dictionary on its own:"
+msgstr ""
+
+#: src/ui/dictionary.md:27
+msgid "Main Menu → Applications → Dictionary"
+msgstr ""
+
+#: src/ui/dictionary.md:29
+msgid "The search field is focused automatically so you can type a word right away."
+msgstr ""
+
+#: src/ui/dictionary.md:31
+msgid "Searching for a Word"
+msgstr ""
+
+#: src/ui/dictionary.md:33
+msgid "Tap the search bar at the top of the screen."
+msgstr ""
+
+#: src/ui/dictionary.md:34
+msgid "Type the word you want to look up."
+msgstr ""
+
+#: src/ui/dictionary.md:35
+msgid "Press **Return**."
+msgstr ""
+
+#: src/ui/dictionary.md:37
+msgid "To type accented characters, see the [Keyboard](keyboard.md) guide."
+msgstr ""
+
+#: src/ui/dictionary.md:39
+msgid "Reading Results"
+msgstr ""
+
+#: src/ui/dictionary.md:41
+msgid "Definitions may span more than one screen. To move between pages:"
+msgstr ""
+
+#: src/ui/dictionary.md:43
+msgid "Swipe left or right, or"
+msgstr ""
+
+#: src/ui/dictionary.md:44
+msgid "Tap the arrow icons in the bottom bar, or"
+msgstr ""
+
+#: src/ui/dictionary.md:45
+msgid "Tap the left or right half of the definition area."
+msgstr ""
+
+#: src/ui/dictionary.md:47
+msgid "To look up another word from a definition:"
+msgstr ""
+
+#: src/ui/dictionary.md:49
+msgid "Tap a cross-reference link, or"
+msgstr ""
+
+#: src/ui/dictionary.md:50
+msgid "Long-press a word in the definition text."
+msgstr ""
+
+#: src/ui/dictionary.md:52
+msgid "Choosing Which Dictionary to Search"
+msgstr ""
+
+#: src/ui/dictionary.md:54
+msgid "Tap the label in the bottom bar to pick a specific dictionary or **All**."
+msgstr ""
+
+#: src/ui/dictionary.md:56
+msgid "When you open the dictionary from the reader, Cadmus may already pick a dictionary that matches the book's language."
+msgstr ""
+
+#: src/ui/dictionary.md:59
+msgid "Fuzzy Search"
+msgstr ""
+
+#: src/ui/dictionary.md:61
+msgid "If you are not sure how a word is spelled:"
+msgstr ""
+
+#: src/ui/dictionary.md:63
+msgid "Tap the search icon."
+msgstr ""
+
+#: src/ui/dictionary.md:64
+msgid "Toggle **Fuzzy**."
+msgstr ""
+
+#: src/ui/dictionary.md:66
+msgid "Cadmus will also match words that differ by one letter."
+msgstr ""
+
+#: src/ui/settings/index.md:3
+msgid "The settings editor lets you change how Cadmus works. Open it from **Main Menu → Settings**."
+msgstr ""
+
+#: src/ui/settings/index.md:6
+msgid "Settings are organised into tabs — tap a category to open it."
+msgstr ""
+
+#: src/ui/settings/index.md:8
+msgid "![settings editor screenshot](../screenshots/settings-editor.png)"
+msgstr ""
+
+#: src/ui/settings/index.md:10
+msgid "Categories"
+msgstr ""
+
+#: src/ui/settings/index.md:12
+msgid "**General** — language, button layout, Wi‑Fi idle timeout, startup mode"
+msgstr ""
+
+#: src/ui/settings/index.md:13
+msgid "**Power** — soft suspend, auto-suspend, auto power off, sleep cover"
+msgstr ""
+
+#: src/ui/settings/index.md:14
+msgid "**Reader** — default font family, finished-book action, default dithering by file type, and screen refresh rates"
+msgstr ""
+
+#: src/ui/settings/index.md:16
+msgid "**Libraries** — add, edit, or remove your book libraries"
+msgstr ""
+
+#: src/ui/settings/index.md:17
+msgid "**Dictionaries** — download and manage offline dictionaries"
+msgstr ""
+
+#: src/ui/settings/index.md:18
+msgid "**Import** — control how new books are picked up automatically"
+msgstr ""
+
+#: src/ui/settings/index.md:19
+msgid "**OTA** — download Cadmus updates directly to your Kobo"
+msgstr ""
+
+#: src/ui/settings/index.md:20
+msgid "**Telemetry** — logging options"
+msgstr ""
+
+#: src/ui/settings/index.md:22
+msgid "Power"
+msgstr ""
+
+#: src/ui/settings/index.md:24
+msgid "Use the **Power** tab for sleep-related options:"
+msgstr ""
+
+#: src/ui/settings/index.md:26
+msgid "**Soft Suspend**, **Use LED to Indicate Soft Suspend**, and **Soft Suspend Release Grace** — shown only when the device supports soft suspend. Soft Suspend is optional opportunistic sleep (`Off`, `Freeze`, or `Memory`). See [Soft Suspend](../../soft-suspend.md). The LED option keeps the status LED on while soft suspend is armed and the device is awake. Release grace is seconds to stay awake after the last busy activity (`0` = unlock immediately)."
+msgstr ""
+
+#: src/ui/settings/index.md:33
+msgid "**Auto Suspend** — minutes of inactivity before a full suspend."
+msgstr ""
+
+#: src/ui/settings/index.md:34
+msgid "**Auto Power Off** — days of inactivity before power off."
+msgstr ""
+
+#: src/ui/settings/index.md:35
+msgid "**Enable Sleep Cover** — suspend when the cover closes."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:3
+msgid "Cadmus supports offline word definitions. Dictionaries are stored on your device and work without an internet connection once downloaded."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:6
+msgid "Once a dictionary is installed, see [Dictionary](../dictionary.md) for how to look up words while reading."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:9
+msgid "Cadmus integrates with [reader-dict](https://github.com/reader-dict/monolingual), an open-source project that provides high-quality monolingual dictionaries (where you look up a word and get a definition in the same language) for many languages."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:14
+msgid "![dictionaries settings screenshot](../screenshots/settings-editor-dictionaries.png)"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:16
+msgid "Opening the Dictionaries Tab"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:18
+msgid "Go to **Main Menu → Settings → Dictionaries**."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:20
+msgid "You will see a list of available dictionaries. Each row shows the dictionary name and its current status."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:23
+msgid "The name is shown in your interface language, followed by the language's own name — for example `French | français`. If Cadmus has no translation for the language yet, only the native name appears, and a dictionary whose name is not known at all falls back to its language code (`en`, `fr`, …)."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:28
+msgid "Statuses"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:25
+msgid "Status"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:25
+msgid "What it means"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:27
+msgid "Download"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:27
+msgid "Not yet on your device — tap to download"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:28
+msgid "Downloading"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:28
+msgid "A download is in progress"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:29
+msgid "Installed"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:29
+msgid "Ready to use"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:30
+msgid "Update Available"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:30
+msgid "A newer version is available"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:32
+msgid "Downloading a Dictionary"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:35
+msgid "Your device must be connected to Wi-Fi before you can download a dictionary."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:37
+msgid "Open **Main Menu → Settings → Dictionaries**."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:38
+msgid "Find the language you want."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:39
+msgid "Tap **Download** next to it."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:41
+msgid "A progress notification appears at the top of the screen while the file downloads. Once the download finishes, Cadmus begins [indexing](#how-indexing-works) the dictionary automatically."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:45
+msgid "Updating a Dictionary"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:47
+msgid "When a newer version is available the status shows **Update Available**."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:49 src/ui/settings/dictionaries.md:59
+#: src/ui/settings/dictionaries.md:64
+msgid "Tap the language row."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:50
+msgid "Select **Update** from the menu."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:52
+msgid "The updated dictionary replaces the old one automatically."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:54
+msgid "Re-downloading a Dictionary"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:56
+msgid "If a dictionary is already installed you can re-download it to get a fresh copy:"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:60
+msgid "Select **Re-download** from the menu."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:62
+msgid "Deleting a Dictionary"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:65
+msgid "Select **Delete** from the menu."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:67
+msgid "The dictionary files are removed from your device."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:69
+msgid "How Indexing Works"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:71
+msgid "After you download, update, or re-download a dictionary, Cadmus needs to **index** it before you can look up words. Indexing reads every word in the dictionary and stores it in a database on disk so that lookups are fast without loading the entire dictionary into memory. This is especially important on devices with limited memory."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:77
+msgid "A notification with a progress bar appears at the top of the screen while indexing is in progress."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:81
+msgid "You can keep reading while indexing runs in the background. Words that have already been indexed are available for lookup right away, so you may get partial results until indexing finishes."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:85
+msgid "What happens when you restart your Kobo"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:87
+msgid "If your Kobo restarts or shuts down while indexing is still running, Cadmus picks up where it left off the next time it starts. It does not start over from the beginning."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:91
+msgid "When does re-indexing happen"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:93
+msgid "Cadmus automatically re-indexes a dictionary when you:"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:95
+msgid "**Update** it to a newer version"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:96
+msgid "**Re-download** it"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:97
+msgid "**Delete** it (the old index is removed)"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:99
+msgid "You do not need to trigger indexing yourself. Cadmus handles indexing automatically when you **download**, **update**, **re-download**, or **delete** a dictionary from **Settings → Dictionaries**."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:103
+msgid "Where Dictionaries are Stored"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:105
+msgid "Cadmus stores dictionaries in different locations depending on whether your device has an SD card and whether you are using a test build:"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:119
+msgid "Each language gets its own subfolder containing a `.dict.dz` (or `.dict`) and a `.index` file."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:122
+msgid "If your SD card is already inserted when you upgrade Cadmus, your dictionaries are moved to the SD card automatically on the next boot. If you insert an SD card after Cadmus has already run, move the `dictionaries/` folder manually — see [Moving data to an SD card](../../installation/migration.md#moving-data-to-an-sd-card)."
+msgstr ""
+
+#: src/library/index.md:3
+msgid "The library is where all your books live. Cadmus scans your device's storage and keeps track of everything you've added, so you can browse, search, and organize your collection right on the device."
+msgstr ""
+
+#: src/library/index.md:7
+msgid "What's in this section"
+msgstr ""
+
+#: src/library/index.md:9
+msgid "[Importing books](importing.md) — how Cadmus finds and adds books to your library"
+msgstr ""
+
+#: src/library/importing.md:1
+msgid "Importing Books"
+msgstr ""
+
+#: src/library/importing.md:3
+msgid "Cadmus scans your device's storage and adds books to its database automatically. This process is called **importing**."
+msgstr ""
+
+#: src/library/importing.md:6
+msgid "Automatic import on startup"
+msgstr ""
+
+#: src/library/importing.md:8
+msgid "Cadmus automatically imports books every time it starts. The import is **incremental**: files whose modification time and file size haven't changed since the last import are skipped, avoiding unnecessary re-fingerprinting. Only new or modified files are processed, significantly improving startup performance for large libraries."
+msgstr ""
+
+#: src/library/importing.md:14
+msgid "Copy files to your device, restart the app, and they'll appear in your library right away."
+msgstr ""
+
+#: src/library/importing.md:17
+msgid "Force full import"
+msgstr ""
+
+#: src/library/importing.md:19
+msgid "If you suspect the import cache is stale or corrupted, you can force a full re-import:"
+msgstr ""
+
+#: src/library/importing.md:22
+msgid "Open **Settings**."
+msgstr ""
+
+#: src/library/importing.md:23
+msgid "Navigate to the **Import** section."
+msgstr ""
+
+#: src/library/importing.md:24
+msgid "Tap **Force Full Import**."
+msgstr ""
+
+#: src/library/importing.md:25
+msgid "Confirm when prompted."
+msgstr ""
+
+#: src/library/importing.md:27
+msgid "This bypasses the incremental import cache and re-fingerprints all files in your library directories. Be aware that this can take time and drain the battery for large libraries, so keep your device plugged in while it runs."
+msgstr ""
+
+#: src/library/importing.md:31
+msgid "If import is interrupted"
+msgstr ""
+
+#: src/library/importing.md:33
+msgid "If Cadmus quits, restarts, or powers off while it is still importing, it shows a notification that the library import was interrupted. Cadmus does not save that in-progress scan, and it does not start generating covers."
+msgstr ""
+
+#: src/library/importing.md:37
+msgid "Start Cadmus again — or tap **Force Full Import** — so a later import can finish. Cover generation runs only after an import completes successfully."
+msgstr ""
+
+#: src/library/importing.md:40
+msgid "If a library folder cannot be opened, Cadmus also does not treat the import as complete. Cover generation still waits for the next successful import."
+msgstr ""
+
+#: src/reader/index.md:3
+msgid "When you open a book, Cadmus shows it in the **Reader**. How a book is loaded depends on its type:"
+msgstr ""
+
+#: src/reader/index.md:6
+msgid "[Reflowable books](reflowable.md) — EPUB and HTML. Text is laid out to fit your screen, font size, and margins."
+msgstr ""
+
+#: src/reader/index.md:8
+msgid "[Paged books](paged.md) — comics (CBZ) and other page-based files such as PDF. Each page is a fixed image or sheet."
+msgstr ""
+
+#: src/reader/index.md:11
+msgid "What stays in memory while you read"
+msgstr ""
+
+#: src/reader/index.md:13
+msgid "Cadmus uses two kinds of memory, depending on the book type:"
+msgstr ""
+
+#: src/reader/index.md:15
+msgid "**Screen pages (all books)** — Cadmus draws a page only when it needs to show it (or to prepare a neighbor). It does **not** pre-draw the whole book. At most **three** of those finished screen images stay in memory at once."
+msgstr ""
+
+#: src/reader/index.md:18
+msgid "**HTML file layouts (reflowable only)** — the laid-out pages of each EPUB HTML file you have already opened. See [Reflowable books](reflowable.md)."
+msgstr ""
+
+#: src/reader/index.md:21
+msgid "Screen pages in memory"
+msgstr ""
+
+#: src/reader/index.md:23
+msgid "Only the page you are on is required. Cadmus usually also keeps the previous and next pages when they exist — **up to three** finished screen images total. Pages outside that window are discarded from memory and drawn again if you return to them."
+msgstr ""
+
+#: src/reader/index.md:28
+msgid "In **fit-to-page** and **fit-to-width** zoom modes, Cadmus prepares the previous and next pages in the background after a turn, so they are ready when you move again."
+msgstr ""
+
+#: src/reader/index.md:32
+msgid "```mermaid\n"
+"flowchart LR\n"
+"  prev[\"Previous page<br/>(in memory)\"] --- curr[\"Current page<br/>(in memory)\"] --- next[\"Next page<br/>(in memory)\"]\n"
+"```"
+msgstr ""
+
+#: src/reader/index.md:37
+msgid "How Cadmus first opens the file still differs by mode:"
+msgstr ""
+
+#: src/reader/index.md:39
+msgid "```mermaid\n"
+"flowchart TD\n"
+"  open[Open a book] --> mode{Reading mode?}\n"
+"  mode -->|Reflowable| reflow[\"Load HTML file list only<br/>then one HTML file<br/>when you reach it\"]\n"
+"  mode -->|Paged| paged[\"List pages only<br/>then decode one page<br/>when you view it\"]\n"
+"  reflow --> render[\"Keep up to 3<br/>screen pages in memory\"]\n"
+"  paged --> render\n"
+"```"
+msgstr ""
+
+#: src/reader/index.md:48
+msgid "Details:"
+msgstr ""
+
+#: src/reader/index.md:50
+msgid "[Reflowable books](reflowable.md)"
+msgstr ""
+
+#: src/reader/index.md:51
+msgid "[Paged books](paged.md)"
+msgstr ""
+
+#: src/reader/index.md:53 src/reader/reflowable.md:61 src/reader/paged.md:47
+msgid "Related settings"
+msgstr ""
+
+#: src/reader/index.md:55
+msgid "Shared reader options live under `[reader]` in [Settings](../settings/index.md#reader), including what happens when you finish a book, touch gestures, and screen refresh rates."
+msgstr ""
+
+#: src/reader/reflowable.md:3
+msgid "Reflowable books are EPUB files (and HTML documents). Cadmus lays the text out to match your screen size, font, and margins."
+msgstr ""
+
+#: src/reader/reflowable.md:6
+msgid "Opening a book"
+msgstr ""
+
+#: src/reader/reflowable.md:8
+msgid "An EPUB is a package of **HTML files** (plus styles and images) listed in reading order. When you open one, Cadmus reads that file list and related metadata. It does **not** load every HTML file at that moment."
+msgstr ""
+
+#: src/reader/reflowable.md:12
+msgid "```mermaid\n"
+"flowchart TD\n"
+"  open[Open EPUB] --> meta[\"Read HTML file list<br/>and metadata\"]\n"
+"  meta --> idle[\"No HTML content files<br/>loaded yet\"]\n"
+"```"
+msgstr ""
+
+#: src/reader/reflowable.md:18
+msgid "Opening an HTML file"
+msgstr ""
+
+#: src/reader/reflowable.md:20
+msgid "When you first reach content that lives in a given HTML file, Cadmus:"
+msgstr ""
+
+#: src/reader/reflowable.md:22
+msgid "Loads **that one HTML file** (and its stylesheets, unless document CSS is ignored — see [Settings](../settings/index.md#readerignore-document-css))."
+msgstr ""
+
+#: src/reader/reflowable.md:25
+msgid "Lays **the whole file** out into screen pages for your current font, margins, and screen size."
+msgstr ""
+
+#: src/reader/reflowable.md:27
+msgid "Keeps that file's **layout** in memory for the rest of the session."
+msgstr ""
+
+#: src/reader/reflowable.md:29
+msgid "So the unit Cadmus loads is an HTML file, not a table-of-contents chapter. If the EPUB puts the entire book in a single HTML file, opening it loads and lays out that whole book at once. If the book is split across many HTML files, Cadmus loads each file only when you reach it."
+msgstr ""
+
+#: src/reader/reflowable.md:34
+msgid "If you later return to an HTML file you already opened, Cadmus reuses the stored layout instead of reading the file again. Visiting several files means several layouts can sit in memory at once — still only the files you have opened."
+msgstr ""
+
+#: src/reader/reflowable.md:38
+msgid "```mermaid\n"
+"flowchart TD\n"
+"  visit[\"Reach an HTML file\"] --> loaded{\"Layout already<br/>in memory?\"}\n"
+"  loaded -->|Yes| reuse[\"Reuse stored layout\"]\n"
+"  loaded -->|No| html[\"Load that one<br/>HTML file\"]\n"
+"  html --> layout[\"Layout the whole file<br/>into screen pages\"]\n"
+"  layout --> store[\"Store that file layout<br/>in memory\"]\n"
+"  reuse --> screen[\"Draw current<br/>screen page\"]\n"
+"  store --> screen\n"
+"```"
+msgstr ""
+
+#: src/reader/reflowable.md:49
+msgid "Changing reading options that affect layout (for example font family, font size, margins, line height, text alignment, or whether document CSS is used) clears **all** stored HTML file layouts. Cadmus rebuilds a file the next time you reach it."
+msgstr ""
+
+#: src/reader/reflowable.md:54
+msgid "Images referenced by an HTML file are loaded from the book when that file is laid out or drawn."
+msgstr ""
+
+#: src/reader/reflowable.md:57
+msgid "On top of those file layouts, Cadmus still keeps **up to three screen pages** in memory (current, and usually previous and next). See [Reader](index.md#what-stays-in-memory-while-you-read)."
+msgstr ""
+
+#: src/reader/reflowable.md:63
+msgid "These `[reader]` options affect reflowable layout. See [Settings](../settings/index.md#reader) for full details:"
+msgstr ""
+
+#: src/reader/reflowable.md:66
+msgid "[`font-path`](../settings/index.md#readerfont-path), [`font-family`](../settings/index.md#readerfont-family), [`font-size`](../settings/index.md#readerfont-size)"
+msgstr ""
+
+#: src/reader/reflowable.md:69
+msgid "[`text-align`](../settings/index.md#readertext-align)"
+msgstr ""
+
+#: src/reader/reflowable.md:70
+msgid "[`margin-width`](../settings/index.md#readermargin-width)"
+msgstr ""
+
+#: src/reader/reflowable.md:71
+msgid "[`line-height`](../settings/index.md#readerline-height)"
+msgstr ""
+
+#: src/reader/reflowable.md:72
+msgid "[`ignore-document-css`](../settings/index.md#readerignore-document-css)"
+msgstr ""
+
+#: src/reader/reflowable.md:73
+msgid "[`paragraph-breaker`](../settings/index.md#readerparagraph-breaker)"
+msgstr ""
+
+#: src/reader/reflowable.md:75
+msgid "Installing and choosing fonts is covered in [Fonts](../fonts.md)."
+msgstr ""
+
+#: src/reader/paged.md:3
+msgid "Paged books are made of fixed pages — typically one image or sheet per page. Cadmus opens CBZ comic archives this way. Other page-based formats such as PDF and standalone images use the same page-at-a-time model. DjVu books follow a similar pattern through a separate decoder."
+msgstr ""
+
+#: src/reader/paged.md:8
+msgid "Opening a CBZ"
+msgstr ""
+
+#: src/reader/paged.md:10
+msgid "A CBZ file is a zip archive of images. When you open one, Cadmus opens the archive and builds an ordered **list of image file names** that count as pages. It does **not** decode every image up front."
+msgstr ""
+
+#: src/reader/paged.md:14
+msgid "```mermaid\n"
+"flowchart TD\n"
+"  open[Open CBZ] --> zip[Open zip archive]\n"
+"  zip --> names[\"List image<br/>page names\"]\n"
+"  names --> idle[\"No page images<br/>decoded yet\"]\n"
+"```"
+msgstr ""
+
+#: src/reader/paged.md:21
+msgid "Turning pages"
+msgstr ""
+
+#: src/reader/paged.md:23
+msgid "When you view a page, Cadmus:"
+msgstr ""
+
+#: src/reader/paged.md:25
+msgid "Reads **that one page's image** from the archive."
+msgstr ""
+
+#: src/reader/paged.md:26
+msgid "Decodes it into a rendered screen page."
+msgstr ""
+
+#: src/reader/paged.md:27
+msgid "Keeps **up to three** rendered pages in memory — typically the current page plus the previous and next pages when they exist."
+msgstr ""
+
+#: src/reader/paged.md:30
+msgid "In **fit-to-page** and **fit-to-width** zoom modes, Cadmus prepares the previous and next pages in the background after a turn. Pages outside that window are not kept as finished screen images."
+msgstr ""
+
+#: src/reader/paged.md:34
+msgid "```mermaid\n"
+"flowchart TD\n"
+"  view[View page N] --> read[\"Read image N<br/>from archive\"]\n"
+"  read --> decode[\"Decode into a<br/>rendered page\"]\n"
+"  decode --> window[\"Memory: previous / current / next<br/>(up to 3 rendered pages)\"]\n"
+"```"
+msgstr ""
+
+#: src/reader/paged.md:41
+msgid "The rest of the CBZ stays on disk as zip entries until you navigate to those pages. Cadmus may also reuse a limited amount of lower-level decoded data from the page engine, but the Reader itself only retains that small rendered-page window. See [Reader](index.md#what-stays-in-memory-while-you-read)."
+msgstr ""
+
+#: src/reader/paged.md:49
+msgid "These `[reader]` options are especially relevant for paged books. See [Settings](../settings/index.md#reader) for full details:"
+msgstr ""
+
+#: src/reader/paged.md:52
+msgid "[`dithered-kinds`](../settings/index.md#readerdithered-kinds) — which file types start with dithering on first open"
+msgstr ""
+
+#: src/reader/paged.md:54
+msgid "[`continuous-fit-to-width`](../settings/index.md#readercontinuous-fit-to-width) — scroll mode used with fit-to-width zoom when a document is first opened"
+msgstr ""
+
+#: src/reader/paged.md:56
+msgid "[`refresh-rate`](../settings/index.md#readerrefresh-rate) — including optional per-file-type overrides such as `cbz`"
+msgstr ""
+
+#: src/wifi.md:3
+msgid "Cadmus can turn WiFi on when something needs the network, then turn it off again when it is idle."
+msgstr ""
+
+#: src/wifi.md:6
+msgid "Modes"
+msgstr ""
+
+#: src/wifi.md:8
+msgid "Open the **WiFi** control in the top menu and choose one of:"
+msgstr ""
+
+#: src/wifi.md:10
+msgid "**Off** — WiFi stays off. Features that need the network cannot turn it on automatically; you must turn WiFi on yourself beforehand."
+msgstr ""
+
+#: src/wifi.md:12
+msgid "**Always On** — WiFi stays on."
+msgstr ""
+
+#: src/wifi.md:13
+msgid "**Auto** — Cadmus turns WiFi on when something needs the network, then powers it down after a period of inactivity."
+msgstr ""
+
+#: src/wifi.md:16
+msgid "Idle timeout"
+msgstr ""
+
+#: src/wifi.md:18
+msgid "When WiFi is set to **Auto**, Cadmus waits a short time after the last network use before powering the radio down. Change that delay in the [settings editor](ui/settings/index.md)."
+msgstr ""
+
+#: src/time-sync.md:3
+msgid "Cadmus can keep your Kobo's clock accurate by syncing it automatically whenever WiFi connects."
+msgstr ""
+
+#: src/time-sync.md:6 src/auto-frontlight.md:6 src/soft-suspend.md:13
+#: src/database-backup.md:5
+msgid "How it works"
+msgstr ""
+
+#: src/time-sync.md:8
+msgid "When enabled, Cadmus will:"
+msgstr ""
+
+#: src/time-sync.md:10
+msgid "Detect your timezone based on your IP address."
+msgstr ""
+
+#: src/time-sync.md:11
+msgid "Fetch the current time from an internet time server."
+msgstr ""
+
+#: src/time-sync.md:12
+msgid "Update the system clock and hardware clock on your Kobo."
+msgstr ""
+
+#: src/time-sync.md:14
+msgid "After syncing, the clock in the status bar updates immediately."
+msgstr ""
+
+#: src/time-sync.md:16
+msgid "Enabling automatic sync"
+msgstr ""
+
+#: src/time-sync.md:18
+msgid "Open **Main Menu → Settings → General** and turn on **Auto Time**."
+msgstr ""
+
+#: src/time-sync.md:20
+msgid "You can also enable it manually in your settings file:"
+msgstr ""
+
+#: src/time-sync.md:30
+msgid "Choosing an NTP server"
+msgstr ""
+
+#: src/time-sync.md:32
+msgid "By default Cadmus uses `time.cloudflare.com`. You can change this under **Settings → General → NTP Server**, or in your settings file:"
+msgstr ""
+
+#: src/time-sync.md:43
+msgid "The value is a hostname or IP address. NTP always uses port 123."
+msgstr ""
+
+#: src/time-sync.md:45
+msgid "Manual sync"
+msgstr ""
+
+#: src/time-sync.md:47
+msgid "You can trigger a one-time sync without enabling the automatic option:"
+msgstr ""
+
+#: src/time-sync.md:49
+msgid "Tap the clock in the top bar."
+msgstr ""
+
+#: src/time-sync.md:50
+msgid "Select **Sync Time**."
+msgstr ""
+
+#: src/time-sync.md:52
+msgid "If the sync fails (for example, WiFi is not connected), a notification will let you know."
+msgstr ""
+
+#: src/time-sync.md:55 src/auto-frontlight.md:87
+msgid "Privacy"
+msgstr ""
+
+#: src/time-sync.md:58
+msgid "Time syncing sends a request to `ipapi.co` to determine your timezone based on your IP address. No personal data is sent — only your device's public IP address is visible to that service as part of the network request."
+msgstr ""
+
+#: src/time-sync.md:62
+msgid "The actual time is fetched from the configured NTP server using the standard NTP protocol."
+msgstr ""
+
+#: src/auto-frontlight.md:3
+msgid "Cadmus can automatically adjust your frontlight's warmth and brightness throughout the day based on the position of the sun at your location."
+msgstr ""
+
+#: src/auto-frontlight.md:8
+msgid "When enabled, Cadmus runs a background task that recalculates the ideal frontlight levels every **5 minutes** and applies them immediately. The first adjustment happens as soon as the feature starts, and then repeats on every 5-minute mark."
+msgstr ""
+
+#: src/auto-frontlight.md:12
+msgid "The adjustment has two dimensions:"
+msgstr ""
+
+#: src/auto-frontlight.md:14
+msgid "**Warmth** – zero warmth during the day, gradually ramping up to full warmth over a 1.5-hour window around sunset, staying at full warmth through the night, then ramping back down to zero over the 1.5-hour window before sunrise."
+msgstr ""
+
+#: src/auto-frontlight.md:17
+msgid "**Brightness** – unchanged during the day (keeps whatever level you last set). After sunset brightness drops to `auto-frontlight-night-brightness` and stays there until sunrise."
+msgstr ""
+
+#: src/auto-frontlight.md:21
+msgid "Enabling automatic adjustment"
+msgstr ""
+
+#: src/auto-frontlight.md:23
+msgid "Open **Main Menu → Settings → General** and turn on **Auto Frontlight**."
+msgstr ""
+
+#: src/auto-frontlight.md:25
+msgid "You can also enable it directly in your settings file:"
+msgstr ""
+
+#: src/auto-frontlight.md:35
+msgid "See [`auto-frontlight`](settings/index.md#auto-frontlight) and related entries in the Settings reference for all available options."
+msgstr ""
+
+#: src/auto-frontlight.md:38
+msgid "Manual adjustments pause automation"
+msgstr ""
+
+#: src/auto-frontlight.md:40
+msgid "If you manually change the frontlight level while automatic adjustment is running, Cadmus stops the background task so your chosen level is preserved. Automatic adjustment resumes the next time the app is started."
+msgstr ""
+
+#: src/auto-frontlight.md:44
+msgid "Location detection"
+msgstr ""
+
+#: src/auto-frontlight.md:46
+msgid "Sun position is calculated from your geographic coordinates. Cadmus obtains these automatically during each [time sync](time-sync.md): the same `ipapi.co` lookup that resolves your timezone also returns a latitude and longitude, which are saved to `auto-frontlight-last-coordinates` in your settings file."
+msgstr ""
+
+#: src/auto-frontlight.md:51
+msgid "If no coordinates are available yet (for example, before the first successful time sync), automatic adjustment is skipped until a location is known."
+msgstr ""
+
+#: src/auto-frontlight.md:54
+msgid "Manual coordinates override"
+msgstr ""
+
+#: src/auto-frontlight.md:56
+msgid "If you prefer not to rely on IP-based location, or if the detected location is inaccurate, you can set your own coordinates:"
+msgstr ""
+
+#: src/auto-frontlight.md:67
+msgid "Manual coordinates take priority over auto-detected ones."
+msgstr ""
+
+#: src/auto-frontlight.md:69
+msgid "You can also edit this in **Main Menu → Settings → General** under **Auto Frontlight Manual Coordinates**."
+msgstr ""
+
+#: src/auto-frontlight.md:72
+msgid "Night brightness"
+msgstr ""
+
+#: src/auto-frontlight.md:74
+msgid "The brightness level used after sunset defaults to `1.0` (1%). You can raise this if you find the screen too dim for nighttime reading:"
+msgstr ""
+
+#: src/auto-frontlight.md:85
+msgid "The value is a percentage from `0.0` to `100.0`."
+msgstr ""
+
+#: src/auto-frontlight.md:90
+msgid "When [automatic time syncing](time-sync.md) is enabled, a request is sent to `ipapi.co` to resolve your timezone. That same response includes an approximate latitude and longitude derived from your public IP address, which Cadmus stores as `auto-frontlight-last-coordinates`."
+msgstr ""
+
+#: src/soft-suspend.md:3
+msgid "Soft suspend lets Cadmus save battery between interactions by asking the system to sleep when nothing important is running. It is optional and off by default."
+msgstr ""
+
+#: src/soft-suspend.md:7
+msgid "This is separate from Auto Suspend (the timed “put the device to sleep” setting) and from pressing the power button or closing a sleep cover. Auto Suspend still applies when soft suspend is on: after the idle timeout Cadmus prepares the touchscreen and other peripherals, then enters a deeper sleep than the light nap used between taps."
+msgstr ""
+
+#: src/soft-suspend.md:15
+msgid "When soft suspend is enabled, Cadmus tells the system which sleep target to use (**Freeze** or **Memory**). While Cadmus is busy — handling a tap, using the network, or running background work — it holds a wake lock so the device stays awake. When that work finishes and nothing else needs attention, the system can sleep."
+msgstr ""
+
+#: src/soft-suspend.md:21
+msgid "Enabling soft suspend"
+msgstr ""
+
+#: src/soft-suspend.md:23
+msgid "Soft Suspend, the LED indicator, and release grace appear under **Settings → Power** only when your device supports soft suspend. If those rows are missing, Cadmus cannot soft-suspend on this hardware (for example the desktop emulator)."
+msgstr ""
+
+#: src/soft-suspend.md:27
+msgid "When the Soft Suspend setting is available, open **Main Menu → Settings → Power** and set it to one of:"
+msgstr ""
+
+#: src/soft-suspend.md:30
+msgid "Option"
+msgstr ""
+
+#: src/soft-suspend.md:30
+msgid "Meaning"
+msgstr ""
+
+#: src/soft-suspend.md:32 src/soft-suspend.md:86
+msgid "Off"
+msgstr ""
+
+#: src/soft-suspend.md:32
+msgid "Soft suspend disabled (default)"
+msgstr ""
+
+#: src/soft-suspend.md:33
+msgid "Freeze"
+msgstr ""
+
+#: src/soft-suspend.md:33
+msgid "Lighter sleep (when your device supports it)"
+msgstr ""
+
+#: src/soft-suspend.md:34
+msgid "Memory"
+msgstr ""
+
+#: src/soft-suspend.md:34
+msgid "Deeper sleep to RAM (when your device supports it)"
+msgstr ""
+
+#: src/soft-suspend.md:36
+msgid "Only sleep targets your device supports appear in the list. You can also set this in your settings file:"
+msgstr ""
+
+#: src/soft-suspend.md:47
+msgid "Status LED indicator"
+msgstr ""
+
+#: src/soft-suspend.md:49
+msgid "When soft suspend is available, under **Settings → Power** turn on **Use LED to Indicate Soft Suspend** if you want the status LED on while soft suspend is armed and the device is awake. The LED turns off when the device sleeps."
+msgstr ""
+
+#: src/soft-suspend.md:53
+msgid "During **critical work** (for example a wireless update), the status LED may **pulse** instead (long on, brief off). While it pulses, Cadmus blocks sleep, power-off, and reboot until that work finishes or is cancelled."
+msgstr ""
+
+#: src/soft-suspend.md:65
+msgid "Release grace"
+msgstr ""
+
+#: src/soft-suspend.md:67
+msgid "When soft suspend is available, **Soft Suspend Release Grace** under **Settings → Power** is how many seconds Cadmus keeps the wake lock after the last busy activity ends. That avoids rapid sleep/wake when short gaps fall between taps or background work. Set it to `0` to unlock immediately. The default is five seconds."
+msgstr ""
+
+#: src/soft-suspend.md:81
+msgid "Soft suspend vs Auto Suspend"
+msgstr ""
+
+#: src/soft-suspend.md:83
+msgid "Feature"
+msgstr ""
+
+#: src/soft-suspend.md:83
+msgid "Auto Suspend"
+msgstr ""
+
+#: src/soft-suspend.md:85
+msgid "Purpose"
+msgstr ""
+
+#: src/soft-suspend.md:85
+msgid "Opportunistic battery saving"
+msgstr ""
+
+#: src/soft-suspend.md:85
+msgid "Timed sleep after inactivity"
+msgstr ""
+
+#: src/soft-suspend.md:86
+msgid "Default"
+msgstr ""
+
+#: src/soft-suspend.md:86
+msgid "On by default (30 minutes)"
+msgstr ""
+
+#: src/soft-suspend.md:87
+msgid "Settings tab"
+msgstr ""
+
+#: src/soft-suspend.md:87
+msgid "Power → Soft Suspend"
+msgstr ""
+
+#: src/soft-suspend.md:87
+msgid "Power → Auto Suspend"
+msgstr ""
+
+#: src/soft-suspend.md:88
+msgid "User action"
+msgstr ""
+
+#: src/soft-suspend.md:88
+msgid "Opt-in"
+msgstr ""
+
+#: src/soft-suspend.md:88
+msgid "Happens after idle timeout"
+msgstr ""
+
+#: src/soft-suspend.md:90
+msgid "You can use both together. Soft suspend naps between events; after the idle timeout, Auto Suspend still puts the device into a deeper sleep."
+msgstr ""
+
+#: src/database-backup.md:3
+msgid "Cadmus automatically backs up its SQLite database every time it starts."
+msgstr ""
+
+#: src/database-backup.md:7
+msgid "When Cadmus starts up it runs through these steps in order:"
+msgstr ""
+
+#: src/database-backup.md:9
+msgid "**Integrity check** — Cadmus checks the database file for corruption."
+msgstr ""
+
+#: src/database-backup.md:10
+msgid "**Version check** — Cadmus compares the version stamp stored in the database against the app version and database layout used by the version that is currently running."
+msgstr ""
+
+#: src/database-backup.md:13
+msgid "**Restore (if needed)** — If the database is corrupted, or if it was last written by a _newer_ version of Cadmus than the one running now, Cadmus restores the best available backup before continuing."
+msgstr ""
+
+#: src/database-backup.md:16
+msgid "**Migrations** — Schema and data migrations run against the (possibly restored) database."
+msgstr ""
+
+#: src/database-backup.md:18
+msgid "**Backup** — A fresh backup of the now-migrated database is saved to disk."
+msgstr ""
+
+#: src/database-backup.md:20
+msgid "Where backups are stored"
+msgstr ""
+
+#: src/database-backup.md:22
+msgid "Backups live in a `backups/` folder inside the directory that contains `cadmus.sqlite`. A small index file called `.cadmus-db-index.toml` in that same folder tracks every backup."
+msgstr ""
+
+#: src/database-backup.md:39
+msgid "Each backup file is named after the Cadmus version that created it, for example `cadmus-v1.2.3.sqlite`."
+msgstr ""
+
+#: src/database-backup.md:42
+msgid "Downgrade protection"
+msgstr ""
+
+#: src/database-backup.md:44
+msgid "When you install an older version of Cadmus on top of a newer one, the database already on disk was written by the newer version."
+msgstr ""
+
+#: src/database-backup.md:47
+msgid "Cadmus checks whether the older version uses the same database layout as the newer version. If it does, Cadmus keeps using the database normally."
+msgstr ""
+
+#: src/database-backup.md:50
+msgid "If the database layout changed, Cadmus automatically restores the most recent backup that is compatible with the older version. Data such as reading progress that was only written on the newer version will be lost."
+msgstr ""
+
+#: src/database-backup.md:54
+msgid "Before the restore happens, the current database file is renamed to `cadmus-<newer-version>-demoted.sqlite` in the `backups/` folder. This demoted file is kept on disk indefinitely as a safety net — Cadmus never deletes it automatically, so you can recover it manually if you ever need to."
+msgstr ""
+
+#: src/database-backup.md:59
+msgid "Corruption recovery"
+msgstr ""
+
+#: src/database-backup.md:61
+msgid "If the database file fails its integrity check, Cadmus restores the most recent backup and re-runs migrations. The corrupt file is replaced and Cadmus continues normally."
+msgstr ""
+
+#: src/database-backup.md:66
+msgid "If the database is corrupted _and_ no backup exists (for example on a fresh install), Cadmus cannot start. You would have to manually delete the database file to allow Cadmus to start."
+msgstr ""
+
+#: src/database-backup.md:70
+msgid "Controlling how many backups to keep"
+msgstr ""
+
+#: src/database-backup.md:72
+msgid "Use the `db-backup-retention` setting to control how many backup files are kept on disk. When a new backup is created and the total number of backups would exceed this limit, the oldest backups are deleted automatically."
+msgstr ""
+
+#: src/troubleshooting/index.md:5
+msgid "When something isn't working right, logs will help with figuring out what went wrong. If you're reporting an issue, sharing your logs makes it much easier to debug."
+msgstr ""
+
+#: src/troubleshooting/index.md:9
+msgid "Where to find Cadmus logs"
+msgstr ""
+
+#: src/troubleshooting/index.md:11
+msgid "Cadmus saves logs in a `logs` folder. Here's where to find it on each platform:"
+msgstr ""
+
+#: src/troubleshooting/index.md:21
+msgid "Each time you start Cadmus, it creates a new log file with a unique ID. By default, only the 3 most recent log files are kept — older ones are deleted automatically. You can change this with the [`logging.max-files`](../settings/index.md#loggingmax-files) setting."
+msgstr ""
+
+#: src/troubleshooting/index.md:26
+msgid "The log files look like this:"
+msgstr ""
+
+#: src/troubleshooting/index.md:36
+msgid "Finding your run ID"
+msgstr ""
+
+#: src/troubleshooting/index.md:38
+msgid "Every time Cadmus starts, it prints a run ID to help you identify which log file belongs to that session. You can find this in:"
+msgstr ""
+
+#: src/troubleshooting/index.md:42
+msgid "**info.log** - The startup log in the Cadmus folder. Look for the line that says `Cadmus run started with ID:` followed by a string of letters and numbers."
+msgstr ""
+
+#: src/troubleshooting/index.md:45
+msgid "For example:"
+msgstr ""
+
+#: src/troubleshooting/index.md:55
+msgid "Copy only the UUID part — the string of letters and numbers between `ID:` and the `(version` text."
+msgstr ""
+
+#: src/troubleshooting/index.md:58
+msgid "**Console output** - If you're running Cadmus from a terminal, the same run ID is printed when it starts."
+msgstr ""
+
+#: src/troubleshooting/index.md:61
+msgid "Kernel logs"
+msgstr ""
+
+#: src/troubleshooting/index.md:63
+msgid "Kernel logs can be useful to debug lower level system issues, for example a kernel panic, which triggers a device reboot."
+msgstr ""
+
+#: src/troubleshooting/index.md:66
+msgid "Kernel logs are only available in [test builds](../installation/test-builds.md). If you're using a test build and want to include kernel logs:"
+msgstr ""
+
+#: src/troubleshooting/index.md:69
+msgid "Open **Main Menu → Settings**"
+msgstr ""
+
+#: src/troubleshooting/index.md:70
+msgid "Go to `Telemetry`"
+msgstr ""
+
+#: src/troubleshooting/index.md:71
+msgid "Enable kernel logs"
+msgstr ""
+
+#: src/troubleshooting/index.md:72
+msgid "Restart Cadmus"
+msgstr ""
+
+#: src/troubleshooting/index.md:74
+msgid "Kernel logs will then be saved in the same log file as your Cadmus logs."
+msgstr ""
+
+#: src/troubleshooting/index.md:77
+msgid "Kernel logs will use more disk space, so don't forget to turn it back off."
+msgstr ""
+
+#: src/troubleshooting/index.md:79
+msgid "Crashloop recovery"
+msgstr ""
+
+#: src/troubleshooting/index.md:81
+msgid "If Cadmus crashes 3 times in a row, it will exit back to Nickel instead of restarting. This prevents the device from getting stuck in an infinite loop of crashes."
+msgstr ""
+
+#: src/troubleshooting/index.md:85
+msgid "When this happens:"
+msgstr ""
+
+#: src/troubleshooting/index.md:87
+msgid "Check `info.log` in the Cadmus folder for the panic error"
+msgstr ""
+
+#: src/troubleshooting/index.md:88
+msgid "The crash counter resets when you start Cadmus manually (using the restart option in the menu or rebooting)"
+msgstr ""
+
+#: src/CHANGELOG.md:1
+msgid "Changelog"
+msgstr ""
+
