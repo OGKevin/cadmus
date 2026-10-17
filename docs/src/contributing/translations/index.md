@@ -9,21 +9,24 @@ The easiest way to contribute translations is on
 the website are all translated there.
 
 > [!NOTE]
-> Direct pull requests to `docs/po/*.po`, `crates/core/i18n/*/*.ftl`, or
-> `website/messages/*.json` are discouraged. Crowdin keeps translators
-> coordinated and avoids merge conflicts.
+> Direct pull requests to `docs/po/*.po`, `crates/core/i18n/*/*.ftl`,
+> `crates/core/ui/lang/**`, or `website/messages/*.json` are discouraged.
+> Crowdin keeps translators coordinated and avoids merge conflicts.
 
-## Three translation surfaces
+## Four translation surfaces
 
-| What                | System           | Source files                              | Crowdin source                 |
-| ------------------- | ---------------- | ----------------------------------------- | ------------------------------ |
-| Cadmus UI           | [Fluent] FTL     | `crates/core/i18n/<lang>/cadmus_core.ftl` | `crates/core/i18n/en-GB/*.ftl` |
-| User guide (mdBook) | GNU gettext PO   | `docs/po/<lang>.po`                       | `docs/po/messages.pot`         |
-| Website             | [next-intl] JSON | `website/messages/<lang>.json`            | `website/messages/en.json`     |
+| What                | System           | Source files                                            | Crowdin source                        |
+| ------------------- | ---------------- | ------------------------------------------------------- | ------------------------------------- |
+| Cadmus UI           | [Fluent] FTL     | `crates/core/i18n/<lang>/cadmus_core.ftl`               | `crates/core/i18n/en-GB/*.ftl`        |
+| Slint screens       | GNU gettext PO   | `crates/core/ui/lang/<lang>/LC_MESSAGES/cadmus-core.po` | `crates/core/ui/lang/cadmus-core.pot` |
+| User guide (mdBook) | GNU gettext PO   | `docs/po/<lang>.po`                                     | `docs/po/messages.pot`                |
+| Website             | [next-intl] JSON | `website/messages/<lang>.json`                          | `website/messages/en.json`            |
 
 The website strings cover the landing page, nav, doc-grid cards, and footer.
 The mdBook user guide is a separate, larger translation surface embedded into
-the site.
+the site. The Slint screens are the `.slint` `@tr("…")` static copy (category
+tabs, setting-row labels); their translations are bundled into the binary
+rather than loaded from disk.
 
 ## How Crowdin sync works
 
@@ -42,10 +45,11 @@ flowchart LR
 ```
 
 - [`crowdin.yml`](https://github.com/ogkevin/cadmus/blob/master/crowdin.yml)
-  maps all three English sources to per-locale paths (`%two_letters_code%`).
+  maps all four English sources to per-locale paths (`%two_letters_code%`).
 - [`.github/workflows/crowdin.yml`](https://github.com/ogkevin/cadmus/blob/master/.github/workflows/crowdin.yml)
   runs on pushes to `main` and on pull requests that touch
-  `crates/core/i18n/**`, `docs/po/**`, or `website/messages/**`.
+  `crates/core/i18n/**`, `crates/core/ui/**`, `docs/po/**`, or
+  `website/messages/**`.
   Pull requests from a fork skip the sync: GitHub does not pass the Crowdin
   token to those runs. Pushes on a fork repository skip it as well.
 - The action uploads sources and existing translations, downloads updates, and
@@ -69,6 +73,21 @@ flowchart LR
   scans `i18n/` subdirectories and emits `AVAILABLE_LOCALES` for the Settings
   language picker.
 - Active language comes from `settings.locale` at startup.
+
+### Slint screens (gettext)
+
+- Static copy in `.slint` files uses `@tr("English")`; the English text is the
+  source string.
+- `cadmus-translate` extracts it with `slint-tr-extractor` into
+  `crates/core/ui/lang/cadmus-core.pot`
+  (`--no-default-translation-context`, matching
+  [`crates/core/build.rs`](https://github.com/ogkevin/cadmus/blob/master/crates/core/build.rs)).
+- [`crates/core/build.rs`](https://github.com/ogkevin/cadmus/blob/master/crates/core/build.rs)
+  bundles `crates/core/ui/lang/<lang>/LC_MESSAGES/cadmus-core.po` at compile
+  time; translations are embedded in the binary, not read from disk.
+- [`crates/core/src/view/slint/mod.rs`](https://github.com/ogkevin/cadmus/blob/master/crates/core/src/view/slint/mod.rs)
+  `apply_language()` selects the catalog from the same `settings.locale` Fluent
+  loads — `en`/`en-GB` keep the English `@tr` strings.
 
 ### User guide (gettext / mdBook)
 

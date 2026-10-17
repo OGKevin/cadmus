@@ -1,0 +1,165 @@
+import { ActionBar } from "../../widgets/action_bar.slint";
+import { PagedLine, PagedList } from "../../widgets/paged_list.slint";
+import { ScreenHeader } from "../../widgets/screen_header.slint";
+import { ValueRow } from "../../widgets/value_row.slint";
+import { InkMetrics } from "../../widgets/ink/metrics.slint";
+import { SettingsChrome } from "../shell/chrome.slint";
+
+// Refresh-rate editor fields and callbacks. Rust sets these; the window does not.
+// `kind-pressed` and `kind-held` pass the index into `kinds`, starting at 0.
+export global RefreshRatesIo {
+    in property <bool> open: false;
+    in property <string> heading;
+    in property <string> regular-label;
+    in property <string> inverted-label;
+    in property <string> accept-label;
+    in property <string> regular;
+    in property <string> inverted;
+    in property <[PagedLine]> kinds;
+    in-out property <int> page: 0;
+    // Rows of the kind list that fit under the header. The option menu
+    // reads this so a held row anchors to the row that is on screen.
+    in-out property <int> list-per-page: 1;
+    in property <bool> kind-open: false;
+    in property <string> kind-title;
+    in property <string> kind-regular;
+    in property <string> kind-inverted;
+    callback dismissed();
+    callback regular-pressed();
+    callback inverted-pressed();
+    callback kind-pressed(int);
+    callback kind-held(int);
+    callback add-pressed();
+    callback kind-dismissed();
+    callback kind-accepted();
+    callback kind-regular-pressed();
+    callback kind-inverted-pressed();
+}
+
+export component RefreshRates inherits Rectangle {
+    width: 100%;
+    height: 100%;
+    background: #ffffff;
+    property <length> row-height: InkMetrics.row;
+    // Header, regular, inverted, and the list's bottom bar (with the add FAB).
+    property <length> chrome: InkMetrics.app-bar + root.row-height * 2 + InkMetrics.bottom-bar;
+    property <int> per-page: Math.max(1, Math.floor((SettingsChrome.window-height - root.chrome) / root.row-height));
+
+    changed per-page => {
+        RefreshRatesIo.list-per-page = root.per-page;
+    }
+    init => {
+        RefreshRatesIo.list-per-page = root.per-page;
+    }
+
+    TouchArea {
+        width: 100%;
+        height: 100%;
+    }
+
+    VerticalLayout {
+        width: 100%;
+        height: 100%;
+
+        ScreenHeader {
+            heading: RefreshRatesIo.heading;
+            back-pressed => {
+                RefreshRatesIo.dismissed();
+            }
+        }
+
+        ValueRow {
+            label: RefreshRatesIo.regular-label;
+            value: RefreshRatesIo.regular;
+            pressed => {
+                RefreshRatesIo.regular-pressed();
+            }
+        }
+
+        ValueRow {
+            label: RefreshRatesIo.inverted-label;
+            value: RefreshRatesIo.inverted;
+            pressed => {
+                RefreshRatesIo.inverted-pressed();
+            }
+        }
+
+        PagedList {
+            lines: RefreshRatesIo.kinds;
+            per-page: root.per-page;
+            page <=> RefreshRatesIo.page;
+            show-action: true;
+            holdable: true;
+            line-pressed(index) => {
+                RefreshRatesIo.kind-pressed(index);
+            }
+            line-held(index) => {
+                RefreshRatesIo.kind-held(index);
+            }
+            action-clicked => {
+                RefreshRatesIo.add-pressed();
+            }
+        }
+    }
+
+    if RefreshRatesIo.kind-open: kind-keys := FocusScope {
+        width: 100%;
+        height: 100%;
+        init => {
+            kind-keys.focus();
+        }
+        key-pressed(event) => {
+            accept
+        }
+
+        Rectangle {
+            width: 100%;
+            height: 100%;
+            background: #ffffff;
+
+            TouchArea {
+                width: 100%;
+                height: 100%;
+            }
+
+            VerticalLayout {
+                width: 100%;
+                height: 100%;
+
+                ScreenHeader {
+                    heading: RefreshRatesIo.kind-title;
+                    back-pressed => {
+                        RefreshRatesIo.kind-dismissed();
+                    }
+                }
+
+                ValueRow {
+                    label: RefreshRatesIo.regular-label;
+                    value: RefreshRatesIo.kind-regular;
+                    pressed => {
+                        RefreshRatesIo.kind-regular-pressed();
+                    }
+                }
+
+                ValueRow {
+                    label: RefreshRatesIo.inverted-label;
+                    value: RefreshRatesIo.kind-inverted;
+                    pressed => {
+                        RefreshRatesIo.kind-inverted-pressed();
+                    }
+                }
+
+                Rectangle {
+                    vertical-stretch: 1;
+                }
+
+                ActionBar {
+                    label: RefreshRatesIo.accept-label;
+                    clicked => {
+                        RefreshRatesIo.kind-accepted();
+                    }
+                }
+            }
+        }
+    }
+}

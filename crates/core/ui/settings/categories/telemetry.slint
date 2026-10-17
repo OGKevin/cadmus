@@ -1,0 +1,25 @@
+import { StaticPage } from "static_page.slint";
+import { SettingRow, StaticLine } from "../setting_line.slint";
+
+// Telemetry's rows. Rust includes a row only when that build has the
+// setting, so the page does not keep a hidden slot for it.
+export global TelemetryPageIo {
+    in property <[StaticLine]> rows;
+    out property <int> row-count: rows.length;
+    callback row-pressed(SettingRow);
+}
+
+export component TelemetryPage inherits VerticalLayout {
+    in property <int> page;
+    in property <int> per-page;
+
+    StaticPage {
+        vertical-stretch: 1;
+        rows: TelemetryPageIo.rows;
+        page: root.page;
+        per-page: root.per-page;
+        row-pressed(row) => {
+            TelemetryPageIo.row-pressed(row);
+        }
+    }
+}

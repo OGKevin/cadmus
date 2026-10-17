@@ -475,7 +475,22 @@ impl Settings {
     pub fn sanitize(&mut self) -> bool {
         let mut changed = self.intermissions.sanitize();
         changed |= self.sanitize_wifi_idle_timeout();
+        changed |= self.sanitize_libraries();
         changed
+    }
+
+    /// Ensures at least one library exists, so views can index `libraries`.
+    ///
+    /// [`crate::settings::versioned::SettingsManager::load`] calls
+    /// [`Settings::sanitize`] before the app rejects an empty list with
+    /// "no libraries found". An empty file becomes one default library
+    /// instead of failing startup.
+    pub(crate) fn sanitize_libraries(&mut self) -> bool {
+        if self.libraries.is_empty() {
+            self.libraries.push(LibrarySettings::default());
+            return true;
+        }
+        false
     }
 
     pub(crate) fn sanitize_wifi_idle_timeout(&mut self) -> bool {
@@ -1404,5 +1419,17 @@ unknown-format = { regular = 1, inverted = 1 }
         };
         assert!(settings.sanitize_wifi_idle_timeout());
         assert_eq!(settings.wifi_idle_timeout, 0.0);
+    }
+
+    #[test]
+    fn sanitize_libraries_restores_one_when_empty() {
+        let mut settings = Settings {
+            libraries: Vec::new(),
+            ..Default::default()
+        };
+        assert!(settings.sanitize_libraries());
+        assert_eq!(settings.libraries.len(), 1);
+
+        assert!(!settings.sanitize_libraries());
     }
 }

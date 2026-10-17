@@ -61,6 +61,7 @@ impl SettingKind for Locale {
         if let Event::Select(EntryId::SetLocale(locale)) = evt {
             context.settings.locale = locale.clone();
             crate::i18n::init(locale.as_ref());
+            crate::view::slint::apply_language();
             let display = locale
                 .as_ref()
                 .map(|l| l.to_string())

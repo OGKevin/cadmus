@@ -1,0 +1,23 @@
+import { StaticPage } from "static_page.slint";
+import { SettingRow, StaticLine } from "../setting_line.slint";
+
+export global ReaderPageIo {
+    in property <[StaticLine]> rows;
+    out property <int> row-count: rows.length;
+    callback row-pressed(SettingRow);
+}
+
+export component ReaderPage inherits VerticalLayout {
+    in property <int> page;
+    in property <int> per-page;
+
+    StaticPage {
+        vertical-stretch: 1;
+        rows: ReaderPageIo.rows;
+        page: root.page;
+        per-page: root.per-page;
+        row-pressed(row) => {
+            ReaderPageIo.row-pressed(row);
+        }
+    }
+}

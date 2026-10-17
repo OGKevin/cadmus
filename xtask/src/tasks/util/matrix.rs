@@ -461,6 +461,12 @@ mod tests {
         assert!(labels.contains(&"emulator + test"));
         assert!(labels.contains(&"deviceless + profiling"));
         assert!(labels.contains(&"kobo + profiling + test + tracing"));
+        assert!(
+            !labels
+                .iter()
+                .any(|label| label.split(" + ").any(|part| part == "slint-poc")),
+            "slint is always enabled and must not be a matrix feature"
+        );
         assert!(!labels.contains(&"default"));
         assert!(!labels.contains(&"telemetry"));
         assert!(

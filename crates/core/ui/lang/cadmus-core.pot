@@ -1,0 +1,61 @@
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2026-10-17 11:42+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#: crates/core/ui/settings/shell/category_bar.slint:47
+msgid "General"
+msgstr ""
+
+#: crates/core/ui/settings/shell/category_bar.slint:48
+msgid "Power"
+msgstr ""
+
+#: crates/core/ui/settings/shell/category_bar.slint:49
+msgid "Reader"
+msgstr ""
+
+#: crates/core/ui/settings/shell/category_bar.slint:50
+msgid "Dictionaries"
+msgstr ""
+
+#: crates/core/ui/settings/shell/category_bar.slint:51
+msgid "Libraries"
+msgstr ""
+
+#: crates/core/ui/settings/shell/category_bar.slint:52
+msgid "Intermission Screens"
+msgstr ""
+
+#: crates/core/ui/settings/shell/category_bar.slint:53
+msgid "Import"
+msgstr ""
+
+#: crates/core/ui/settings/shell/category_bar.slint:54
+msgid "Telemetry"
+msgstr ""
+
+#: crates/core/ui/settings/window.slint:95
+msgid "Settings"
+msgstr ""
+
+#: crates/core/ui/startup/window.slint:4
+msgid "Cadmus starting up…"
+msgstr ""
+
+#: crates/core/ui/widgets/file_chooser.slint:46
+msgid "Up"
+msgstr ""
+
+#: crates/core/ui/widgets/file_chooser.slint:63
+msgid "Select this folder"
+msgstr ""

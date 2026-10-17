@@ -13,10 +13,11 @@ Settings are organised into tabs — tap a category to open it.
 - **Power** — soft suspend, auto-suspend, auto power off, sleep cover
 - **Reader** — default font family, finished-book action, default dithering
   by file type, and screen refresh rates
-- **Libraries** — add, edit, or remove your book libraries
 - **Dictionaries** — download and manage offline dictionaries
+- **Libraries** — add, edit, or remove your book libraries
+- **Intermission Screens** — pictures shown while Cadmus sleeps, powers off,
+  or shares
 - **Import** — control how new books are picked up automatically
-- **OTA** — download Cadmus updates directly to your Kobo
 - **Telemetry** — logging options
 
 ### Power
@@ -33,3 +34,13 @@ Use the **Power** tab for sleep-related options:
 - **Auto Suspend** — minutes of inactivity before a full suspend.
 - **Auto Power Off** — days of inactivity before power off.
 - **Enable Sleep Cover** — suspend when the cover closes.
+
+### Intermission Screens
+
+Use the **Intermission Screens** tab to choose what Cadmus shows between
+activities:
+
+- **Suspend Screen** — picture while the device sleeps
+- **Power Off Screen** — picture while the device powers off
+- **Share Screen** — picture while Cadmus shares
+- **Fill Color** — white, black, or a custom color behind that picture

@@ -1,0 +1,64 @@
+export struct SettingLine {
+    label: string,
+    value: string,
+}
+
+export enum SettingsCategory {
+    general,
+    power,
+    reader,
+    dictionaries,
+    libraries,
+    intermissions,
+    import,
+    telemetry,
+}
+
+// Static settings rows. A tap passes the variant, not a list index.
+// Libraries and dictionaries are runtime models, so they are not here.
+export enum SettingRow {
+    locale,
+    auto-share,
+    auto-time,
+    ntp-server,
+    auto-frontlight,
+    auto-frontlight-brightness,
+    auto-frontlight-manual-coordinates,
+    wifi-idle-timeout,
+    button-scheme,
+    keyboard-layout,
+    settings-retention,
+    db-backup-retention,
+    startup-mode,
+    autosleep-mode,
+    indicate-autosleep-led,
+    autosleep-grace,
+    auto-suspend,
+    auto-power-off,
+    sleep-cover,
+    font-family,
+    finished-action,
+    dithered-kinds,
+    refresh-rate,
+    intermission-suspend,
+    intermission-power-off,
+    intermission-share,
+    intermission-fill-color,
+    force-full-import,
+    import-sync-metadata,
+    allowed-kinds,
+    logging-enabled,
+    log-level,
+    otlp-endpoint,
+    pyroscope-endpoint,
+    enable-kern-log,
+    enable-dbus-log,
+}
+
+// One static settings row. `row` is the identity the tap reports, so the
+// page does not number its slots by hand.
+export struct StaticLine {
+    label: string,
+    value: string,
+    row: SettingRow,
+}

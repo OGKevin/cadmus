@@ -37,6 +37,7 @@ jobs:
           filters: |
             i18n:
               - 'crates/core/i18n/**'
+              - 'crates/core/ui/**'
               - 'docs/po/**'
               - 'website/messages/**'
               - '.github/workflows/crowdin.yml'

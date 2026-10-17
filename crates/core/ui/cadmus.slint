@@ -1,0 +1,42 @@
+// Binding manifest for the generated Rust module. `build.rs` compiles this
+// file only, so every component, global, and struct Rust names is re-exported
+// here. Shared widgets stay property-and-callback components; each screen
+// exports the host global that drives them.
+
+import { MaterialPalette } from "widgets/ink/palette.slint";
+
+// Shared.
+export { MaterialPalette }
+export { InkMetrics } from "widgets/ink/metrics.slint";
+export { ChoiceEntry } from "widgets/choice_sheet.slint";
+export { KeyAction, KeyCap } from "widgets/keyboard.slint";
+export { PagedLine } from "widgets/paged_list.slint";
+export {
+    ChoiceSheetIo,
+    ConfirmSheetIo,
+    FileBrowserIo,
+    TextSheetIo,
+} from "widgets/overlays.slint";
+
+// Startup.
+export { StartupWindow } from "startup/window.slint";
+
+// Settings.
+export {
+    SettingsWindow,
+    SettingLine,
+    SettingsCategory,
+    SettingRow,
+    SettingsChrome,
+    GeneralPageIo,
+    PowerPageIo,
+    ReaderPageIo,
+    DictionaryPageIo,
+    LibraryPageIo,
+    IntermissionPageIo,
+    ImportPageIo,
+    TelemetryPageIo,
+    LibraryEditorIo,
+    RefreshRatesIo,
+    StaticLine,
+} from "settings/window.slint";

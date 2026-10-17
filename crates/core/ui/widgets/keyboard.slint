@@ -1,0 +1,194 @@
+import { Hairline } from "hairline.slint";
+import { HoldTouch } from "hold_touch.slint";
+import { InkMetrics } from "ink/metrics.slint";
+import { MaterialPalette } from "ink/palette.slint";
+
+// What a key does. Character keys insert `insert`. The labels and which
+// keys exist come from the active keyboard layout, so Russian and terminal
+// look like the layouts on disk. Holding a character key asks Rust for the
+// accented forms of that character; the combine key is not drawn.
+export enum KeyAction {
+    character,
+    delete-back,
+    delete-forward,
+    shift,
+    alternate,
+    submit,
+    move-back,
+    move-forward,
+    move-start,
+    move-end,
+    dismiss,
+    ignore,
+}
+
+export struct KeyCap {
+    label: string,
+    insert: string,
+    stretch: float,
+    engaged: bool,
+    compact: bool,
+    holdable: bool,
+    action: KeyAction,
+}
+
+// A locked key is already black, so pressing it flashes the other way.
+// Named KeyButton so it does not shadow Slint's built-in `Key`.
+component KeyButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> engaged: false;
+    in property <float> stretch: 1;
+    in property <bool> compact: false;
+    in property <bool> holdable: false;
+    callback tapped();
+    callback held();
+
+    property <bool> inverted: touch.down != root.engaged;
+
+    horizontal-stretch: root.stretch;
+    min-width: 0px;
+    height: 100%;
+    background: root.inverted ? MaterialPalette.on-surface : MaterialPalette.surface;
+    border-width: InkMetrics.hairline;
+    border-color: MaterialPalette.on-surface;
+
+    Text {
+        text: root.label;
+        font-size: root.compact ? 13px * InkMetrics.dp : InkMetrics.body;
+        color: root.inverted ? MaterialPalette.surface : MaterialPalette.on-surface;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        width: 100%;
+        height: 100%;
+        overflow: elide;
+    }
+
+    touch := HoldTouch {
+        width: 100%;
+        height: 100%;
+        holdable: root.holdable;
+        tapped => {
+            root.tapped();
+        }
+        held => {
+            root.held();
+        }
+    }
+}
+
+// The keys sit on the bottom, in a block as tall as the reader keyboard.
+// `block-height`, `key-height`, and `key-gap` are logical pixels. Rust
+// sets them from the reader keyboard. They are not dp.
+// The strip above the block stays empty until a held character has
+// accented forms, so the field above does not jump. Touches on the
+// empty strip and on the padding stay inside the dialog.
+export component OnScreenKeyboard inherits VerticalLayout {
+    in property <[[KeyCap]]> rows;
+    in property <[string]> variants;
+    in property <length> block-height: 480px;
+    in property <length> key-height: 64px;
+    in property <length> key-gap: 4px;
+    callback typed(string);
+    callback deleted();
+    callback deleted-forward();
+    callback moved(KeyAction);
+    callback shift-pressed();
+    callback alternate-pressed();
+    callback held(string);
+    callback accepted();
+    callback dismissed();
+
+    spacing: 0px;
+
+    Rectangle {
+        height: root.key-height;
+
+        TouchArea {
+            width: 100%;
+            height: 100%;
+        }
+
+        if root.variants.length > 0: Rectangle {
+            width: 100%;
+            height: 100%;
+            background: MaterialPalette.surface;
+            border-width: InkMetrics.hairline;
+            border-color: MaterialPalette.on-surface;
+
+            HorizontalLayout {
+                padding: 2px * InkMetrics.dp;
+                spacing: 2px * InkMetrics.dp;
+
+                for variant in root.variants: KeyButton {
+                    label: variant;
+                    stretch: 1;
+                    tapped => {
+                        root.typed(variant);
+                    }
+                }
+            }
+        }
+    }
+
+    Rectangle {
+        background: MaterialPalette.surface;
+        height: root.block-height;
+
+        Hairline {
+            y: 0px;
+            width: 100%;
+            line-color: MaterialPalette.on-surface;
+        }
+
+        TouchArea {
+            width: 100%;
+            height: 100%;
+        }
+
+        VerticalLayout {
+            y: Math.max(0px, (parent.height - self.min-height) / 2);
+            width: 100%;
+            height: self.min-height;
+            padding: root.key-gap;
+            spacing: root.key-gap;
+
+            for row in root.rows: HorizontalLayout {
+                height: root.key-height;
+                spacing: root.key-gap;
+
+                for key in row: KeyButton {
+                    label: key.label;
+                    stretch: key.stretch;
+                    engaged: key.engaged;
+                    compact: key.compact;
+                    holdable: key.holdable;
+                    held => {
+                        root.held(key.insert);
+                    }
+                    tapped => {
+                        if (key.action == KeyAction.character) {
+                            root.typed(key.insert);
+                        } else if (key.action == KeyAction.delete-back) {
+                            root.deleted();
+                        } else if (key.action == KeyAction.delete-forward) {
+                            root.deleted-forward();
+                        } else if (key.action == KeyAction.shift) {
+                            root.shift-pressed();
+                        } else if (key.action == KeyAction.alternate) {
+                            root.alternate-pressed();
+                        } else if (key.action == KeyAction.submit) {
+                            root.accepted();
+                        } else if (key.action == KeyAction.dismiss) {
+                            root.dismissed();
+                        } else if (key.action == KeyAction.move-back
+                            || key.action == KeyAction.move-forward
+                            || key.action == KeyAction.move-start
+                            || key.action == KeyAction.move-end) {
+                            root.moved(key.action);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
