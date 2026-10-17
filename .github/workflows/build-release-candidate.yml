@@ -73,7 +73,7 @@ jobs:
             release-artifacts/*.tgz
 
       - name: Upload KoboRoot
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: cadmus-kobo-pr${{ inputs.pr_number }}-${{ steps.commit.outputs.short_sha }}
           path: release-artifacts/KoboRoot.tgz
@@ -81,7 +81,7 @@ jobs:
           retention-days: 14
 
       - name: Upload KoboRoot with NickelMenu
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: cadmus-kobo-nm-pr${{ inputs.pr_number }}-${{ steps.commit.outputs.short_sha }}
           path: release-artifacts/KoboRoot-nm.tgz
@@ -89,7 +89,7 @@ jobs:
           retention-days: 14
 
       - name: Upload dist tarball
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: cadmus-kobo-dist-pr${{ inputs.pr_number }}-${{ steps.commit.outputs.short_sha }}
           path: release-artifacts/cadmus-kobo.tar.gz
