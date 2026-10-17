@@ -1,6 +1,6 @@
 [package]
 name = "cadmus-core"
-version = "0.12.0"
+version = "0.12.1"
 edition = "2024"
 # benches/reader_dict_fixture.rs is a helper for dictionary_bench, not a
 # standalone bench; keep it out of Cargo's bench target auto-discovery.
