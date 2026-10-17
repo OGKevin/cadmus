@@ -114,7 +114,7 @@ fn extract_index_from_zip(zip_path: &Path, dest_dir: &Path) -> PathBuf {
 
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i).expect("zip entry");
-        let entry_name = entry.name().to_string();
+        let entry_name = entry.name().expect("zip entry name").into_owned();
         let file_name = entry_name.rsplit('/').next().unwrap_or(entry_name.as_str());
         if !file_name.ends_with(".index") {
             continue;

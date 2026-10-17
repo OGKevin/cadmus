@@ -248,7 +248,10 @@ pub fn extract_zip_paths(src: &Path, dest_dir: &Path, prefixes: &[&str]) -> Resu
             .by_index(i)
             .with_context(|| format!("failed to read entry {i} from {}", src.display()))?;
 
-        let name = entry.name().to_owned();
+        let name = entry
+            .name()
+            .with_context(|| format!("entry {i} in {} has an invalid name", src.display()))?
+            .into_owned();
         let matches = prefixes
             .iter()
             .any(|prefix| name == *prefix || name.starts_with(&format!("{prefix}/")));
@@ -320,7 +323,10 @@ pub fn extract_zip_matching_flat(
         let mut entry = archive
             .by_index(i)
             .with_context(|| format!("failed to read entry {i} from {}", src.display()))?;
-        let name = entry.name().to_owned();
+        let name = entry
+            .name()
+            .with_context(|| format!("entry {i} in {} has an invalid name", src.display()))?
+            .into_owned();
         if entry.is_dir() {
             continue;
         }
