@@ -11,6 +11,11 @@ use super::metadata::{DictionariesResponse, DictionaryEntry, download_url, downl
 use crate::db::Database;
 use crate::db::types::UnixTimestamp;
 use crate::memory::{BufferPath, choose_buffer_path};
+use async_zip::base::read1::ZipFileReader;
+use async_zip::base::read1::seek::ZipArchiveReader;
+use async_zip::error::ZipError;
+use async_zip::spec::constructs::CDR;
+use futures_lite::io::{AsyncBufRead, AsyncSeek, Cursor};
 use std::collections::HashSet;
 #[cfg(test)]
 use std::fs;
@@ -18,7 +23,7 @@ use std::io::{self};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 use tokio::io::AsyncWriteExt;
-use tokio_util::compat::FuturesAsyncReadCompatExt;
+use tokio_util::compat::{FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt};
 
 /// Subdirectory inside the dictionaries root where reader-dict downloads live.
 const READER_DICT_SUBDIR: &str = "reader-dict";
@@ -877,63 +882,98 @@ async fn extract_zip_renamed(
     match choose_buffer_path(needed) {
         BufferPath::InMemory => {
             let bytes = tokio::fs::read(zip_path).await?;
-            let reader = async_zip::base::read::mem::ZipFileReader::new(bytes)
+            let reader = ZipArchiveReader::open(Cursor::new(bytes))
                 .await
                 .map_err(zip_open_error)?;
-            let targets = collect_renamed_dict_targets(reader.file(), lang)?;
-            for (index, target_name) in targets {
-                let expected_crc = reader.file().entries()[index].crc32();
-                let mut entry = reader
-                    .reader_without_entry(index)
-                    .await
-                    .map_err(zip_entry_error)?;
-                let out_path = dest.join(&target_name);
-                stream_zip_entry_to_path(&mut entry, expected_crc, &out_path).await?;
-                tracing::debug!(path = %out_path.display(), "Extracted file");
-            }
-            Ok(())
+            extract_renamed_entries(reader, dest, lang).await
         }
         BufferPath::Stream => {
-            let reader = async_zip::tokio::read::fs::ZipFileReader::new(zip_path)
+            let file = tokio::fs::File::open(zip_path).await?;
+            let reader = ZipArchiveReader::open(tokio::io::BufReader::new(file).compat())
                 .await
                 .map_err(zip_open_error)?;
-            let targets = collect_renamed_dict_targets(reader.file(), lang)?;
-            for (index, target_name) in targets {
-                let expected_crc = reader.file().entries()[index].crc32();
-                let mut entry = reader
-                    .reader_without_entry(index)
-                    .await
-                    .map_err(zip_entry_error)?;
-                let out_path = dest.join(&target_name);
-                stream_zip_entry_to_path(&mut entry, expected_crc, &out_path).await?;
-                tracing::debug!(path = %out_path.display(), "Extracted file");
-            }
-            Ok(())
+            extract_renamed_entries(reader, dest, lang).await
         }
     }
 }
 
-fn zip_open_error(error: async_zip::error::ZipError) -> MonolingualError {
+/// Writes the recognised dictionary members of an opened archive into `dest`.
+///
+/// Members are inflated one at a time. A CRC mismatch while reading a member is
+/// reported as `CRC32 checksum mismatch`.
+///
+/// # Errors
+///
+/// Returns [`MonolingualError::Extraction`] when an entry name is not UTF-8 or
+/// an entry cannot be opened or read. Creating or flushing an output file
+/// returns [`MonolingualError::Io`].
+async fn extract_renamed_entries<R>(
+    mut reader: ZipArchiveReader<R>,
+    dest: &Path,
+    lang: &str,
+) -> Result<(), MonolingualError>
+where
+    R: AsyncBufRead + AsyncSeek + Unpin,
+{
+    let targets = collect_renamed_dict_targets(reader.cdrs(), lang)?;
+    for (index, target_name) in targets {
+        let mut entry = reader.file(index).await.map_err(zip_entry_error)?;
+        let out_path = dest.join(&target_name);
+        stream_zip_entry_to_path(&mut entry, &out_path).await?;
+        tracing::debug!(path = %out_path.display(), "Extracted file");
+    }
+    Ok(())
+}
+
+/// Maps a failure to open a ZIP archive to [`MonolingualError::Extraction`].
+fn zip_open_error(error: ZipError) -> MonolingualError {
     MonolingualError::Extraction(format!("failed to open zip archive: {error}"))
 }
 
-fn zip_entry_error(error: async_zip::error::ZipError) -> MonolingualError {
+/// Maps a failure to open one ZIP entry to [`MonolingualError::Extraction`].
+fn zip_entry_error(error: ZipError) -> MonolingualError {
     MonolingualError::Extraction(format!("failed to read zip entry: {error}"))
 }
 
+/// Turns an entry-body read error into the extraction message callers match on.
+///
+/// `read1` reports a CRC mismatch as [`ZipError::CRC32CheckError`] inside an
+/// [`io::Error`]. That case is rewritten to `CRC32 checksum mismatch`.
+fn zip_body_error(error: &io::Error) -> String {
+    match error
+        .get_ref()
+        .and_then(|source| source.downcast_ref::<ZipError>())
+    {
+        Some(ZipError::CRC32CheckError) => "CRC32 checksum mismatch".to_owned(),
+        _ => error.to_string(),
+    }
+}
+
+/// Selects dictionary files from a ZIP central directory and names their outputs.
+///
+/// Directory entries, unsafe paths, and unrecognised extensions are skipped. The
+/// returned index is the position of the central-directory record.
+///
+/// # Errors
+///
+/// Returns [`MonolingualError::Extraction`] when an entry name is not UTF-8.
 fn collect_renamed_dict_targets(
-    file: &async_zip::ZipFile,
+    cdrs: &[CDR],
     lang: &str,
 ) -> Result<Vec<(usize, String)>, MonolingualError> {
     let mut targets = Vec::new();
-    for (index, stored) in file.entries().iter().enumerate() {
-        if stored.dir().map_err(|error| {
-            MonolingualError::Extraction(format!("failed to inspect zip entry {index}: {error}"))
-        })? {
+    for (index, cdr) in cdrs.iter().enumerate() {
+        let name = cdr.insecure_file_name.as_str().ok_or_else(|| {
+            MonolingualError::Extraction(format!(
+                "failed to inspect zip entry {index}: {}",
+                ZipError::StringNotUtf8
+            ))
+        })?;
+        if name.ends_with('/') {
             continue;
         }
 
-        let Some(original_name) = zip_entry_basename(stored.filename()) else {
+        let Some(original_name) = zip_entry_basename(name) else {
             tracing::warn!(index, "Skipping zip entry with unsafe path");
             continue;
         };
@@ -951,9 +991,11 @@ fn collect_renamed_dict_targets(
     Ok(targets)
 }
 
-fn zip_entry_basename(filename: &async_zip::ZipString) -> Option<String> {
-    let raw = filename.as_str().ok()?;
-    let trimmed = raw.trim_end_matches('/');
+/// Returns the final path component of `filename` when it is safe to write.
+///
+/// Returns [`None`] for an empty name or any component equal to `..`.
+fn zip_entry_basename(filename: &str) -> Option<String> {
+    let trimmed = filename.trim_end_matches('/');
     if trimmed.is_empty() || trimmed.split('/').any(|part| part == "..") {
         return None;
     }
@@ -963,25 +1005,26 @@ fn zip_entry_basename(filename: &async_zip::ZipString) -> Option<String> {
         .map(str::to_owned)
 }
 
-async fn stream_zip_entry_to_path<R, E>(
-    entry: &mut async_zip::base::read::ZipEntryReader<'_, R, E>,
-    expected_crc: u32,
+/// Inflates one ZIP entry into `out_path`.
+///
+/// # Errors
+///
+/// Returns [`MonolingualError::Extraction`] when the entry cannot be read,
+/// including a CRC mismatch. Creating or flushing the output file returns
+/// [`MonolingualError::Io`].
+async fn stream_zip_entry_to_path<R>(
+    entry: &mut ZipFileReader<R>,
     out_path: &Path,
 ) -> Result<(), MonolingualError>
 where
-    R: futures_lite::io::AsyncBufRead + Unpin,
+    R: AsyncBufRead + Unpin,
 {
     let mut compat = entry.compat();
     let mut out = tokio::fs::File::create(out_path).await?;
     tokio::io::copy(&mut compat, &mut out)
         .await
-        .map_err(|error| MonolingualError::Extraction(error.to_string()))?;
+        .map_err(|error| MonolingualError::Extraction(zip_body_error(&error)))?;
     out.flush().await?;
-    if entry.compute_hash() != expected_crc {
-        return Err(MonolingualError::Extraction(
-            "CRC32 checksum mismatch".to_owned(),
-        ));
-    }
     Ok(())
 }
 
@@ -1792,6 +1835,38 @@ mod tests {
 
         assert!(dest.join("Reader-Dict-en.index").exists());
         assert!(dest.join("Reader-Dict-en.dict").exists());
+    }
+
+    #[tokio::test]
+    async fn test_extract_zip_renamed_rejects_crc_mismatch() {
+        use async_zip::tokio::write::ZipFileWriter;
+        use async_zip::{Compression, ZipEntryBuilder};
+
+        let (_service, dir, _db) = create_test_service().await;
+        let payload = b"CRC-MISMATCH-PAYLOAD-0123456789";
+        let mut zip_bytes = Vec::new();
+        {
+            let mut writer = ZipFileWriter::with_tokio(&mut zip_bytes);
+            let builder = ZipEntryBuilder::new("dictorg-en-en.index".into(), Compression::Stored);
+            writer.write_entry_whole(builder, payload).await.unwrap();
+            writer.close().await.unwrap();
+        }
+        let offset = zip_bytes
+            .windows(payload.len())
+            .position(|window| window == payload)
+            .expect("payload present in stored entry");
+        zip_bytes[offset] ^= 0xFF;
+
+        let dest = dir.path().join(READER_DICT_SUBDIR).join("en");
+        fs::create_dir_all(&dest).unwrap();
+        let zip_path = dir.path().join("dict.zip");
+        fs::write(&zip_path, &zip_bytes).unwrap();
+
+        let error = extract_zip_renamed(&zip_path, &dest, "en")
+            .await
+            .expect_err("crc mismatch");
+        let message = error.to_string();
+        assert!(message.contains("CRC32 checksum mismatch"), "{message}");
     }
 
     fn make_test_zip(entries: &[(&str, &[u8])]) -> Vec<u8> {

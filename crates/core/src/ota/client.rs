@@ -5,8 +5,15 @@ use crate::github::types::{
 use crate::github::{GithubClient, OtaProgress};
 use crate::http::{CancelFlag, CancelFunc, ChunkedDownloadError};
 use crate::version::GitVersion;
+use async_zip::base::read1::ZipFileReader;
+use async_zip::base::read1::seek::ZipArchiveReader;
+use async_zip::error::ZipError;
+use async_zip::spec::constructs::CDR;
+use futures_lite::io::{AsyncBufRead, AsyncRead, AsyncReadExt, AsyncSeek, Cursor};
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
+use std::io::Error;
 use std::path::{Path, PathBuf};
+use tokio_util::compat::TokioAsyncReadCompatExt;
 
 #[cfg(test)]
 use std::cell::Cell;
@@ -994,22 +1001,16 @@ impl OtaClient {
 
         tracing::info!(path = ?zip_path, "Extracting and deploying update");
 
-        let reader = async_zip::tokio::read::fs::ZipFileReader::new(&zip_path)
+        let file = tokio::fs::File::open(&zip_path).await?;
+        let mut reader = ZipArchiveReader::open(tokio::io::BufReader::new(file).compat())
             .await
             .map_err(|error| OtaError::ZipError(error.to_string()))?;
-        let (index, expected_crc, _) = find_kobo_root_entry(reader.file(), should_cancel)?;
+        let (mut entry, _) = open_kobo_root_entry(&mut reader, should_cancel).await?;
 
         let (deploy_path, staging_path, mut unpublished, mut staging) =
             self.begin_staging().await?;
-        {
-            let mut entry = reader
-                .reader_without_entry(index)
-                .await
-                .map_err(|error| OtaError::ZipError(error.to_string()))?;
-            copy_entry_to_file(&mut entry, &mut staging, should_cancel).await?;
-            verify_entry_crc(&mut entry, expected_crc)?;
-            tokio::io::AsyncWriteExt::flush(&mut staging).await?;
-        }
+        copy_entry_to_file(&mut entry, &mut staging, should_cancel).await?;
+        tokio::io::AsyncWriteExt::flush(&mut staging).await?;
 
         let outcome = self
             .commit_staging(
@@ -1060,21 +1061,12 @@ impl OtaClient {
             "Extracting in-memory artifact and deploying"
         );
 
-        let reader = async_zip::base::read::mem::ZipFileReader::new(zip_bytes)
+        let mut reader = ZipArchiveReader::open(Cursor::new(zip_bytes))
             .await
             .map_err(|error| OtaError::ZipError(error.to_string()))?;
-        let (index, expected_crc, uncompressed) =
-            find_kobo_root_entry(reader.file(), should_cancel)?;
-
+        let (mut entry, uncompressed) = open_kobo_root_entry(&mut reader, should_cancel).await?;
         let mut kobo_root_data = Vec::with_capacity(usize::try_from(uncompressed).unwrap_or(0));
-        {
-            let mut entry = reader
-                .reader_without_entry(index)
-                .await
-                .map_err(|error| OtaError::ZipError(error.to_string()))?;
-            copy_cancellable(&mut entry, &mut kobo_root_data, should_cancel).await?;
-            verify_entry_crc(&mut entry, expected_crc)?;
-        }
+        copy_cancellable(&mut entry, &mut kobo_root_data, should_cancel).await?;
         tracing::debug!(bytes = kobo_root_data.len(), "Extracted file into memory");
 
         self.deploy_bytes(&kobo_root_data, should_cancel).await
@@ -1376,32 +1368,45 @@ fn artifact_fits_in_memory(zip_size: u64) -> bool {
 
 /// Locates the deployable `KoboRoot` entry in an opened ZIP.
 ///
-/// Returns the entry index, its stored CRC32, and its uncompressed size.
+/// Returns the entry index and its uncompressed size. Directory entries are
+/// skipped. The stored name may be the full path or only its final component.
+///
+/// # Errors
+///
+/// Returns [`OtaError::Cancelled`] when `should_cancel` trips during the scan,
+/// [`OtaError::ZipError`] when an entry name is not UTF-8 or its size cannot be
+/// read, and [`OtaError::DeploymentError`] when no `KoboRoot` member is present.
 fn find_kobo_root_entry(
-    file: &async_zip::ZipFile,
+    cdrs: &[CDR],
     should_cancel: CancelFunc<'_>,
-) -> Result<(usize, u32, u64), OtaError> {
+) -> Result<(usize, u64), OtaError> {
     let kobo_root_name = cfg_select! {
         feature = "test" => { "KoboRoot-test.tgz" }
         _ => { "KoboRoot.tgz" }
     };
 
-    for (index, stored) in file.entries().iter().enumerate() {
+    for (index, cdr) in cdrs.iter().enumerate() {
         if should_cancel.is_cancelled() {
             return Err(OtaError::Cancelled);
         }
-        let entry_name = stored
-            .filename()
+        let entry_name = cdr
+            .insecure_file_name
             .as_str()
-            .map_err(|error| OtaError::ZipError(error.to_string()))?;
+            .ok_or_else(|| OtaError::ZipError(ZipError::StringNotUtf8.to_string()))?;
         tracing::debug!(index, name = %entry_name, "Checking entry");
+        if entry_name.ends_with('/') {
+            continue;
+        }
         if entry_name == kobo_root_name
             || Path::new(entry_name)
                 .file_name()
                 .and_then(|name| name.to_str())
                 == Some(kobo_root_name)
         {
-            return Ok((index, stored.crc32(), stored.uncompressed_size()));
+            let uncompressed = cdr
+                .uncompressed_size()
+                .map_err(|error| OtaError::ZipError(error.to_string()))?;
+            return Ok((index, uncompressed));
         }
     }
 
@@ -1414,29 +1419,59 @@ fn find_kobo_root_entry(
     )))
 }
 
-/// Verifies that a fully read ZIP entry matches its stored CRC32.
-fn verify_entry_crc<R, E>(
-    entry: &mut async_zip::base::read::ZipEntryReader<'_, R, E>,
-    expected_crc: u32,
-) -> Result<(), OtaError>
+/// Opens the deployable `KoboRoot` member for reading.
+///
+/// Returns the entry reader and the member's uncompressed size. Cancellation is
+/// checked while the central directory is scanned, before the member is opened.
+///
+/// # Errors
+///
+/// Returns [`OtaError::Cancelled`] when `should_cancel` trips during the scan,
+/// [`OtaError::ZipError`] when the member cannot be opened or its name is not
+/// UTF-8, and [`OtaError::DeploymentError`] when the archive has no `KoboRoot`.
+async fn open_kobo_root_entry<'a, R>(
+    reader: &'a mut ZipArchiveReader<R>,
+    should_cancel: CancelFunc<'_>,
+) -> Result<(ZipFileReader<&'a mut R>, u64), OtaError>
 where
-    R: futures_lite::io::AsyncBufRead + Unpin,
+    R: AsyncBufRead + AsyncSeek + Unpin,
 {
-    if entry.compute_hash() != expected_crc {
-        return Err(OtaError::ZipError("CRC32 checksum mismatch".to_owned()));
-    }
-    Ok(())
+    let (index, uncompressed) = find_kobo_root_entry(reader.cdrs(), should_cancel)?;
+    let entry = reader
+        .file(index)
+        .await
+        .map_err(|error| OtaError::ZipError(error.to_string()))?;
+    Ok((entry, uncompressed))
 }
 
+/// Turns an entry-body read error into the message [`OtaError::ZipError`] carries.
+///
+/// `read1` reports a CRC mismatch as [`ZipError::CRC32CheckError`] inside a
+/// [`std::io::Error`]. That case is rewritten to `CRC32 checksum mismatch`.
+fn zip_body_error(error: &Error) -> String {
+    match error
+        .get_ref()
+        .and_then(|source| source.downcast_ref::<ZipError>())
+    {
+        Some(ZipError::CRC32CheckError) => "CRC32 checksum mismatch".to_owned(),
+        _ => error.to_string(),
+    }
+}
+
+/// Copies an inflated ZIP entry into `buf`.
+///
+/// # Errors
+///
+/// Returns [`OtaError::Cancelled`] when `should_cancel` trips between chunks,
+/// and [`OtaError::ZipError`] when the entry cannot be read.
 async fn copy_cancellable<R>(
     reader: &mut R,
     buf: &mut Vec<u8>,
     should_cancel: CancelFunc<'_>,
 ) -> Result<(), OtaError>
 where
-    R: futures_lite::io::AsyncRead + Unpin,
+    R: AsyncRead + Unpin,
 {
-    use futures_lite::io::AsyncReadExt;
     let mut chunk = [0_u8; 64 * 1024];
     loop {
         if should_cancel.is_cancelled() {
@@ -1445,7 +1480,7 @@ where
         let n = reader
             .read(&mut chunk)
             .await
-            .map_err(|error| OtaError::ZipError(error.to_string()))?;
+            .map_err(|error| OtaError::ZipError(zip_body_error(&error)))?;
         if n == 0 {
             return Ok(());
         }
@@ -1453,15 +1488,21 @@ where
     }
 }
 
+/// Copies an inflated ZIP entry into `out`.
+///
+/// # Errors
+///
+/// Returns [`OtaError::Cancelled`] when `should_cancel` trips between chunks,
+/// [`OtaError::ZipError`] when the entry cannot be read, and [`OtaError::Io`]
+/// when the staging file cannot be written.
 async fn copy_entry_to_file<R>(
     reader: &mut R,
     out: &mut tokio::fs::File,
     should_cancel: CancelFunc<'_>,
 ) -> Result<(), OtaError>
 where
-    R: futures_lite::io::AsyncRead + Unpin,
+    R: AsyncRead + Unpin,
 {
-    use futures_lite::io::AsyncReadExt;
     use tokio::io::AsyncWriteExt;
     let mut chunk = [0_u8; 64 * 1024];
     loop {
@@ -1471,7 +1512,7 @@ where
         let n = reader
             .read(&mut chunk)
             .await
-            .map_err(|error| OtaError::ZipError(error.to_string()))?;
+            .map_err(|error| OtaError::ZipError(zip_body_error(&error)))?;
         if n == 0 {
             return Ok(());
         }
