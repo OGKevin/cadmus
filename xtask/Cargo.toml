@@ -26,6 +26,7 @@ lzma-rust2 = { workspace = true, features = [
     "xz",
     "optimization",
 ] }
+mdns-sd = { workspace = true }
 oc-rsync-core = { workspace = true }
 reqwest = { version = "0.13", default-features = false, features = [
     "blocking",

@@ -34,8 +34,13 @@ export const restartInputSchema = z
   })
   .strict();
 
+export const devicesInputSchema = z
+  .object({ timeout: z.number().int().positive().max(60).optional() })
+  .strict();
+
 export type DeployInput = z.infer<typeof deployInputSchema>;
 export type RestartInput = z.infer<typeof restartInputSchema>;
+export type DevicesInput = z.infer<typeof devicesInputSchema>;
 
 type SshInput = {
   port?: number;
@@ -56,7 +61,7 @@ const FALLBACK_BIN_DIRS = [
   "/bin",
 ];
 
-export type RunResult = { code: number; output: string };
+export type RunResult = { code: number; stdout: string; output: string };
 
 /**
  * SSH flags forwarded to `cadmuscli kobo` for both subcommands.
@@ -129,11 +134,15 @@ export function run(
       signal: options.signal,
       stdio: ["ignore", "pipe", "pipe"],
     });
+    let stdout = "";
     let output = "";
-    child.stdout.on("data", (chunk) => (output += chunk));
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+      output += chunk;
+    });
     child.stderr.on("data", (chunk) => (output += chunk));
     child.on("error", reject);
-    child.on("close", (code) => resolve({ code: code ?? -1, output }));
+    child.on("close", (code) => resolve({ code: code ?? -1, stdout, output }));
   });
 }
 

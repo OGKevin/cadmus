@@ -103,6 +103,10 @@ impl DeviceLifecycle for Device {
         hub: &crate::view::Hub,
         runtime: &mut DeviceRuntime<'_>,
     ) -> Result<(), anyhow::Error> {
+        if let Err(error) = crate::device::linux::loopback::bring_up().await {
+            tracing::warn!(error = %error, "Failed to bring up loopback interface");
+        }
+
         if let Ok(power) = context.device.power_manager()
             && let Err(error) = power.init_cores()
         {
@@ -255,6 +259,10 @@ impl DeviceLifecycle for Device {
             && let Err(error) = context.wifi_session.disable_radio().await
         {
             tracing::error!(error = %error, "Failed to disable WiFi on exit");
+        }
+
+        if let Err(error) = crate::device::linux::loopback::bring_down().await {
+            tracing::warn!(error = %error, "Failed to bring down loopback interface");
         }
 
         Ok(())
