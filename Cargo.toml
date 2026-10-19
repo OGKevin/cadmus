@@ -19,6 +19,7 @@ cc = "1"
 http = "1"
 http-body-util = "0.1"
 io_tee = "0.1"
+mdns-sd = "0.13"
 octocrab = { version = "0.54.2", default-features = false, features = [
     "jwt-rust-crypto",
 ] }

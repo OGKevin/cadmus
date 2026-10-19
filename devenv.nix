@@ -974,6 +974,7 @@ in
     echo "  cadmuscli docs            - Build documentation portal"
     echo "  cadmuscli dist            - Assemble Kobo distribution"
     echo "  cadmuscli bundle          - Package KoboRoot.tgz"
+    echo "  cadmuscli list-devices    - List Cadmus devices on the LAN"
     echo "  cargo xtask still works as a debug cargo run alias."
     echo ""
   ''
