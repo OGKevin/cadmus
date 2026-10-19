@@ -101,6 +101,8 @@ impl DeviceLifecycle for Device {
         hub: &crate::view::Hub,
         runtime: &mut DeviceRuntime<'_>,
     ) -> Result<(), anyhow::Error> {
+        crate::device::linux::loopback::bring_up().await;
+
         if let Ok(power) = context.device.power_manager()
             && let Err(error) = power.init_cores()
         {
@@ -246,6 +248,8 @@ impl DeviceLifecycle for Device {
         {
             tracing::error!(error = %error, "Failed to disable WiFi on exit");
         }
+
+        crate::device::linux::loopback::bring_down().await;
 
         Ok(())
     }

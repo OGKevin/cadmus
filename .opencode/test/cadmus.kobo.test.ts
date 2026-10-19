@@ -22,6 +22,11 @@ import {
   run,
 } from "../plugins/cadmus.kobo/common.ts";
 import { createDeployTool } from "../plugins/cadmus.kobo/deploy.ts";
+import {
+  createDevicesTool,
+  formatDevices,
+  parseDevices,
+} from "../plugins/cadmus.kobo/devices.ts";
 import { createRestartTool } from "../plugins/cadmus.kobo/restart.ts";
 
 type RegisteredTool = {
@@ -99,9 +104,10 @@ function restartTool(root: string): RegisteredTool {
   return createRestartTool(root) as unknown as RegisteredTool;
 }
 
-test("registers the deploy and restart tools", async () => {
+test("registers the deploy, devices and restart tools", async () => {
   const { tools, namespaces } = await setup();
   assert.equal(toolByName(tools, "deploy").name, "deploy");
+  assert.equal(toolByName(tools, "devices").name, "devices");
   assert.equal(toolByName(tools, "restart").name, "restart");
   assert.deepEqual(namespaces, ["cadmus.kobo"]);
 });
@@ -421,6 +427,49 @@ test("the restart tool surfaces failures", async () => {
   } finally {
     process.env.DEVENV_ROOT = previousRoot;
   }
+
+  test("the devices tool takes an optional timeout and no required field", async () => {
+    const { tools } = await setup();
+    const devices = toolByName(tools, "devices");
+    assert.equal(typeof devices.input.properties?.timeout, "object");
+    assert.equal(devices.input.required, undefined);
+    assert.equal(devices.input.additionalProperties, false);
+  });
+
+  test("the devices tool lists address and metadata from list-devices --json", async () => {
+    const root = mkdtempSync(join(tmpdir(), "cadmus-devices-"));
+    const bin = join(root, "bin");
+    mkdirSync(bin);
+    writeStub(
+      bin,
+      "cadmuscli",
+      `echo '[{"hostname":"cadmus.local","addresses":["192.168.1.128"],"version":"v0.12.0","kind":"test","platform":"kobo"}]'`,
+    );
+    const previousRoot = process.env.DEVENV_ROOT;
+    process.env.DEVENV_ROOT = root;
+    try {
+      const text = await withPathAsync(bin, () =>
+        (createDevicesTool(root) as unknown as RegisteredTool).execute(
+          { timeout: 5 },
+          toolContext(),
+        ),
+      );
+      assert.match(text.content, /192\.168\.1\.128 \(kobo, test, v0\.12\.0\)/);
+      assert.match(text.content, /cadmus\.local/);
+    } finally {
+      process.env.DEVENV_ROOT = previousRoot;
+    }
+  });
+
+  test("parseDevices rejects output that is not a device array", () => {
+    assert.deepEqual(parseDevices("[]"), []);
+    assert.throws(() => parseDevices("{}"), /did not return an array/);
+    assert.throws(() => parseDevices('[{"hostname":"x"}]'), /without hostname/);
+  });
+
+  test("formatDevices says so when nothing answered", () => {
+    assert.equal(formatDevices([]), "No Cadmus devices found on the network.");
+  });
 });
 
 test("child processes keep the fallback bin dirs on PATH", async () => {
