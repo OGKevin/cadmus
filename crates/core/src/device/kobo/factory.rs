@@ -126,7 +126,6 @@ impl Model {
                     gyro_rotation_transform: crate::input::GyroRotationTransform::new(
                         self.gyro_rotation_fn(),
                     ),
-                    swap_dims_on_rotation: mark == 8,
                 },
                 dpi: self.dpi(),
                 raw_sender: None,

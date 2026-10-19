@@ -548,9 +548,6 @@ pub struct DeviceInputInfo {
     pub swapping_scheme: i8,
     pub startup_rotation: i8,
     pub gyro_rotation_transform: GyroRotationTransform,
-    /// When true, the device-event task swaps logical screen dimensions on 90° rotations.
-    /// KoboFramebuffer2 does this in hardware; KoboFramebuffer1 does not.
-    pub swap_dims_on_rotation: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -682,14 +679,23 @@ impl Default for TouchState {
 #[cfg_attr(
     feature = "tracing",
     tracing::instrument(
-        skip(rx, ty, display, button_scheme, info),
+        skip(rx, ty, screen, button_scheme, info),
         level = tracing::Level::TRACE,
+        fields(
+            rotation = screen.rotation,
+            dims = ?screen.dims,
+            proto = ?info.proto,
+            mark = info.mark,
+            mirroring_scheme = ?info.mirroring_scheme,
+            swapping_scheme = info.swapping_scheme,
+            startup_rotation = info.startup_rotation,
+        )
     )
 )]
 async fn parse_device_events(
     rx: &mut UnboundedReceiver<InputEvent>,
     ty: &UnboundedSender<DeviceEvent>,
-    display: Display,
+    screen: Display,
     button_scheme: ButtonScheme,
     info: DeviceInputInfo,
 ) {
@@ -700,7 +706,6 @@ async fn parse_device_events(
         swapping_scheme,
         startup_rotation,
         gyro_rotation_transform,
-        swap_dims_on_rotation,
     } = info;
     let (_, dir) = mirroring_scheme;
     let mut id = 0;
@@ -708,7 +713,7 @@ async fn parse_device_events(
     let Display {
         mut dims,
         mut rotation,
-    } = display;
+    } = screen;
     let mut fingers: FxHashMap<i32, Point> = FxHashMap::default();
     let mut packets: FxHashMap<i32, TouchState> = FxHashMap::default();
 
@@ -737,7 +742,6 @@ async fn parse_device_events(
         mirroring_scheme = ?mirroring_scheme,
         swapping_scheme,
         startup_rotation,
-        swap_dims_on_rotation,
         proto = ?proto,
         mark,
         tc_x = tc.x,
@@ -830,7 +834,7 @@ async fn parse_device_events(
 
             for (&id, state) in &packets {
                 if state.pressure > 0 {
-                    tracing::trace!(
+                    tracing::debug!(
                         id,
                         raw_packet = ?state,
                         final_position = ?state.position,
@@ -867,7 +871,7 @@ async fn parse_device_events(
                         fingers.remove(&id);
                     }
                 } else if state.pressure > 0 {
-                    tracing::trace!(
+                    tracing::debug!(
                         id,
                         position = ?state.position,
                         pressure = state.pressure,
@@ -908,10 +912,12 @@ async fn parse_device_events(
                 }
             } else if evt.code == KEY_ROTATE_DISPLAY {
                 let next_rotation = evt.value as i8;
-                tracing::trace!(
+                tracing::debug!(
                     from_rotation = rotation,
                     to_rotation = next_rotation,
                     dims_before = ?dims,
+                    mirror_x_before = mirror_x,
+                    mirror_y_before = mirror_y,
                     tc_x = tc.x,
                     tc_y = tc.y,
                     "KEY_ROTATE_DISPLAY received"
@@ -919,22 +925,17 @@ async fn parse_device_events(
                 if next_rotation != rotation {
                     let delta = (rotation - next_rotation).abs();
                     let will_swap_axes = delta % 2 == 1;
-                    tracing::trace!(
-                        delta,
-                        will_swap_axes,
-                        "KEY_ROTATE_DISPLAY applying rotation"
-                    );
                     if will_swap_axes {
                         mem::swap(&mut tc.x, &mut tc.y);
-                        if swap_dims_on_rotation {
-                            mem::swap(&mut dims.0, &mut dims.1);
-                        }
+                        mem::swap(&mut dims.0, &mut dims.1);
                     }
                     rotation = next_rotation;
                     let should_mirror = compute_mirror_axes(rotation, mirroring_scheme);
                     mirror_x = should_mirror.0;
                     mirror_y = should_mirror.1;
-                    tracing::trace!(
+                    tracing::debug!(
+                        delta,
+                        will_swap_axes,
                         rotation,
                         mirror_x,
                         mirror_y,
@@ -942,7 +943,12 @@ async fn parse_device_events(
                         tc_x = tc.x,
                         tc_y = tc.y,
                         axes_swapped = rotation % 2 == swapping_scheme,
-                        "rotation applied"
+                        "rotation applied to input mapping"
+                    );
+                } else {
+                    tracing::debug!(
+                        rotation,
+                        "KEY_ROTATE_DISPLAY matches current input rotation; no remap"
                     );
                 }
             } else if evt.code != BTN_TOUCH {
@@ -1043,6 +1049,69 @@ mod tests {
             DeviceEvent::Plug(PowerSource::Host)
         ));
         assert!(rx.try_recv().is_err());
+    }
+
+    /// Regression test for [GitHub issue #1089](https://github.com/OGKevin/cadmus/issues/1089):
+    /// a quarter-turn rotation must swap the cached input dimensions so
+    /// mirrored touch positions use the rotated screen bounds. The regression
+    /// was introduced in commit `9b91d69a4`.
+    #[tokio::test]
+    async fn touch_mapping_swaps_dims_when_rotating_to_landscape() {
+        let (raw_tx, raw_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (ty, mut ry) = tokio::sync::mpsc::unbounded_channel();
+        let info = DeviceInputInfo {
+            proto: TouchProto::MultiB,
+            mark: 13,
+            mirroring_scheme: (2, 1),
+            swapping_scheme: 1,
+            startup_rotation: 1,
+            gyro_rotation_transform: GyroRotationTransform::default(),
+        };
+        let screen = Display {
+            dims: (1264, 1680),
+            rotation: 1,
+        };
+        tokio::spawn(async move {
+            let mut rx = raw_rx;
+            parse_device_events(&mut rx, &ty, screen, ButtonScheme::Natural, info).await;
+        });
+
+        let event = |kind, code, value| InputEvent {
+            time: libc::timeval {
+                tv_sec: 1,
+                tv_usec: 0,
+            },
+            kind,
+            code,
+            value,
+        };
+        for evt in [
+            event(EV_KEY, KEY_ROTATE_DISPLAY, 2),
+            event(EV_ABS, ABS_MT_TRACKING_ID, 0),
+            event(EV_ABS, ABS_MT_POSITION_X, 59),
+            event(EV_ABS, ABS_MT_POSITION_Y, 1178),
+            event(EV_ABS, ABS_MT_PRESSURE, 200),
+            event(EV_SYN, SYN_REPORT, 0),
+        ] {
+            raw_tx.send(evt).expect("send raw event");
+        }
+
+        let finger = tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                if let Some(DeviceEvent::Finger {
+                    status: FingerStatus::Down,
+                    position,
+                    ..
+                }) = ry.recv().await
+                {
+                    return position;
+                }
+            }
+        })
+        .await
+        .expect("timed out waiting for touch position");
+
+        assert_eq!(finger, Point { x: 1620, y: 85 });
     }
 
     #[tokio::test]

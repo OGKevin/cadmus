@@ -469,7 +469,7 @@ fn set_rotation<D: Device>(
         display.rotation = rotation;
         display.dims = new_dims;
         let (context_rotation, context_dims) = (display.rotation, display.dims);
-        tracing::trace!(
+        tracing::debug!(
             rotation,
             fb_rotation_before = fb_rotation,
             fb_dims_before = ?fb_dims,

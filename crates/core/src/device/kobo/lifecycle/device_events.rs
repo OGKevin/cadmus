@@ -91,9 +91,23 @@ fn handle_rotate_screen(
     context: &AppContext,
     runtime: &DeviceRuntime<'_>,
 ) -> EventOutcome {
-    tracing::debug!(rotation = n, "Gyro rotation");
+    let suspend_active = is_suspend_active(context, runtime.tasks);
+    tracing::debug!(
+        rotation = n,
+        current_rotation = context.display.rotation,
+        current_dims = ?context.display.dims,
+        target_orientation = ?context.device.orientation(n),
+        rotation_lock = ?context.settings.rotation_lock,
+        shared = context.shared,
+        suspend_active,
+        "Gyro rotation"
+    );
 
-    if context.shared || is_suspend_active(context, runtime.tasks) {
+    if context.shared || suspend_active {
+        tracing::debug!(
+            rotation = n,
+            "ignoring gyro rotation while shared or suspended"
+        );
         return EventOutcome::Handled;
     }
 
@@ -105,10 +119,17 @@ fn handle_rotate_screen(
             || (rotation_lock == crate::settings::RotationLock::Landscape
                 && orientation == Orientation::Portrait)
         {
+            tracing::debug!(
+                rotation = n,
+                ?orientation,
+                ?rotation_lock,
+                "ignoring gyro rotation blocked by rotation lock"
+            );
             return EventOutcome::Handled;
         }
     }
 
+    tracing::debug!(rotation = n, "forwarding gyro rotation to main loop");
     hub.send((Event::Select(EntryId::Rotate(n))).into()).ok();
     EventOutcome::Handled
 }

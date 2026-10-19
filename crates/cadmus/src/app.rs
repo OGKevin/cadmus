@@ -225,6 +225,13 @@ fn sync_view_after_rotation(
     rq: &mut RenderQueue,
     context: &mut AppContext,
 ) {
+    tracing::debug!(
+        previous_dims = ?prev_dims,
+        dims = ?dims,
+        resized = prev_dims != dims,
+        rotation = context.display.rotation,
+        "syncing root view after rotation"
+    );
     let fb_rect = Rectangle::from(dims);
     if prev_dims != dims {
         view.resize(fb_rect, tx, rq, context);
@@ -244,6 +251,18 @@ fn sync_view_after_rotation(
 /// `KEY_ROTATE_DISPLAY` event so the input subsystem remaps touch coordinates.
 ///
 /// Returns `true` if the rotation was applied successfully.
+#[cfg_attr(
+    feature = "tracing",
+    tracing::instrument(
+        skip(view, updating, tx, rq, context),
+        level = tracing::Level::DEBUG,
+        fields(
+            requested_rotation = rotation,
+            previous_rotation = context.display.rotation,
+            previous_dims = ?context.display.dims,
+        )
+    )
+)]
 fn apply_rotation(
     rotation: i8,
     view: &mut Box<dyn View>,
@@ -253,16 +272,34 @@ fn apply_rotation(
     context: &mut AppContext,
 ) -> bool {
     let prev_dims = context.display.dims;
+    let prev_rotation = context.display.rotation;
     wait_for_all(updating, context);
-    if let Ok(dims) = context.set_rotation(rotation) {
-        context
-            .device
-            .input()
-            .send_raw(display_rotate_event(rotation));
-        sync_view_after_rotation(view, prev_dims, dims, tx, rq, context);
-        true
-    } else {
-        false
+    match context.set_rotation(rotation) {
+        Ok(dims) => {
+            context
+                .device
+                .input()
+                .send_raw(display_rotate_event(rotation));
+            tracing::debug!(
+                previous_rotation = prev_rotation,
+                rotation,
+                previous_dims = ?prev_dims,
+                dims = ?dims,
+                framebuffer_rotation = context.device.framebuffer().rotation(),
+                "rotation applied"
+            );
+            sync_view_after_rotation(view, prev_dims, dims, tx, rq, context);
+            true
+        }
+        Err(error) => {
+            tracing::warn!(
+                error = %error,
+                requested_rotation = rotation,
+                previous_rotation = prev_rotation,
+                "failed to apply rotation"
+            );
+            false
+        }
     }
 }
 
@@ -270,16 +307,47 @@ fn apply_rotation(
 ///
 /// The current view is replaced immediately afterward by [`Reader::new`], so syncing
 /// its layout would be redundant work.
+#[cfg_attr(
+    feature = "tracing",
+    tracing::instrument(
+        skip(updating, context),
+        level = tracing::Level::DEBUG,
+        fields(
+            requested_rotation = rotation,
+            previous_rotation = context.display.rotation,
+            previous_dims = ?context.display.dims,
+        )
+    )
+)]
 fn set_rotation(rotation: i8, updating: &mut Vec<UpdateData>, context: &mut AppContext) -> bool {
+    let prev_rotation = context.display.rotation;
+    let prev_dims = context.display.dims;
     wait_for_all(updating, context);
-    if context.set_rotation(rotation).is_ok() {
-        context
-            .device
-            .input()
-            .send_raw(display_rotate_event(rotation));
-        true
-    } else {
-        false
+    match context.set_rotation(rotation) {
+        Ok(dims) => {
+            context
+                .device
+                .input()
+                .send_raw(display_rotate_event(rotation));
+            tracing::debug!(
+                previous_rotation = prev_rotation,
+                rotation,
+                previous_dims = ?prev_dims,
+                dims = ?dims,
+                framebuffer_rotation = context.device.framebuffer().rotation(),
+                "rotation applied before opening document"
+            );
+            true
+        }
+        Err(error) => {
+            tracing::warn!(
+                error = %error,
+                requested_rotation = rotation,
+                previous_rotation = prev_rotation,
+                "failed to apply rotation before opening document"
+            );
+            false
+        }
     }
 }
 
@@ -993,6 +1061,14 @@ pub async fn run() -> Result<(), Error> {
                 if n != context.display.rotation && view.might_rotate() =>
             {
                 apply_rotation(n, &mut view, &mut updating, &tx, &mut rq, &mut context);
+            }
+            Event::Select(EntryId::Rotate(n)) => {
+                tracing::debug!(
+                    requested_rotation = n,
+                    current_rotation = context.display.rotation,
+                    might_rotate = view.might_rotate(),
+                    "ignoring rotation request in main loop"
+                );
             }
             Event::Select(EntryId::SetRotationLock(rotation_lock)) => {
                 context.settings.rotation_lock = rotation_lock;

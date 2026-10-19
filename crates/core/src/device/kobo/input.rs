@@ -49,7 +49,6 @@ impl Default for InputSource {
                 swapping_scheme: 1,
                 startup_rotation: 0,
                 gyro_rotation_transform: crate::input::GyroRotationTransform::default(),
-                swap_dims_on_rotation: false,
             },
             dpi: 300,
             raw_sender: None,
@@ -71,14 +70,19 @@ impl crate::device::InputSource for InputSource {
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(
-            skip(self, display, button_scheme, inhibitor),
+            skip(self, screen, button_scheme, inhibitor),
             level = tracing::Level::TRACE,
-            fields(proto = ?self.info.proto),
+            fields(
+                proto = ?self.info.proto,
+                mark = self.info.mark,
+                rotation = screen.rotation,
+                dims = ?screen.dims,
+            )
         )
     )]
     fn start(
         &mut self,
-        display: Display,
+        screen: Display,
         button_scheme: ButtonScheme,
         inhibitor: Arc<Inhibitor>,
     ) -> (crate::view::Hub, crate::view::HubReceiver) {
@@ -110,12 +114,14 @@ impl crate::device::InputSource for InputSource {
         }
 
         if let Some(path) = touch_path.as_deref() {
-            crate::input::trace_touch_device_geometry(path, self.info.proto, display);
+            crate::input::trace_touch_device_geometry(path, self.info.proto, screen);
         }
 
-        tracing::trace!(
+        tracing::debug!(
             touch_path = touch_path.as_deref(),
             input_paths = ?paths,
+            rotation = screen.rotation,
+            dims = ?screen.dims,
             mirroring_scheme = ?self.info.mirroring_scheme,
             swapping_scheme = self.info.swapping_scheme,
             startup_rotation = self.info.startup_rotation,
@@ -129,7 +135,7 @@ impl crate::device::InputSource for InputSource {
             job.cancel();
         }
         let (touch_screen, gesture_job) = crate::gesture::GesturePipeline::start(
-            device_events(raw_receiver, display, button_scheme, self.info),
+            device_events(raw_receiver, screen, button_scheme, self.info),
             self.dpi,
         )
         .into_parts();
@@ -226,7 +232,11 @@ impl crate::device::InputSource for InputSource {
     )]
     fn send_raw(&self, event: InputEvent) {
         if event.kind == crate::input::EV_KEY && event.code == crate::input::KEY_ROTATE_DISPLAY {
-            tracing::trace!(rotation = event.value, "injecting display_rotate_event");
+            tracing::debug!(
+                rotation = event.value,
+                channel_ready = self.raw_sender.is_some(),
+                "injecting display_rotate_event"
+            );
         }
         if let Some(sender) = self.raw_sender.as_ref() {
             sender.send(event).ok();

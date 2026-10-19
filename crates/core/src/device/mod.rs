@@ -451,8 +451,7 @@ pub trait DeviceRotation: Send {
     /// Bundles rotation parameters for the input subsystem.
     ///
     /// Default: collects [`Self::mirroring_scheme`], [`Self::swapping_scheme`],
-    /// and [`Self::startup_rotation`], and sets `swap_dims_on_rotation` when
-    /// `mark == 8`.
+    /// and [`Self::startup_rotation`].
     fn device_input_info(
         &self,
         proto: crate::input::TouchProto,
@@ -465,7 +464,6 @@ pub trait DeviceRotation: Send {
             swapping_scheme: self.swapping_scheme(),
             startup_rotation: self.startup_rotation(),
             gyro_rotation_transform: crate::input::GyroRotationTransform::default(),
-            swap_dims_on_rotation: mark == 8,
         }
     }
 }

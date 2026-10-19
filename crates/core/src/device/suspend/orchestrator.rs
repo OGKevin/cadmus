@@ -795,6 +795,13 @@ fn perform_suspend_resume(
         "{}",
         before.format("Went to sleep on %B %-d, %Y at %H:%M:%S.")
     );
+    tracing::debug!(
+        rotation = context.display.rotation,
+        dims = ?context.display.dims,
+        framebuffer_rotation = context.device.framebuffer().rotation(),
+        framebuffer_dims = ?context.device.framebuffer().dims(),
+        "display state before suspend"
+    );
     match context.device.power_manager() {
         Ok(power) => {
             if let Err(error) = power.suspend() {
@@ -818,6 +825,13 @@ fn perform_suspend_resume(
             tracing::error!(error = %error, "power_manager() initialization failed for resume");
         }
     }
+    tracing::debug!(
+        rotation = context.display.rotation,
+        dims = ?context.display.dims,
+        framebuffer_rotation = context.device.framebuffer().rotation(),
+        framebuffer_dims = ?context.device.framebuffer().dims(),
+        "display state after resume"
+    );
     let pending_task_ids: Vec<_> = runtime.tasks.iter().map(|t| t.id).collect();
     tracing::debug!(pending_tasks = ?pending_task_ids, "task state after wake");
     let _ = hub;
@@ -1002,6 +1016,12 @@ pub(in crate::device::suspend) fn finish_cycle(
         }
     }
     reschedule_auto_suspend_alarm(context);
+    tracing::debug!(
+        rotation = context.display.rotation,
+        dims = ?context.display.dims,
+        framebuffer_rotation = context.device.framebuffer().rotation(),
+        "display state when finishing suspend cycle"
+    );
     if let Some(index) = locate::<Intermission>(view) {
         let rect = *view.child(index).rect();
         view.children_mut().remove(index);
