@@ -22,6 +22,7 @@ cfg_select! {
     feature = "bench" => { pub mod dictionary; }
     _ => { mod dictionary; }
 }
+pub use dictionary::DictionaryDb;
 pub mod document;
 pub mod font;
 pub mod framebuffer;

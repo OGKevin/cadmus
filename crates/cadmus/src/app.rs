@@ -1,3 +1,4 @@
+use cadmus_core::DictionaryDb;
 use cadmus_core::anyhow::{Context as ResultExt, Error, format_err};
 use cadmus_core::assets::open_documentation;
 use cadmus_core::chrono::Local;
@@ -416,13 +417,14 @@ async fn open_document(
     }
 }
 
-#[cfg_attr(feature = "tracing", tracing::instrument(skip(device, settings, fonts, database, status_led), level = tracing::Level::TRACE))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(device, settings, fonts, database, status_led, dictionary_db), level = tracing::Level::TRACE))]
 async fn build_context(
     device: AppDevice,
     settings: Settings,
     fonts: Fonts,
     database: Database,
     status_led: std::sync::Arc<StatusLed>,
+    dictionary_db: DictionaryDb,
 ) -> Result<AppContext, Error> {
     let mut settings = settings;
 
@@ -437,7 +439,16 @@ async fn build_context(
     let library_settings = &settings.libraries[settings.selected_library];
     let library = Library::new(&library_settings.path, &database, &library_settings.name).await?;
 
-    Ok(AppContext::new(device, library, database, settings, fonts, status_led).await)
+    Ok(AppContext::new(
+        device,
+        library,
+        database,
+        dictionary_db,
+        settings,
+        fonts,
+        status_led,
+    )
+    .await)
 }
 
 /// Application entry after the process runtime is running.
@@ -528,7 +539,14 @@ pub async fn run() -> Result<(), Error> {
         return Err(e);
     }
 
-    let database = database;
+    let dictionary_db = DictionaryDb::open(database.path().with_file_name(DictionaryDb::FILENAME))
+        .await
+        .map_err(|e| {
+            error!(error = %e, "can't open dictionary database");
+            e
+        })
+        .context("can't open dictionary database")?;
+    let dictionary_pool = dictionary_db.pool().clone();
 
     let mut context = build_context(
         device,
@@ -536,6 +554,7 @@ pub async fn run() -> Result<(), Error> {
         fonts,
         database,
         std::sync::Arc::clone(&status_led),
+        dictionary_db,
     )
     .await
     .context("can't build context")?;
@@ -555,11 +574,8 @@ pub async fn run() -> Result<(), Error> {
     cadmus_core::task::register_startup_tasks(
         &mut background_tasks,
         tx.clone(),
-        &context.settings,
-        &context.database,
-        context.device.data_dir(),
-        &context.device.install_dir(),
-        &context.inhibitor,
+        &context,
+        dictionary_pool,
     );
 
     let mut history: Vec<HistoryItem> = Vec::new();
@@ -1093,6 +1109,10 @@ pub async fn run() -> Result<(), Error> {
                 }
 
                 // Re-dispatch event to view hierarchy so UI can update
+                handle_event(view.as_mut(), &evt, &tx, &mut bus, &mut rq, &mut context).await;
+            }
+            Event::Select(EntryId::ReloadDictionaries) => {
+                context.load_dictionaries().await;
                 handle_event(view.as_mut(), &evt, &tx, &mut bus, &mut rq, &mut context).await;
             }
             Event::ReloadDictionaries => {

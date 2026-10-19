@@ -4,7 +4,7 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-use cadmus_core::db::Database;
+use cadmus_core::dictionary::DictionaryDb;
 use cadmus_core::dictionary::Metadata;
 use cadmus_core::dictionary::db_index::DbIndexReader;
 use cadmus_core::dictionary::indexing::{Entry, IndexReader, normalize};
@@ -19,7 +19,7 @@ const READER_DICT_BENCH_DICT_ID: i64 = 1;
 const BATCH_SIZE: usize = 5000;
 
 pub(crate) struct ReaderDictFixture {
-    pub db: Database,
+    pub db: DictionaryDb,
     pub entry_count: usize,
     pub headword: String,
 }
@@ -34,7 +34,7 @@ pub(crate) async fn init_reader_dict_fixture(headword: &str) -> &'static ReaderD
     let index_path = ensure_reader_dict_index_on_disk().await;
     let (db, entry_count) = index_reader_dict_into_memory(&index_path).await;
 
-    let scoped_hits = DbIndexReader::new(&db, Some(READER_DICT_BENCH_DICT_ID))
+    let scoped_hits = DbIndexReader::new(db.pool(), Some(READER_DICT_BENCH_DICT_ID))
         .find(headword, true)
         .await
         .len();
@@ -179,12 +179,11 @@ fn parse_index_line(line: &str) -> Option<(String, i64, i64)> {
     Some((word.to_string(), offset, size))
 }
 
-async fn index_reader_dict_into_memory(index_path: &Path) -> (Database, usize) {
+async fn index_reader_dict_into_memory(index_path: &Path) -> (DictionaryDb, usize) {
     let metadata = detect_metadata(index_path);
-    let mut db = Database::new(":memory:")
+    let db = DictionaryDb::open(":memory:")
         .await
-        .expect("in-memory database for Reader-Dict-en bench");
-    db.init_for_test(0).await.expect("run migrations");
+        .expect("in-memory dictionary database for Reader-Dict-en bench");
 
     let pool = db.pool().clone();
     sqlx::query(

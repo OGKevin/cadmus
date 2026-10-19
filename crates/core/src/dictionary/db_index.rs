@@ -6,8 +6,6 @@
 use levenshtein::levenshtein;
 use sqlx::SqlitePool;
 
-use crate::db::Database;
-
 use super::Metadata;
 use super::indexing::{Entry, IndexReader};
 
@@ -33,10 +31,10 @@ pub struct DbIndexReader {
 }
 
 impl DbIndexReader {
-    /// Creates a new reader backed by `database`, optionally scoped to `dict_id`.
-    pub fn new(database: &Database, dict_id: Option<i64>) -> Self {
+    /// Creates a new reader backed by `pool`, optionally scoped to `dict_id`.
+    pub fn new(pool: &SqlitePool, dict_id: Option<i64>) -> Self {
         Self {
-            pool: database.pool().clone(),
+            pool: pool.clone(),
             dict_id,
         }
     }
@@ -304,10 +302,10 @@ impl IndexReader for DbIndexReader {
 mod tests {
     use super::*;
 
-    async fn setup_db() -> Database {
-        let mut db = Database::new(":memory:").await.expect("in-memory db");
-        db.init_for_test(0).await.expect("migrations");
-        db
+    async fn setup_db() -> crate::dictionary::DictionaryDb {
+        crate::dictionary::DictionaryDb::open(":memory:")
+            .await
+            .expect("in-memory dictionary database")
     }
 
     async fn insert_meta(pool: &SqlitePool, dict_id: i64, fp: &str) {
@@ -375,7 +373,7 @@ mod tests {
         insert_entry(db.pool(), DICT_ID_1, "fp1", "abxword", 10, 10, None).await;
         insert_entry(db.pool(), DICT_ID_1, "fp1", "abyword", 20, 10, None).await;
 
-        let reader = DbIndexReader::new(&db, Some(DICT_ID_1));
+        let reader = DbIndexReader::new(db.pool(), Some(DICT_ID_1));
         let results = reader.find("ab%word", true).await;
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].headword, "ab%word");
@@ -387,7 +385,7 @@ mod tests {
         insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None).await;
         insert_entry(db.pool(), DICT_ID_1, "fp1", "Hello", 10, 10, None).await;
 
-        let reader = DbIndexReader::new(&db, Some(DICT_ID_1));
+        let reader = DbIndexReader::new(db.pool(), Some(DICT_ID_1));
 
         let lower = reader.find("hello", true).await;
         assert_eq!(lower.len(), 1);
@@ -404,7 +402,7 @@ mod tests {
         insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None).await;
         insert_entry(db.pool(), DICT_ID_2, "fp2", "world", 10, 5, None).await;
 
-        let reader = DbIndexReader::new(&db, Some(DICT_ID_1));
+        let reader = DbIndexReader::new(db.pool(), Some(DICT_ID_1));
         let results = reader.find("hello", false).await;
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].headword, "hello");
@@ -418,7 +416,7 @@ mod tests {
         insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None).await;
         insert_entry(db.pool(), DICT_ID_2, "fp2", "hello", 20, 8, None).await;
 
-        let reader = DbIndexReader::new(&db, Some(DICT_ID_1));
+        let reader = DbIndexReader::new(db.pool(), Some(DICT_ID_1));
         let results = reader.find("hello", false).await;
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].offset, 0);
@@ -430,7 +428,7 @@ mod tests {
         insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None).await;
         insert_entry(db.pool(), DICT_ID_2, "fp2", "hello", 20, 8, None).await;
 
-        let reader = DbIndexReader::new(&db, None);
+        let reader = DbIndexReader::new(db.pool(), None);
         let results = reader.find("hello", false).await;
         assert_eq!(results.len(), 2);
     }
@@ -440,7 +438,7 @@ mod tests {
         let db = setup_db().await;
         insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None).await;
 
-        let reader = DbIndexReader::new(&db, Some(DICT_ID_1));
+        let reader = DbIndexReader::new(db.pool(), Some(DICT_ID_1));
         let results = reader.find("world", false).await;
         assert!(results.is_empty());
     }
@@ -452,7 +450,7 @@ mod tests {
         insert_entry(db.pool(), DICT_ID_1, "fp1", "helo", 10, 5, None).await;
         insert_entry(db.pool(), DICT_ID_1, "fp1", "world", 15, 5, None).await;
 
-        let reader = DbIndexReader::new(&db, Some(DICT_ID_1));
+        let reader = DbIndexReader::new(db.pool(), Some(DICT_ID_1));
         let results = reader.find("hello", true).await;
         assert_eq!(results.len(), 2);
         let words: Vec<&str> = results.iter().map(|e| e.headword.as_str()).collect();
@@ -466,7 +464,7 @@ mod tests {
         insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None).await;
         insert_entry(db.pool(), DICT_ID_2, "fp2", "helo", 10, 5, None).await;
 
-        let reader = DbIndexReader::new(&db, None);
+        let reader = DbIndexReader::new(db.pool(), None);
         let results = reader.find("hello", true).await;
         assert_eq!(results.len(), 2);
     }
@@ -476,7 +474,7 @@ mod tests {
         let db = setup_db().await;
         insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None).await;
 
-        let mut reader = DbIndexReader::new(&db, Some(DICT_ID_1));
+        let mut reader = DbIndexReader::new(db.pool(), Some(DICT_ID_1));
         let metadata = Metadata {
             all_chars: true,
             case_sensitive: false,
@@ -491,7 +489,7 @@ mod tests {
         let db = setup_db().await;
         insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, Some("Hello")).await;
 
-        let reader = DbIndexReader::new(&db, Some(DICT_ID_1));
+        let reader = DbIndexReader::new(db.pool(), Some(DICT_ID_1));
         let results = reader.find("hello", false).await;
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].original.as_deref(), Some("Hello"));
@@ -504,7 +502,7 @@ mod tests {
         insert_entry(db.pool(), DICT_ID_1, "fp1", "pain", 200, 30, Some("PAIN")).await;
         insert_entry(db.pool(), DICT_ID_1, "fp1", "pain", 300, 40, None).await;
 
-        let reader = DbIndexReader::new(&db, Some(DICT_ID_1));
+        let reader = DbIndexReader::new(db.pool(), Some(DICT_ID_1));
         let results = reader.find("pain", false).await;
         assert_eq!(results.len(), 3);
         let offsets: Vec<u64> = results.iter().map(|e| e.offset).collect();

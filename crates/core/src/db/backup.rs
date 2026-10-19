@@ -479,7 +479,7 @@ async fn copy_sqlite_files(src: &Path, dest: &Path) -> Result<(), Error> {
 
 /// Removes an SQLite database file and its WAL/SHM companions.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(path)))]
-async fn remove_sqlite_files(path: &Path) -> Result<(), Error> {
+pub(crate) async fn remove_sqlite_files(path: &Path) -> Result<(), Error> {
     if fs::try_exists(path).await.unwrap_or(false) {
         fs::remove_file(path)
             .await

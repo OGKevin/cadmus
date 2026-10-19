@@ -16,5 +16,6 @@ pub mod fmt;
 pub mod install_importer;
 pub mod run_emulator;
 pub mod setup;
+pub mod sqlx_prepare;
 pub mod test;
 pub mod util;

@@ -8,7 +8,7 @@ use crate::device::soft_suspend::SoftSuspendBackend as _;
 #[cfg(any(feature = "kobo", docsrs))]
 use crate::device::suspend::SuspendCycle;
 use crate::device::wifi::WifiSession;
-use crate::dictionary::{Dictionary, load_dictionary_from_db};
+use crate::dictionary::{Dictionary, DictionaryDb, load_dictionary_from_db};
 use crate::font::Fonts;
 use crate::framebuffer::{Display, Framebuffer};
 use crate::frontlight::Frontlight as _;
@@ -44,6 +44,8 @@ pub struct Context<D: Device> {
     pub settings: Settings,
     pub library: Library,
     pub database: Database,
+    /// Rebuildable word index. Dictionary reloads read this file.
+    dictionary_db: DictionaryDb,
     pub fonts: Fonts,
     pub dictionaries: BTreeMap<String, Dictionary>,
     pub keyboard_layouts: BTreeMap<String, Layout>,
@@ -87,6 +89,7 @@ impl<D: Device> Context<D> {
         mut device: D,
         library: Library,
         database: Database,
+        dictionary_db: DictionaryDb,
         settings: Settings,
         fonts: Fonts,
         status_led: Arc<StatusLed>,
@@ -151,6 +154,7 @@ impl<D: Device> Context<D> {
             display: Display { dims, rotation },
             library,
             database,
+            dictionary_db,
             settings,
             fonts,
             dictionaries: BTreeMap::new(),
@@ -232,8 +236,9 @@ impl<D: Device> Context<D> {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     pub async fn load_dictionaries(&mut self) {
         self.dictionaries.clear();
+        let pool = self.dictionary_db.pool().clone();
 
-        let meta_by_path = crate::dictionary::index_meta_by_path(&self.database).await;
+        let meta_by_path = crate::dictionary::index_meta_by_path(&pool).await;
 
         #[cfg(test)]
         let path = Path::new(
@@ -299,7 +304,7 @@ impl<D: Device> Context<D> {
                 },
             };
 
-            let dict_result = load_dictionary_from_db(&content_path, &self.database, fp).await;
+            let dict_result = load_dictionary_from_db(&content_path, &pool, fp).await;
 
             if let Ok(mut dict) = dict_result {
                 let name = match dict.short_name().await {
@@ -534,12 +539,16 @@ pub mod test_helpers {
             .await
             .expect("failed to run migrations");
         let status_led = StatusLed::new(device.device_leds());
+        let dictionary_db = crate::dictionary::DictionaryDb::open(":memory:")
+            .await
+            .expect("in-memory dictionary database");
         Context::new(
             device,
             Library::new(Path::new("/tmp"), &database, "test")
                 .await
                 .unwrap(),
             database,
+            dictionary_db,
             settings,
             Fonts::load_from(
                 Path::new(
@@ -551,6 +560,10 @@ pub mod test_helpers {
             status_led,
         )
         .await
+    }
+
+    pub async fn load_test_dictionaries(context: &mut AppContext) {
+        context.load_dictionaries().await;
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

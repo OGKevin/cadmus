@@ -149,7 +149,7 @@ After adding or changing any query in the migration, regenerate the compile-time
 metadata:
 
 ```bash
-cargo sqlx prepare --all --workspace
+cargo xtask sqlx-prepare
 ```
 
 Commit the updated `.sqlx/` files alongside your migration code.

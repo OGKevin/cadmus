@@ -30,6 +30,7 @@
 //! | [`dist`](tasks::dist) | Assemble the Kobo distribution directory |
 //! | [`bundle`](tasks::bundle) | Package a `KoboRoot.tgz` ready for device installation |
 //! | [`setup`](tasks::setup) | Build thirdparty deps (SQLite) needed before `cargo build` |
+//! | [`sqlx_prepare`](tasks::sqlx_prepare) | Rebuild `.sqlx/` from a temporary database |
 //! | [`ci`](tasks::ci) | CI-specific setup tasks (e.g. `install-doc-tools`) |
 //!
 //! ## Design
@@ -90,6 +91,8 @@ pub enum Command {
     Bundle(BundleArgs),
     /// Build thirdparty deps (SQLite) that must exist before `cargo build`.
     Setup(SetupArgs),
+    /// Rebuild `.sqlx/` from a temporary database that contains both schemas.
+    SqlxPrepare,
     /// CI-specific setup tasks (install-doc-tools, etc.).
     Ci(CiArgs),
 }
@@ -115,6 +118,7 @@ pub fn run() -> Result<()> {
         Command::Dist(args) => tasks::dist::run(args),
         Command::Bundle(args) => tasks::bundle::run(args),
         Command::Setup(args) => tasks::setup::run(args),
+        Command::SqlxPrepare => tasks::sqlx_prepare::run(),
         Command::Ci(args) => tasks::ci::run(args),
     }
 }

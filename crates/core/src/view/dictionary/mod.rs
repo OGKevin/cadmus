@@ -775,8 +775,6 @@ impl View for Dictionary {
                 true
             }
             Event::Select(EntryId::ReloadDictionaries) => {
-                context.dictionaries.clear();
-                context.load_dictionaries().await;
                 if let Some(name) = self.target.as_ref() {
                     if !context.dictionaries.contains_key(name) {
                         self.target = None;

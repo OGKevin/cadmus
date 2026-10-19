@@ -5,9 +5,12 @@
 //!
 //! It also provides support for downloading dictionaries from the monolingual project.
 
+mod db;
 mod dictreader;
 mod errors;
 mod migrations;
+
+pub use db::DictionaryDb;
 cfg_select! {
     feature = "bench" => { pub mod indexing; }
     _ => { mod indexing; }
@@ -30,9 +33,9 @@ use std::path::Path;
 use self::dictreader::DictReader;
 use self::indexing::IndexReader;
 pub(crate) use self::indexing::{Entry, apply_transform, normalize};
-use crate::db::Database;
 use crate::db::types::{FileSize, UnixTimestamp};
 use crate::helpers::{FingerprintStamp, Fp};
+use sqlx::SqlitePool;
 
 /// A dictionary wrapper.
 ///
@@ -135,16 +138,15 @@ impl Dictionary {
 ///
 /// Used by [`crate::context::Context::load_dictionaries`] to skip re-hashing an
 /// index file whose size and mtime are unchanged since it was indexed.
-#[cfg_attr(feature = "tracing", tracing::instrument(skip(database)))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(pool)))]
 pub(crate) async fn index_meta_by_path(
-    database: &Database,
+    pool: &SqlitePool,
 ) -> HashMap<String, (Fp, FingerprintStamp)> {
-    let pool = database.pool().clone();
     let rows = match sqlx::query!(
         r#"SELECT dict_path, fingerprint AS "fingerprint: Fp", index_mtime, index_size
            FROM dictionary_index_meta"#,
     )
-    .fetch_all(&pool)
+    .fetch_all(pool)
     .await
     {
         Ok(rows) => rows,
@@ -167,16 +169,15 @@ pub(crate) async fn index_meta_by_path(
 /// Resolves the `dict_id` for a given fingerprint from the database.
 ///
 /// Returns `None` if the fingerprint is not found in `dictionary_index_meta`.
-#[cfg_attr(feature = "tracing", tracing::instrument(skip(database), fields(fingerprint = %fingerprint)))]
-pub async fn resolve_dict_id(database: &Database, fingerprint: &Fp) -> Option<i64> {
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(pool), fields(fingerprint = %fingerprint)))]
+pub async fn resolve_dict_id(pool: &SqlitePool, fingerprint: &Fp) -> Option<i64> {
     let fp_str = fingerprint.to_string();
-    let pool = database.pool().clone();
 
     sqlx::query_scalar!(
         "SELECT dict_id FROM dictionary_index_meta WHERE fingerprint = ?",
         fp_str
     )
-    .fetch_optional(&pool)
+    .fetch_optional(pool)
     .await
     .ok()
     .flatten()
@@ -189,13 +190,13 @@ pub async fn resolve_dict_id(database: &Database, fingerprint: &Fp) -> Option<i6
 /// in `dictionary_index_meta` — this happens when the indexing task has not
 /// run yet for this file. The caller should skip the dictionary in that case
 /// and retry after indexing completes.
-#[cfg_attr(feature = "tracing", tracing::instrument(skip(database), fields(fingerprint = %fingerprint)))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(pool), fields(fingerprint = %fingerprint)))]
 pub async fn load_dictionary_from_db<P: AsRef<Path> + std::fmt::Debug>(
     content_path: P,
-    database: &Database,
+    pool: &SqlitePool,
     fingerprint: Fp,
 ) -> Result<Dictionary, errors::DictError> {
-    let dict_id = match resolve_dict_id(database, &fingerprint).await {
+    let dict_id = match resolve_dict_id(pool, &fingerprint).await {
         Some(id) => id,
         None => {
             tracing::warn!(fingerprint = %fingerprint, "dictionary not yet indexed, skipping");
@@ -206,7 +207,7 @@ pub async fn load_dictionary_from_db<P: AsRef<Path> + std::fmt::Debug>(
         }
     };
     let content = dictreader::load_dict(content_path)?;
-    let index = Box::new(db_index::DbIndexReader::new(database, Some(dict_id)));
+    let index = Box::new(db_index::DbIndexReader::new(pool, Some(dict_id)));
     Ok(load_dictionary(content, index).await)
 }
 
@@ -274,8 +275,9 @@ mod tests {
         case_sensitive: bool,
         all_chars: bool,
     ) -> Result<Dictionary, errors::DictError> {
-        let mut db = Database::new(":memory:").await.expect("in-memory db");
-        db.init_for_test(0).await.expect("migrations");
+        let db = DictionaryDb::open(":memory:")
+            .await
+            .expect("in-memory dictionary database");
 
         let fp = Fp::from_u64(1);
         let fp_str = fp.to_string();
@@ -314,7 +316,7 @@ mod tests {
                 .expect("insert entry");
         }
 
-        load_dictionary_from_db(content_path, &db, fp).await
+        load_dictionary_from_db(content_path, db.pool(), fp).await
     }
 
     async fn assert_dict_word_exists(

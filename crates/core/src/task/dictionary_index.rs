@@ -7,10 +7,10 @@ use std::num::NonZeroU64;
 use tokio::io::{AsyncBufReadExt, BufReader};
 
 use globset::Glob;
+use sqlx::SqlitePool;
 use walkdir::WalkDir;
 
 use crate::context::DICTIONARIES_DIRNAME;
-use crate::db::Database;
 use crate::device::inhibitor::{Inhibitor, Kind, SoftSuspendName};
 use crate::dictionary::{Entry, Metadata, normalize};
 use crate::fl;
@@ -72,20 +72,16 @@ fn decode_number(word: &str) -> Option<u64> {
 /// On each startup the task resumes from where it left off, so large
 /// dictionaries are indexed incrementally across restarts.
 pub struct DictionaryIndexTask {
-    database: Database,
+    pool: SqlitePool,
     data_path: std::path::PathBuf,
     inhibitor: Arc<Inhibitor>,
 }
 
 impl DictionaryIndexTask {
     /// Creates a new [`DictionaryIndexTask`].
-    pub fn new(
-        database: Database,
-        data_path: std::path::PathBuf,
-        inhibitor: Arc<Inhibitor>,
-    ) -> Self {
+    pub fn new(pool: SqlitePool, data_path: std::path::PathBuf, inhibitor: Arc<Inhibitor>) -> Self {
         Self {
-            database,
+            pool,
             data_path,
             inhibitor,
         }
@@ -149,7 +145,7 @@ impl DictionaryIndexTask {
         fp_str: &str,
         stamp: Option<FingerprintStamp>,
     ) -> Option<(i64, u64, u64, bool)> {
-        let pool = self.database.pool().clone();
+        let pool = self.pool.clone();
 
         let meta = sqlx::query!(
             r#"SELECT dict_id, total_lines, indexed_lines, completed
@@ -246,7 +242,7 @@ impl DictionaryIndexTask {
         path_str: &str,
         stamp: Option<FingerprintStamp>,
     ) {
-        let pool = self.database.pool().clone();
+        let pool = self.pool.clone();
         let result = sqlx::query!(
             r#"UPDATE dictionary_index_meta
                SET dict_path = ?, index_mtime = ?, index_size = ?
@@ -273,7 +269,7 @@ impl DictionaryIndexTask {
         current_line: u64,
         total_lines: u64,
     ) {
-        let pool = self.database.pool().clone();
+        let pool = self.pool.clone();
 
         let result = sqlx::query!(
             "UPDATE dictionary_index_meta SET completed = 1 WHERE dict_id = ?",
@@ -518,7 +514,7 @@ impl DictionaryIndexTask {
         current_line: u64,
         hub: &crate::view::Hub,
     ) -> Result<(), anyhow::Error> {
-        let pool = self.database.pool().clone();
+        let pool = self.pool.clone();
         let indexed_lines = current_line as i64;
 
         let mut tx = pool.begin().await?;
@@ -581,7 +577,7 @@ impl DictionaryIndexTask {
         hub: &crate::view::Hub,
         shutdown: &CancellationToken,
     ) {
-        let pool = self.database.pool().clone();
+        let pool = self.pool.clone();
         let result = purge_stale_dictionary_indexes(&pool, on_disk_fingerprints, shutdown).await;
 
         match result {
@@ -837,8 +833,8 @@ impl BackgroundTask for DictionaryIndexTask {
 mod tests {
     use super::*;
     use crate::context::DICTIONARIES_DIRNAME;
-    use crate::db::Database;
     use crate::device::inhibitor::Inhibitor;
+    use crate::dictionary::DictionaryDb;
     use std::io;
     use tokio::io::AsyncRead;
 
@@ -869,12 +865,10 @@ mod tests {
         assert_eq!(count_lines(&mut lines).await.expect("read"), 2);
     }
 
-    async fn setup_db() -> Database {
-        let mut db = Database::new(":memory:")
+    async fn setup_db() -> DictionaryDb {
+        DictionaryDb::open(":memory:")
             .await
-            .expect("failed to create in-memory database");
-        db.init_for_test(0).await.expect("failed to run migrations");
-        db
+            .expect("in-memory dictionary database")
     }
 
     async fn insert_meta(pool: &sqlx::SqlitePool, fingerprint: &str) -> i64 {
@@ -1017,7 +1011,11 @@ mod tests {
         write_large_index_file(&index_path, BATCH_SIZE + 1).await;
 
         let db = setup_db().await;
-        let task = DictionaryIndexTask::new(db, dir.path().to_path_buf(), Inhibitor::noop());
+        let task = DictionaryIndexTask::new(
+            db.pool().clone(),
+            dir.path().to_path_buf(),
+            Inhibitor::noop(),
+        );
         let (hub, mut rx) = crate::view::hub_channel();
         let shutdown = CancellationToken::new();
         let shutdown_for_task = shutdown.clone();
@@ -1075,8 +1073,11 @@ mod tests {
 
         let stamp = index_path.stamp().expect("stamp");
         let path_str = index_path.display().to_string();
-        let task =
-            DictionaryIndexTask::new(db.clone(), dir.path().to_path_buf(), Inhibitor::noop());
+        let task = DictionaryIndexTask::new(
+            db.pool().clone(),
+            dir.path().to_path_buf(),
+            Inhibitor::noop(),
+        );
 
         let resolved = task
             .resolve_index_state(&index_path, &path_str, "fp-completed", Some(stamp))

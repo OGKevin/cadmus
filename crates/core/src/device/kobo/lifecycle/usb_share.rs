@@ -22,10 +22,10 @@ use std::time::Duration;
 
 /// Prepares the app for USB mass-storage sharing.
 ///
-/// Unwinds the view stack to the root, persists settings, closes the
-/// database, disables frontlight and WiFi, shows a share intermission, and
-/// sends [`Event::Share`]. Pending device tasks are cleared because the USB
-/// session owns the process until unplug.
+/// Unwinds the view stack to the root, persists settings, closes the library
+/// and dictionary databases, disables frontlight and WiFi, shows a share
+/// intermission, and sends [`Event::Share`]. Pending device tasks are cleared
+/// because the USB session owns the process until unplug.
 #[allow(clippy::too_many_arguments)]
 async fn prepare_usb_share(
     context: &mut AppContext,
@@ -37,6 +37,7 @@ async fn prepare_usb_share(
     bus: &mut Bus,
     hub: &crate::view::Hub,
     rq: &mut RenderQueue,
+    background_tasks: Option<&crate::task::TaskManager>,
 ) {
     tasks.clear();
     view.handle_event(&Event::Back, hub, bus, rq, context).await;
@@ -60,6 +61,9 @@ async fn prepare_usb_share(
         .map_err(|error| tracing::error!(error = %error, "Can't save settings"))
         .ok();
     context.database.close().await;
+    if let Some(tasks) = background_tasks {
+        tasks.close_dictionary_index().await;
+    }
 
     if context.settings.frontlight {
         context.set_frontlight(false);
@@ -249,6 +253,7 @@ async fn handle_prepare_share(
         bus,
         hub,
         rq,
+        runtime.background_tasks.as_deref(),
     )
     .await;
 

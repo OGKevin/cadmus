@@ -1776,7 +1776,7 @@ mod tests {
 
         let mut context = create_test_context().await;
         context.load_keyboard_layouts().await;
-        context.load_dictionaries().await;
+        crate::context::test_helpers::load_test_dictionaries(&mut context).await;
 
         let (hub, mut rx) = crate::view::hub_channel();
         let mut bus: Bus = VecDeque::new();

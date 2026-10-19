@@ -5,7 +5,7 @@ mod reader_dict_fixture;
 use std::time::Duration;
 
 #[cfg(feature = "bench")]
-use cadmus_core::db::Database;
+use cadmus_core::dictionary::DictionaryDb;
 #[cfg(feature = "bench")]
 use cadmus_core::dictionary::Metadata;
 #[cfg(feature = "bench")]
@@ -100,14 +100,14 @@ fn bench_normalize(c: &mut Criterion) {
 }
 
 #[cfg(feature = "bench")]
-async fn db_index_fuzzy_scoped(db: &Database, headword: &str) -> usize {
-    let reader = DbIndexReader::new(db, Some(READER_DICT_BENCH_DICT_ID));
+async fn db_index_fuzzy_scoped(db: &DictionaryDb, headword: &str) -> usize {
+    let reader = DbIndexReader::new(db.pool(), Some(READER_DICT_BENCH_DICT_ID));
     reader.find(headword, true).await.len()
 }
 
 #[cfg(feature = "bench")]
-async fn db_index_fuzzy_global(db: &Database, headword: &str) -> usize {
-    let reader = DbIndexReader::new(db, None);
+async fn db_index_fuzzy_global(db: &DictionaryDb, headword: &str) -> usize {
+    let reader = DbIndexReader::new(db.pool(), None);
     reader.find(headword, true).await.len()
 }
 

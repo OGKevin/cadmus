@@ -393,6 +393,42 @@ impl Database {
 
         tracing::info!("running runtime migrations");
         self.migration_runner().run_all(device, settings).await?;
+        self.reclaim_free_pages().await?;
+
+        Ok(())
+    }
+
+    /// Reclaims free pages left by `DROP TABLE` so the next backup does not
+    /// copy them.
+    ///
+    /// `PRAGMA page_count`, `PRAGMA freelist_count`, and `VACUUM` are not in
+    /// the offline query cache. Typed `query_scalar!` cannot describe them, so
+    /// this uses untyped [`sqlx::query`] and [`sqlx::query_scalar`] the same
+    /// way [`Database::check_integrity`] does for `PRAGMA wal_checkpoint`.
+    ///
+    /// In-memory databases have no file to shrink, so they return immediately.
+    /// `VACUUM` failure is logged and ignored; a failed page-count read is
+    /// returned.
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
+    async fn reclaim_free_pages(&self) -> Result<(), Error> {
+        if self.file.dir().is_none() {
+            return Ok(());
+        }
+
+        let page_count: i64 = sqlx::query_scalar("PRAGMA page_count")
+            .fetch_one(self.file.pool())
+            .await
+            .context("failed to read PRAGMA page_count")?;
+        let freelist_count: i64 = sqlx::query_scalar("PRAGMA freelist_count")
+            .fetch_one(self.file.pool())
+            .await
+            .context("failed to read PRAGMA freelist_count")?;
+
+        if freelist_count.saturating_mul(2) > page_count
+            && let Err(error) = sqlx::query("VACUUM").execute(self.file.pool()).await
+        {
+            tracing::warn!(error = %error, "failed to vacuum library database");
+        }
 
         Ok(())
     }
@@ -672,6 +708,54 @@ mod tests {
         db.check_integrity()
             .await
             .expect("integrity check should pass on a fresh database");
+    }
+
+    #[tokio::test]
+    async fn reclaim_free_pages_on_fresh_file_returns_ok() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_path = dir.path().join("cadmus.sqlite");
+        let mut db = Database::new(&db_path)
+            .await
+            .expect("failed to create database");
+        db.init_for_test(0).await.expect("failed to run migrations");
+        db.reclaim_free_pages()
+            .await
+            .expect("reclaim on a fresh file database");
+    }
+
+    #[tokio::test]
+    async fn reclaim_free_pages_shrinks_a_freelist_heavy_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_path = dir.path().join("cadmus.sqlite");
+        let mut db = Database::new(&db_path)
+            .await
+            .expect("failed to create database");
+        db.init_for_test(0).await.expect("failed to run migrations");
+
+        sqlx::query("CREATE TABLE reclaim_pad (blob BLOB)")
+            .execute(db.pool())
+            .await
+            .expect("create pad");
+        sqlx::query("INSERT INTO reclaim_pad (blob) VALUES (zeroblob(1048576))")
+            .execute(db.pool())
+            .await
+            .expect("pad");
+        sqlx::query("DROP TABLE reclaim_pad")
+            .execute(db.pool())
+            .await
+            .expect("drop pad");
+
+        let before: i64 = sqlx::query_scalar("PRAGMA page_count")
+            .fetch_one(db.pool())
+            .await
+            .expect("page_count before");
+        db.reclaim_free_pages().await.expect("reclaim");
+        let after: i64 = sqlx::query_scalar("PRAGMA page_count")
+            .fetch_one(db.pool())
+            .await
+            .expect("page_count after");
+
+        assert!(after < before);
     }
 
     #[tokio::test]
