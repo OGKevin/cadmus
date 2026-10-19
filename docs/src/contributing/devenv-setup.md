@@ -87,6 +87,7 @@ Once inside the devenv shell, these commands are available:
 | `cadmuscli build-kobo`      | Cross-compile for Kobo device                               |
 | `cadmuscli dist`            | Assemble the Kobo distribution directory                    |
 | `cadmuscli bundle`          | Package KoboRoot.tgz for installation                       |
+| `cadmuscli list-devices`    | List Cadmus devices advertised on the LAN                   |
 | `cadmus-dev-otel`           | Run emulator with tracing and profiling enabled             |
 | `devenv up`                 | Start observability stack (Grafana, Tempo, Loki)            |
 | `cadmuscli docs`            | Build docs site (mdBook, API docs, website)                 |

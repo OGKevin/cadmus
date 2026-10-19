@@ -298,6 +298,7 @@ For workflows, load the matching skill from [`.agents/skills/`](.agents/skills/)
 | `docs`                | Build or preview the documentation site                     |
 | `translations-sync`   | Regenerate the translations POT after user-facing doc edits |
 | `fetch-cadmus-logs`   | Look up device logs in Loki by run ID                       |
+| `list-cadmus-devices` | Discover Cadmus devices on the LAN via mDNS                 |
 
 ## Testing
 

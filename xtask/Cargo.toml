@@ -19,6 +19,7 @@ clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
 flate2 = "1"
 io_tee = { workspace = true }
+mdns-sd = { workspace = true }
 reqwest = { version = "0.13", default-features = false, features = [
     "blocking",
     "json",

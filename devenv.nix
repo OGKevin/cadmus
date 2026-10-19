@@ -993,6 +993,7 @@ in
     echo "  cadmuscli dist            - Assemble Kobo distribution"
     echo "  cadmuscli docs            - Build documentation portal"
     echo "  cadmuscli fmt             - Check formatting"
+    echo "  cadmuscli list-devices    - List Cadmus devices on the LAN"
     echo "  cadmuscli test            - Test across feature matrix"
     echo "  cargo xtask still works as a debug cargo run alias."
     echo ""
