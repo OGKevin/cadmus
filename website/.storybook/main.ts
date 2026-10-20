@@ -2,7 +2,7 @@ import type { StorybookConfig } from "@storybook/nextjs-vite";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import { fileURLToPath } from "url";
-import type { InlineConfig } from "vite";
+import type { InlineConfig, Plugin } from "vite";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,8 +20,31 @@ const config: StorybookConfig = {
     ...viteConfig,
     base: "./",
     publicDir: false,
-    plugins: [...(viteConfig.plugins ?? []), tailwindcss()],
+    plugins: [
+      ...(viteConfig.plugins ?? []),
+      tailwindcss(),
+      next16LayoutRouter(),
+    ],
   }),
 };
+
+function next16LayoutRouter(): Plugin {
+  return {
+    name: "next-16-storybook-layout-router",
+    transform(code: string, id: string) {
+      if (
+        !id.includes("@storybook/nextjs-vite") ||
+        !code.includes("parentCacheNode:") ||
+        code.includes("parentRenderTree:")
+      ) {
+        return;
+      }
+      return code.replace(
+        "parentCacheNode: newLazyCacheNode,",
+        "parentCacheNode: newLazyCacheNode, parentRenderTree: { data: { bfcacheId: 0 } },",
+      );
+    },
+  };
+}
 
 export default config;
