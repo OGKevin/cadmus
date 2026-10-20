@@ -57,7 +57,7 @@ pub const SONAMES: &[&str] = &[
     "libmupdf.so",
 ];
 
-/// Cross-compilation environment variables injected when `cargo xtask
+/// Cross-compilation environment variables injected when `cadmuscli
 /// build-kobo` runs `cargo build` for the Kobo ARM target.
 ///
 /// SQLite discovery uses `PKG_CONFIG_PATH_<target>` vars set in devenv and CI,

@@ -1,4 +1,4 @@
-//! `cargo xtask bundle` — package a `KoboRoot.tgz` for device installation.
+//! `cadmuscli bundle` — package a `KoboRoot.tgz` for device installation.
 //!
 //! Creates one or more `.tgz` archives that can be placed in the `.kobo/`
 //! directory on a Kobo device to install or update Cadmus.
@@ -28,7 +28,7 @@ use super::util::{fs, github, http, workspace};
 /// The NickelMenu release version to bundle.
 pub const NICKEL_VERSION: &str = "0.6.0";
 
-/// Arguments for `cargo xtask bundle`.
+/// Arguments for `cadmuscli bundle`.
 #[derive(Debug, Args)]
 pub struct BundleArgs {
     /// Create a bundle without NickelMenu.
@@ -55,7 +55,7 @@ pub fn run(args: BundleArgs) -> Result<()> {
 
     let dist_dir = root.join("dist");
     if !dist_dir.exists() {
-        bail!("dist/ not found. Run `cargo xtask dist` first.");
+        bail!("dist/ not found. Run `cadmuscli dist` first.");
     }
 
     let bundle_dir = root.join("bundle");

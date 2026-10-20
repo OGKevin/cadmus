@@ -1,4 +1,4 @@
-//! `cargo xtask install-importer` — install the Cadmus importer crate.
+//! `cadmuscli install-importer` — install the Cadmus importer crate.
 //!
 //! Runs `cargo install --path crates/importer`.  Any extra arguments are
 //! forwarded to `cargo install`.  Native dependencies are built automatically
@@ -9,7 +9,7 @@ use clap::Args;
 
 use super::util::{cmd, workspace};
 
-/// Arguments for `cargo xtask install-importer`.
+/// Arguments for `cadmuscli install-importer`.
 #[derive(Debug, Args)]
 pub struct InstallImporterArgs {
     /// Extra arguments forwarded to `cargo install --path crates/importer`.

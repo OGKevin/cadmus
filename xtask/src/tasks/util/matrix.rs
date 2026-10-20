@@ -1,4 +1,4 @@
-//! Feature matrix generation for `cargo xtask test` and `cargo xtask clippy`.
+//! Feature matrix generation for `cadmuscli test` and `cadmuscli clippy`.
 //!
 //! Scans every `Cargo.toml` in the workspace, collects the union of all
 //! non-excluded feature names (see [`is_excluded_feature`]), and produces one
@@ -7,7 +7,7 @@
 //! block in `crates/core/Cargo.toml` via [`build_deps::manifest`].
 //!
 //! The same entries are used locally (by `test` and `clippy` tasks) and in CI
-//! (by `cargo xtask ci matrix`, which serialises them to GitHub Actions JSON).
+//! (by `cadmuscli ci matrix`, which serialises them to GitHub Actions JSON).
 
 use std::collections::BTreeSet;
 use std::path::Path;

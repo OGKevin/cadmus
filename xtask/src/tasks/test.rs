@@ -1,4 +1,4 @@
-//! `cargo xtask test` — run tests across the full feature matrix.
+//! `cadmuscli test` — run tests across the full feature matrix.
 //!
 //! The feature matrix is derived dynamically from the workspace `Cargo.toml`
 //! files, so adding a new non-aliased feature flag automatically includes it
@@ -36,7 +36,7 @@ const NEXTEST_JUNIT_PATH: &str = "target/nextest/ci/junit.xml";
 /// be ~3 KiB).
 const RUST_MIN_STACK_BYTES: u32 = 3 * 1024 * 1024;
 
-/// Arguments for `cargo xtask test`.
+/// Arguments for `cadmuscli test`.
 #[derive(Debug, Args)]
 pub struct TestArgs {
     /// Run only the named feature combination (e.g. `"telemetry + test"`).

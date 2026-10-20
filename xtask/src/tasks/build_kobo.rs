@@ -1,4 +1,4 @@
-//! `cargo xtask build-kobo` — cross-compile Cadmus for Kobo devices.
+//! `cadmuscli build-kobo` — cross-compile Cadmus for Kobo devices.
 //!
 //! This task is a thin wrapper around `cargo build --release
 //! --target arm-unknown-linux-gnueabihf -p cadmus`. Most dependency
@@ -25,7 +25,7 @@ use build_deps::versions::CROSS_ENV;
 
 use super::util::{cmd, sqlite_preflight, workspace};
 
-/// Arguments for `cargo xtask build-kobo`.
+/// Arguments for `cadmuscli build-kobo`.
 #[derive(Debug, Args)]
 pub struct BuildKoboArgs {
     /// Cargo feature flags to pass to the Cadmus build (e.g. `test`).

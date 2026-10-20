@@ -26,8 +26,8 @@ use anyhow::{Context, Result};
 /// # Errors
 ///
 /// Returns an error if no Cadmus workspace is found. Set
-/// `CADMUS_WORKSPACE_ROOT`, run `cargo xtask`, or invoke `cadmuscli` from
-/// inside the repository.
+/// `CADMUS_WORKSPACE_ROOT`, run `cadmuscli`, or use the debug alias `cargo xtask`
+/// from inside the repository.
 ///
 /// # Examples
 ///
@@ -66,7 +66,7 @@ fn resolve_root(
     }
 
     anyhow::bail!(
-        "could not locate the Cadmus workspace root from {}; set CADMUS_WORKSPACE_ROOT, run `cargo xtask`, or invoke cadmuscli from inside the repository",
+        "could not locate the Cadmus workspace root from {}; set CADMUS_WORKSPACE_ROOT, run `cadmuscli` (or the debug alias `cargo xtask`) from inside the repository",
         cwd.display()
     )
 }

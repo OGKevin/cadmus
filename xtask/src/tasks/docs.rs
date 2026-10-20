@@ -1,4 +1,4 @@
-//! `cargo xtask docs` — build the Cadmus documentation website.
+//! `cadmuscli docs` — build the Cadmus documentation website.
 //!
 //! 1. Installs mdbook-mermaid JavaScript assets into `docs/`.
 //! 2. Builds the mdBook user guide (`docs/book/html/`).
@@ -40,7 +40,7 @@ struct LocaleEntry {
     label: String,
 }
 
-/// Arguments for `cargo xtask docs`.
+/// Arguments for `cadmuscli docs`.
 #[derive(Debug, Args)]
 pub struct DocsArgs {
     /// Skip the website build (useful when only the mdBook output is

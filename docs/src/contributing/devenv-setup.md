@@ -100,7 +100,16 @@ Once inside the devenv shell, these commands are available:
 Run `cadmuscli --help` to see all available subcommands, or `cadmuscli <cmd> --help` for
 options on a specific command. `cargo xtask` still works as a debug `cargo run` alias.
 Entering the devenv shell installs a release `cadmuscli` onto `PATH` when `xtask/` sources
-change (`devenv tasks run cadmuscli:install`).
+change or the binary is missing (`devenv tasks run cadmuscli:install`).
+
+Devenv sets `CADMUS_WORKSPACE_ROOT` to the workspace root (same as
+`TEST_ROOT_DIR`). Set it yourself only when running a PATH `cadmuscli`
+outside devenv from outside the repository: it must be a Cadmus workspace
+(`Cargo.toml` `[workspace]` whose `members` include `"xtask"`). Relative
+paths resolve against the process current directory. A wrong value is an
+error; `cadmuscli` does not search further. Inside the repo without devenv,
+`CARGO_MANIFEST_DIR` (from the debug `cargo xtask` alias) or walking up from
+cwd is enough.
 
 Or have a look at the rustdocs for `xtask_lib` <a href="/api/xtask_lib/">here</a>.
 
@@ -111,14 +120,18 @@ Tasks are defined in `devenv.nix` and can be run with `devenv tasks run <task>`.
 
 ### Available Tasks
 
-| Task                | Description                                                       | Dependencies        |
+| Task                | What it runs                                                      | Dependencies        |
 | ------------------- | ----------------------------------------------------------------- | ------------------- |
-| `cadmuscli:install` | Build a release `cadmuscli` onto `PATH` (only if sources changed) | None                |
-| `docs:build`        | Build documentation EPUB (only rebuilds if files changed)         | `cadmuscli:install` |
-| `build:kobo`        | Build for Kobo device                                             | `docs:build`        |
+| `cadmuscli:install` | `cargo build -p xtask --release` and link onto PATH               | None                |
+| `website:install`   | `npm install` in `website/`                                       | None                |
+| `docs:build`        | `cadmuscli docs --mdbook-only`                                    | `cadmuscli:install` |
+| `build:kobo`        | `cadmuscli build-kobo`                                            | `docs:build`        |
 
-All tasks delegate to `cadmuscli` under the hood. `cadmuscli:install` runs before
-`devenv:enterShell` and `docs:build`.
+`cadmuscli:install` builds the release binary; it does not call `cadmuscli`.
+`website:install` only installs website npm dependencies. `docs:build` and
+`build:kobo` invoke `cadmuscli`. `cadmuscli:install` and `website:install` run
+before `devenv:enterShell`. `cadmuscli:install` also runs before `docs:build`,
+and reruns when xtask sources change or the PATH binary is missing.
 
 ### How Tasks Work
 
@@ -129,7 +142,9 @@ Tasks with dependencies automatically run their dependencies first. For example:
 devenv tasks run build:kobo
 ```
 
-The `docs:build` task uses `execIfModified` to only rebuild when documentation files have actually changed.
+`docs:build` uses `execIfModified` so it only rebuilds when documentation files
+have changed. `website:install` uses `execIfModified` on `website/package.json`
+and `website/package-lock.json`.
 
 ## Kobo Build Notes
 

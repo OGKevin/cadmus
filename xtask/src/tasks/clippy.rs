@@ -1,4 +1,4 @@
-//! `cargo xtask clippy` — lint across the full feature matrix.
+//! `cadmuscli clippy` — lint across the full feature matrix.
 //!
 //! The feature matrix is derived dynamically from the workspace `Cargo.toml`
 //! files, so adding a new non-aliased feature flag automatically includes it
@@ -35,7 +35,7 @@
 //! When `--save-json <path>` is passed, raw clippy JSON lines are written to
 //! the given file instead of running reviewdog or applying `-D warnings`.
 //! This is used by CI to collect per-feature-label artifacts that are later
-//! deduplicated and reported in a single `cargo xtask ci clippy-report` run.
+//! deduplicated and reported in a single `cadmuscli ci clippy-report` run.
 
 use std::fs;
 use std::io::{BufRead, BufReader, ErrorKind, Write, copy};
@@ -48,7 +48,7 @@ use io_tee::WriteExt;
 
 use super::util::{cmd, matrix, sqlite_preflight, workspace};
 
-/// Arguments for `cargo xtask clippy`.
+/// Arguments for `cadmuscli clippy`.
 #[derive(Debug, Args)]
 pub struct ClippyArgs {
     /// Run only the named feature combination (e.g. `"telemetry + test"`).
@@ -82,7 +82,7 @@ pub struct ClippyArgs {
     /// Skips `-D warnings` and reviewdog.  The file is created (or truncated)
     /// and each JSON line emitted by `cargo clippy --message-format=json` is
     /// written verbatim.  Used by CI to collect per-label artifacts for
-    /// `cargo xtask ci clippy-report`.
+    /// `cadmuscli ci clippy-report`.
     #[arg(long)]
     pub save_json: Option<PathBuf>,
 }
@@ -96,7 +96,7 @@ pub struct ClippyArgs {
 ///   through `reviewdog`.  `--diff-branch` alone is sufficient for local use;
 ///   `--github-report` alone uses the `github-pr-review` reporter in CI.
 /// - **`--save-json <path>`**: writes raw JSON lines to a file for later
-///   deduplication by `cargo xtask ci clippy-report`.
+///   deduplication by `cadmuscli ci clippy-report`.
 ///
 /// # Errors
 ///

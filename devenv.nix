@@ -448,6 +448,7 @@ in
 
   env = {
     TEST_ROOT_DIR = config.devenv.root;
+    CADMUS_WORKSPACE_ROOT = config.devenv.root;
     # Match `RUST_MIN_STACK_BYTES` in xtask `test.rs` (3 * 1024 * 1024 bytes).
     RUST_MIN_STACK = toString (3 * 1024 * 1024);
 

@@ -1,4 +1,4 @@
-//! `cargo xtask download-fonts` — download bundled font files for Cadmus.
+//! `cadmuscli download-fonts` — download bundled font files for Cadmus.
 //!
 //! Assembles the `fonts/` directory from reader sources and pinned UI
 //! upstreams. Each source lives under [`font`] and exposes an `install`

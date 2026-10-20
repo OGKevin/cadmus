@@ -1,4 +1,4 @@
-//! `cargo xtask fmt` — check or apply rustfmt formatting.
+//! `cadmuscli fmt` — check or apply rustfmt formatting.
 //!
 //! In check mode (the default, used in CI) the task exits non-zero if any
 //! file would be reformatted.  With `--apply` the formatting is written back
@@ -9,7 +9,7 @@ use clap::Args;
 
 use super::util::{cmd, workspace};
 
-/// Arguments for `cargo xtask fmt`.
+/// Arguments for `cadmuscli fmt`.
 #[derive(Debug, Args)]
 pub struct FmtArgs {
     /// Apply formatting instead of checking.

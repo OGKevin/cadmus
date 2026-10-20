@@ -1,4 +1,4 @@
-//! `cargo xtask ci matrix` — emit GitHub Actions dynamic matrix JSON.
+//! `cadmuscli ci matrix` — emit GitHub Actions dynamic matrix JSON.
 //!
 //! Scans the workspace `Cargo.toml` files for feature flags and writes two
 //! outputs to `$GITHUB_OUTPUT`:
@@ -20,7 +20,7 @@
 //!     test-matrix: ${{ steps.matrix.outputs.test-matrix }}
 //!   steps:
 //!     - id: matrix
-//!       run: cargo xtask ci matrix
+//!       run: cadmuscli ci matrix
 //!
 //! clippy:
 //!   needs: generate-matrix

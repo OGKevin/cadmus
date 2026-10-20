@@ -1,4 +1,4 @@
-//! `cargo xtask ci install-doc-tools` — install mdBook, mdbook-epub,
+//! `cadmuscli ci install-doc-tools` — install mdBook, mdbook-epub,
 //! mdbook-mermaid, and mdbook-i18n-helpers into `~/.cache/` with pinned revisions.
 //!
 //! This task is the Rust replacement for the bash install script that previously
@@ -28,7 +28,7 @@ use clap::Args;
 
 use crate::tasks::util::{cmd, fs, http, workspace};
 
-/// Arguments for `cargo xtask ci install-doc-tools`.
+/// Arguments for `cadmuscli ci install-doc-tools`.
 #[derive(Debug, Args)]
 pub struct InstallDocToolsArgs {
     /// mdBook release version to install (e.g. `"0.5.2"`).

@@ -1,4 +1,4 @@
-//! `cargo xtask download-assets` — download static assets from the Plato release.
+//! `cadmuscli download-assets` — download static assets from the Plato release.
 //!
 //! The Cadmus distribution requires several directories of static assets
 //! (`bin/`, `resources/`, `hyphenation-patterns/`) that are not stored in the
@@ -8,7 +8,7 @@
 //!
 //! These assets are sourced from the upstream [Plato] release zip until
 //! [issue #64] is resolved.  Once Cadmus builds these directories from source
-//! as part of `cargo xtask build-kobo`, this entire task becomes unnecessary
+//! as part of `cadmuscli build-kobo`, this entire task becomes unnecessary
 //! and should be removed along with the CI step that calls it.
 //!
 //! [Plato]: https://github.com/baskerville/plato

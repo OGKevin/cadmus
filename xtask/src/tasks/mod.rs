@@ -1,4 +1,6 @@
-//! Task implementations for `cargo xtask`.
+//! Task implementations for `cadmuscli`.
+//!
+//! `cargo xtask` remains a debug `cargo run` alias for this package.
 //!
 //! Each sub-module corresponds to one top-level subcommand.  Shared utilities
 //! live in [`util`].

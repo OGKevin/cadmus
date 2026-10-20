@@ -413,7 +413,7 @@ fn generate_bundled_assets() -> Result<()> {
             && !asset_dir.is_dir()
         {
             bail!(
-                "required asset directory missing: {}. Run `cargo xtask download-assets` before build.",
+                "required asset directory missing: {}. Run `cadmuscli download-assets` before build.",
                 asset_dir.display()
             );
         }

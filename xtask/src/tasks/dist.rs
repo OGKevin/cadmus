@@ -1,4 +1,4 @@
-//! `cargo xtask dist` — assemble the Kobo distribution directory.
+//! `cadmuscli dist` — assemble the Kobo distribution directory.
 //!
 //! Copies the compiled Cadmus binary, shared libraries, fonts, icons, and
 //! other assets into a `dist/` directory that mirrors the layout expected on
@@ -6,7 +6,7 @@
 //!
 //! ## Prerequisites
 //!
-//! - `cargo xtask build-kobo` must have been run first.
+//! - `cadmuscli build-kobo` must have been run first.
 //! - `libs/` must contain the ARM shared libraries.
 //! - `bin/`, `resources/`, and `hyphenation-patterns/` must exist.
 //!
@@ -38,7 +38,7 @@ use super::util::{cmd, fs, workspace};
 use build_deps::build::kobo;
 use build_deps::versions;
 
-/// Arguments for `cargo xtask dist`.
+/// Arguments for `cadmuscli dist`.
 #[derive(Debug, Args)]
 pub struct DistArgs {
     /// Build for the test feature set (`--features test`).
@@ -58,7 +58,7 @@ pub fn run(args: DistArgs) -> Result<()> {
     if !binary.exists() {
         bail!(
             "ARM binary not found at {}.\n\
-             Run `cargo xtask build-kobo` first.",
+             Run `cadmuscli build-kobo` first.",
             binary.display()
         );
     }
@@ -99,7 +99,7 @@ fn copy_libraries(root: &Path, dist_dir: &Path) -> Result<()> {
         std::fs::copy(&src, &dest).with_context(|| {
             format!(
                 "failed to copy {} → {}\n\
-                 Run `cargo xtask build-kobo` to build the libraries.",
+                 Run `cadmuscli build-kobo` to build the libraries.",
                 src.display(),
                 dest.display()
             )
@@ -125,9 +125,9 @@ fn copy_assets(root: &Path, dist_dir: &Path) -> Result<()> {
         let src = root.join(dir);
         if !src.exists() {
             let hint = if dir == "fonts" {
-                "Run `cargo xtask download-fonts` to download it."
+                "Run `cadmuscli download-fonts` to download it."
             } else {
-                "Run `cargo xtask download-assets` to download it."
+                "Run `cadmuscli download-assets` to download it."
             };
             bail!(
                 "Required asset directory '{}' not found.\n\

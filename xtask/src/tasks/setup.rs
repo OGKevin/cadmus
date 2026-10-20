@@ -1,4 +1,4 @@
-//! `cargo xtask setup` — build thirdparty dependencies that must be
+//! `cadmuscli setup` — build thirdparty dependencies that must be
 //! ready before `cargo build` runs.
 //!
 //! Currently this covers SQLite only: `libsqlite3-sys`'s own build
@@ -10,15 +10,15 @@
 //! ## Usage
 //!
 //! ```text
-//! cargo xtask setup           # build for all known targets (host + Kobo)
-//! cargo xtask setup --host    # build for the native host only
-//! cargo xtask setup --kobo    # build for Kobo (ARM) only
-//! cargo xtask setup --all     # explicitly build for all known targets
-//! cargo xtask setup --target <triple>  # build for an arbitrary target
+//! cadmuscli setup           # build for all known targets (host + Kobo)
+//! cadmuscli setup --host    # build for the native host only
+//! cadmuscli setup --kobo    # build for Kobo (ARM) only
+//! cadmuscli setup --all     # explicitly build for all known targets
+//! cadmuscli setup --target <triple>  # build for an arbitrary target
 //! ```
 //!
 //! After running, set the printed environment variables before
-//! `cargo build` or `cargo xtask build-kobo`.
+//! `cargo build` or `cadmuscli build-kobo`.
 
 use anyhow::Result;
 use clap::Args;
@@ -27,7 +27,7 @@ use build_deps::build::sqlite;
 
 use super::util::{sqlite_preflight, workspace};
 
-/// Arguments for `cargo xtask setup`.
+/// Arguments for `cadmuscli setup`.
 #[derive(Debug, Args)]
 pub struct SetupArgs {
     /// Build for the native host target only.

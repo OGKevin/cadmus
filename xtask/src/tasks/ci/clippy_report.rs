@@ -1,15 +1,15 @@
-//! `cargo xtask ci clippy-report` — deduplicate clippy JSON artifacts and
+//! `cadmuscli ci clippy-report` — deduplicate clippy JSON artifacts and
 //! emit short-format diagnostics for reviewdog.
 //!
 //! ## How it fits into CI
 //!
-//! The `clippy` matrix job runs `cargo xtask clippy --save-json <file>` for
+//! The `clippy` matrix job runs `cadmuscli clippy --save-json <file>` for
 //! every feature label on `ubuntu-26.04`, uploading each file as a GitHub
 //! Actions artifact.  After the matrix completes, the `clippy-report` job
 //! downloads all artifacts into a single directory and calls:
 //!
 //! ```text
-//! cargo xtask ci clippy-report --artifacts-dir <dir> --output <file>
+//! cadmuscli ci clippy-report --artifacts-dir <dir> --output <file>
 //! ```
 //!
 //! This command reads every `.json` file in the directory, deduplicates
@@ -46,11 +46,11 @@ use anyhow::{Context, Result, bail};
 use clap::Args;
 use serde_json::Value;
 
-/// Arguments for `cargo xtask ci clippy-report`.
+/// Arguments for `cadmuscli ci clippy-report`.
 #[derive(Debug, Args)]
 pub struct ClippyReportArgs {
     /// Directory containing `.json` artifact files produced by
-    /// `cargo xtask clippy --save-json`.
+    /// `cadmuscli clippy --save-json`.
     #[arg(long)]
     pub artifacts_dir: PathBuf,
 

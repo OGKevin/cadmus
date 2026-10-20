@@ -1,4 +1,4 @@
-//! `cargo xtask run-emulator` — run the Cadmus emulator.
+//! `cadmuscli run-emulator` — run the Cadmus emulator.
 //!
 //! Ensures host SQLite and the embedded documentation EPUB are ready, then
 //! launches `cargo run -p cadmus --features emulator`. Any extra arguments are
@@ -14,7 +14,7 @@ use clap::Args;
 use super::docs::{self, DocsArgs};
 use super::util::{cmd, sqlite_preflight, workspace};
 
-/// Arguments for `cargo xtask run-emulator`.
+/// Arguments for `cadmuscli run-emulator`.
 #[derive(Debug, Args)]
 pub struct RunEmulatorArgs {
     /// Cargo feature flags forwarded to `cargo run -p cadmus` (emulator is always enabled).

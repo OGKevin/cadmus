@@ -1,4 +1,4 @@
-//! `cargo xtask bench` — run benchmarks with the `bench` feature enabled.
+//! `cadmuscli bench` — run benchmarks with the `bench` feature enabled.
 //!
 //! Runs `cargo bench --features bench` for the workspace, activating the
 //! `bench` feature flag that exposes internal module visibility required by
@@ -9,7 +9,7 @@ use clap::Args;
 
 use super::util::{cmd, workspace};
 
-/// Arguments for `cargo xtask bench`.
+/// Arguments for `cadmuscli bench`.
 #[derive(Debug, Args)]
 pub struct BenchArgs {}
 

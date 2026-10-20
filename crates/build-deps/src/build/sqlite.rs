@@ -14,7 +14,7 @@
 //! `build.rs`, so the custom SQLite library must already be on disk
 //! when Cargo resolves the dependency graph. There is no way to
 //! trigger the build from `cadmus-core`'s own build script because
-//! it executes too late in the chain. `cargo xtask setup` (or the
+//! it executes too late in the chain. `cadmuscli setup` (or the
 //! Kobo build flow) must be run first to place the artefacts where
 //! `libsqlite3-sys` can find them via `SQLITE3_LIB_DIR` /
 //! `SQLITE3_INCLUDE_DIR`.
