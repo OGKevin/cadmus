@@ -51,7 +51,7 @@ fn resolve_root(
     cwd: PathBuf,
 ) -> Result<PathBuf> {
     if let Some(explicit) = workspace_root_env {
-        return require_cadmus_workspace(explicit);
+        return require_cadmus_workspace(absolute_from_cwd(explicit, &cwd));
     }
 
     if let Some(root) = cargo_manifest_dir
@@ -69,6 +69,14 @@ fn resolve_root(
         "could not locate the Cadmus workspace root from {}; set CADMUS_WORKSPACE_ROOT, run `cargo xtask`, or invoke cadmuscli from inside the repository",
         cwd.display()
     )
+}
+
+fn absolute_from_cwd(path: PathBuf, cwd: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path
+    } else {
+        cwd.join(path)
+    }
 }
 
 fn require_cadmus_workspace(dir: PathBuf) -> Result<PathBuf> {
@@ -244,6 +252,23 @@ mod tests {
             missing.path().to_path_buf(),
         );
         assert!(missing_err.is_err());
+    }
+
+    #[test]
+    fn relative_workspace_root_is_joined_with_cwd() {
+        let parent = tempfile::tempdir().unwrap();
+        let workspace = parent.path().join("repo");
+        fs::create_dir_all(&workspace).unwrap();
+        write_cadmus_workspace(&workspace);
+
+        let root = resolve_root(
+            Some(PathBuf::from("repo")),
+            None,
+            parent.path().to_path_buf(),
+        )
+        .unwrap();
+
+        assert_eq!(root, workspace);
     }
 
     #[test]

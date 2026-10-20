@@ -16,6 +16,7 @@ runs:
   using: composite
   steps:
     - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+      id: rust-toolchain
       with:
         targets: arm-unknown-linux-gnueabihf
         components: llvm-tools

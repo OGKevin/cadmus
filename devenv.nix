@@ -811,6 +811,10 @@ in
       exec = ''
         cargo build -p xtask --release
         target_dir="''${CARGO_TARGET_DIR:-$DEVENV_ROOT/target}"
+        case "$target_dir" in
+        /*) ;;
+        *) target_dir="$DEVENV_ROOT/$target_dir" ;;
+        esac
         mkdir -p "$DEVENV_STATE/bin"
         ln -sfn "$target_dir/release/cadmuscli" "$DEVENV_STATE/bin/cadmuscli"
         test -e "$DEVENV_STATE/bin/cadmuscli"
@@ -820,6 +824,7 @@ in
         "crates/build-deps/**"
         "Cargo.lock"
         "Cargo.toml"
+        "${config.env.DEVENV_STATE}/bin/cadmuscli"
       ];
       before = [
         "devenv:enterShell"

@@ -292,7 +292,6 @@
         "/^\\.github\\/workflows\\/cadmus-docs\\.yml$/",
         "/^\\.github\\/workflows\\/cargo\\.yml$/",
         "/^\\.github\\/workflows\\/release\\.yml$/",
-        "/^\\.github\\/workflows\\/build-release-candidate\\.yml$/",
         "/^\\.github\\/workflows\\/actions-lint\\.yml$/",
         "/^\\.github\\/workflows\\/website\\.yml$/",
         "/^\\.cursor\\/Dockerfile$/"
