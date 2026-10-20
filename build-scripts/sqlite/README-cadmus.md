@@ -25,7 +25,7 @@ submodule automatically via its `git-submodules` manager.
 ## Build flow
 
 ```text
-cargo xtask setup [--host | --kobo | --all | --target <triple>]
+cadmuscli setup [--host | --kobo | --all | --target <triple>]
   └─ build_deps::build::sqlite::ensure_sqlite()
        ├─ cp_r thirdparty/sqlite → target/cadmus-build-deps/<TARGET>/sqlite/
        ├─ ./configure --enable-update-limit
@@ -34,7 +34,7 @@ cargo xtask setup [--host | --kobo | --all | --target <triple>]
             output → target/cadmus-build-deps/<TARGET>/sqlite/{lib,include}/
 ```
 
-The Kobo cross-build (`cargo xtask build-kobo`) calls `ensure_sqlite`
+The Kobo cross-build (`cadmuscli build-kobo`) calls `ensure_sqlite`
 automatically for the `arm-unknown-linux-gnueabihf` target.
 
 ## Compile-time defines

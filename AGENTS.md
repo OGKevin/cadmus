@@ -328,5 +328,5 @@ to the diff via reviewdog).
   reboot because the next `KoboRoot.tgz` repopulates that directory.
 - If code generates compile-time metadata from bundled asset directories, make
   sure `bin/`, `resources/`, and `hyphenation-patterns/` are present before the
-  Kobo build starts. In CI, `cargo xtask download-assets` must run before
-  `cargo xtask build-kobo` for the generated asset list to stay accurate.
+  Kobo build starts. In CI, `cadmuscli download-assets` must run before
+  `cadmuscli build-kobo` for the generated asset list to stay accurate.

@@ -1,0 +1,73 @@
+name: Install cadmuscli
+description: >
+  Put the cadmuscli release binary on PATH. `source: build` restores a
+  single-ELF cache keyed on xtask sources and compiles on miss.
+  `source: artifact` downloads the cadmuscli artifact from this workflow.
+  Save is restore-only on pull requests when callers pass `mode: restore`.
+
+inputs:
+  source:
+    description: "`build` (cache + compile on miss) or `artifact` (this-workflow artifact)"
+    required: false
+    default: artifact
+  rust-cachekey:
+    description: "dtolnay/rust-toolchain cachekey output; required when source is build"
+    required: false
+    default: ""
+  mode:
+    description: "`restore` (default) or `save` (read-write). Only used when source is build."
+    required: false
+    default: restore
+  artifact-name:
+    description: "Artifact name when source is artifact"
+    required: false
+    default: cadmuscli
+
+runs:
+  using: composite
+  steps:
+    - name: Restore cadmuscli cache
+      if: inputs.source == 'build' && inputs.mode == 'restore'
+      id: restore
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .cache/cadmuscli/cadmuscli
+        key: ${{ runner.os }}-cadmuscli-${{ inputs.rust-cachekey }}-${{ hashFiles('xtask/**', 'crates/build-deps/**', 'Cargo.lock', 'Cargo.toml') }}
+
+    - name: Save cadmuscli cache
+      if: inputs.source == 'build' && inputs.mode == 'save'
+      id: save
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .cache/cadmuscli/cadmuscli
+        key: ${{ runner.os }}-cadmuscli-${{ inputs.rust-cachekey }}-${{ hashFiles('xtask/**', 'crates/build-deps/**', 'Cargo.lock', 'Cargo.toml') }}
+
+    - name: Build cadmuscli
+      if: >-
+        inputs.source == 'build' &&
+        steps.restore.outputs.cache-hit != 'true' &&
+        steps.save.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        cargo build -p xtask --release --locked
+        mkdir -p .cache/cadmuscli
+        cp -f target/release/cadmuscli .cache/cadmuscli/cadmuscli
+
+    - name: Download cadmuscli artifact
+      if: inputs.source == 'artifact'
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: .cache/cadmuscli
+
+    - name: Add cadmuscli to PATH
+      shell: bash
+      run: |
+        bin_dir="${{ github.workspace }}/.cache/cadmuscli"
+        if [ ! -f "$bin_dir/cadmuscli" ]; then
+          echo "cadmuscli binary not found at $bin_dir/cadmuscli" >&2
+          ls -la "$bin_dir" >&2 || true
+          exit 1
+        fi
+        chmod +x "$bin_dir/cadmuscli"
+        echo "$bin_dir" >> "$GITHUB_PATH"

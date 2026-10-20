@@ -49,17 +49,17 @@ cd "$ROOT"
 devenv shell -- env -u RUSTC_WRAPPER \
   GIT_DIR="$COLOCATED/.git" \
   GIT_WORK_TREE="$ROOT" \
-  cargo xtask setup --host
+  cadmuscli setup --host
 ```
 
-`cargo xtask setup --host` initializes the submodules into `$ROOT` and builds
+`cadmuscli setup --host` initializes the submodules into `$ROOT` and builds
 SQLite under `$ROOT/target/cadmus-build-deps/<host-triple>/sqlite/`. Reuse the
 same git env for later checks:
 
 ```bash
 cd "$ROOT"
 devenv shell -- env GIT_DIR="$COLOCATED/.git" GIT_WORK_TREE="$ROOT" \
-  cargo xtask test --features emulator
+  cadmuscli test --features emulator
 ```
 
 Scope `GIT_DIR`/`GIT_WORK_TREE` to the build commands; do not export them for
@@ -88,9 +88,9 @@ sccache, retry that command with `env -u RUSTC_WRAPPER` (shown above).
 
 ## Checklist (in `$ROOT`)
 
-1. `devenv shell -- cargo xtask docs --mdbook-only` if the EPUB is missing.
-2. `cargo xtask setup --host` with `GIT_DIR`/`GIT_WORK_TREE` (above).
-3. `devenv shell -- env GIT_DIR=… GIT_WORK_TREE=… cargo xtask test --features emulator`.
+1. `devenv shell -- cadmuscli docs --mdbook-only` if the EPUB is missing.
+2. `cadmuscli setup --host` with `GIT_DIR`/`GIT_WORK_TREE` (above).
+3. `devenv shell -- env GIT_DIR=… GIT_WORK_TREE=… cadmuscli test --features emulator`.
 
 A device feature (`emulator`) is required; see `build-cadmus-native` for the
 EPUB, feature, and daily-command details.

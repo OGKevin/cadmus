@@ -3,7 +3,7 @@ description: >
   Restore or save the assembled fonts/ directory. The cache key incorporates
   pinned release versions from download_fonts.rs and the gitlink SHAs of the
   Noto and Google font submodules so the key changes when any font source
-  moves. On cache miss, downloads fonts via cargo xtask download-fonts.
+  moves. On cache miss, downloads fonts via cadmuscli download-fonts.
 
   Defaults to restore-only. Pass `mode: save` in the cache-warmup job to
   write a fresh cache.
@@ -53,4 +53,4 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.gh-token }}
-      run: cargo xtask download-fonts
+      run: cadmuscli download-fonts

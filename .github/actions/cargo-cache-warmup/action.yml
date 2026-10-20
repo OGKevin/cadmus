@@ -16,10 +16,14 @@ runs:
   using: composite
   steps:
     - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
-      id: rust-toolchain
       with:
         targets: arm-unknown-linux-gnueabihf
         components: llvm-tools
+
+    - name: Install cadmuscli
+      uses: ./.github/actions/install-cadmuscli
+      with:
+        source: artifact
 
     - name: Install apt packages
       uses: ./.github/actions/apt
@@ -90,12 +94,12 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.gh-token }}
-      run: cargo xtask download-assets
+      run: cadmuscli download-assets
 
     - name: Build SQLite from source
       if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
-      run: cargo xtask setup
+      run: cadmuscli setup
 
     - name: Warmup build (native)
       if: steps.cache.outputs.cache-hit != 'true'

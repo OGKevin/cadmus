@@ -88,7 +88,7 @@ module (source copy and recipes).
 4. Document provenance in `build-scripts/<lib>/README.md` (or
    `README-kobo.md` / `README-cadmus.md`) and link from
    [Third-party libraries](index.md) when the page exists.
-5. Run `cargo xtask build-kobo` (or the relevant native build) before opening
+5. Run `cadmuscli build-kobo` (or the relevant native build) before opening
    a PR.
 
 ## Further reading

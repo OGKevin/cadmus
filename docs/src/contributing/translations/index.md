@@ -74,7 +74,7 @@ flowchart LR
 
 - [`docs/book.toml`](https://github.com/ogkevin/cadmus/blob/master/docs/book.toml)
   `[preprocessor.gettext]` substitutes translated strings during mdBook build.
-- `cargo xtask docs` builds one mdBook output per `docs/po/*.po` locale.
+- `cadmuscli docs` builds one mdBook output per `docs/po/*.po` locale.
 - [`docs/lang-picker.js`](https://github.com/ogkevin/cadmus/blob/master/docs/lang-picker.js)
   reads `website/public/_shared/locales.json` for the mdBook sidebar language
   dropdown.
@@ -89,7 +89,7 @@ flowchart LR
   scans `docs/po/*.po` (plus `en`) and writes
   [`website/i18n/locales.generated.ts`](https://github.com/ogkevin/cadmus/blob/master/website/i18n/locales.generated.ts)
   — the website locale list follows the mdBook translation set.
-- `cargo xtask docs` orchestrates the full website build: mdBook per locale →
+- `cadmuscli docs` orchestrates the full website build: mdBook per locale →
   `generate-locales.mjs` / `generate-version.mjs` → symlinks under
   `website/public/<locale>/guide/` → `next build` → static export at
   `website/out/<locale>/`.

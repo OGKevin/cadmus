@@ -475,7 +475,7 @@ in
     CC_arm_unknown_linux_gnueabihf = "arm-linux-gnueabihf-gcc";
     AR_arm_unknown_linux_gnueabihf = "arm-linux-gnueabihf-ar";
 
-    # Point libsqlite3-sys at the custom SQLite build (cargo xtask setup).
+    # Point libsqlite3-sys at the custom SQLite build (cadmuscli setup).
     # Absolute paths are required: build scripts run in the crate registry
     # directory, not the workspace root, so relative paths don't resolve.
     #
@@ -781,7 +781,7 @@ in
     # Build documentation EPUB (required for embedded assets)
     # Only rebuilds when docs files have changed (tracked via content hash)
     "docs:build" = {
-      exec = "cargo xtask docs --mdbook-only";
+      exec = "cadmuscli docs --mdbook-only";
       execIfModified = [
         "docs/**/*.md"
         "docs/book.toml"
@@ -792,7 +792,7 @@ in
 
     # Build for Kobo with cross-compilation
     "build:kobo" = {
-      exec = "cargo xtask build-kobo";
+      exec = "cadmuscli build-kobo";
       after = [ "docs:build" ];
     };
 
@@ -806,41 +806,62 @@ in
       before = [ "devenv:enterShell" ];
     };
 
+    # Release cadmuscli on PATH; rebuild when xtask sources change.
+    "cadmuscli:install" = {
+      exec = ''
+        cargo build -p xtask --release
+        target_dir="''${CARGO_TARGET_DIR:-$DEVENV_ROOT/target}"
+        mkdir -p "$DEVENV_STATE/bin"
+        ln -sfn "$target_dir/release/cadmuscli" "$DEVENV_STATE/bin/cadmuscli"
+        test -e "$DEVENV_STATE/bin/cadmuscli"
+      '';
+      execIfModified = [
+        "xtask/**"
+        "crates/build-deps/**"
+        "Cargo.lock"
+        "Cargo.toml"
+      ];
+      before = [
+        "devenv:enterShell"
+        "docs:build"
+      ];
+    };
+
   };
 
-  # Scripts are simple aliases that invoke xtask commands
+  # Scripts are simple aliases that invoke cadmuscli commands
   scripts = {
     # Build complete documentation website (mdBook + Cargo docs + Next.js)
     cadmus-docs-build.exec = ''
-      cargo xtask docs
+      cadmuscli docs
     '';
 
-    # Serve website locally (run cargo xtask docs --mdbook-only first to build mdBook)
+    # Serve website locally (run cadmuscli docs --mdbook-only first to build mdBook)
     cadmus-docs-serve.exec = ''
       echo "Starting website dev server..."
-      echo "Note: run 'cargo xtask docs --mdbook-only' first to build mdBook output."
+      echo "Note: run 'cadmuscli docs --mdbook-only' first to build mdBook output."
       echo ""
       cd website
       npm run dev
     '';
 
-    # Full static export via Workers (matches CI). Run cargo xtask docs first.
+    # Full static export via Workers (matches CI). Run cadmuscli docs first.
     cadmus-docs-preview.exec = ''
       echo "Starting wrangler dev for website/out (Workers Static Assets)..."
-      echo "Note: run 'cargo xtask docs' first so website/out exists."
+      echo "Note: run 'cadmuscli docs' first so website/out exists."
       echo ""
       wrangler dev
     '';
 
     # Build for Kobo device
     cadmus-build-kobo.exec = ''
-      cargo xtask build-kobo "$@"
-      cargo xtask dist
+      cadmuscli build-kobo "$@"
+      cadmuscli dist
     '';
 
     # Run clippy filtered to lines changed relative to master
     cadmus-clippy.exec = ''
-      cargo xtask clippy --github-report --diff-branch master "$@"
+      cadmuscli clippy --github-report --diff-branch master "$@"
     '';
 
     # Run emulator with OTEL instrumentation
@@ -868,7 +889,7 @@ in
 
       export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318"
       export PYROSCOPE_SERVER_URL="http://localhost:4040"
-      cargo xtask run-emulator --features telemetry,test
+      cadmuscli run-emulator --features telemetry,test
     '';
 
     # Extract translatable strings from documentation
@@ -886,7 +907,7 @@ in
       if [ $# -eq 0 ]; then
         set -- --features emulator
       fi
-      cargo xtask test --coverage "$@"
+      cadmuscli test --coverage "$@"
     '';
 
     # Project-wide HTML from last coverage run (no re-test)
@@ -931,7 +952,7 @@ in
     echo "  cadmus-docs-serve     - Serve website locally (http://localhost:3000)"
     echo "  cadmus-docs-preview   - wrangler dev for website/out (Workers, matches CI)"
     echo "  cargo test            - Run tests (after setup)"
-    echo "  cargo xtask run-emulator - Run the emulator (after setup)"
+    echo "  cadmuscli run-emulator - Run the emulator (after setup)"
     echo "  cadmus-translate      - Regenerate docs/po/messages.pot (translations on Crowdin)"
     echo ""
     echo "Coverage (diff base: $CADMUS_DEFAULT_BRANCH):"
@@ -939,23 +960,23 @@ in
     echo "  cadmus-coverage-show  - Project-wide HTML report (after test-coverage)"
     echo "  cadmus-coverage-diff  - Patch HTML vs origin/\$CADMUS_DEFAULT_BRANCH or [branch] arg"
     echo ""
-    echo "xtask commands (cargo xtask <cmd> --help for options):"
-    echo "  cargo xtask fmt           - Check formatting"
+    echo "cadmuscli commands (cadmuscli <cmd> --help for options):"
+    echo "  cadmuscli fmt             - Check formatting"
     echo "  cadmus-clippy             - Lint lines changed vs master (reviewdog)"
-    echo "  cargo xtask clippy        - Lint across feature matrix"
-    echo "  cargo xtask test          - Test across feature matrix"
-    echo "  cargo xtask docs          - Build documentation portal"
-    echo "  cargo xtask dist          - Assemble Kobo distribution"
-    echo "  cargo xtask bundle        - Package KoboRoot.tgz"
+    echo "  cadmuscli clippy          - Lint across feature matrix"
+    echo "  cadmuscli test            - Test across feature matrix"
+    echo "  cadmuscli docs            - Build documentation portal"
+    echo "  cadmuscli dist            - Assemble Kobo distribution"
+    echo "  cadmuscli bundle          - Package KoboRoot.tgz"
+    echo "  cargo xtask still works as a debug cargo run alias."
     echo ""
   ''
   + ''
-    # Add Linaro toolchain to PATH
-    export PATH="${linaroToolchain}/bin:$PATH"
+    export PATH="${config.env.DEVENV_STATE}/bin:${linaroToolchain}/bin:$PATH"
 
     echo "Cross-compilation:"
     echo "  cadmus-build-kobo         - Build for Kobo (cross-compile + dist)"
-    echo "  cargo xtask build-kobo    - Cross-compile Cadmus for Kobo"
+    echo "  cadmuscli build-kobo      - Cross-compile Cadmus for Kobo"
     echo "  Linaro toolchain: $(which arm-linux-gnueabihf-gcc 2>/dev/null || echo 'not found')"
     echo ""
   ''
@@ -978,8 +999,9 @@ in
   # https://devenv.sh/tests/
   enterTest = ''
     set -e
-    cargo xtask test --features emulator
-    cargo xtask test --features kobo
+    export PATH="${config.env.DEVENV_STATE}/bin:$PATH"
+    cadmuscli test --features emulator
+    cadmuscli test --features kobo
   '';
 
   treefmt = {

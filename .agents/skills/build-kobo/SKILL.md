@@ -3,17 +3,17 @@ name: build-kobo
 description: Cross-compile Cadmus for Kobo e-reader devices (ARM Linux). Use this when asked to build a Kobo release, cross-compile for ARM, or prepare a device binary.
 ---
 
-Use `cargo xtask build-kobo` to cross-compile Cadmus for Kobo devices.
+Use `cadmuscli build-kobo` to cross-compile Cadmus for Kobo devices.
 The Linaro ARM toolchain is supported on both Linux and macOS hosts.
 
 ## Basic usage
 
 ```sh
 # Cross-compile for Kobo
-cargo xtask build-kobo
+cadmuscli build-kobo
 
 # Build with specific Cargo feature flags
-cargo xtask build-kobo --features test
+cadmuscli build-kobo --features test
 ```
 
 ## What it does

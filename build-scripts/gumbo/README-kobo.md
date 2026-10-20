@@ -18,7 +18,7 @@ Outputs:
 | SONAME         | `libgumbo.so.4`                       |
 | Public headers | `src/gumbo.h`, `src/tag_enum.h`       |
 
-Google 0.10.1 used SONAME `libgumbo.so.1`. `cargo xtask dist` copies the
+Google 0.10.1 used SONAME `libgumbo.so.1`. `cadmuscli dist` copies the
 SONAME filename into `dist/libs/`. MuPDF must be rebuilt against this tree so
 `libmupdf.so` `DT_NEEDED`s `libgumbo.so.4`. A `libgumbo.so.1` compatibility
 symlink is not valid: 0.14.0 is an ABI break.

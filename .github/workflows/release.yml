@@ -121,6 +121,13 @@ jobs:
         with:
           targets: arm-unknown-linux-gnueabihf
 
+      - name: Install cadmuscli
+        uses: ./.github/actions/install-cadmuscli
+        with:
+          source: build
+          rust-cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
+          mode: save
+
       - uses: ./.github/actions/cargo-cache
         with:
           cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}

@@ -17,7 +17,7 @@ at `/{locale}/guide/` (see [Website](index.md)).
 ## Building locally
 
 ```bash
-cargo xtask docs --mdbook-only   # English + translated books → docs/book/
+cadmuscli docs --mdbook-only   # English + translated books → docs/book/
 ```
 
 English HTML output: `docs/book/html/`. Translated locales: `docs/book/{locale}/html/`.
@@ -25,7 +25,7 @@ English HTML output: `docs/book/html/`. Translated locales: `docs/book/{locale}/
 `--mdbook-only` skips the website build. It is also used by the `docs:build` devenv task to
 produce the EPUB embedded in `cadmus-core`.
 
-To preview the guide inside the full site, run `cargo xtask docs` and see [Website](index.md).
+To preview the guide inside the full site, run `cadmuscli docs` and see [Website](index.md).
 
 ## Editing user-facing pages
 

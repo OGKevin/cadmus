@@ -17,13 +17,13 @@ You can run the same filter locally before pushing.
 ## Prerequisites
 
 - `reviewdog` on `PATH` (provided by the devenv shell)
-- Documentation EPUB already built (`cargo xtask docs --mdbook-only`)
-- Native dependencies already built (`cargo xtask setup --host`)
+- Documentation EPUB already built (`cadmuscli docs --mdbook-only`)
+- Native dependencies already built (`cadmuscli setup --host`)
 
 ## Run clippy filtered to your diff
 
 ```bash
-cargo xtask clippy --features emulator --github-report --diff-branch master
+cadmuscli clippy --features emulator --github-report --diff-branch master
 ```
 
 This:
@@ -37,7 +37,7 @@ This:
 `cadmus-core` requires a device feature (`emulator`, `kobo`, or `deviceless`)
 to compile — `default` is empty and `--features default` fails. For native
 host linting use `emulator` (it matches what `run-emulator` builds). The full
-feature matrix is large and slow; run it only in CI. Use `cargo xtask ci
+feature matrix is large and slow; run it only in CI. Use `cadmuscli ci
 matrix` to see all available labels if you need a specific one.
 
 ### Check all feature combinations you touched
@@ -47,8 +47,8 @@ If your changes span multiple feature sets (e.g. you added `#[cfg(feature =
 combination must include a device feature:
 
 ```bash
-cargo xtask clippy --features emulator --github-report --diff-branch master
-cargo xtask clippy --features "emulator + profiling + test + tracing" --github-report --diff-branch master
+cadmuscli clippy --features emulator --github-report --diff-branch master
+cadmuscli clippy --features "emulator + profiling + test + tracing" --github-report --diff-branch master
 ```
 
 > [!NOTE]
@@ -76,12 +76,12 @@ reviewdog \
 
 ## Common use cases
 
-| Goal                                                   | Command                                                                                                      |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
-| Check emulator-feature changes before pushing          | `cargo xtask clippy --features emulator --github-report --diff-branch master`                                |
-| Check telemetry-related changes                        | `cargo xtask clippy --features "emulator + profiling + test + tracing" --github-report --diff-branch master` |
-| See raw (unfiltered) clippy output for one feature set | `cargo xtask clippy --features emulator`                                                                     |
-| Run the full matrix (slow — CI only)                   | `cargo xtask clippy --github-report --diff-branch master` (omits `--features`)                               |
+| Goal                                                   | Command                                                                                                    |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| Check emulator-feature changes before pushing          | `cadmuscli clippy --features emulator --github-report --diff-branch master`                                |
+| Check telemetry-related changes                        | `cadmuscli clippy --features "emulator + profiling + test + tracing" --github-report --diff-branch master` |
+| See raw (unfiltered) clippy output for one feature set | `cadmuscli clippy --features emulator`                                                                     |
+| Run the full matrix (slow — CI only)                   | `cadmuscli clippy --github-report --diff-branch master` (omits `--features`)                               |
 
 ## Fixing warnings
 

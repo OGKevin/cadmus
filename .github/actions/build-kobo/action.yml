@@ -71,11 +71,11 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.gh-token }}
-      run: cargo xtask download-assets
+      run: cadmuscli download-assets
 
     - name: Setup project
       shell: bash
-      run: cargo xtask setup
+      run: cadmuscli setup
 
     - name: Build for Kobo
       shell: bash
@@ -90,18 +90,18 @@ runs:
           FEATURES=test
         fi
         if [ -n "$FEATURES" ]; then
-          cargo xtask build-kobo --features "$FEATURES"
+          cadmuscli build-kobo --features "$FEATURES"
         else
-          cargo xtask build-kobo
+          cadmuscli build-kobo
         fi
 
     - name: Create distribution
       shell: bash
       run: |
         if [ "${{ inputs.test }}" = "true" ]; then
-          cargo xtask dist --test
+          cadmuscli dist --test
         else
-          cargo xtask dist
+          cadmuscli dist
         fi
 
     - name: Build release artifacts
@@ -114,19 +114,19 @@ runs:
           tar czf ../release-artifacts/cadmus-kobo-test.tar.gz .
           cd ..
 
-          cargo xtask bundle --no-nickel --test
+          cadmuscli bundle --no-nickel --test
           cp bundle/KoboRoot-test.tgz release-artifacts/KoboRoot-test.tgz
 
-          cargo xtask bundle --test
+          cadmuscli bundle --test
           cp bundle/KoboRoot-nm-test.tgz release-artifacts/KoboRoot-nm-test.tgz
         else
           cd dist
           tar czf ../release-artifacts/cadmus-kobo.tar.gz .
           cd ..
 
-          cargo xtask bundle --no-nickel
+          cadmuscli bundle --no-nickel
           cp bundle/KoboRoot.tgz release-artifacts/KoboRoot.tgz
 
-          cargo xtask bundle
+          cadmuscli bundle
           cp bundle/KoboRoot-nm.tgz release-artifacts/KoboRoot-nm.tgz
         fi

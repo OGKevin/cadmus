@@ -55,7 +55,7 @@ cargo fmt
 Clippy runs with `-D warnings` — all warnings are errors:
 
 ```bash
-cargo xtask clippy
+cadmuscli clippy
 ```
 
 Clippy runs across every feature flag combination in CI. When adding a new

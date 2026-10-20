@@ -3,16 +3,16 @@ name: docs
 description: Build the full Cadmus documentation website (mdBook + cargo doc + Storybook + Next.js). Use this when asked to build, preview, or update the documentation site.
 ---
 
-Always use `cargo xtask docs` to build documentation in this project.
+Always use `cadmuscli docs` to build documentation in this project.
 
 ## Basic usage
 
 ```sh
 # Build the complete documentation website
-cargo xtask docs
+cadmuscli docs
 
 # Build only the mdBook output (skips website build — faster for local preview)
-cargo xtask docs --mdbook-only
+cadmuscli docs --mdbook-only
 ```
 
 ## Output

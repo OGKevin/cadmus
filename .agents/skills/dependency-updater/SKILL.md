@@ -41,7 +41,7 @@ Confirm you are on the PR branch, then:
 
 ```bash
 cargo update
-cargo xtask test --features emulator
+cadmuscli test --features emulator
 ```
 
 If `cargo update` fails with version constraints, note which packages conflict
@@ -76,7 +76,7 @@ required by package `rand_xoshiro v0.7.0`
 After constraints resolve, build/test to surface API changes:
 
 ```bash
-cargo xtask test --features emulator
+cadmuscli test --features emulator
 ```
 
 To understand new APIs:

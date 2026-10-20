@@ -26,7 +26,7 @@ Use `CADMUS_HOME=/home/ubuntu` in the image so root-driven snapshot builds find 
 
 Defined in `/etc/profile.d/cadmus-cloud-env.sh` (managed by cloud-install). Non-login interactive shells load it via the managed bashrc snippet; if `SQLITE3_INCLUDE_DIR` is empty, run `source /etc/profile.d/cadmus-cloud-env.sh` (or open a login shell).
 
-Before emulator smoke tests, confirm the vars are set (especially `SQLITE3_INCLUDE_DIR` and `DISPLAY=:1`), then run `DISPLAY=:1 cargo xtask run-emulator` from the repo root.
+Before emulator smoke tests, confirm the vars are set (especially `SQLITE3_INCLUDE_DIR` and `DISPLAY=:1`), then run `DISPLAY=:1 cadmuscli run-emulator` from the repo root.
 
 Exports include:
 
@@ -38,7 +38,7 @@ Exports include:
 
 ## Smoke bring-up
 
-Cloud Agent terminals often run as **root** with a non-login interactive shell. If builds fail looking for custom SQLite headers, check `SQLITE3_INCLUDE_DIR`; when empty, `source /etc/profile.d/cadmus-cloud-env.sh`. Verify env before starting the emulator (`DISPLAY=:1 cargo xtask run-emulator`).
+Cloud Agent terminals often run as **root** with a non-login interactive shell. If builds fail looking for custom SQLite headers, check `SQLITE3_INCLUDE_DIR`; when empty, `source /etc/profile.d/cadmus-cloud-env.sh`. Verify env before starting the emulator (`DISPLAY=:1 cadmuscli run-emulator`).
 
 ## Renovate pins
 
@@ -55,14 +55,14 @@ Do not Renovate-track: apt lists, floating rustup stable, Linaro 4.9.4 tarball U
 
 If a fresh snapshot fails to compile, see the relevant skill:
 
-- Custom SQLite: `cargo xtask setup --host` (cloud-install runs this; rerun manually if needed)
-- EPUB: `build-cadmus-native` skill (`cargo xtask docs --mdbook-only`)
-- Plato assets: `cargo xtask download-assets` if `bin/`, `resources/`, or `hyphenation-patterns/` are missing (cloud-install fetches these on first boot)
-- Fonts: `cargo xtask download-fonts` (cloud-install runs this; rerun manually if `fonts/` is incomplete)
+- Custom SQLite: `cadmuscli setup --host` (cloud-install runs this; rerun manually if needed)
+- EPUB: `build-cadmus-native` skill (`cadmuscli docs --mdbook-only`)
+- Plato assets: `cadmuscli download-assets` if `bin/`, `resources/`, or `hyphenation-patterns/` are missing (cloud-install fetches these on first boot)
+- Fonts: `cadmuscli download-fonts` (cloud-install runs this; rerun manually if `fonts/` is incomplete)
 
 ## Emulator
 
-X server on `DISPLAY=:1`. `cargo xtask run-emulator` builds the EPUB if missing,
+X server on `DISPLAY=:1`. `cadmuscli run-emulator` builds the EPUB if missing,
 then launches the emulator — prefix with `DISPLAY=:1` from the workspace root.
 See the `build-cadmus-native` skill for details.
 

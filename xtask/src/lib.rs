@@ -7,11 +7,11 @@
 //! ## Usage
 //!
 //! ```text
-//! cargo xtask <COMMAND> [OPTIONS]
+//! cadmuscli <COMMAND> [OPTIONS]
 //! ```
 //!
-//! The `xtask` alias is configured in `.cargo/config.toml` so that
-//! `cargo xtask` works from any directory inside the workspace.
+//! `cargo xtask` still works via the cargo alias in `.cargo/config.toml`
+//! (a debug `cargo run` of this package).
 //!
 //! ## Commands
 //!
@@ -54,9 +54,9 @@ pub use tasks::{
 
 /// Cadmus build automation.
 ///
-/// Run `cargo xtask <COMMAND> --help` for per-command options.
+/// Run `cadmuscli <COMMAND> --help` for per-command options.
 #[derive(Debug, Parser)]
-#[command(name = "xtask", about = "Cadmus build automation")]
+#[command(name = "cadmuscli", about = "Cadmus build automation")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,

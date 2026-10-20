@@ -61,7 +61,7 @@ runs:
     - name: Install doc tools
       shell: bash
       run: |
-        cargo xtask ci install-doc-tools \
+        cadmuscli ci install-doc-tools \
           --mdbook-version "$MDBOOK_VERSION" \
           --mdbook-epub-rev "$MDBOOK_EPUB_REV" \
           --mdbook-mermaid-version "$MDBOOK_MERMAID_VERSION" \

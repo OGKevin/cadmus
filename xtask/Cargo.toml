@@ -9,7 +9,7 @@ name = "xtask_lib"
 path = "src/lib.rs"
 
 [[bin]]
-name = "xtask"
+name = "cadmuscli"
 path = "src/main.rs"
 
 [dependencies]

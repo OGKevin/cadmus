@@ -78,7 +78,7 @@ HTML anchors — not relative markdown links:
 Do **not** use relative paths such as
 `[Settings](../../api/cadmus_core/settings/struct.Settings.html)`. rumdl rule
 MD057 validates relative links against the filesystem and will fail in CI and
-`treefmt` because `docs/api/` does not exist until after `cargo xtask docs`.
+`treefmt` because `docs/api/` does not exist until after `cadmuscli docs`.
 
 Absolute `/api/...` paths are site routes; rumdl skips them by default. Inline
 HTML is allowed — MD033 is disabled globally in `.rumdl.toml`.

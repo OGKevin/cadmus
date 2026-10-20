@@ -4,7 +4,7 @@
 
 Cadmus ships a unified static site that combines the Next.js landing page, translated mdBook
 user guide, Rust API docs, and Storybook component gallery. The site is built by
-`cargo xtask docs` and written to `website/out/`.
+`cadmuscli docs` and written to `website/out/`.
 
 For editing the mdBook user guide itself, see [User guide](user-guide.md).
 
@@ -39,14 +39,14 @@ to preserve the reader's locale.
 
 ```bash
 devenv shell
-cargo xtask docs        # full static site → website/out/
+cadmuscli docs        # full static site → website/out/
 cadmus-docs-serve       # Next.js dev server → http://localhost:3000
 ```
 
 **Full-site preview** (matches CI):
 
 ```bash
-cargo xtask docs
+cadmuscli docs
 wrangler dev              # Workers Static Assets, same as production
 # or: cadmus-docs-preview
 ```
@@ -55,7 +55,7 @@ wrangler dev              # Workers Static Assets, same as production
 
 - Website UI: `cd website && npm run dev`
 - Storybook: `cd website && npm run storybook` (port 6006)
-- `cadmus-docs-serve` reminds you to run `cargo xtask docs --mdbook-only` first if guide
+- `cadmus-docs-serve` reminds you to run `cadmuscli docs --mdbook-only` first if guide
   content is missing
 
 Prerequisites: devenv provides `mdbook`, `mdbook-mermaid`, and `npm`; the `website:install`
@@ -104,7 +104,7 @@ See [Translations](../translations/index.md) for the Crowdin workflow and
 
 ## Build pipeline
 
-`cargo xtask docs` (see [`xtask/src/tasks/docs.rs`](https://github.com/ogkevin/cadmus/blob/master/xtask/src/tasks/docs.rs))
+`cadmuscli docs` (see [`xtask/src/tasks/docs.rs`](https://github.com/ogkevin/cadmus/blob/master/xtask/src/tasks/docs.rs))
 runs:
 
 1. Install mdbook-mermaid assets
@@ -128,7 +128,7 @@ builds and deploys the site:
 
 - Triggers on changes to `docs/**`, `website/**`, `crates/**/*.rs`, the doc-tools action,
   `wrangler.toml`, and the workflow file
-- `cargo xtask docs` → artifact `website/out`
+- `cadmuscli docs` → artifact `website/out`
 - Production: `wrangler deploy` (Workers Static Assets from `wrangler.toml`,
   with Workers Logs and traces enabled)
 - PR previews: `wrangler versions upload --preview-alias pr-{NUMBER}` when the

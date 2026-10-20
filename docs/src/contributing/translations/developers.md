@@ -108,7 +108,7 @@ continuation level:
 ## Previewing translated docs locally
 
 ```bash
-cargo xtask docs
+cadmuscli docs
 cadmus-docs-serve
 ```
 

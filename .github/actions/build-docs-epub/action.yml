@@ -2,7 +2,8 @@ name: Build documentation EPUB
 description: >
   Install all doc tooling and build the mdBook EPUB, then upload it
   as a workflow artifact. Callers must have already checked out the
-  repository and set up a Rust toolchain.
+  repository, put cadmuscli on PATH, and set up a Rust toolchain
+  (install-doc-tools may cargo-install mdbook tools on a cache miss).
 
 inputs:
   node-version:
@@ -33,7 +34,7 @@ runs:
 
     - name: Build documentation EPUB
       shell: bash
-      run: cargo xtask docs --mdbook-only
+      run: cadmuscli docs --mdbook-only
       env:
         RUSTDOCFLAGS: "-D warnings"
 

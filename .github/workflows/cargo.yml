@@ -25,6 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       cargo: ${{ steps.filter.outputs.cargo }}
+      docs-epub: ${{ steps.filter.outputs.docs-epub }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -46,13 +47,47 @@ jobs:
               - '.github/actions/cargo-cache-warmup/**'
               - '.github/actions/cache-fonts/**'
               - '.github/actions/install-doc-tools/**'
+              - '.github/actions/install-cadmuscli/**'
               - 'build-scripts/**'
               - '.gitmodules'
               - 'mupdf_wrapper/**'
               - 'thirdparty/**'
+            docs-epub:
+              - 'docs/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.github/actions/build-docs-epub/**'
+              - '.github/actions/install-doc-tools/**'
+              - '.github/actions/install-cadmuscli/**'
+
+  build-cadmuscli:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.cargo == 'true' || needs.changes.outputs.docs-epub == 'true'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        id: rust-toolchain
+      - name: Install cadmuscli
+        uses: ./.github/actions/install-cadmuscli
+        with:
+          source: build
+          rust-cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
+          mode: ${{ github.event_name == 'pull_request' && 'restore' || 'save' }}
+      - name: Upload cadmuscli
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: cadmuscli
+          path: .cache/cadmuscli/cadmuscli
+          if-no-files-found: error
+          retention-days: 1
 
   format:
-    needs: changes
+    needs: [changes, build-cadmuscli]
     if: github.event_name != 'pull_request' || needs.changes.outputs.cargo == 'true'
     permissions:
       contents: read
@@ -65,10 +100,6 @@ jobs:
         id: rust-toolchain
         with:
           components: rustfmt
-      - name: Restore shared cargo cache
-        uses: ./.github/actions/cargo-cache
-        with:
-          cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
       - &set-build-metadata
         name: Set build metadata
         run: |
@@ -77,11 +108,15 @@ jobs:
             echo "PR_HEAD_SHA=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_ENV"
           fi
           echo "GIT_VERSION=$(git describe --tags --dirty --always)" >> "$GITHUB_ENV"
+      - name: Install cadmuscli
+        uses: ./.github/actions/install-cadmuscli
+        with:
+          source: artifact
       - name: Check formatting
-        run: cargo xtask fmt
+        run: cadmuscli fmt
 
   generate-matrix:
-    needs: changes
+    needs: [changes, build-cadmuscli]
     if: github.event_name != 'pull_request' || needs.changes.outputs.cargo == 'true'
     permissions:
       contents: read
@@ -93,19 +128,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
-        id: rust-toolchain
-      - name: Restore shared cargo cache
-        uses: ./.github/actions/cargo-cache
+      - name: Install cadmuscli
+        uses: ./.github/actions/install-cadmuscli
         with:
-          cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
+          source: artifact
       - name: Generate feature matrix
         id: matrix
-        run: cargo xtask ci matrix
+        run: cadmuscli ci matrix
 
   build-docs-epub:
-    needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.cargo == 'true'
+    needs: [changes, build-cadmuscli]
+    if: github.event_name != 'pull_request' || needs.changes.outputs.cargo == 'true' || needs.changes.outputs.docs-epub == 'true'
     permissions:
       contents: read
     runs-on: ubuntu-latest
@@ -115,17 +148,17 @@ jobs:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         id: rust-toolchain
-      - name: Restore shared cargo cache
-        uses: ./.github/actions/cargo-cache
+      - name: Install cadmuscli
+        uses: ./.github/actions/install-cadmuscli
         with:
-          cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
+          source: artifact
       - name: Build documentation EPUB
         uses: ./.github/actions/build-docs-epub
         with:
           node-version: ${{ env.NODE_VERSION }}
 
   cache-warmup:
-    needs: [changes, build-docs-epub]
+    needs: [changes, build-docs-epub, build-cadmuscli]
     if: github.event_name != 'pull_request' || needs.changes.outputs.cargo == 'true'
     permissions:
       contents: read
@@ -154,7 +187,8 @@ jobs:
 
   clippy:
     if: github.event_name == 'pull_request' && needs.changes.outputs.cargo == 'true'
-    needs: [changes, generate-matrix, build-docs-epub, cache-warmup]
+    needs:
+      [changes, generate-matrix, build-docs-epub, cache-warmup, build-cadmuscli]
     permissions:
       contents: read
 
@@ -175,6 +209,10 @@ jobs:
         with:
           components: clippy
       - *set-build-metadata
+      - name: Install cadmuscli
+        uses: ./.github/actions/install-cadmuscli
+        with:
+          source: artifact
       - name: Restore shared cargo cache
         uses: ./.github/actions/cargo-cache
         with:
@@ -194,7 +232,7 @@ jobs:
         run: |
           slug="${{ matrix.features }}"
           slug="${slug:-default}"
-          cargo xtask clippy --features "${{ matrix.label }}" --save-json "clippy-json/${slug}.json"
+          cadmuscli clippy --features "${{ matrix.label }}" --save-json "clippy-json/${slug}.json"
 
       - name: Upload clippy JSON artifact
         if: github.event_name == 'pull_request'
@@ -206,7 +244,7 @@ jobs:
 
   clippy-report:
     if: github.event_name == 'pull_request' && needs.changes.outputs.cargo == 'true'
-    needs: [changes, clippy]
+    needs: [changes, clippy, build-cadmuscli]
 
     permissions:
       contents: read
@@ -218,15 +256,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
-        id: rust-toolchain
+      - name: Install cadmuscli
+        uses: ./.github/actions/install-cadmuscli
         with:
-          components: clippy
-      - *set-build-metadata
-      - name: Restore shared cargo cache
-        uses: ./.github/actions/cargo-cache
-        with:
-          cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
+          source: artifact
       - name: Download all clippy JSON artifacts
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
@@ -236,7 +269,7 @@ jobs:
 
       - name: Coalesce clippy diagnostics for reviewdog
         run: |
-          cargo xtask ci clippy-report \
+          cadmuscli ci clippy-report \
             --artifacts-dir clippy-json \
             --output clippy-reviewdog-input/diagnostics.txt
 
@@ -248,7 +281,8 @@ jobs:
           retention-days: 1
 
   test:
-    needs: [changes, generate-matrix, build-docs-epub, cache-warmup]
+    needs:
+      [changes, generate-matrix, build-docs-epub, cache-warmup, build-cadmuscli]
     if: github.event_name != 'pull_request' || needs.changes.outputs.cargo == 'true'
     permissions:
       contents: read
@@ -274,6 +308,10 @@ jobs:
         with:
           components: llvm-tools
       - *set-build-metadata
+      - name: Install cadmuscli
+        uses: ./.github/actions/install-cadmuscli
+        with:
+          source: artifact
       - name: Download documentation EPUB
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
@@ -329,7 +367,7 @@ jobs:
           slug="${{ matrix.label }}"
           slug="${slug// + /-}"
           echo "slug=$slug" >> "$GITHUB_OUTPUT"
-          cargo xtask test \
+          cadmuscli test \
             --features "${{ matrix.label }}" \
             --coverage \
             --save-coverage "coverage-json/${slug}.json" \
@@ -409,7 +447,7 @@ jobs:
           fail_ci_if_error: false
 
   build-kobo:
-    needs: [changes, cache-warmup, build-docs-epub]
+    needs: [changes, cache-warmup, build-docs-epub, build-cadmuscli]
     if: github.event_name != 'pull_request' || needs.changes.outputs.cargo == 'true'
     runs-on: ubuntu-26.04
 
@@ -431,6 +469,11 @@ jobs:
         id: rust-toolchain
         with:
           targets: arm-unknown-linux-gnueabihf
+
+      - name: Install cadmuscli
+        uses: ./.github/actions/install-cadmuscli
+        with:
+          source: artifact
 
       - name: Restore shared cargo cache
         uses: ./.github/actions/cargo-cache
@@ -500,7 +543,7 @@ jobs:
           retention-days: 7
 
   build-kobo-test:
-    needs: [changes, cache-warmup, build-docs-epub]
+    needs: [changes, cache-warmup, build-docs-epub, build-cadmuscli]
     if: github.event_name != 'pull_request' || needs.changes.outputs.cargo == 'true'
     runs-on: ubuntu-26.04
 
@@ -519,6 +562,11 @@ jobs:
         id: rust-toolchain
         with:
           targets: arm-unknown-linux-gnueabihf
+
+      - name: Install cadmuscli
+        uses: ./.github/actions/install-cadmuscli
+        with:
+          source: artifact
 
       - name: Restore shared cargo cache
         uses: ./.github/actions/cargo-cache
@@ -567,7 +615,7 @@ jobs:
           retention-days: 7
 
   build-kobo-test-tracing:
-    needs: [changes, cache-warmup, build-docs-epub]
+    needs: [changes, cache-warmup, build-docs-epub, build-cadmuscli]
     if: github.event_name != 'pull_request' || needs.changes.outputs.cargo == 'true'
     runs-on: ubuntu-26.04
 
@@ -586,6 +634,11 @@ jobs:
         id: rust-toolchain
         with:
           targets: arm-unknown-linux-gnueabihf
+
+      - name: Install cadmuscli
+        uses: ./.github/actions/install-cadmuscli
+        with:
+          source: artifact
 
       - name: Restore shared cargo cache
         uses: ./.github/actions/cargo-cache
@@ -639,6 +692,7 @@ jobs:
     permissions: {}
     needs:
       - changes
+      - build-cadmuscli
       - format
       - generate-matrix
       - build-docs-epub
