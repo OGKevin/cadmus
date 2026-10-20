@@ -238,10 +238,19 @@ impl TaskManager {
 
     /// Closes the word-index pool so USB storage can take the data directory.
     ///
+    /// Stops the indexer first so it does not keep using the pool after close.
     /// USB unshare restarts the process, or reboots when `KoboRoot.tgz` is
     /// present. The next startup opens `dictionary.sqlite` again.
     #[cfg(feature = "kobo")]
-    pub(crate) async fn close_dictionary_index(&self) {
+    pub(crate) async fn close_dictionary_index(&mut self) {
+        if let Err(error) = self.stop(&TaskId::DictionaryIndex).await
+            && !matches!(error, TaskError::NotRunning(TaskId::DictionaryIndex))
+        {
+            tracing::warn!(
+                error = %error,
+                "failed to stop dictionary_index before closing pool"
+            );
+        }
         if let Some(pool) = &self.dictionary_pool {
             pool.close().await;
         }
@@ -953,6 +962,21 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "kobo")]
+    struct DictionaryIndexWait;
+
+    #[cfg(feature = "kobo")]
+    #[async_trait::async_trait]
+    impl BackgroundTask for DictionaryIndexWait {
+        fn id(&self) -> TaskId {
+            TaskId::DictionaryIndex
+        }
+
+        async fn run(&mut self, _hub: &crate::view::Hub, cancel: &CancellationToken) {
+            sleep_unless_cancelled(cancel, Duration::from_secs(60)).await;
+        }
+    }
+
     struct IgnoresCancelTask {
         finished: std::sync::Arc<std::sync::atomic::AtomicBool>,
     }
@@ -1516,5 +1540,34 @@ mod tests {
             thumbnail_was_scheduled(&mut manager, &hub, &mut rx, &context).await,
             "completed import must schedule thumbnail extraction"
         );
+    }
+
+    #[cfg(feature = "kobo")]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn close_dictionary_index_stops_task_before_closing_pool() {
+        let mut manager = TaskManager::new();
+        let (hub, _rx) = crate::view::hub_channel();
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        manager.dictionary_pool = Some(pool.clone());
+        manager.start(Box::new(DictionaryIndexWait), hub).unwrap();
+        assert!(manager.is_running(&TaskId::DictionaryIndex));
+
+        manager.close_dictionary_index().await;
+
+        assert!(!manager.is_running(&TaskId::DictionaryIndex));
+        assert!(pool.is_closed());
+    }
+
+    #[cfg(feature = "kobo")]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn close_dictionary_index_closes_pool_when_indexer_is_idle() {
+        let mut manager = TaskManager::new();
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        manager.dictionary_pool = Some(pool.clone());
+
+        manager.close_dictionary_index().await;
+
+        assert!(!manager.is_running(&TaskId::DictionaryIndex));
+        assert!(pool.is_closed());
     }
 }

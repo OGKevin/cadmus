@@ -127,6 +127,13 @@ struct TempDir {
 impl TempDir {
     fn create() -> Result<Self> {
         let path = std::env::temp_dir().join(format!("cadmus-sqlx-prepare-{}", std::process::id()));
+        match std::fs::remove_dir_all(&path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(error).with_context(|| format!("remove {}", path.display()));
+            }
+        }
         std::fs::create_dir_all(&path).with_context(|| format!("create {}", path.display()))?;
         Ok(Self { path })
     }
@@ -159,5 +166,15 @@ mod tests {
                 .iter()
                 .any(|path| path.ends_with("001_dictionary_index.sql"))
         );
+    }
+
+    #[test]
+    fn temp_dir_replaces_leftover_contents() {
+        let path = std::env::temp_dir().join(format!("cadmus-sqlx-prepare-{}", std::process::id()));
+        std::fs::create_dir_all(&path).expect("leftover dir");
+        std::fs::write(path.join("stale"), b"x").expect("leftover file");
+        let scratch = TempDir::create().expect("scratch");
+        assert!(scratch.path.is_dir());
+        assert!(!scratch.path.join("stale").exists());
     }
 }

@@ -37,7 +37,7 @@ async fn prepare_usb_share(
     bus: &mut Bus,
     hub: &crate::view::Hub,
     rq: &mut RenderQueue,
-    background_tasks: Option<&crate::task::TaskManager>,
+    background_tasks: Option<&mut crate::task::TaskManager>,
 ) {
     tasks.clear();
     view.handle_event(&Event::Back, hub, bus, rq, context).await;
@@ -253,7 +253,7 @@ async fn handle_prepare_share(
         bus,
         hub,
         rq,
-        runtime.background_tasks.as_deref(),
+        runtime.background_tasks.as_deref_mut(),
     )
     .await;
 
