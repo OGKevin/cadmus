@@ -7,6 +7,10 @@ thumbnails, and table-of-contents data in SQLite. This page explains where each
 category of library data belongs and how scans move data from disk into the
 database.
 
+Installed-dictionary metadata lives here too. The rebuildable word index lives
+in `dictionary.sqlite` beside the library file; see
+[SQLite & SQLx](sqlite-sqlx.md).
+
 ## Core Shape
 
 The library database separates four concerns:
@@ -98,6 +102,8 @@ Use these rules when adding or reviewing library database changes:
 | Generated cover image                   | `thumbnails`                                         |
 | Nested table of contents                | `toc_entries`, using parent references and positions |
 | Migration bookkeeping                   | Migration tables managed by the migration runner     |
+| Installed dictionary metadata           | Library tables in `cadmus.sqlite`                    |
+| Dictionary word index                   | `dictionary.sqlite`, not this database               |
 
 If data describes a file's current location, put it in library membership. If it
 describes the book identified by its fingerprint, put it in canonical book data

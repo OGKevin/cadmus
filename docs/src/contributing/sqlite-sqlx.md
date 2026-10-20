@@ -7,6 +7,20 @@ Cadmus uses [SQLite](https://sqlite.org) as its embedded database and
 SQLx provides **compile-time SQL verification** — every query is checked against
 the real schema before the code ships.
 
+## Runtime databases
+
+Cadmus opens two SQLite files beside each other:
+
+- `cadmus.sqlite` — library data, installed-dictionary metadata, integrity
+  checks, backups, and the library migrator.
+- `dictionary.sqlite` — the rebuildable word index only. Library integrity
+  checks and backups do not read this file. If connect or migrate fails, the
+  file and its `-wal`/`-shm` companions are deleted and opened again so the
+  index task can rebuild it.
+
+Installed-dictionary rows stay in the library database. The word index lives
+in `crates/core/dictionary/migrations/`.
+
 ## The `.sqlx` directory
 
 The `.sqlx/` directory at the repository root contains one JSON metadata file
@@ -47,7 +61,7 @@ startup and migrates that file on its own.
 `.sqlx/` because `SQLX_OFFLINE=true`.
 
 > [!IMPORTANT]
-> If you forget to run `cargo sqlx prepare`, the CI `check` job will fail
+> If you forget to run `cargo xtask sqlx-prepare`, the CI `check` job will fail
 > because the cached metadata will be out of date with your query changes.
 
 ## Compile-time SQL checking

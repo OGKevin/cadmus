@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-10-20T10:55:03+02:00\n"
+"POT-Creation-Date: 2026-09-20T19:00:13+02:00\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -131,138 +131,110 @@ msgid "Development Environment"
 msgstr ""
 
 #: src/SUMMARY.md:38
-msgid "Third-party libraries"
-msgstr ""
-
-#: src/SUMMARY.md:39
-msgid "Patch tiers"
-msgstr ""
-
-#: src/SUMMARY.md:40
-msgid "MuPDF"
-msgstr ""
-
-#: src/SUMMARY.md:41
-msgid "HarfBuzz"
-msgstr ""
-
-#: src/SUMMARY.md:42
-msgid "Gumbo"
-msgstr ""
-
-#: src/SUMMARY.md:43
-msgid "DjVuLibre"
-msgstr ""
-
-#: src/SUMMARY.md:44
-msgid "SQLite"
-msgstr ""
-
-#: src/SUMMARY.md:45
 msgid "SSH"
 msgstr ""
 
-#: src/SUMMARY.md:46
+#: src/SUMMARY.md:39
 msgid "Code Style and Linting"
 msgstr ""
 
-#: src/SUMMARY.md:47
+#: src/SUMMARY.md:40
 msgid "Event System"
 msgstr ""
 
-#: src/SUMMARY.md:48
+#: src/SUMMARY.md:41
 msgid "WiFi Leases"
 msgstr ""
 
-#: src/SUMMARY.md:49
+#: src/SUMMARY.md:42
 msgid "Device"
 msgstr ""
 
-#: src/SUMMARY.md:50
+#: src/SUMMARY.md:43
 msgid "Time and RTC"
 msgstr ""
 
-#: src/SUMMARY.md:51
+#: src/SUMMARY.md:44
 msgid "Suspend"
 msgstr ""
 
-#: src/SUMMARY.md:52
+#: src/SUMMARY.md:45
 msgid "Suspend orchestrator"
 msgstr ""
 
-#: src/SUMMARY.md:53
+#: src/SUMMARY.md:46
 msgid "Soft suspend"
 msgstr ""
 
-#: src/SUMMARY.md:54
+#: src/SUMMARY.md:47
 msgid "Inhibitor"
 msgstr ""
 
-#: src/SUMMARY.md:55
+#: src/SUMMARY.md:48
 msgid "Kobo suspend"
 msgstr ""
 
-#: src/SUMMARY.md:56 src/settings/index.md:1168
+#: src/SUMMARY.md:49 src/settings/index.md:1168
 msgid "Telemetry"
 msgstr ""
 
-#: src/SUMMARY.md:57
+#: src/SUMMARY.md:50
 msgid "Logging"
 msgstr ""
 
-#: src/SUMMARY.md:58
+#: src/SUMMARY.md:51
 msgid "Tracing"
 msgstr ""
 
-#: src/SUMMARY.md:59
+#: src/SUMMARY.md:52
 msgid "Profiling"
 msgstr ""
 
-#: src/SUMMARY.md:60
+#: src/SUMMARY.md:53
 msgid "Website"
 msgstr ""
 
-#: src/SUMMARY.md:61
+#: src/SUMMARY.md:54
 msgid "User guide"
 msgstr ""
 
-#: src/SUMMARY.md:62
+#: src/SUMMARY.md:55
 msgid "Translations"
 msgstr ""
 
-#: src/SUMMARY.md:63
+#: src/SUMMARY.md:56
 msgid "For developers"
 msgstr ""
 
-#: src/SUMMARY.md:64
+#: src/SUMMARY.md:57
 msgid "SQLite & SQLx"
 msgstr ""
 
-#: src/SUMMARY.md:65
+#: src/SUMMARY.md:58
 msgid "Library Database"
 msgstr ""
 
-#: src/SUMMARY.md:66
+#: src/SUMMARY.md:59
 msgid "Runtime Migrations"
 msgstr ""
 
-#: src/SUMMARY.md:70
+#: src/SUMMARY.md:63
 msgid "Investigations"
 msgstr ""
 
-#: src/SUMMARY.md:72
+#: src/SUMMARY.md:65
 msgid "Intro"
 msgstr ""
 
-#: src/SUMMARY.md:73
+#: src/SUMMARY.md:66
 msgid "DHCP IP Address Changes on WiFi Toggle"
 msgstr ""
 
-#: src/SUMMARY.md:74
+#: src/SUMMARY.md:67
 msgid "Reading IP and ESSID via dhcpcd-dbus"
 msgstr ""
 
-#: src/SUMMARY.md:75
+#: src/SUMMARY.md:68
 msgid "Soft suspend via autosleep and wake_lock"
 msgstr ""
 
@@ -3010,126 +2982,126 @@ msgstr ""
 msgid "Statuses"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:30
+#: src/ui/settings/dictionaries.md:25
 msgid "Status"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:30
+#: src/ui/settings/dictionaries.md:25
 msgid "What it means"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:32
+#: src/ui/settings/dictionaries.md:27
 msgid "Download"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:32
+#: src/ui/settings/dictionaries.md:27
 msgid "Not yet on your device — tap to download"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:33
+#: src/ui/settings/dictionaries.md:28
 msgid "Downloading"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:33
+#: src/ui/settings/dictionaries.md:28
 msgid "A download is in progress"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:34
+#: src/ui/settings/dictionaries.md:29
 msgid "Installed"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:34
+#: src/ui/settings/dictionaries.md:29
 msgid "Ready to use"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:35
+#: src/ui/settings/dictionaries.md:30
 msgid "Update Available"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:35
+#: src/ui/settings/dictionaries.md:30
 msgid "A newer version is available"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:37
+#: src/ui/settings/dictionaries.md:32
 msgid "Downloading a Dictionary"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:40
+#: src/ui/settings/dictionaries.md:35
 msgid ""
 "Your device must be connected to Wi-Fi before you can download a dictionary."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:42
+#: src/ui/settings/dictionaries.md:37
 msgid "Open **Main Menu → Settings → Dictionaries**."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:43
+#: src/ui/settings/dictionaries.md:38
 msgid "Find the language you want."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:44
+#: src/ui/settings/dictionaries.md:39
 msgid "Tap **Download** next to it."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:46
+#: src/ui/settings/dictionaries.md:41
 msgid ""
 "A progress notification appears at the top of the screen while the file "
 "downloads. Once the download finishes, Cadmus begins "
 "[indexing](#how-indexing-works) the dictionary automatically."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:50
+#: src/ui/settings/dictionaries.md:45
 msgid "Updating a Dictionary"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:52
+#: src/ui/settings/dictionaries.md:47
 msgid "When a newer version is available the status shows **Update Available**."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:54 src/ui/settings/dictionaries.md:64
-#: src/ui/settings/dictionaries.md:69
+#: src/ui/settings/dictionaries.md:49 src/ui/settings/dictionaries.md:59
+#: src/ui/settings/dictionaries.md:64
 msgid "Tap the language row."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:55
+#: src/ui/settings/dictionaries.md:50
 msgid "Select **Update** from the menu."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:57
+#: src/ui/settings/dictionaries.md:52
 msgid "The updated dictionary replaces the old one automatically."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:59
+#: src/ui/settings/dictionaries.md:54
 msgid "Re-downloading a Dictionary"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:61
+#: src/ui/settings/dictionaries.md:56
 msgid ""
 "If a dictionary is already installed you can re-download it to get a fresh "
 "copy:"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:65
+#: src/ui/settings/dictionaries.md:60
 msgid "Select **Re-download** from the menu."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:67
+#: src/ui/settings/dictionaries.md:62
 msgid "Deleting a Dictionary"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:70
+#: src/ui/settings/dictionaries.md:65
 msgid "Select **Delete** from the menu."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:72
+#: src/ui/settings/dictionaries.md:67
 msgid "The dictionary files are removed from your device."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:74
+#: src/ui/settings/dictionaries.md:69
 msgid "How Indexing Works"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:76
+#: src/ui/settings/dictionaries.md:71
 msgid ""
 "After you download, update, or re-download a dictionary, Cadmus needs to "
 "**index** it before you can look up words. Indexing reads every word in the "
@@ -3138,74 +3110,74 @@ msgid ""
 "important on devices with limited memory."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:82
+#: src/ui/settings/dictionaries.md:77
 msgid ""
 "A notification with a progress bar appears at the top of the screen while "
 "indexing is in progress."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:86
+#: src/ui/settings/dictionaries.md:81
 msgid ""
 "You can keep reading while indexing runs in the background. Words that have "
 "already been indexed are available for lookup right away, so you may get "
 "partial results until indexing finishes."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:90
+#: src/ui/settings/dictionaries.md:85
 msgid "What happens when you restart your Kobo"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:92
+#: src/ui/settings/dictionaries.md:87
 msgid ""
 "If your Kobo restarts or shuts down while indexing is still running, Cadmus "
 "picks up where it left off the next time it starts. It does not start over "
 "from the beginning."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:96
+#: src/ui/settings/dictionaries.md:91
 msgid "When does re-indexing happen"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:98
+#: src/ui/settings/dictionaries.md:93
 msgid "Cadmus automatically re-indexes a dictionary when you:"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:100
+#: src/ui/settings/dictionaries.md:95
 msgid "**Update** it to a newer version"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:101
+#: src/ui/settings/dictionaries.md:96
 msgid "**Re-download** it"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:102
+#: src/ui/settings/dictionaries.md:97
 msgid "**Delete** it (the old index is removed)"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:104
+#: src/ui/settings/dictionaries.md:99
 msgid ""
 "You do not need to trigger indexing yourself. Cadmus handles indexing "
 "automatically when you **download**, **update**, **re-download**, or "
 "**delete** a dictionary from **Settings → Dictionaries**."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:108
+#: src/ui/settings/dictionaries.md:103
 msgid "Where Dictionaries are Stored"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:110
+#: src/ui/settings/dictionaries.md:105
 msgid ""
 "Cadmus stores dictionaries in different locations depending on whether your "
 "device has an SD card and whether you are using a test build:"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:124
+#: src/ui/settings/dictionaries.md:119
 msgid ""
 "Each language gets its own subfolder containing a `.dict.dz` (or `.dict`) "
 "and a `.index` file."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:127
+#: src/ui/settings/dictionaries.md:122
 msgid ""
 "If your SD card is already inserted when you upgrade Cadmus, your "
 "dictionaries are moved to the SD card automatically on the next boot. If you "
