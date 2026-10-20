@@ -96,6 +96,9 @@ jobs:
           CADMUS_SKIP_THIRDPARTY_DEPS: "1"
         run: cargo xtask docs
 
+      - name: Verify Mermaid diagrams are embedded in EPUB
+        run: python3 docs/verify-epub-mermaid.py
+
       - name: Upload build artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
