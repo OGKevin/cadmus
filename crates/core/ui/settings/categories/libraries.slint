@@ -1,0 +1,25 @@
+import { ModelPage } from "model_page.slint";
+import { SettingLine } from "../setting_line.slint";
+
+// Library rows. `row-pressed` and `row-held` pass the model index, starting at 0.
+export global LibraryPageIo {
+    in property <[SettingLine]> rows;
+    out property <int> row-count: rows.length;
+    callback row-pressed(int);
+    callback row-held(int);
+}
+
+export component LibraryPage inherits VerticalLayout {
+    in property <int> page;
+    in property <int> per-page;
+
+    ModelPage {
+        vertical-stretch: 1;
+        holdable: true;
+        rows: LibraryPageIo.rows;
+        page: root.page;
+        per-page: root.per-page;
+        row-pressed(index) => { LibraryPageIo.row-pressed(index); }
+        row-held(index) => { LibraryPageIo.row-held(index); }
+    }
+}

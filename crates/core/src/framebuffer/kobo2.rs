@@ -17,7 +17,7 @@ use std::os::unix::io::AsRawFd;
 use std::path::Path;
 use std::ptr;
 use std::slice;
-use tracing::error;
+use tracing::{debug, error};
 
 impl From<Rectangle> for AreaInfo {
     fn from(rect: Rectangle) -> Self {
@@ -387,13 +387,30 @@ impl Framebuffer for KoboFramebuffer2 {
         self.var_info.rotate as i8
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument(level = "debug", skip(self)))]
     fn refresh_from_kernel(&mut self) {
+        let before_rotation = self.rotation();
+        let before_dims = (self.var_info.xres, self.var_info.yres);
         if let Err(error) = self.refresh_var_info() {
             error!(error = %error, "failed to refresh KoboFramebuffer2 from kernel");
+            return;
         }
+        debug!(
+            before_rotation,
+            after_rotation = self.rotation(),
+            before_dims = ?before_dims,
+            after_dims = ?(self.var_info.xres, self.var_info.yres),
+            "refreshed framebuffer from kernel"
+        );
     }
 
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(level = "debug", skip(self, n), fields(rotation = n))
+    )]
     fn set_rotation(&mut self, n: i8) -> Result<(u32, u32), Error> {
+        let before_rotation = self.rotation();
+        let before_dims = (self.var_info.xres, self.var_info.yres);
         let delta = (self.rotation() - n).abs();
 
         if delta % 2 == 1 {
@@ -418,6 +435,14 @@ impl Framebuffer for KoboFramebuffer2 {
         }
 
         self.var_info.rotate = n as u32;
+        debug!(
+            requested = n,
+            before_rotation,
+            after_rotation = self.rotation(),
+            before_dims = ?before_dims,
+            after_dims = ?(self.var_info.xres, self.var_info.yres),
+            "framebuffer rotation applied locally"
+        );
         Ok((self.var_info.xres, self.var_info.yres))
     }
 

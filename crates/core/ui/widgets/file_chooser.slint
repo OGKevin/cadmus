@@ -1,0 +1,69 @@
+import { ActionBar } from "action_bar.slint";
+import { PagedLine, PagedList } from "paged_list.slint";
+import { ScreenHeader } from "screen_header.slint";
+import { ValueRow } from "value_row.slint";
+import { InkMetrics } from "ink/metrics.slint";
+import { MaterialPalette } from "ink/palette.slint";
+
+export component FileChooser inherits Rectangle {
+    in property <length> window-height;
+    in property <string> path;
+    in property <[PagedLine]> entries;
+    in property <bool> can-select-folder;
+    in-out property <int> page: 0;
+    callback dismissed();
+    callback up-pressed();
+    callback entry-pressed(int);
+    callback select-folder();
+
+    width: 100%;
+    height: 100%;
+    background: MaterialPalette.surface;
+    property <length> row-height: InkMetrics.row;
+    // Header, the Up row, the list's bottom bar, and the optional action.
+    property <length> chrome:
+        InkMetrics.app-bar + root.row-height + InkMetrics.bottom-bar
+        + (root.can-select-folder ? root.row-height : 0px);
+    property <int> per-page: Math.max(1, Math.floor((root.window-height - root.chrome) / root.row-height));
+
+    TouchArea {
+        width: 100%;
+        height: 100%;
+    }
+
+    VerticalLayout {
+        width: 100%;
+        height: 100%;
+
+        ScreenHeader {
+            heading: root.path;
+            back-pressed => {
+                root.dismissed();
+            }
+        }
+
+        ValueRow {
+            label: @tr("Up");
+            value: "";
+            pressed => {
+                root.up-pressed();
+            }
+        }
+
+        PagedList {
+            lines: root.entries;
+            per-page: root.per-page;
+            page <=> root.page;
+            line-pressed(index) => {
+                root.entry-pressed(index);
+            }
+        }
+
+        if root.can-select-folder: ActionBar {
+            label: @tr("Select this folder");
+            clicked => {
+                root.select-folder();
+            }
+        }
+    }
+}

@@ -1,0 +1,48 @@
+import { InkIconButton } from "icon_button.slint";
+import { MaterialPalette } from "palette.slint";
+import { InkMetrics } from "metrics.slint";
+
+// Top app bar: a leading icon flush to the left and a centered title.
+// No elevation. Stretch alignment keeps the icon on the left edge; a
+// trailing spacer the same width as the button keeps the title centered.
+
+export component InkAppBar inherits Rectangle {
+    in property <string> title;
+    in property <image> leading-icon;
+    callback leading-clicked();
+
+    property <bool> has-leading: root.leading-icon.width > 0 && root.leading-icon.height > 0;
+
+    min-height: InkMetrics.app-bar;
+    preferred-height: InkMetrics.app-bar;
+    background: MaterialPalette.bar;
+
+    HorizontalLayout {
+        if root.has-leading: VerticalLayout {
+            width: InkMetrics.icon-button;
+            alignment: center;
+
+            InkIconButton {
+                icon: root.leading-icon;
+                clicked => {
+                    root.leading-clicked();
+                }
+            }
+        }
+
+        Text {
+            text: root.title;
+            font-size: InkMetrics.title;
+            font-weight: InkMetrics.title-weight;
+            color: MaterialPalette.on-surface;
+            horizontal-stretch: 1;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+
+        if root.has-leading: Rectangle {
+            width: InkMetrics.icon-button;
+        }
+    }
+}

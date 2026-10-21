@@ -1,0 +1,15 @@
+import { InkMetrics } from "../../widgets/ink/metrics.slint";
+import { ValueRow } from "../../widgets/value_row.slint";
+
+export component PagedSetting inherits ValueRow {
+    in property <bool> shown: true;
+    in property <int> slot;
+    in property <int> page;
+    in property <int> per-page;
+    private property <bool> active:
+        root.shown
+        && root.slot >= root.page * root.per-page
+        && root.slot < (root.page + 1) * root.per-page;
+    visible: root.active;
+    height: root.active ? InkMetrics.row : 0px;
+}

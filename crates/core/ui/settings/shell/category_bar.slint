@@ -1,0 +1,61 @@
+import { SettingsCategory } from "../setting_line.slint";
+import { InkTabBar } from "../../widgets/ink/tab_bar.slint";
+
+export component CategoryBar inherits Rectangle {
+    in-out property <SettingsCategory> category;
+    callback category-pressed(SettingsCategory);
+
+    out property <length> bar-height: tabs.min-height;
+    height: root.bar-height;
+
+    // Slint cannot cast SettingsCategory to int.
+    pure function category-index(value: SettingsCategory) -> int {
+        if (value == SettingsCategory.power) { return 1; }
+        if (value == SettingsCategory.reader) { return 2; }
+        if (value == SettingsCategory.dictionaries) { return 3; }
+        if (value == SettingsCategory.libraries) { return 4; }
+        if (value == SettingsCategory.intermissions) { return 5; }
+        if (value == SettingsCategory.import) { return 6; }
+        if (value == SettingsCategory.telemetry) { return 7; }
+        return 0;
+    }
+
+    pure function index-category(index: int) -> SettingsCategory {
+        if (index == 1) { return SettingsCategory.power; }
+        if (index == 2) { return SettingsCategory.reader; }
+        if (index == 3) { return SettingsCategory.dictionaries; }
+        if (index == 4) { return SettingsCategory.libraries; }
+        if (index == 5) { return SettingsCategory.intermissions; }
+        if (index == 6) { return SettingsCategory.import; }
+        if (index == 7) { return SettingsCategory.telemetry; }
+        return SettingsCategory.general;
+    }
+
+    changed category => {
+        tabs.current-index = root.category-index(root.category);
+    }
+
+    init => {
+        tabs.current-index = root.category-index(root.category);
+    }
+
+    // Labels wrap when the next one does not fit. The bar grows with the rows.
+    tabs := InkTabBar {
+        width: 100%;
+        labels: [
+            @tr("General"),
+            @tr("Power"),
+            @tr("Reader"),
+            @tr("Dictionaries"),
+            @tr("Libraries"),
+            @tr("Intermission Screens"),
+            @tr("Import"),
+            @tr("Telemetry"),
+        ];
+
+        index-changed(index) => {
+            root.category = root.index-category(index);
+            root.category-pressed(root.category);
+        }
+    }
+}

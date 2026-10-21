@@ -129,7 +129,12 @@ fn handle_rotate_screen(
         }
     }
 
-    tracing::debug!(rotation = n, "forwarding gyro rotation to main loop");
+    tracing::debug!(
+        rotation = n,
+        current_rotation = context.display.rotation,
+        current_dims = ?context.display.dims,
+        "forwarding gyro rotation to main loop"
+    );
     hub.send((Event::Select(EntryId::Rotate(n))).into()).ok();
     EventOutcome::Handled
 }

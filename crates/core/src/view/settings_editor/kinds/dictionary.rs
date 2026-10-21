@@ -14,6 +14,7 @@ use crate::view::{EntryId, EntryKind, Event};
 /// When an update is available, the value shows "Update Available" and the submenu
 /// includes an "Update" option above "Re-download". When a download is in progress,
 /// the value shows "Downloading" and no action widget is offered.
+#[derive(Clone)]
 pub struct DictionaryInfo {
     /// Rendered dictionary name, e.g. `"English"` or `"French | français"`.
     pub label: String,
@@ -100,6 +101,66 @@ impl SettingKind for DictionaryInfo {
             }
         }
     }
+}
+
+/// Loads the dictionary rows for `service`, installed and available.
+pub(in crate::view::settings_editor) async fn load_infos(
+    context: &AppContext,
+    service: &crate::dictionary::MonolingualDictionaryService,
+) -> Vec<DictionaryInfo> {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    use crate::dictionary::{DictionaryEntry, dictionary_label};
+
+    let available: BTreeMap<String, DictionaryEntry> = if context.online {
+        match service.get_available_dictionaries().await {
+            Ok(dicts) => dicts.into_iter().collect(),
+            Err(error) => {
+                tracing::warn!(error = %error, "Failed to load available dictionaries");
+                BTreeMap::new()
+            }
+        }
+    } else {
+        match service.get_cached_available_dictionaries().await {
+            Ok(dicts) => dicts.into_iter().collect(),
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    "Failed to load cached available dictionaries"
+                );
+                BTreeMap::new()
+            }
+        }
+    };
+
+    let installed: BTreeSet<String> = match service.get_installed_dictionaries().await {
+        Ok(dicts) => dicts.into_iter().collect(),
+        Err(error) => {
+            tracing::warn!(error = %error, "Failed to load installed dictionaries");
+            BTreeSet::new()
+        }
+    };
+
+    let mut all_langs: Vec<&str> = available
+        .keys()
+        .map(String::as_str)
+        .chain(installed.iter().map(String::as_str))
+        .collect();
+    all_langs.sort();
+    all_langs.dedup();
+
+    let mut rows = Vec::with_capacity(all_langs.len());
+    for lang in all_langs {
+        let is_installed = installed.contains(lang);
+        rows.push(DictionaryInfo {
+            label: dictionary_label(lang, available.get(lang)),
+            lang: lang.to_owned(),
+            is_installed,
+            update_available: is_installed && service.is_update_available(lang).await,
+            is_installing: service.is_installing(lang),
+        });
+    }
+    rows
 }
 
 #[cfg(test)]

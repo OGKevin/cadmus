@@ -16,3 +16,10 @@ inputs:
     inputs:
       nixpkgs:
         follows: nixpkgs
+  # Same release as the `slint` crate. `flake: false` keeps Slint's own
+  # flake from being pulled in; devenv.nix only reads the skill from this
+  # tree. The viewer tarball is pinned separately in devenv.nix. Renovate
+  # bumps this tag with the crate.
+  slint:
+    url: github:slint-ui/slint/v1.18.1
+    flake: false

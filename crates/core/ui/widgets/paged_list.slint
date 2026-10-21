@@ -1,0 +1,244 @@
+import { ChromeIcons } from "../icons/icons.slint";
+import { EinkBar } from "eink_bar.slint";
+import { Hairline } from "hairline.slint";
+import { HoldTouch } from "hold_touch.slint";
+import { InkMetrics } from "ink/metrics.slint";
+import { MaterialPalette } from "ink/palette.slint";
+import { PagerBar } from "pager_bar.slint";
+
+export struct PagedLine {
+    label: string,
+    value: string,
+    selected: bool,
+    // Empty keeps the single-line row the file chooser and refresh-rate
+    // list already draw. A non-empty value adds a second line and a taller row.
+    description: string,
+    // False dims the row and ignores taps. Callers whose every row can be
+    // chosen set this true.
+    selectable: bool,
+    // True while the second line is still being checked. A short bar sits
+    // on the right of `description`. Callers that are not waiting set this false.
+    checking: bool,
+}
+
+// One choice or file row. The selected row keeps black text and adds a
+// dot, colored only when the panel can show it. A press does not paint
+// a second state. Hold is off unless the list says the row has one.
+component InkListRow inherits Rectangle {
+    in property <string> label;
+    in property <string> value;
+    in property <string> description;
+    in property <bool> selected;
+    in property <bool> selectable: true;
+    in property <bool> checking: false;
+    in property <bool> holdable: false;
+    callback pressed();
+    callback held();
+
+    property <bool> two-line: root.description != "";
+    property <color> text-color: root.selectable ? MaterialPalette.on-surface : MaterialPalette.disabled;
+
+    height: InkMetrics.row;
+    background: MaterialPalette.surface;
+
+    VerticalLayout {
+        height: 100%;
+        padding-left: 16px * InkMetrics.dp;
+        padding-right: self.padding-left;
+        alignment: center;
+        spacing: 2px * InkMetrics.dp;
+
+        HorizontalLayout {
+            spacing: 9px * InkMetrics.dp;
+
+            Text {
+                text: root.label;
+                font-size: 16px * InkMetrics.dp;
+                font-weight: root.selected ? InkMetrics.label-weight : 400;
+                color: root.text-color;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                overflow: elide;
+            }
+
+            if root.value != "": Text {
+                text: root.value;
+                font-size: 16px * InkMetrics.dp;
+                color: root.text-color;
+                vertical-alignment: center;
+                horizontal-alignment: right;
+            }
+
+            if root.selected: VerticalLayout {
+                width: InkMetrics.indicator;
+                alignment: center;
+
+                Rectangle {
+                    width: InkMetrics.indicator;
+                    height: self.width;
+                    border-radius: self.width / 2;
+                    background: MaterialPalette.primary;
+                }
+            }
+        }
+
+        if root.two-line: HorizontalLayout {
+            spacing: 8px * InkMetrics.dp;
+
+            Text {
+                text: root.description;
+                font-size: 14px * InkMetrics.dp;
+                color: root.text-color;
+                vertical-alignment: center;
+                overflow: elide;
+                horizontal-stretch: 1;
+            }
+
+            if root.checking: EinkBar {
+                indeterminate: true;
+                width: 64px * InkMetrics.dp;
+                horizontal-stretch: 0;
+                vertical-stretch: 0;
+            }
+        }
+    }
+
+    Hairline {
+        y: parent.height - self.height;
+        width: 100%;
+        line-color: MaterialPalette.outline;
+    }
+
+    if root.selectable: HoldTouch {
+        width: 100%;
+        height: 100%;
+        holdable: root.holdable;
+        tapped => {
+            root.pressed();
+        }
+        held => {
+            root.held();
+        }
+    }
+}
+
+// Visible rows of a paged list. Only the current page builds a row.
+export component InkList inherits VerticalLayout {
+    in property <[PagedLine]> lines;
+    in property <int> page: 0;
+    in property <int> per-page: 1;
+    in property <bool> external-paging: false;
+    in property <bool> holdable: false;
+    callback line-pressed(int);
+    callback line-held(int);
+
+    alignment: start;
+    vertical-stretch: 1;
+    property <int> page-size: Math.max(1, root.per-page);
+
+    for line[index] in root.lines: Rectangle {
+        property <bool> shown:
+            root.external-paging || (index >= root.page * root.page-size && index < (root.page + 1) * root.page-size);
+        property <length> row-height: line.description == "" ? InkMetrics.row : InkMetrics.two-line-row;
+        height: shown ? row-height : 0px;
+
+        if shown: InkListRow {
+            width: 100%;
+            height: 100%;
+            label: line.label;
+            value: line.value;
+            description: line.description;
+            selected: line.selected;
+            selectable: line.selectable;
+            checking: line.checking;
+            holdable: root.holdable;
+            pressed => {
+                root.line-pressed(index);
+            }
+            held => {
+                root.line-held(index);
+            }
+        }
+    }
+}
+
+// One page of rows, with the bottom bar always on the screen edge. The
+// hardware page buttons are handled in Rust, so this list does not also
+// listen for arrow keys. Only the visible page gets a row. A hidden row
+// would still build its text, rule, and hold timer.
+export component PagedList inherits Rectangle {
+    in property <[PagedLine]> lines;
+    in property <int> per-page: 1;
+    in-out property <int> page: 0;
+    in property <bool> show-action: false;
+    in property <bool> holdable: false;
+    in property <image> action-icon: ChromeIcons.add;
+    // When set, previous and next are the caller's pages (a network page,
+    // for example) instead of slices of `lines`.
+    in property <bool> external-paging: false;
+    in property <bool> can-previous: false;
+    in property <bool> can-next: false;
+    in property <string> page-label;
+    callback line-pressed(int);
+    callback line-held(int);
+    callback action-clicked();
+    callback previous-clicked();
+    callback next-clicked();
+
+    vertical-stretch: 1;
+    property <int> page-size: Math.max(1, root.per-page);
+    property <int> page-count: Math.max(1, Math.ceil(root.lines.length * 1.0 / root.page-size));
+
+    changed page-count => {
+        if (root.page >= root.page-count) {
+            root.page = Math.max(0, root.page-count - 1);
+        }
+    }
+    changed page => {
+        if (root.page < 0) {
+            root.page = 0;
+        } else if (root.page >= root.page-count) {
+            root.page = Math.max(0, root.page-count - 1);
+        }
+    }
+
+    VerticalLayout {
+        width: 100%;
+        height: 100%;
+
+        InkList {
+            vertical-stretch: 1;
+            lines: root.lines;
+            page: root.page;
+            per-page: root.per-page;
+            external-paging: root.external-paging;
+            holdable: root.holdable;
+            line-pressed(index) => {
+                root.line-pressed(index);
+            }
+            line-held(index) => {
+                root.line-held(index);
+            }
+        }
+
+        PagerBar {
+            page <=> root.page;
+            page-count: root.page-count;
+            external-paging: root.external-paging;
+            can-previous: root.can-previous;
+            can-next: root.can-next;
+            page-label: root.page-label;
+            show-action: root.show-action;
+            action-icon: root.action-icon;
+            previous-clicked => {
+                root.previous-clicked();
+            }
+            next-clicked => {
+                root.next-clicked();
+            }
+            action-clicked => {
+                root.action-clicked();
+            }
+        }
+    }
+}

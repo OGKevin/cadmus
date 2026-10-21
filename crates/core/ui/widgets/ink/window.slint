@@ -1,0 +1,11 @@
+import { MaterialPalette } from "palette.slint";
+
+// Shared window chrome. Screens inherit this so font and paper fill stay
+// in one place. Body layout is composed, not inherited.
+
+export component InkWindow inherits Window {
+    in property <string> font-family: "Noto Sans";
+
+    default-font-family: root.font-family;
+    background: MaterialPalette.surface;
+}

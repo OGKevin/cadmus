@@ -12,7 +12,7 @@ use std::os::unix::io::AsRawFd;
 use std::path::Path;
 use std::ptr;
 use std::slice;
-use tracing::{error, info};
+use tracing::{debug, error};
 
 impl Into<MxcfbRect> for Rectangle {
     fn into(self) -> MxcfbRect {
@@ -368,15 +368,31 @@ impl Framebuffer for KoboFramebuffer1 {
         self.var_info.rotate as i8
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument(level = "debug", skip(self)))]
     fn refresh_from_kernel(&mut self) {
+        let before_rotation = self.rotation();
+        let before_dims = (self.var_info.xres, self.var_info.yres);
         if let Err(error) = self.refresh_var_info() {
             error!(error = %error, "failed to refresh KoboFramebuffer1 from kernel");
+            return;
         }
+        debug!(
+            before_rotation,
+            after_rotation = self.rotation(),
+            before_dims = ?before_dims,
+            after_dims = ?(self.var_info.xres, self.var_info.yres),
+            "refreshed framebuffer from kernel"
+        );
     }
 
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(level = "debug", skip(self, n), fields(rotation = n))
+    )]
     fn set_rotation(&mut self, n: i8) -> Result<(u32, u32), Error> {
         self.var_info = var_screen_info(&self.file)?;
         let read_rotation = self.rotation();
+        let dims_before = (self.var_info.xres, self.var_info.yres);
 
         // On the Aura H₂O, the first ioctl call will succeed but have no effect,
         // if (n - m).abs() % 2 == 1, where m is the previously written value.
@@ -389,10 +405,27 @@ impl Framebuffer for KoboFramebuffer1 {
                 unsafe { write_variable_screen_info(self.file.as_raw_fd(), &self.var_info) };
 
             if let Err(e) = result {
+                debug!(
+                    attempt = i,
+                    requested = n,
+                    written = *v,
+                    "framebuffer rotation ioctl failed"
+                );
                 return Err(Error::from(e).context("can't set variable screen info"));
             }
 
             self.var_info = var_screen_info(&self.file)?;
+            debug!(
+                attempt = i,
+                requested = n,
+                written = *v,
+                rotation_before = read_rotation,
+                rotation_after = self.rotation(),
+                dims_before = ?dims_before,
+                xres = self.var_info.xres,
+                yres = self.var_info.yres,
+                "framebuffer rotation ioctl"
+            );
 
             // If the first call changed the rotation value, we can exit the loop.
             if i == 0 && read_rotation != self.rotation() {
@@ -402,12 +435,6 @@ impl Framebuffer for KoboFramebuffer1 {
 
         self.fix_info = fix_screen_info(&self.file)?;
         self.frame_size = (self.var_info.yres * self.fix_info.line_length) as libc::size_t;
-
-        info!(
-            "Framebuffer rotation: {} -> {}.",
-            read_rotation,
-            self.rotation()
-        );
 
         Ok((self.var_info.xres, self.var_info.yres))
     }

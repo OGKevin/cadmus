@@ -1,0 +1,112 @@
+import { SettingLine, SettingRow, SettingsCategory, StaticLine } from "setting_line.slint";
+import { DictionaryPageIo } from "categories/dictionaries.slint";
+import { LibraryPageIo } from "categories/libraries.slint";
+import { StaticPageIo } from "categories/settings_page.slint";
+import {
+    ChoiceSheetIo,
+    ConfirmSheetIo,
+    FileBrowserIo,
+    SharedOverlays,
+    TextSheetIo,
+} from "../widgets/overlays.slint";
+import { LibraryEditor, LibraryEditorIo } from "editors/library_editor.slint";
+import { RefreshRates, RefreshRatesIo } from "editors/refresh_rates.slint";
+import { InkMetrics } from "../widgets/ink/metrics.slint";
+import { MaterialPalette } from "../widgets/ink/palette.slint";
+import { InkScaffold } from "../widgets/ink/scaffold.slint";
+import { InkScreen } from "../widgets/ink/screen.slint";
+import { InkWindow } from "../widgets/ink/window.slint";
+import { Hairline } from "../widgets/hairline.slint";
+import { PagerBar } from "../widgets/pager_bar.slint";
+import { CategoryBar } from "shell/category_bar.slint";
+import { SettingsPages } from "shell/pages.slint";
+
+export {
+    SettingLine,
+    SettingRow,
+    SettingsCategory,
+    StaticLine,
+    StaticPageIo,
+    DictionaryPageIo,
+    LibraryPageIo,
+    LibraryEditorIo,
+    RefreshRatesIo,
+}
+
+// Shell only: category, page, and the three chrome callbacks.
+// Each category and overlay lists its own values and callbacks on its global.
+export component SettingsWindow inherits InkWindow {
+    in-out property <SettingsCategory> category: SettingsCategory.general;
+    in-out property <int> page: 0;
+
+    callback back-pressed();
+    callback category-pressed(SettingsCategory);
+    callback action-pressed();
+
+    property <length> window-height: InkScreen.window-height;
+    property <bool> show-action: root.category == SettingsCategory.libraries;
+    property <int> active-count:
+        root.category == SettingsCategory.dictionaries ? DictionaryPageIo.row-count :
+        root.category == SettingsCategory.libraries ? LibraryPageIo.row-count :
+        StaticPageIo.row-count;
+    // The app bar and the footer stay on every category, including pages
+    // that fit in one screen. Their height is reserved up front so the
+    // row window does not jump when the pager appears.
+    out property <length> top-chrome: InkMetrics.app-bar + InkMetrics.hairline + category-bar.bar-height + InkMetrics.hairline;
+    property <length> reserved: root.top-chrome + InkMetrics.bottom-bar;
+    // Rows that fit between the chrome and the footer.
+    out property <int> per-page: Math.max(1, Math.floor((root.window-height - root.reserved) / InkMetrics.row));
+    property <int> page-count: Math.max(1, Math.ceil(root.active-count * 1.0 / Math.max(1, root.per-page)));
+
+    changed category => {
+        root.page = 0;
+    }
+    changed page-count => {
+        if (root.page >= root.page-count) {
+            root.page = Math.max(0, root.page-count - 1);
+        }
+    }
+
+    InkScaffold {
+        width: 100%;
+        height: 100%;
+        title: @tr("Settings");
+        back-pressed => {
+            root.back-pressed();
+        }
+
+        category-bar := CategoryBar {
+            category <=> root.category;
+            category-pressed(category) => {
+                root.category-pressed(category);
+            }
+        }
+
+        Hairline {
+            line-color: MaterialPalette.outline;
+        }
+
+        SettingsPages {
+            vertical-stretch: 1;
+            category: root.category;
+            page: root.page;
+            per-page: root.per-page;
+        }
+
+        PagerBar {
+            page <=> root.page;
+            page-count: root.page-count;
+            show-action: root.show-action;
+            action-clicked => {
+                root.action-pressed();
+            }
+        }
+    }
+
+    if LibraryEditorIo.open: LibraryEditor {}
+    if RefreshRatesIo.open: RefreshRates {}
+    SharedOverlays {
+        show-files: true;
+        show-text: true;
+    }
+}

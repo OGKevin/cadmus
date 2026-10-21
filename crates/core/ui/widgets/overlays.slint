@@ -1,0 +1,185 @@
+import { ChoiceEntry, ChoiceSheet } from "choice_sheet.slint";
+import { ConfirmSheet } from "confirm_sheet.slint";
+import { FileChooser } from "file_chooser.slint";
+import { PagedLine } from "paged_list.slint";
+import { KeyAction, KeyCap } from "keyboard.slint";
+import { TextSheet } from "text_sheet.slint";
+
+// The shared overlays, each with the global Rust drives it through. A window
+// shows an overlay with `if ChoiceSheetIo.open: ChoiceSheetOverlay {}` and
+// exports the global. The Rust side is generic over any window that does:
+// Slint generates the global's accessor for every exported component that
+// uses it. Each overlay fills its window (`width` and `height` 100%), so the
+// window size is the overlay's own size.
+
+// Option list fields and callbacks. `entry-pressed` passes the index into
+// `entries`, starting at 0. `page` is the visible page, also starting at 0.
+// The sheet clamps it. The bottom bar and the page buttons both write it.
+export global ChoiceSheetIo {
+    in property <bool> open: false;
+    in property <string> title;
+    in property <[ChoiceEntry]> entries;
+    in-out property <int> page: 0;
+    callback dismissed();
+    callback entry-pressed(int);
+}
+
+export component ChoiceSheetOverlay inherits Rectangle {
+    width: 100%;
+    height: 100%;
+
+    ChoiceSheet {
+        width: 100%;
+        height: 100%;
+        title: ChoiceSheetIo.title;
+        entries: ChoiceSheetIo.entries;
+        page <=> ChoiceSheetIo.page;
+        dismissed => {
+            ChoiceSheetIo.dismissed();
+        }
+        entry-pressed(index) => {
+            ChoiceSheetIo.entry-pressed(index);
+        }
+    }
+}
+
+// Confirm sheet fields and callbacks.
+export global ConfirmSheetIo {
+    in property <bool> open: false;
+    in property <string> message;
+    in property <string> cancel-label;
+    in property <string> accept-label;
+    callback dismissed();
+    callback accepted();
+}
+
+export component ConfirmSheetOverlay inherits Rectangle {
+    width: 100%;
+    height: 100%;
+
+    ConfirmSheet {
+        width: 100%;
+        height: 100%;
+        message: ConfirmSheetIo.message;
+        cancel-label: ConfirmSheetIo.cancel-label;
+        accept-label: ConfirmSheetIo.accept-label;
+        dismissed => {
+            ConfirmSheetIo.dismissed();
+        }
+        accepted => {
+            ConfirmSheetIo.accepted();
+        }
+    }
+}
+
+// File browser fields and callbacks. `entry-pressed` passes the index into
+// `entries`, starting at 0.
+export global FileBrowserIo {
+    in property <bool> open: false;
+    in property <string> path;
+    in property <[PagedLine]> entries;
+    in property <bool> can-select-folder: false;
+    in-out property <int> page: 0;
+    callback dismissed();
+    callback up-pressed();
+    callback entry-pressed(int);
+    callback select-folder();
+}
+
+export component FileBrowserOverlay inherits Rectangle {
+    width: 100%;
+    height: 100%;
+
+    FileChooser {
+        width: 100%;
+        height: 100%;
+        window-height: root.height;
+        path: FileBrowserIo.path;
+        entries: FileBrowserIo.entries;
+        can-select-folder: FileBrowserIo.can-select-folder;
+        page <=> FileBrowserIo.page;
+        dismissed => { FileBrowserIo.dismissed(); }
+        up-pressed => { FileBrowserIo.up-pressed(); }
+        entry-pressed(index) => { FileBrowserIo.entry-pressed(index); }
+        select-folder => { FileBrowserIo.select-folder(); }
+    }
+}
+
+// Text dialog. Rust sets the label, the caret, and the layout keys.
+// Keys call `typed` and `deleted`.
+export global TextSheetIo {
+    in property <bool> open: false;
+    in property <string> label;
+    in property <string> cancel-label;
+    in property <string> accept-label;
+    in property <string> text-before;
+    in property <string> text-after;
+    in property <[[KeyCap]]> rows;
+    in property <[string]> variants;
+    // Logical pixels from the reader keyboard. Rust sets them. Not dp.
+    in property <length> block-height: 480px;
+    in property <length> key-height: 64px;
+    in property <length> key-gap: 4px;
+    callback accepted();
+    callback dismissed();
+    callback typed(string);
+    callback deleted();
+    callback deleted-forward();
+    callback moved(KeyAction);
+    callback shift-pressed();
+    callback alternate-pressed();
+    callback held(string);
+    callback popup-dismissed();
+}
+
+export component TextSheetOverlay inherits Rectangle {
+    width: 100%;
+    height: 100%;
+
+    TextSheet {
+        width: 100%;
+        height: 100%;
+        window-width: root.width;
+        window-height: root.height;
+        label: TextSheetIo.label;
+        cancel-label: TextSheetIo.cancel-label;
+        accept-label: TextSheetIo.accept-label;
+        text-before: TextSheetIo.text-before;
+        text-after: TextSheetIo.text-after;
+        rows: TextSheetIo.rows;
+        variants: TextSheetIo.variants;
+        block-height: TextSheetIo.block-height;
+        key-height: TextSheetIo.key-height;
+        key-gap: TextSheetIo.key-gap;
+        typed(value) => { TextSheetIo.typed(value); }
+        deleted => { TextSheetIo.deleted(); }
+        deleted-forward => { TextSheetIo.deleted-forward(); }
+        moved(action) => { TextSheetIo.moved(action); }
+        shift-pressed => { TextSheetIo.shift-pressed(); }
+        alternate-pressed => { TextSheetIo.alternate-pressed(); }
+        held(value) => { TextSheetIo.held(value); }
+        accepted => { TextSheetIo.accepted(); }
+        dismissed => { TextSheetIo.dismissed(); }
+        popup-dismissed => { TextSheetIo.popup-dismissed(); }
+    }
+}
+
+// The four shared overlays, front-most last. A screen that has no file
+// browser or text dialog leaves those flags off so a stale global cannot
+// cover the page.
+export component SharedOverlays inherits Rectangle {
+    in property <bool> show-files: false;
+    in property <bool> show-text: false;
+
+    property <bool> files-open: root.show-files && FileBrowserIo.open;
+    property <bool> text-open: root.show-text && TextSheetIo.open;
+
+    width: 100%;
+    height: 100%;
+    visible: root.files-open || ConfirmSheetIo.open || ChoiceSheetIo.open || root.text-open;
+
+    if root.files-open: FileBrowserOverlay {}
+    if ConfirmSheetIo.open: ConfirmSheetOverlay {}
+    if ChoiceSheetIo.open: ChoiceSheetOverlay {}
+    if root.text-open: TextSheetOverlay {}
+}

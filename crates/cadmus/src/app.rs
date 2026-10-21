@@ -48,7 +48,6 @@ use cadmus_core::view::reader::Reader;
 use cadmus_core::view::rotation_values::RotationValues;
 use cadmus_core::view::settings_editor::SettingsEditor;
 use cadmus_core::view::sketch::Sketch;
-use cadmus_core::view::startup::StartupScreen;
 use cadmus_core::view::touch_events::TouchEvents;
 use cadmus_core::view::{
     AppCmd, Bus, EntryId, EntryKind, Event, Hub, NotificationEvent, RenderData, RenderQueue,
@@ -218,6 +217,10 @@ impl Drop for MainLoopSoftSuspendGuard {
 }
 
 /// Keeps the root view in sync after a rotation changes framebuffer dimensions.
+#[cfg_attr(
+    feature = "tracing",
+    tracing::instrument(level = "debug", skip(view, tx, rq, context))
+)]
 fn sync_view_after_rotation(
     view: &mut Box<dyn View>,
     prev_dims: (u32, u32),
@@ -226,13 +229,6 @@ fn sync_view_after_rotation(
     rq: &mut RenderQueue,
     context: &mut AppContext,
 ) {
-    tracing::debug!(
-        previous_dims = ?prev_dims,
-        dims = ?dims,
-        resized = prev_dims != dims,
-        rotation = context.display.rotation,
-        "syncing root view after rotation"
-    );
     let fb_rect = Rectangle::from(dims);
     if prev_dims != dims {
         view.resize(fb_rect, tx, rq, context);
@@ -281,15 +277,19 @@ fn apply_rotation(
                 .device
                 .input()
                 .send_raw(display_rotate_event(rotation));
+            sync_view_after_rotation(view, prev_dims, dims, tx, rq, context);
             tracing::debug!(
                 previous_rotation = prev_rotation,
                 rotation,
                 previous_dims = ?prev_dims,
                 dims = ?dims,
+                framebuffer_dims = ?context.device.framebuffer().dims(),
                 framebuffer_rotation = context.device.framebuffer().rotation(),
+                view_rect = %view.rect(),
+                settings_editor = view.is::<SettingsEditor>(),
+                resized = prev_dims != dims,
                 "rotation applied"
             );
-            sync_view_after_rotation(view, prev_dims, dims, tx, rq, context);
             true
         }
         Err(error) => {
@@ -417,6 +417,39 @@ async fn open_document(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+async fn open_last_reading(
+    view: &mut Box<dyn View>,
+    history: &mut Vec<HistoryItem>,
+    updating: &mut Vec<UpdateData>,
+    tx: &Hub,
+    bus: &mut Bus,
+    rq: &mut RenderQueue,
+    context: &mut AppContext,
+) {
+    if context.settings.startup_mode == StartupMode::LastFile
+        && let Some(info) = context.library.most_recently_opened_reading_book().await
+    {
+        open_document(
+            Box::new(info),
+            view,
+            history,
+            updating,
+            tx,
+            bus,
+            rq,
+            context,
+        )
+        .await;
+    }
+}
+
+fn open_startup_screen(device: &mut AppDevice) {
+    if let Err(error) = cadmus_core::view::startup::open(device) {
+        error!(error = %error, "slint startup render failed");
+    }
+}
+
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(device, settings, fonts, database, status_led, dictionary_db), level = tracing::Level::TRACE))]
 async fn build_context(
     device: AppDevice,
@@ -500,7 +533,7 @@ pub async fn run() -> Result<(), Error> {
     info!(cwd = ?startup_cwd, "startup diagnostics");
     device.clean_tmp_dir();
 
-    let mut fonts = Fonts::load(&device.install_dir()).context("can't load fonts")?;
+    let fonts = Fonts::load(&device.install_dir()).context("can't load fonts")?;
 
     let status_led = StatusLed::new(device.device_leds());
     let startup_led = status_led.install(
@@ -511,12 +544,12 @@ pub async fn run() -> Result<(), Error> {
             off: std::time::Duration::from_millis(500),
         },
     );
-    {
-        #[cfg(feature = "tracing")]
-        let _span = tracing::trace_span!(parent: &start_span, "startup-screen").entered();
 
-        StartupScreen::show(&mut device, &mut fonts).ok();
-    };
+    #[cfg(feature = "tracing")]
+    tracing::trace_span!(parent: &start_span, "startup-screen")
+        .in_scope(|| open_startup_screen(&mut device));
+    #[cfg(not(feature = "tracing"))]
+    open_startup_screen(&mut device);
 
     let mut database = Database::new(device.resolve_db_path())
         .await
@@ -580,10 +613,9 @@ pub async fn run() -> Result<(), Error> {
 
     let mut history: Vec<HistoryItem> = Vec::new();
     let mut rq = RenderQueue::new();
+    let mut updating = Vec::new();
     let mut view: Box<dyn View> =
         Box::new(Home::new(context.device.framebuffer().rect(), &mut rq, &mut context).await?);
-
-    let mut updating = Vec::new();
 
     let version = get_version();
     info!(
@@ -604,21 +636,16 @@ pub async fn run() -> Result<(), Error> {
 
     let mut bus = VecDeque::with_capacity(4);
 
-    if context.settings.startup_mode == StartupMode::LastFile
-        && let Some(info) = context.library.most_recently_opened_reading_book().await
-    {
-        open_document(
-            Box::new(info),
-            &mut view,
-            &mut history,
-            &mut updating,
-            &tx,
-            &mut bus,
-            &mut rq,
-            &mut context,
-        )
-        .await;
-    }
+    open_last_reading(
+        &mut view,
+        &mut history,
+        &mut updating,
+        &tx,
+        &mut bus,
+        &mut rq,
+        &mut context,
+    )
+    .await;
 
     context.wifi_session.set_hub(tx.clone());
 

@@ -58,6 +58,25 @@ fn skip_thirdparty_deps() -> bool {
     env::var_os(SKIP_THIRDPARTY_DEPS_ENV).is_some()
 }
 
+/// Compiles the Slint UI and bundles the `ui/lang` catalogs.
+///
+/// Watching `ui/` rebuilds on any `.slint` or catalog change, new files
+/// included. `@tr` strings are the English source;
+/// `ui/lang/<lang>/LC_MESSAGES/*.po` carries the Crowdin translations.
+/// `DefaultTranslationContext::None` drops the component-name `msgctxt`, to
+/// match `slint-tr-extractor --no-default-translation-context`, because the
+/// same word can appear in more than one component.
+fn compile_slint_ui() -> Result<()> {
+    println!("cargo:rerun-if-changed=ui");
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").context("CARGO_MANIFEST_DIR not set")?;
+    let manifest_dir = Path::new(&manifest_dir);
+    let config = slint_build::CompilerConfiguration::new()
+        .with_bundled_translations("ui/lang")
+        .with_default_translation_context(slint_build::DefaultTranslationContext::None);
+    slint_build::compile_with_config(manifest_dir.join("ui/cadmus.slint"), config)?;
+    Ok(())
+}
+
 fn try_main() -> Result<()> {
     ensure_device_feature()?;
 
@@ -99,6 +118,7 @@ fn try_main() -> Result<()> {
     generate_locales()?;
     generate_keyboard_layouts(&root)?;
     generate_bundled_assets()?;
+    compile_slint_ui()?;
 
     if skip_thirdparty_deps() {
         println!("Skipping thirdparty deps");
