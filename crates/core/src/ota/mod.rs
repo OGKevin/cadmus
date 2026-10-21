@@ -9,8 +9,11 @@
 
 mod cleanup;
 mod client;
+mod pr_status;
 
 pub use crate::github::OtaProgress;
 pub use crate::http::{CancelFlag, CancelFunc};
 pub use cleanup::{clean_bundled_files, cleanup_ota_artifacts, cleanup_ota_cancel};
 pub use client::{ArtifactSource, DeployOutcome, DownloadedArtifact, OtaClient, OtaError};
+pub(crate) use pr_status::pending_pulls;
+pub use pr_status::{CheckedPull, OpenPull, PrArtifact, PrBuild};

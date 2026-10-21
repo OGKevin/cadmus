@@ -4,6 +4,10 @@ use crate::github::types::{
 };
 use crate::github::{GithubClient, OtaProgress};
 use crate::http::{CancelFlag, CancelFunc, ChunkedDownloadError};
+use crate::ota::pr_status::{
+    ArtifactSnapshot, OpenPull, RunSnapshot, pending_pulls, project_pulls, unknown_unless_ready,
+};
+use crate::ota::{CheckedPull, PrBuild};
 use crate::version::GitVersion;
 use async_zip::base::read1::ZipFileReader;
 use async_zip::base::read1::seek::ZipArchiveReader;
@@ -11,6 +15,7 @@ use async_zip::error::ZipError;
 use async_zip::spec::constructs::CDR;
 use futures_lite::io::{AsyncBufRead, AsyncRead, AsyncReadExt, AsyncSeek, Cursor};
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
+use std::collections::HashSet;
 use std::io::Error;
 use std::path::{Path, PathBuf};
 use tokio_util::compat::TokioAsyncReadCompatExt;
@@ -414,6 +419,150 @@ impl OtaClient {
 
         tracing::info!(pr_number, "PR build download completed");
         Ok(artifact)
+    }
+
+    /// Fills in which of `pulls` can be installed.
+    ///
+    /// `emit` runs once a live package is found, and again when the check
+    /// finishes or stops early. `failed` is true only on that early stop.
+    /// A row stays pending until then, unless it is already ready.
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self, pulls, emit), fields(pulls = pulls.len()), err)
+    )]
+    pub async fn resolve_install_status(
+        &self,
+        pulls: &[OpenPull],
+        mut emit: impl FnMut(Vec<CheckedPull>, bool),
+    ) -> Result<(), OtaError> {
+        let runs = match self.github.list_cargo_pull_request_runs().await {
+            Ok(runs) => runs,
+            Err(error) => {
+                tracing::warn!(error = %error, step = "cargo_runs", "install check failed");
+                emit(unknown_unless_ready(pending_pulls(pulls)), true);
+                return Err(error.into());
+            }
+        };
+        let run_snapshots: Vec<RunSnapshot<'_>> = runs
+            .iter()
+            .map(|run| RunSnapshot {
+                head_sha: run.head_sha.as_str(),
+                name: run.name.as_str(),
+                status: run.status.as_str(),
+                conclusion: run.conclusion.as_deref(),
+            })
+            .collect();
+        let heads: Vec<&str> = pulls.iter().map(|pull| pull.head_sha.as_str()).collect();
+        let queries = crate::github::install_artifact_runs(&runs, &heads);
+        let mut artifacts = Vec::new();
+        let mut announced = 0;
+        let mut failed_heads = Vec::new();
+        let mut failure = None;
+        for run in &queries {
+            let listed = match self.github.list_run_artifacts(run.id).await {
+                Ok(listed) => listed,
+                Err(error) => {
+                    tracing::warn!(
+                        error = %error,
+                        run_id = run.id,
+                        step = "run_artifacts",
+                        "install check failed"
+                    );
+                    failed_heads.push(run.head_sha.as_str());
+                    failure = Some(error);
+                    continue;
+                }
+            };
+            artifacts.extend(
+                listed
+                    .into_iter()
+                    .filter(|artifact| artifact_name_matches_any_pr(&artifact.name)),
+            );
+            let rows = project_pulls(
+                pulls,
+                &run_snapshots,
+                &artifact_snapshots(&artifacts),
+                false,
+            );
+            let ready = rows
+                .iter()
+                .filter(|pull| pull.build == PrBuild::Ready && pull.artifact.is_some())
+                .count();
+            if ready > announced {
+                announced = ready;
+                emit(rows, false);
+            }
+        }
+        let mut rows = project_pulls(pulls, &run_snapshots, &artifact_snapshots(&artifacts), true);
+        if !failed_heads.is_empty() {
+            let failed: HashSet<&str> = failed_heads.iter().copied().collect();
+            rows = rows
+                .into_iter()
+                .zip(pulls)
+                .map(|(mut row, pull)| {
+                    if row.build != PrBuild::Ready && failed.contains(pull.head_sha.as_str()) {
+                        row.build = PrBuild::Unknown;
+                        row.artifact = None;
+                    }
+                    row
+                })
+                .collect();
+        }
+        let all_failed = !queries.is_empty() && failed_heads.len() == queries.len();
+        emit(rows, all_failed);
+        tracing::debug!(
+            pulls = pulls.len(),
+            runs = run_snapshots.len(),
+            artifacts = artifacts.len(),
+            ready = announced,
+            failed = failed_heads.len(),
+            "install check finished"
+        );
+        if all_failed && let Some(error) = failure {
+            return Err(error.into());
+        }
+        Ok(())
+    }
+
+    /// Downloads a pull-request artifact that the picker already resolved.
+    ///
+    /// Skips the run lookup. Scope checks, disk space, and cancellation match
+    /// [`Self::download_pr_artifact`].
+    pub async fn download_pr_artifact_from<F>(
+        &self,
+        pr_number: u32,
+        artifact_id: u64,
+        size_in_bytes: u64,
+        mut progress_callback: F,
+        should_cancel: Option<&CancelFlag>,
+    ) -> Result<DownloadedArtifact, OtaError>
+    where
+        F: FnMut(OtaProgress),
+    {
+        if should_cancel.is_some_and(CancelFlag::is_cancelled) {
+            return Err(OtaError::Cancelled);
+        }
+
+        check_disk_space(&self.tmp_dir)?;
+        verify_scopes(&self.github).await?;
+
+        let artifact = Artifact {
+            name: String::new(),
+            id: artifact_id,
+            size_in_bytes,
+            expired: false,
+        };
+        let download_path = self.tmp_dir.join(format!("cadmus-ota-{pr_number}.zip"));
+        let downloaded = self
+            .download_artifact(
+                &artifact,
+                &download_path,
+                &mut progress_callback,
+                should_cancel,
+            )
+            .await?;
+        progress_callback(OtaProgress::Complete);
+        Ok(downloaded)
     }
 
     /// Downloads the latest build artifact from the default branch.
@@ -1259,6 +1408,26 @@ async fn copy_file_to_file(
 
     tracing::debug!(bytes = total, "Streamed file to staging path");
     Ok(())
+}
+
+fn artifact_snapshots(artifacts: &[crate::github::ListedArtifact]) -> Vec<ArtifactSnapshot<'_>> {
+    artifacts
+        .iter()
+        .map(|artifact| ArtifactSnapshot {
+            name: artifact.name.as_str(),
+            id: artifact.id,
+            size_in_bytes: artifact.size_in_bytes,
+            expired: artifact.expired,
+        })
+        .collect()
+}
+
+/// True when `name` might be a Kobo package for some pull request.
+fn artifact_name_matches_any_pr(name: &str) -> bool {
+    cfg_select! {
+        feature = "test" => name.starts_with("cadmus-kobo-test-pr"),
+        _ => name.starts_with("cadmus-kobo-pr"),
+    }
 }
 
 fn is_ota_candidate_run(run: &WorkflowRun) -> bool {

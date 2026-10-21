@@ -49,6 +49,8 @@ Rust follows the same split:
   the result to apply. `Waiting` remembers which control opened the shared
   sheet. [`Flow`](slint/mod.rs) is only the renderer instruction (`Idle` or
   `Redraw`); `dispatch` reduces `Step` to it.
+- [`ota`](ota/) is the Check for Updates screen. List, auth, and progress are
+  components. It reuses the same overlays and host as settings.
 - Another screen gets its own folder under `view/` and under `ui/`. It reuses
   the overlays by constructing them with its own row type and window. It
   does not grow a second copy of the file browser or the confirmation dialog.
