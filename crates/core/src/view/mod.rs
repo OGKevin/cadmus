@@ -473,6 +473,26 @@ pub fn wait_for_all(updating: &mut Vec<UpdateData>, context: &mut AppContext) {
     }
 }
 
+/// Identifies one attempt at a background job.
+///
+/// A screen bumps the generation when it starts a job. The job carries the
+/// generation in every event it sends, so an event from an attempt the reader
+/// has already left can be told apart from the current one.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Generation(u64);
+
+impl Generation {
+    /// The generation with this number.
+    pub fn new(value: u64) -> Self {
+        Self(value)
+    }
+
+    /// The generation that follows this one.
+    pub fn next(self) -> Self {
+        Self(self.0.wrapping_add(1))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ToggleEvent {
     View(ViewId),

@@ -38,7 +38,7 @@ pub struct PrArtifact {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CheckedPull {
     /// Pull request number.
-    pub number: u32,
+    pub number: u64,
     /// Pull request title. Empty when GitHub omitted it.
     pub title: String,
     /// GitHub marked the pull request as a draft.
@@ -63,7 +63,7 @@ impl CheckedPull {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpenPull {
     /// Pull request number.
-    pub number: u32,
+    pub number: u64,
     /// Title, or empty when GitHub omitted it.
     pub title: String,
     /// GitHub marked the pull request as a draft.
@@ -74,7 +74,7 @@ pub struct OpenPull {
 
 /// A workflow run reduced to the fields the picker reads.
 #[derive(Debug, Clone, Copy)]
-pub struct RunSnapshot<'a> {
+pub(crate) struct RunSnapshot<'a> {
     /// Commit the run built.
     pub head_sha: &'a str,
     /// Workflow name. Only `"Cargo"` counts.
@@ -87,7 +87,7 @@ pub struct RunSnapshot<'a> {
 
 /// A repository artifact reduced to the fields the picker reads.
 #[derive(Debug, Clone, Copy)]
-pub struct ArtifactSnapshot<'a> {
+pub(crate) struct ArtifactSnapshot<'a> {
     /// Artifact file name.
     pub name: &'a str,
     /// GitHub artifact id.
@@ -98,22 +98,32 @@ pub struct ArtifactSnapshot<'a> {
     pub expired: bool,
 }
 
-/// Name prefix of the Kobo package built for `pr_number`.
+/// Name stem of the Kobo package built for a pull request.
 ///
-/// Test builds use a different prefix so they do not install over a release
+/// Test builds use a different stem so they do not install over a release
 /// package of the same number.
-pub(crate) fn pr_artifact_prefix(pr_number: u32) -> String {
+pub(crate) fn pr_artifact_stem() -> &'static str {
     cfg_select! {
-        feature = "test" => format!("cadmus-kobo-test-pr{pr_number}"),
-        _ => format!("cadmus-kobo-pr{pr_number}"),
+        feature = "test" => "cadmus-kobo-test-pr",
+        _ => "cadmus-kobo-pr",
     }
+}
+
+/// Name prefix of the Kobo package built for `pr_number`.
+pub(crate) fn pr_artifact_prefix(pr_number: u64) -> String {
+    format!("{}{pr_number}", pr_artifact_stem())
+}
+
+/// True when `name` might be the Kobo package of some pull request.
+pub(crate) fn artifact_name_matches_any_pr(name: &str) -> bool {
+    name.starts_with(pr_artifact_stem())
 }
 
 /// True when `name` is the Kobo package for `pr_number`.
 ///
 /// `cadmus-kobo-pr42` matches `cadmus-kobo-pr42` and `cadmus-kobo-pr42-abcdef`.
 /// It does not match `cadmus-kobo-pr420`.
-pub(crate) fn artifact_name_matches(name: &str, pr_number: u32) -> bool {
+pub(crate) fn artifact_name_matches(name: &str, pr_number: u64) -> bool {
     let prefix = pr_artifact_prefix(pr_number);
     let Some(rest) = name.strip_prefix(&prefix) else {
         return false;
@@ -124,7 +134,7 @@ pub(crate) fn artifact_name_matches(name: &str, pr_number: u32) -> bool {
 /// Joins one pull request's commit to the Cargo runs and repository artifacts
 /// already fetched.
 pub(crate) fn classify_pr(
-    pr_number: u32,
+    pr_number: u64,
     head_sha: &str,
     runs: &[RunSnapshot<'_>],
     artifacts: &[ArtifactSnapshot<'_>],
@@ -224,7 +234,7 @@ pub(crate) fn unknown_unless_ready(pulls: Vec<CheckedPull>) -> Vec<CheckedPull> 
         .collect()
 }
 
-fn live_artifact(pr_number: u32, artifacts: &[ArtifactSnapshot<'_>]) -> Option<PrArtifact> {
+fn live_artifact(pr_number: u64, artifacts: &[ArtifactSnapshot<'_>]) -> Option<PrArtifact> {
     artifacts.iter().find_map(|artifact| {
         if artifact.expired || !artifact_name_matches(artifact.name, pr_number) {
             return None;
@@ -378,7 +388,7 @@ mod tests {
         assert!(artifact.is_some());
     }
 
-    fn pull(number: u32, head_sha: &str) -> OpenPull {
+    fn pull(number: u64, head_sha: &str) -> OpenPull {
         OpenPull {
             number,
             title: format!("Change {number}"),

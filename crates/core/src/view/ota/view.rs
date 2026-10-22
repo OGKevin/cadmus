@@ -5,27 +5,27 @@ use std::sync::Arc;
 
 use anyhow::Context as _;
 use secrecy::SecretString;
+use slint::ComponentHandle as _;
 
 use crate::device::AppContext;
 use crate::device::{DeviceIdentity as _, DevicePaths as _};
 use crate::fl;
-use crate::framebuffer::UpdateMode;
 use crate::geom::Rectangle;
 use crate::github::GithubClient;
 use crate::github::device_flow::{self, AuthOrigin};
 use crate::input::{ButtonCode, ButtonStatus, DeviceEvent};
-use crate::ota::{CheckedPull, OpenPull, OtaClient, OtaError, pending_pulls};
+use crate::ota::{CheckedPull, OpenPull, OtaClient, OtaError, PrBuild, pending_pulls};
 #[cfg(not(feature = "test"))]
 use crate::version::{VersionComparison, get_current_version};
 use crate::view::github::{GithubEvent, StableReleaseCheckOutcome};
 use crate::view::slint::components::choice_sheet::{self, ChoiceSheet, Row};
 use crate::view::slint::components::confirm_sheet::{self, ConfirmSheet};
-use crate::view::slint::generated::{OtaScreen, OtaWindow};
+use crate::view::slint::generated::{InkBar, OtaScreen, OtaWindow};
 use crate::view::slint::{
-    CallbackQueue, Component, Env, FastInk, Flow, OverlayStack, Pager, Session, SlintHost,
-    SlintScreen, apply_ink, connect,
+    CallbackQueue, Component, Env, FastInk, Flow, FrameCause, OverlayStack, PagedIo, RefreshPlan,
+    Session, SlintHost, SlintScreen, connect, pixel_scale,
 };
-use crate::view::{Bus, Event, Hub, Id, NotificationEvent, RenderQueue};
+use crate::view::{Bus, Event, Generation, Hub, NotificationEvent, RenderQueue};
 
 use super::OtaEvent;
 use super::auth::spawn_device_flow_job;
@@ -59,7 +59,7 @@ enum Pending {
 /// A pull request the reader agreed to install.
 #[derive(Clone, Copy, Debug)]
 struct ResolvedPr {
-    number: u32,
+    number: u64,
     artifact_id: u64,
     size_in_bytes: u64,
 }
@@ -86,8 +86,6 @@ enum Action {
     Back,
     Line(i32),
     Refresh,
-    Previous,
-    Next,
     AuthCancel,
     ProgressCancel,
 }
@@ -105,10 +103,15 @@ pub struct Ota {
     auth: device_flow::ResolvedAuth,
     pending: Option<Pending>,
     confirm_pr: Option<ResolvedPr>,
-    pager: Pager,
-    /// Every open pull request. The screen shows one slice of this.
+    /// Every open pull request. The screen shows one page of this.
     rows: Vec<CheckedPull>,
-    list_generation: u64,
+    /// The list starts on its first page the next time it is shown.
+    reset_page: bool,
+    list_generation: Generation,
+    /// The sign-in attempt on screen. Events from an older one are ignored.
+    auth_generation: Generation,
+    /// The install attempt on screen. Events from an older one are ignored.
+    install_generation: Generation,
     loading: bool,
     auth_message: String,
     auth_code: String,
@@ -125,9 +128,6 @@ pub struct Ota {
     download_job: Option<crate::runtime::Job>,
     check_job: Option<crate::runtime::Job>,
     ink: FastInk,
-    /// This frame is only a spinner tick. Those rectangles use an A2 update
-    /// and do not wait.
-    spinner_tick: bool,
     /// The download bar moved. Only that rectangle is an A2 update. The label
     /// above it stays a normal update, because A2 crushes the text.
     fast_refresh: Cell<bool>,
@@ -147,9 +147,11 @@ impl Ota {
             auth,
             pending: None,
             confirm_pr: None,
-            pager: Pager::new(10),
             rows: Vec::new(),
-            list_generation: 0,
+            reset_page: false,
+            list_generation: Generation::default(),
+            auth_generation: Generation::default(),
+            install_generation: Generation::default(),
             loading: false,
             auth_message: String::new(),
             auth_code: String::new(),
@@ -166,7 +168,6 @@ impl Ota {
             download_job: None,
             check_job: None,
             ink: FastInk::new(),
-            spinner_tick: false,
             fast_refresh: Cell::new(false),
         }
     }
@@ -179,7 +180,6 @@ impl SlintScreen for Ota {
     fn open(context: &mut AppContext) -> anyhow::Result<Session<OtaWindow>> {
         crate::view::slint::open(&context.device, |_family| {
             let ui = OtaWindow::new().context("failed to create slint ota window")?;
-            apply_ink(&ui, context);
             Ok(ui)
         })
     }
@@ -205,16 +205,12 @@ impl SlintScreen for Ota {
             Phase::Auth => OtaScreen::Auth,
             Phase::Progress => OtaScreen::Progress,
         });
-        window.set_back_enabled(!self.download_in_progress && !self.download_committed);
-        self.pager.set_per_page(
-            u8::try_from(window.get_per_page())
-                .ok()
-                .filter(|count| *count > 0)
-                .unwrap_or(10),
-        );
-        self.pager.clamp(self.rows.len());
-        self.list
-            .publish(window, self.pager, &self.rows, self.loading);
+        window.set_back_enabled(!self.download_committed);
+        self.list.publish(window, &self.rows, self.loading);
+        if self.reset_page {
+            window.set_page(0);
+            self.reset_page = false;
+        }
         self.auth_panel
             .publish(window, &self.auth_message, &self.auth_code);
         self.progress.publish(
@@ -242,8 +238,6 @@ impl SlintScreen for Ota {
             let action = match self.list.apply(action, &mut env).await {
                 list::Action::Line(index) => Action::Line(index),
                 list::Action::Refresh => Action::Refresh,
-                list::Action::Previous => Action::Previous,
-                list::Action::Next => Action::Next,
             };
             if self
                 .apply_action(action, env.hub, env.bus, env.context)
@@ -345,7 +339,7 @@ impl SlintScreen for Ota {
                 true
             }
             Event::Ota(OtaEvent::PrListed { generation, rows }) => {
-                self.on_pr_listed(*generation, rows.clone(), env.hub);
+                self.on_pr_listed(*generation, rows.clone());
                 true
             }
             Event::Ota(OtaEvent::PrStatus {
@@ -360,38 +354,53 @@ impl SlintScreen for Ota {
                 self.on_pr_list_failed(*generation, env.hub);
                 true
             }
-            Event::Ota(OtaEvent::DownloadFinished(_)) => {
-                self.leave_progress();
+            Event::Ota(OtaEvent::DownloadFinished { generation, .. }) => {
+                self.on_download_finished(*generation);
                 true
             }
             Event::Github(GithubEvent::DeviceAuthStarted {
+                generation,
                 verification_uri,
                 user_code,
             }) => {
-                self.auth_message = fl!("device-auth-go-to-uri", uri = verification_uri.as_str());
-                self.auth_code = user_code.clone();
+                if *generation == self.auth_generation {
+                    self.auth_message =
+                        fl!("device-auth-go-to-uri", uri = verification_uri.as_str());
+                    self.auth_code = user_code.clone();
+                }
                 true
             }
-            Event::Github(GithubEvent::DeviceAuthComplete(token)) => {
-                self.on_auth_complete(token, env.hub, env.context).await;
+            Event::Github(GithubEvent::DeviceAuthComplete { generation, token }) => {
+                if *generation == self.auth_generation {
+                    self.on_auth_complete(token, env.hub, env.context).await;
+                }
                 true
             }
             Event::Github(GithubEvent::TokenInvalid) => {
-                self.on_token_invalid(env.hub, env.context);
+                self.on_token_invalid(env.hub, env.context).await;
                 true
             }
-            Event::Github(GithubEvent::DeviceAuthExpired) => {
-                self.notify(env.hub, fl!("ota-auth-timed-out"));
-                self.show_source();
+            Event::Github(GithubEvent::DeviceAuthExpired { generation }) => {
+                if *generation == self.auth_generation {
+                    self.notify(env.hub, fl!("ota-auth-timed-out"));
+                    self.show_source();
+                }
                 true
             }
-            Event::Github(GithubEvent::DeviceAuthError(_)) => {
-                self.notify(env.hub, fl!("ota-auth-error"));
-                self.show_source();
+            Event::Github(GithubEvent::DeviceAuthError { generation, .. }) => {
+                if *generation == self.auth_generation {
+                    self.notify(env.hub, fl!("ota-auth-error"));
+                    self.show_source();
+                }
                 true
             }
-            Event::Github(GithubEvent::StableReleaseCheck(outcome)) => {
-                self.on_stable_release_check(outcome.clone(), env.hub, env.context);
+            Event::Github(GithubEvent::StableReleaseCheck {
+                generation,
+                outcome,
+            }) => {
+                if *generation == self.install_generation && self.phase == Phase::Progress {
+                    self.on_stable_release_check(outcome.clone(), env.hub, env.context);
+                }
                 true
             }
             Event::StartStableReleaseDownload => {
@@ -405,7 +414,7 @@ impl SlintScreen for Ota {
     async fn take_device(
         &mut self,
         event: DeviceEvent,
-        _window: Option<&OtaWindow>,
+        window: Option<&OtaWindow>,
         _env: &mut Env<'_>,
         swallow: &mut Option<ButtonCode>,
     ) -> bool {
@@ -415,48 +424,28 @@ impl SlintScreen for Ota {
                 status: ButtonStatus::Pressed | ButtonStatus::Repeated,
                 ..
             } if self.can_page() => {
+                let Some(window) = window else {
+                    return false;
+                };
                 let delta = if code == ButtonCode::Backward { -1 } else { 1 };
                 *swallow = Some(code);
-                self.step_page(delta);
+                window.bump(delta);
                 true
             }
             _ => false,
         }
     }
 
-    fn panel_refresh(&self, _finger_down: bool) -> (UpdateMode, bool) {
-        if self.spinner_tick {
-            (UpdateMode::Fast, false)
-        } else {
-            (UpdateMode::Gui, true)
-        }
-    }
-
-    fn queue_dirty(
-        &self,
-        id: Id,
-        session: &Session<OtaWindow>,
-        rq: &mut RenderQueue,
-        _finger_down: bool,
-    ) {
-        let dirty = session.take_dirty();
-        if self.spinner_tick {
-            self.ink.queue_fast(id, dirty, UpdateMode::Fast, false, rq);
+    fn refresh(&mut self, cause: FrameCause, rects: Vec<Rectangle>, plan: &mut RefreshPlan) {
+        if let FrameCause::Timer { acted: false } = cause {
+            self.ink.plan_fast(rects, plan);
             return;
         }
         if self.fast_refresh.replace(false) {
-            self.ink.queue_bar(id, dirty, rq);
+            self.ink.plan_bar(rects, plan);
             return;
         }
-        self.ink.queue_with_clean(id, dirty, rq);
-    }
-
-    fn note_timer(&mut self, _repainted: bool) {
-        self.spinner_tick = true;
-    }
-
-    fn clear_timer_note(&mut self) {
-        self.spinner_tick = false;
+        self.ink.plan_with_clean(rects, plan);
     }
 
     fn stop_jobs(&self) {
@@ -527,11 +516,12 @@ impl Ota {
         publish_bar_geometry(window, || {
             let _ = session.redraw();
         });
-        let scale = f32::from(context.device.dpi().max(1)) / crate::unit::BASE_DPI;
-        let x = (window.get_bar_x() * scale).round() as i32;
-        let y = (window.get_bar_y() * scale).round() as i32;
-        let width = (window.get_bar_width() * scale).round() as i32;
-        let height = (window.get_bar_height() * scale).round() as i32;
+        let bar = window.global::<InkBar>();
+        let scale = pixel_scale(context.device.dpi());
+        let x = (bar.get_x() * scale).round() as i32;
+        let y = (bar.get_y() * scale).round() as i32;
+        let width = (bar.get_width() * scale).round() as i32;
+        let height = (bar.get_height() * scale).round() as i32;
         self.ink.set_bar(rect![
             x,
             y,
@@ -543,6 +533,7 @@ impl Ota {
     fn show_source(&mut self) {
         self.phase = Phase::Source;
         self.loading = false;
+        self.pending = None;
         self.confirm.close();
         self.confirm_pr = None;
         self.cancel_auth();
@@ -574,15 +565,7 @@ impl Ota {
                 true
             }
             Action::Refresh => {
-                self.refresh(hub, context);
-                true
-            }
-            Action::Previous => {
-                self.step_page(-1);
-                true
-            }
-            Action::Next => {
-                self.step_page(1);
+                self.reload(hub, context);
                 true
             }
             Action::AuthCancel => {
@@ -618,7 +601,7 @@ impl Ota {
                 if !self.ensure_token(Pending::PrList, hub, context) {
                     return;
                 }
-                self.pager.reset();
+                self.reset_page = true;
                 self.show_list(hub, context);
             }
         }
@@ -642,12 +625,18 @@ impl Ota {
         self.auth_cancelled = Arc::new(crate::http::CancelFlag::new());
         self.auth_job = Some(spawn_device_flow_job(
             hub,
+            self.auth_generation,
             Arc::clone(&self.auth_cancelled),
             context.wifi_session.clone(),
         ));
     }
 
+    /// Stops the sign-in attempt.
+    ///
+    /// The generation moves on, so an event the stopped job already sent is
+    /// ignored instead of starting an install the reader cancelled.
     fn cancel_auth(&mut self) {
+        self.auth_generation = self.auth_generation.next();
         self.auth_cancelled.request_cancel();
         self.auth_job = None;
     }
@@ -656,24 +645,31 @@ impl Ota {
         self.phase = Phase::List;
         self.came_from = CameFrom::List;
         self.choice.close();
-        if self.rows.is_empty() {
+        if self.list_needs_load() {
             self.load_list(hub, context);
         } else {
             self.loading = false;
         }
     }
 
-    fn refresh(&mut self, hub: &Hub, context: &mut AppContext) {
+    /// True when the rows on screen cannot answer for themselves.
+    ///
+    /// A pending row only settles while the job that checks it runs. Leaving
+    /// the list drops that job, so the list has to be fetched again.
+    fn list_needs_load(&self) -> bool {
+        self.pr_job.is_none()
+            || self.rows.is_empty()
+            || self.rows.iter().any(|row| row.build == PrBuild::Pending)
+    }
+
+    fn reload(&mut self, hub: &Hub, context: &mut AppContext) {
         self.load_list(hub, context);
     }
 
-    #[cfg_attr(
-        feature = "tracing",
-        tracing::instrument(skip(self, hub, context), fields(pager = ?self.pager))
-    )]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, context)))]
     fn load_list(&mut self, hub: &Hub, context: &mut AppContext) {
         self.loading = self.rows.is_empty();
-        self.list_generation = self.list_generation.wrapping_add(1);
+        self.list_generation = self.list_generation.next();
         let generation = self.list_generation;
         let token = self.auth.effective();
         let wifi = context.wifi_session.clone();
@@ -721,23 +717,15 @@ impl Ota {
             match outcome {
                 Ok(()) => {}
                 Err(OtaError::Cancelled) => {}
-                Err(error) if listed => {
-                    tracing::error!(error = %error, "pull request install check failed");
-                }
                 Err(error) => {
-                    tracing::error!(error = %error, "pull request list failed");
-                    hub.send((Event::Ota(OtaEvent::PrListFailed { generation })).into())
-                        .ok();
+                    let step = if listed { "install_check" } else { "list" };
+                    tracing::error!(error = %error, step, "pull request check failed");
+                    for event in list_failure_events(generation, &error, listed) {
+                        hub.send(event.into()).ok();
+                    }
                 }
             }
         }));
-    }
-
-    fn step_page(&mut self, delta: i32) {
-        if !self.can_page() {
-            return;
-        }
-        self.pager.step(delta, self.rows.len());
     }
 
     fn can_page(&self) -> bool {
@@ -748,7 +736,7 @@ impl Ota {
         let Some(index) = usize::try_from(index).ok() else {
             return;
         };
-        let Some(row) = self.pager.slice(&self.rows).get(index) else {
+        let Some(row) = self.rows.get(index) else {
             return;
         };
         if !row.selectable() {
@@ -776,28 +764,32 @@ impl Ota {
 
     #[cfg_attr(
         feature = "tracing",
-        tracing::instrument(skip(self, rows, _hub), fields(generation, rows = rows.len()))
+        tracing::instrument(skip(self, rows), fields(generation, rows = rows.len()))
     )]
-    fn on_pr_listed(&mut self, generation: u64, rows: Vec<CheckedPull>, _hub: &Hub) {
+    fn on_pr_listed(&mut self, generation: Generation, rows: Vec<CheckedPull>) {
         if generation != self.list_generation {
             return;
         }
         self.rows = rows;
         self.loading = false;
-        self.pager.clamp(self.rows.len());
     }
 
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(skip(self, rows, hub), fields(generation, failed, rows = rows.len()))
     )]
-    fn on_pr_status(&mut self, generation: u64, rows: Vec<CheckedPull>, failed: bool, hub: &Hub) {
+    fn on_pr_status(
+        &mut self,
+        generation: Generation,
+        rows: Vec<CheckedPull>,
+        failed: bool,
+        hub: &Hub,
+    ) {
         if generation != self.list_generation {
             return;
         }
         self.rows = rows;
         self.loading = false;
-        self.pager.clamp(self.rows.len());
         if failed {
             self.notify(hub, fl!("ota-pr-status-failed"));
         }
@@ -807,12 +799,23 @@ impl Ota {
         feature = "tracing",
         tracing::instrument(skip(self, hub), fields(generation))
     )]
-    fn on_pr_list_failed(&mut self, generation: u64, hub: &Hub) {
+    fn on_pr_list_failed(&mut self, generation: Generation, hub: &Hub) {
         if generation != self.list_generation {
             return;
         }
         self.loading = false;
         self.notify(hub, fl!("ota-pr-list-failed"));
+    }
+
+    /// Leaves the progress screen when the install attempt on screen ended.
+    ///
+    /// An event from an older attempt, or a second event from the attempt that
+    /// just ended, is ignored.
+    fn on_download_finished(&mut self, generation: Generation) {
+        if generation != self.install_generation || self.phase != Phase::Progress {
+            return;
+        }
+        self.leave_progress();
     }
 
     fn start_pr(&mut self, pr: ResolvedPr, hub: &Hub, context: &mut AppContext) {
@@ -839,6 +842,7 @@ impl Ota {
 
     fn enter_progress(&mut self, label: String) {
         self.phase = Phase::Progress;
+        self.install_generation = self.install_generation.next();
         self.choice.close();
         self.confirm.close();
         self.progress_label = label;
@@ -848,14 +852,23 @@ impl Ota {
         self.download_committed = false;
     }
 
+    /// Cancels the work on the progress screen.
+    ///
+    /// A download is cancelled in place, so the reader sees the download stop.
+    /// The stable-version check has nothing to show, so the screen leaves.
     fn begin_cancel(&mut self) {
-        if !self.download_in_progress || self.download_committed || self.download_canceling {
+        if self.download_committed || self.download_canceling {
             return;
         }
-        self.download_canceling = true;
-        self.cancelled.request_cancel();
-        self.progress_label = fl!("ota-download-canceling");
-        self.progress_cancelable = false;
+        if self.download_in_progress {
+            self.download_canceling = true;
+            self.cancelled.request_cancel();
+            self.progress_label = fl!("ota-download-canceling");
+            self.progress_cancelable = false;
+            return;
+        }
+        self.check_job = None;
+        self.leave_progress();
     }
 
     fn on_progress(&mut self, label: &str, percent: u8, cancelable: bool) {
@@ -900,6 +913,7 @@ impl Ota {
         self.download_canceling = false;
         self.download_job = Some(run_ota_download(OtaDownloadContext {
             kind,
+            generation: self.install_generation,
             hub: hub.clone(),
             tmp_dir: context.device.tmp_dir(),
             install_dir: context.device.install_dir(),
@@ -916,6 +930,7 @@ impl Ota {
         let hub = hub.clone();
         let wifi_session = context.wifi_session.clone();
         let tmp_dir = context.device.tmp_dir();
+        let generation = self.install_generation;
         self.check_job = Some(crate::runtime::Job::spawn(move |cancel| async move {
             let outcome = crate::runtime::race_cancel(
                 &cancel,
@@ -927,8 +942,14 @@ impl Ota {
             }
             match outcome {
                 Ok(outcome) => {
-                    hub.send((Event::Github(GithubEvent::StableReleaseCheck(outcome))).into())
-                        .ok();
+                    hub.send(
+                        (Event::Github(GithubEvent::StableReleaseCheck {
+                            generation,
+                            outcome,
+                        }))
+                        .into(),
+                    )
+                    .ok();
                 }
                 Err(OtaError::Cancelled) => {}
                 Err(error) => {
@@ -941,7 +962,11 @@ impl Ota {
                     )
                     .ok();
                     hub.send(
-                        (Event::Ota(OtaEvent::DownloadFinished(DownloadOutcome::Failed))).into(),
+                        (Event::Ota(OtaEvent::DownloadFinished {
+                            generation,
+                            outcome: DownloadOutcome::Failed,
+                        }))
+                        .into(),
                     )
                     .ok();
                 }
@@ -981,12 +1006,26 @@ impl Ota {
         hub: &Hub,
         context: &mut AppContext,
     ) {
-        if let Err(error) = device_flow::save_token(token, &context.device.install_dir()) {
-            tracing::error!(error = %error, "Failed to save GitHub token");
-        }
+        self.save_token(token, context).await;
         self.auth.set_saved(token.clone());
         self.auth_job = None;
         self.resume(hub, context);
+    }
+
+    /// Writes the token to disk without blocking the view thread.
+    async fn save_token(&self, token: &SecretString, context: &AppContext) {
+        let install_dir = context.device.install_dir();
+        if let Err(error) = device_flow::save_token(token, &install_dir).await {
+            tracing::error!(error = %error, "Failed to save GitHub token");
+        }
+    }
+
+    /// Removes the saved token without blocking the view thread.
+    async fn delete_token(&self, context: &AppContext) {
+        let install_dir = context.device.install_dir();
+        if let Err(error) = device_flow::delete_token(&install_dir).await {
+            tracing::error!(error = %error, "Failed to delete stale token");
+        }
     }
 
     fn resume(&mut self, hub: &Hub, context: &mut AppContext) {
@@ -997,7 +1036,7 @@ impl Ota {
                 self.start_download(OtaDownloadKind::DefaultBranch, hub, context);
             }
             Some(Pending::PrList) => {
-                self.pager.reset();
+                self.reset_page = true;
                 self.show_list(hub, context);
             }
             Some(Pending::Pr(pr)) => self.start_pr(pr, hub, context),
@@ -1005,7 +1044,7 @@ impl Ota {
         }
     }
 
-    fn on_token_invalid(&mut self, hub: &Hub, context: &mut AppContext) {
+    async fn on_token_invalid(&mut self, hub: &Hub, context: &mut AppContext) {
         match self.auth.reject_effective() {
             Some(AuthOrigin::Environment) => {
                 tracing::warn!("GH_TOKEN rejected — ignoring it for this session");
@@ -1017,9 +1056,7 @@ impl Ota {
             }
             Some(AuthOrigin::Saved) => {
                 tracing::warn!("Saved GitHub token is invalid — clearing and re-authenticating");
-                if let Err(error) = device_flow::delete_token(&context.device.install_dir()) {
-                    tracing::error!(error = %error, "Failed to delete stale token");
-                }
+                self.delete_token(context).await;
             }
             None => {
                 tracing::warn!("GitHub token rejected with no token loaded");
@@ -1032,6 +1069,20 @@ impl Ota {
         self.start_auth(hub, context);
         self.pending = Some(pending);
     }
+}
+
+/// The events the screen needs after the pull-request fetch failed.
+///
+/// A rejected token asks the screen to sign in again. A failed list leaves the
+/// rows alone and tells the reader the list did not arrive.
+fn list_failure_events(generation: Generation, error: &OtaError, listed: bool) -> Vec<Event> {
+    if matches!(error, OtaError::Unauthorized) {
+        return vec![Event::Github(GithubEvent::TokenInvalid)];
+    }
+    if listed {
+        return Vec::new();
+    }
+    vec![Event::Ota(OtaEvent::PrListFailed { generation })]
 }
 
 fn source_rows() -> Vec<Row<Source>> {
@@ -1060,13 +1111,11 @@ fn source_rows() -> Vec<Row<Source>> {
 fn open_pulls(listed: Vec<crate::github::ListedPull>) -> Vec<OpenPull> {
     listed
         .into_iter()
-        .filter_map(|pull| {
-            Some(OpenPull {
-                number: u32::try_from(pull.number).ok()?,
-                title: pull.title,
-                draft: pull.draft,
-                head_sha: pull.head_sha,
-            })
+        .map(|pull| OpenPull {
+            number: pull.number,
+            title: pull.title,
+            draft: pull.draft,
+            head_sha: pull.head_sha,
         })
         .collect()
 }
@@ -1094,6 +1143,16 @@ async fn run_stable_release_check(
     })
 }
 
+impl PagedIo for OtaWindow {
+    fn visible_page(&self) -> i32 {
+        self.get_page()
+    }
+
+    fn set_visible_page(&self, page: i32) {
+        self.set_page(page);
+    }
+}
+
 /// Asks the progress page to copy the bar rectangle.
 ///
 /// The page's binding does not run its change handler the first time it is
@@ -1114,21 +1173,45 @@ mod tests {
     use super::*;
     use crate::ota::PrBuild;
     use crate::view::hub_channel;
-    use crate::view::slint::SlintView;
     use crate::view::{NotificationEvent, View};
 
     fn bare() -> OtaView {
         SlintHost::blank(Ota::new(device_flow::ResolvedAuth::empty()))
     }
 
+    /// A view with a window, so the page buttons have a page to move.
+    async fn mounted() -> (OtaView, crate::device::AppContext) {
+        use crate::device::DeviceHardware as _;
+        use crate::framebuffer::Framebuffer as _;
+
+        let mut context = crate::context::test_helpers::create_test_context().await;
+        let rect = context.device.framebuffer().rect();
+        let mut rq = crate::view::RenderQueue::new();
+        let view = OtaView::new(rect, &mut rq, &mut context).await;
+        (view, context)
+    }
+
     #[test]
     fn a_spinner_tick_refreshes_the_dirty_sticks() {
         use crate::framebuffer::UpdateMode;
+        use crate::view::slint::{FrameCause, RefreshPlan};
 
         let mut view = bare();
-        assert_eq!(view.panel_refresh(false), (UpdateMode::Gui, true));
-        view.spinner_tick = true;
-        assert_eq!(view.panel_refresh(false), (UpdateMode::Fast, false));
+        let mut plan = RefreshPlan::default();
+        view.screen_mut().refresh(
+            FrameCause::Timer { acted: false },
+            vec![rect![0, 0, 10, 10]],
+            &mut plan,
+        );
+        assert_eq!(plan.regions.len(), 1);
+        assert_eq!(plan.regions[0].mode, UpdateMode::Fast);
+        assert!(!plan.regions[0].wait);
+
+        let mut plan = RefreshPlan::default();
+        view.screen_mut()
+            .refresh(FrameCause::Sync, vec![rect![100, 100, 110, 110]], &mut plan);
+        assert_eq!(plan.regions[0].mode, UpdateMode::Gui);
+        assert!(plan.regions[0].wait);
     }
 
     #[test]
@@ -1151,10 +1234,11 @@ mod tests {
         publish_bar_geometry(window, || {
             assert!(ui.redraw());
         });
-        let x = window.get_bar_x();
-        let y = window.get_bar_y();
-        let width = window.get_bar_width();
-        let height = window.get_bar_height();
+        let bar = window.global::<InkBar>();
+        let x = bar.get_x();
+        let y = bar.get_y();
+        let width = bar.get_width();
+        let height = bar.get_height();
         assert!(x > 20.0, "bar x {x}");
         assert!(width > 1000.0, "bar width {width}");
         assert!(height > 10.0, "bar height {height}");
@@ -1164,8 +1248,8 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn back_during_a_download_cancels_and_stays() {
         let mut view = bare();
-        view.phase = Phase::Progress;
-        view.download_in_progress = true;
+        view.screen_mut().phase = Phase::Progress;
+        view.screen_mut().download_in_progress = true;
         let (hub, _rx) = hub_channel();
         let mut bus = Bus::new();
         let mut rq = RenderQueue::new();
@@ -1177,17 +1261,17 @@ mod tests {
 
         assert!(handled);
         assert!(bus.is_empty());
-        assert!(view.cancelled.is_cancelled());
-        assert_eq!(view.progress_label, fl!("ota-download-canceling"));
-        assert!(view.download_in_progress);
+        assert!(view.screen().cancelled.is_cancelled());
+        assert_eq!(view.screen().progress_label, fl!("ota-download-canceling"));
+        assert!(view.screen().download_in_progress);
     }
 
     #[tokio::test(flavor = "current_thread")]
     async fn back_after_commit_does_not_cancel() {
         let mut view = bare();
-        view.phase = Phase::Progress;
-        view.download_in_progress = true;
-        view.download_committed = true;
+        view.screen_mut().phase = Phase::Progress;
+        view.screen_mut().download_in_progress = true;
+        view.screen_mut().download_committed = true;
         let (hub, _rx) = hub_channel();
         let mut bus = Bus::new();
         let mut rq = RenderQueue::new();
@@ -1198,14 +1282,14 @@ mod tests {
             .await;
 
         assert!(handled);
-        assert!(!view.cancelled.is_cancelled());
+        assert!(!view.screen().cancelled.is_cancelled());
     }
 
     #[tokio::test(flavor = "current_thread")]
     async fn a_committed_progress_event_hides_cancel() {
         let mut view = bare();
-        view.phase = Phase::Progress;
-        view.download_in_progress = true;
+        view.screen_mut().phase = Phase::Progress;
+        view.screen_mut().download_in_progress = true;
         let (hub, _rx) = hub_channel();
         let mut bus = Bus::new();
         let mut rq = RenderQueue::new();
@@ -1224,8 +1308,8 @@ mod tests {
         )
         .await;
 
-        assert!(view.download_committed);
-        assert!(!view.progress_cancelable);
+        assert!(view.screen().download_committed);
+        assert!(!view.screen().progress_cancelable);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -1237,8 +1321,8 @@ mod tests {
             token.cancelled().await;
         });
         let mut view = bare();
-        view.download_job = Some(download);
-        view.check_job = Some(check);
+        view.screen_mut().download_job = Some(download);
+        view.screen_mut().check_job = Some(check);
 
         let mut jobs = Vec::new();
         view.take_background_jobs(&mut jobs);
@@ -1254,11 +1338,11 @@ mod tests {
             token.cancelled().await;
         });
         let mut view = bare();
-        view.download_in_progress = true;
-        view.download_job = Some(download);
-        view.check_job = Some(check);
+        view.screen_mut().download_in_progress = true;
+        view.screen_mut().download_job = Some(download);
+        view.screen_mut().check_job = Some(check);
         view.stop_jobs();
-        assert!(view.cancelled.is_cancelled());
+        assert!(view.screen().cancelled.is_cancelled());
         drop(view);
     }
 
@@ -1318,21 +1402,6 @@ mod tests {
     }
 
     #[test]
-    fn next_stops_on_the_last_local_page() {
-        let mut view = bare();
-        view.phase = Phase::List;
-        view.rows = (0..11).map(sample_row).collect();
-        assert_eq!(view.pager.slice(&view.rows).len(), 10);
-        let len = view.rows.len();
-        view.pager.step(1, len);
-        assert_eq!(view.pager.page(), 1);
-        assert_eq!(view.pager.slice(&view.rows).len(), 1);
-        assert_eq!(view.pager.slice(&view.rows)[0].number, 10);
-        view.pager.step(1, len);
-        assert_eq!(view.pager.page(), 1);
-    }
-
-    #[test]
     fn source_rows_match_the_build() {
         let rows = source_rows();
         #[cfg(feature = "test")]
@@ -1351,7 +1420,7 @@ mod tests {
     }
 
     #[test]
-    fn open_pulls_drops_numbers_that_do_not_fit() {
+    fn open_pulls_keeps_every_number() {
         let pulls = open_pulls(vec![
             crate::github::ListedPull {
                 number: 42,
@@ -1361,15 +1430,16 @@ mod tests {
             },
             crate::github::ListedPull {
                 number: u64::from(u32::MAX) + 1,
-                title: "Too big".into(),
+                title: "Big".into(),
                 draft: false,
                 head_sha: "def".into(),
             },
         ]);
-        assert_eq!(pulls.len(), 1);
+        assert_eq!(pulls.len(), 2);
         assert_eq!(pulls[0].number, 42);
         assert!(pulls[0].draft);
         assert_eq!(pulls[0].head_sha, "abc");
+        assert_eq!(pulls[1].number, u64::from(u32::MAX) + 1);
     }
 
     #[test]
@@ -1424,9 +1494,9 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn list_events_replace_rows_and_ignore_stale_jobs() {
         let mut view = bare();
-        view.phase = Phase::List;
-        view.list_generation = 3;
-        view.loading = true;
+        view.screen_mut().phase = Phase::List;
+        view.screen_mut().list_generation = Generation::new(3);
+        view.screen_mut().loading = true;
         let (hub, mut rx) = hub_channel();
         let mut bus = Bus::new();
         let mut rq = RenderQueue::new();
@@ -1434,7 +1504,7 @@ mod tests {
 
         view.handle_event(
             &Event::Ota(OtaEvent::PrListed {
-                generation: 2,
+                generation: Generation::new(2),
                 rows: vec![sample_row(1)],
             }),
             &hub,
@@ -1443,12 +1513,12 @@ mod tests {
             &mut context,
         )
         .await;
-        assert!(view.rows.is_empty());
-        assert!(view.loading);
+        assert!(view.screen().rows.is_empty());
+        assert!(view.screen().loading);
 
         view.handle_event(
             &Event::Ota(OtaEvent::PrListed {
-                generation: 3,
+                generation: Generation::new(3),
                 rows: vec![sample_row(1), sample_row(2)],
             }),
             &hub,
@@ -1457,13 +1527,12 @@ mod tests {
             &mut context,
         )
         .await;
-        assert_eq!(view.rows.len(), 2);
-        assert!(!view.loading);
-        assert_eq!(view.pager.page(), 0);
+        assert_eq!(view.screen().rows.len(), 2);
+        assert!(!view.screen().loading);
 
         view.handle_event(
             &Event::Ota(OtaEvent::PrStatus {
-                generation: 1,
+                generation: Generation::new(1),
                 rows: vec![ready_row(9)],
                 failed: true,
             }),
@@ -1473,11 +1542,11 @@ mod tests {
             &mut context,
         )
         .await;
-        assert_eq!(view.rows[0].number, 1);
+        assert_eq!(view.screen().rows[0].number, 1);
 
         view.handle_event(
             &Event::Ota(OtaEvent::PrStatus {
-                generation: 3,
+                generation: Generation::new(3),
                 rows: vec![ready_row(2)],
                 failed: true,
             }),
@@ -1487,7 +1556,7 @@ mod tests {
             &mut context,
         )
         .await;
-        assert!(view.rows[0].selectable());
+        assert!(view.screen().rows[0].selectable());
         assert!(matches!(
             rx.try_recv().expect("status failed").event,
             Event::Notification(NotificationEvent::Show(text))
@@ -1495,7 +1564,9 @@ mod tests {
         ));
 
         view.handle_event(
-            &Event::Ota(OtaEvent::PrListFailed { generation: 3 }),
+            &Event::Ota(OtaEvent::PrListFailed {
+                generation: Generation::new(3),
+            }),
             &hub,
             &mut bus,
             &mut rq,
@@ -1512,50 +1583,55 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn progress_and_auth_events_return_to_the_right_screen() {
         let mut view = bare();
-        view.phase = Phase::Progress;
-        view.came_from = CameFrom::List;
-        view.download_in_progress = true;
+        view.screen_mut().phase = Phase::Progress;
+        view.screen_mut().came_from = CameFrom::List;
+        view.screen_mut().download_in_progress = true;
         let (hub, mut rx) = hub_channel();
         let mut bus = Bus::new();
         let mut rq = RenderQueue::new();
         let mut context = crate::context::test_helpers::create_test_context().await;
 
         view.handle_event(
-            &Event::Ota(OtaEvent::DownloadFinished(DownloadOutcome::Cancelled)),
+            &Event::Ota(OtaEvent::DownloadFinished {
+                generation: view.screen().install_generation,
+                outcome: DownloadOutcome::Cancelled,
+            }),
             &hub,
             &mut bus,
             &mut rq,
             &mut context,
         )
         .await;
-        assert_eq!(view.phase, Phase::List);
-        assert!(!view.download_in_progress);
+        assert_eq!(view.screen().phase, Phase::List);
+        assert!(!view.screen().download_in_progress);
 
-        view.phase = Phase::Progress;
-        view.came_from = CameFrom::Source;
+        view.screen_mut().phase = Phase::Progress;
+        view.screen_mut().came_from = CameFrom::Source;
         view.handle_event(
-            &Event::Github(GithubEvent::StableReleaseCheck(
-                StableReleaseCheckOutcome::Equal,
-            )),
+            &Event::Github(GithubEvent::StableReleaseCheck {
+                generation: view.screen().install_generation,
+                outcome: StableReleaseCheckOutcome::Equal,
+            }),
             &hub,
             &mut bus,
             &mut rq,
             &mut context,
         )
         .await;
-        assert_eq!(view.phase, Phase::Source);
+        assert_eq!(view.screen().phase, Phase::Source);
         assert!(matches!(
             rx.try_recv().expect("already latest").event,
             Event::Notification(NotificationEvent::Show(text))
                 if text == fl!("ota-already-latest")
         ));
 
-        view.phase = Phase::Progress;
-        view.came_from = CameFrom::Source;
+        view.screen_mut().phase = Phase::Progress;
+        view.screen_mut().came_from = CameFrom::Source;
         view.handle_event(
-            &Event::Github(GithubEvent::StableReleaseCheck(
-                StableReleaseCheckOutcome::Newer,
-            )),
+            &Event::Github(GithubEvent::StableReleaseCheck {
+                generation: view.screen().install_generation,
+                outcome: StableReleaseCheckOutcome::Newer,
+            }),
             &hub,
             &mut bus,
             &mut rq,
@@ -1568,11 +1644,12 @@ mod tests {
                 if text == fl!("ota-version-newer")
         ));
 
-        view.phase = Phase::Progress;
+        view.screen_mut().phase = Phase::Progress;
         view.handle_event(
-            &Event::Github(GithubEvent::StableReleaseCheck(
-                StableReleaseCheckOutcome::Incomparable,
-            )),
+            &Event::Github(GithubEvent::StableReleaseCheck {
+                generation: view.screen().install_generation,
+                outcome: StableReleaseCheckOutcome::Incomparable,
+            }),
             &hub,
             &mut bus,
             &mut rq,
@@ -1587,6 +1664,7 @@ mod tests {
 
         view.handle_event(
             &Event::Github(GithubEvent::DeviceAuthStarted {
+                generation: view.screen().auth_generation,
                 verification_uri: "https://example.test".into(),
                 user_code: "ABCD-1234".into(),
             }),
@@ -1596,133 +1674,135 @@ mod tests {
             &mut context,
         )
         .await;
-        assert_eq!(view.auth_code, "ABCD-1234");
+        assert_eq!(view.screen().auth_code, "ABCD-1234");
         assert_eq!(
-            view.auth_message,
+            view.screen().auth_message,
             fl!("device-auth-go-to-uri", uri = "https://example.test")
         );
 
-        view.phase = Phase::Auth;
+        view.screen_mut().phase = Phase::Auth;
         view.handle_event(
-            &Event::Github(GithubEvent::DeviceAuthExpired),
+            &Event::Github(GithubEvent::DeviceAuthExpired {
+                generation: view.screen().auth_generation,
+            }),
             &hub,
             &mut bus,
             &mut rq,
             &mut context,
         )
         .await;
-        assert_eq!(view.phase, Phase::Source);
+        assert_eq!(view.screen().phase, Phase::Source);
         assert!(matches!(
             rx.try_recv().expect("auth timed out").event,
             Event::Notification(NotificationEvent::Show(text))
                 if text == fl!("ota-auth-timed-out")
         ));
 
-        view.phase = Phase::Auth;
+        view.screen_mut().phase = Phase::Auth;
         view.handle_event(
-            &Event::Github(GithubEvent::DeviceAuthError("nope".into())),
+            &Event::Github(GithubEvent::DeviceAuthError {
+                generation: view.screen().auth_generation,
+                message: "nope".into(),
+            }),
             &hub,
             &mut bus,
             &mut rq,
             &mut context,
         )
         .await;
-        assert_eq!(view.phase, Phase::Source);
+        assert_eq!(view.screen().phase, Phase::Source);
         assert!(matches!(
             rx.try_recv().expect("auth error").event,
             Event::Notification(NotificationEvent::Show(text))
                 if text == fl!("ota-auth-error")
         ));
 
-        view.phase = Phase::Auth;
+        view.screen_mut().phase = Phase::Auth;
         view.handle_event(
-            &Event::Github(GithubEvent::DeviceAuthComplete(SecretString::from(
-                "test_token",
-            ))),
+            &Event::Github(GithubEvent::DeviceAuthComplete {
+                generation: view.screen().auth_generation,
+                token: SecretString::from("test_token"),
+            }),
             &hub,
             &mut bus,
             &mut rq,
             &mut context,
         )
         .await;
-        assert_eq!(view.phase, Phase::Source);
-        assert!(view.auth.effective().is_some());
+        assert_eq!(view.screen().phase, Phase::Source);
+        assert!(view.screen().auth.effective().is_some());
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn actions_page_confirm_and_leave_without_installing() {
+    async fn actions_confirm_and_leave_without_installing() {
         let mut view = bare();
-        view.phase = Phase::List;
-        view.rows = (0..11).map(sample_row).collect();
+        let mut context = crate::context::test_helpers::create_test_context().await;
+        view.screen_mut().phase = Phase::List;
+        view.screen_mut().rows = (0..11).map(sample_row).collect();
         let (hub, _rx) = hub_channel();
         let mut bus = Bus::new();
-        let mut context = crate::context::test_helpers::create_test_context().await;
 
+        view.screen_mut()
+            .apply_action(Action::Line(0), &hub, &mut bus, &mut context)
+            .await;
+        assert!(!view.screen().confirm.is_open());
+
+        view.screen_mut().rows = vec![ready_row(5)];
+        view.screen_mut()
+            .apply_action(Action::Line(0), &hub, &mut bus, &mut context)
+            .await;
+        assert!(view.screen().confirm.is_open());
+        assert_eq!(view.screen().confirm_pr.unwrap().number, 5);
+
+        view.screen_mut()
+            .apply_action(Action::Line(-1), &hub, &mut bus, &mut context)
+            .await;
+        assert!(view.screen().confirm.is_open());
+
+        assert!(view.screen_mut().consume_back());
+        assert!(!view.screen().confirm.is_open());
+        assert!(view.screen().confirm_pr.is_none());
+
+        view.screen_mut().phase = Phase::List;
         assert!(
-            view.apply_action(Action::Next, &hub, &mut bus, &mut context)
+            view.screen_mut()
+                .apply_action(Action::Back, &hub, &mut bus, &mut context)
                 .await
         );
-        assert_eq!(view.pager.page(), 1);
-        assert!(
-            view.apply_action(Action::Previous, &hub, &mut bus, &mut context)
-                .await
-        );
-        assert_eq!(view.pager.page(), 0);
-
-        view.apply_action(Action::Line(0), &hub, &mut bus, &mut context)
-            .await;
-        assert!(!view.confirm.is_open());
-
-        view.rows = vec![ready_row(5)];
-        view.apply_action(Action::Line(0), &hub, &mut bus, &mut context)
-            .await;
-        assert!(view.confirm.is_open());
-        assert_eq!(view.confirm_pr.unwrap().number, 5);
-
-        view.apply_action(Action::Line(-1), &hub, &mut bus, &mut context)
-            .await;
-        assert!(view.confirm.is_open());
-
-        assert!(view.consume_back());
-        assert!(!view.confirm.is_open());
-        assert!(view.confirm_pr.is_none());
-
-        view.phase = Phase::List;
-        assert!(
-            view.apply_action(Action::Back, &hub, &mut bus, &mut context)
-                .await
-        );
-        assert_eq!(view.phase, Phase::Source);
+        assert_eq!(view.screen().phase, Phase::Source);
         assert!(bus.is_empty());
 
         assert!(
-            view.apply_action(Action::Back, &hub, &mut bus, &mut context)
+            view.screen_mut()
+                .apply_action(Action::Back, &hub, &mut bus, &mut context)
                 .await
         );
         assert!(matches!(bus.pop_front(), Some(Event::Back)));
 
-        view.phase = Phase::Auth;
-        view.apply_action(Action::AuthCancel, &hub, &mut bus, &mut context)
+        view.screen_mut().phase = Phase::Auth;
+        view.screen_mut()
+            .apply_action(Action::AuthCancel, &hub, &mut bus, &mut context)
             .await;
-        assert_eq!(view.phase, Phase::Source);
+        assert_eq!(view.screen().phase, Phase::Source);
 
-        view.phase = Phase::Progress;
-        view.download_in_progress = true;
-        view.apply_action(Action::ProgressCancel, &hub, &mut bus, &mut context)
+        view.screen_mut().phase = Phase::Progress;
+        view.screen_mut().download_in_progress = true;
+        view.screen_mut()
+            .apply_action(Action::ProgressCancel, &hub, &mut bus, &mut context)
             .await;
-        assert!(view.cancelled.is_cancelled());
-        assert_eq!(view.progress_label, fl!("ota-download-canceling"));
+        assert!(view.screen().cancelled.is_cancelled());
+        assert_eq!(view.screen().progress_label, fl!("ota-download-canceling"));
     }
 
     #[tokio::test(flavor = "current_thread")]
     async fn buttons_page_the_list_and_home_goes_back() {
-        let mut view = bare();
-        view.phase = Phase::List;
-        view.rows = (0..11).map(sample_row).collect();
+        let (mut view, mut context) = mounted().await;
+        view.screen_mut().choice.close();
+        view.screen_mut().phase = Phase::List;
+        view.screen_mut().rows = (0..11).map(sample_row).collect();
         let (hub, _rx) = hub_channel();
         let mut bus = Bus::new();
         let mut rq = RenderQueue::new();
-        let mut context = crate::context::test_helpers::create_test_context().await;
 
         view.handle_event(
             &Event::Device(DeviceEvent::Button {
@@ -1736,7 +1816,7 @@ mod tests {
             &mut context,
         )
         .await;
-        assert_eq!(view.pager.page(), 1);
+        assert_eq!(view.session().expect("session").component().get_page(), 1);
         assert_eq!(view.swallow_release, Some(ButtonCode::Forward));
 
         view.handle_event(
@@ -1751,7 +1831,7 @@ mod tests {
             &mut context,
         )
         .await;
-        assert_eq!(view.pager.page(), 0);
+        assert_eq!(view.session().expect("session").component().get_page(), 0);
 
         view.handle_event(
             &Event::Device(DeviceEvent::Button {
@@ -1765,8 +1845,8 @@ mod tests {
             &mut context,
         )
         .await;
-        assert_eq!(view.phase, Phase::Source);
-        assert!(view.choice.is_open());
+        assert_eq!(view.screen().phase, Phase::Source);
+        assert!(view.screen().choice.is_open());
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -1774,20 +1854,235 @@ mod tests {
         let mut view = bare();
         let (hub, _rx) = hub_channel();
         let mut context = crate::context::test_helpers::create_test_context().await;
-        view.on_source(Source::Pr, &hub, &mut context);
-        assert_eq!(view.phase, Phase::Auth);
-        assert!(matches!(view.pending, Some(Pending::PrList)));
+        view.screen_mut().on_source(Source::Pr, &hub, &mut context);
+        assert_eq!(view.screen().phase, Phase::Auth);
+        assert!(matches!(view.screen().pending, Some(Pending::PrList)));
         view.stop_jobs();
         let mut jobs = Vec::new();
         view.take_background_jobs(&mut jobs);
         drop(jobs);
 
-        view.auth.set_saved(SecretString::from("test_token"));
-        view.rows = vec![sample_row(1)];
-        view.on_source(Source::Pr, &hub, &mut context);
-        assert_eq!(view.phase, Phase::List);
-        assert!(!view.loading);
-        assert!(view.pr_job.is_none());
+        view.screen_mut()
+            .auth
+            .set_saved(SecretString::from("test_token"));
+
+        view.screen_mut().rows = vec![sample_row(1)];
+        view.screen_mut().on_source(Source::Pr, &hub, &mut context);
+        assert_eq!(view.screen().phase, Phase::List);
+        assert!(!view.screen().loading);
+        let mut jobs = Vec::new();
+        view.take_background_jobs(&mut jobs);
+        drop(jobs);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn re_entering_the_list_fetches_it_again() {
+        let mut view = bare();
+        let (hub, _rx) = hub_channel();
+        let mut context = crate::context::test_helpers::create_test_context().await;
+        view.screen_mut().phase = Phase::List;
+        view.screen_mut().rows = vec![sample_row(1)];
+        view.screen_mut().show_source();
+        assert!(view.screen().pr_job.is_none());
+        let generation = view.screen().list_generation;
+
+        view.screen_mut().show_list(&hub, &mut context);
+
+        assert!(view.screen().pr_job.is_some());
+        assert_ne!(view.screen().list_generation, generation);
+        let mut jobs = Vec::new();
+        view.take_background_jobs(&mut jobs);
+        drop(jobs);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_stale_auth_token_does_not_start_an_install() {
+        let mut view = bare();
+        let (hub, _rx) = hub_channel();
+        let mut bus = Bus::new();
+        let mut rq = RenderQueue::new();
+        let mut context = crate::context::test_helpers::create_test_context().await;
+        view.screen_mut().phase = Phase::Auth;
+        view.screen_mut().pending = Some(Pending::Main);
+        let stale = view.screen().auth_generation;
+
+        view.screen_mut().show_source();
+
+        view.handle_event(
+            &Event::Github(GithubEvent::DeviceAuthComplete {
+                generation: stale,
+                token: SecretString::from("test_token"),
+            }),
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        )
+        .await;
+
+        assert_eq!(view.screen().phase, Phase::Source);
+        assert!(view.screen().pending.is_none());
+        assert!(view.screen().auth.effective().is_none());
+        assert!(view.screen().download_job.is_none());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_stale_auth_failure_leaves_the_list_alone() {
+        let mut view = bare();
+        let (hub, mut rx) = hub_channel();
+        let mut bus = Bus::new();
+        let mut rq = RenderQueue::new();
+        let mut context = crate::context::test_helpers::create_test_context().await;
+        view.screen_mut().phase = Phase::Auth;
+        let stale = view.screen().auth_generation;
+        view.screen_mut().show_source();
+        view.screen_mut().phase = Phase::List;
+
+        view.handle_event(
+            &Event::Github(GithubEvent::DeviceAuthExpired { generation: stale }),
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        )
+        .await;
+
+        assert_eq!(view.screen().phase, Phase::List);
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn cancel_during_the_version_check_leaves_the_progress_screen() {
+        let mut view = bare();
+        let (hub, _rx) = hub_channel();
+        let mut bus = Bus::new();
+        let mut context = crate::context::test_helpers::create_test_context().await;
+        view.screen_mut().phase = Phase::Progress;
+        view.screen_mut().came_from = CameFrom::Source;
+
+        view.screen_mut()
+            .apply_action(Action::ProgressCancel, &hub, &mut bus, &mut context)
+            .await;
+
+        assert_eq!(view.screen().phase, Phase::Source);
+        assert!(!view.screen().download_in_progress);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_cancelled_version_check_does_not_start_a_download() {
+        let mut view = bare();
+        let (hub, _rx) = hub_channel();
+        let mut bus = Bus::new();
+        let mut rq = RenderQueue::new();
+        let mut context = crate::context::test_helpers::create_test_context().await;
+        view.screen_mut().phase = Phase::Progress;
+        view.screen_mut().came_from = CameFrom::Source;
+        let generation = view.screen().install_generation;
+
+        view.screen_mut()
+            .apply_action(Action::ProgressCancel, &hub, &mut bus, &mut context)
+            .await;
+        assert_eq!(view.screen().phase, Phase::Source);
+
+        view.handle_event(
+            &Event::Github(GithubEvent::StableReleaseCheck {
+                generation,
+                outcome: StableReleaseCheckOutcome::Older,
+            }),
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        )
+        .await;
+
+        assert!(view.screen().download_job.is_none());
+        assert_eq!(view.screen().phase, Phase::Source);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_second_finished_event_does_not_reopen_the_source_sheet() {
+        let mut view = bare();
+        let (hub, _rx) = hub_channel();
+        let mut bus = Bus::new();
+        let mut rq = RenderQueue::new();
+        let mut context = crate::context::test_helpers::create_test_context().await;
+        view.screen_mut().phase = Phase::Progress;
+        view.screen_mut().came_from = CameFrom::Source;
+        let generation = view.screen().install_generation;
+
+        view.handle_event(
+            &Event::Ota(OtaEvent::DownloadFinished {
+                generation,
+                outcome: DownloadOutcome::Failed,
+            }),
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        )
+        .await;
+        assert_eq!(view.screen().phase, Phase::Source);
+
+        view.screen_mut().phase = Phase::List;
+        view.handle_event(
+            &Event::Ota(OtaEvent::DownloadFinished {
+                generation,
+                outcome: DownloadOutcome::Failed,
+            }),
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        )
+        .await;
+
+        assert_eq!(view.screen().phase, Phase::List);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_finished_event_from_an_older_install_is_ignored() {
+        let mut view = bare();
+        let (hub, _rx) = hub_channel();
+        let mut bus = Bus::new();
+        let mut rq = RenderQueue::new();
+        let mut context = crate::context::test_helpers::create_test_context().await;
+        view.screen_mut().phase = Phase::Progress;
+        view.screen_mut().install_generation = Generation::new(5);
+
+        view.handle_event(
+            &Event::Ota(OtaEvent::DownloadFinished {
+                generation: Generation::new(4),
+                outcome: DownloadOutcome::Failed,
+            }),
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        )
+        .await;
+
+        assert_eq!(view.screen().phase, Phase::Progress);
+    }
+
+    #[test]
+    fn a_rejected_token_asks_the_screen_to_sign_in_again() {
+        let events = list_failure_events(Generation::new(1), &OtaError::Unauthorized, false);
+        assert_eq!(events.len(), 1);
+        assert!(matches!(
+            events[0],
+            Event::Github(GithubEvent::TokenInvalid)
+        ));
+    }
+
+    #[test]
+    fn a_failed_list_tells_the_screen_the_rows_are_stale() {
+        let events = list_failure_events(Generation::new(1), &OtaError::Api("boom".into()), false);
+        assert_eq!(events.len(), 1);
+        assert!(matches!(
+            events[0],
+            Event::Ota(OtaEvent::PrListFailed { .. })
+        ));
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -1805,14 +2100,14 @@ mod tests {
             &mut context,
         )
         .await;
-        assert_eq!(view.phase, Phase::Auth);
+        assert_eq!(view.screen().phase, Phase::Auth);
         view.stop_jobs();
         let mut jobs = Vec::new();
         view.take_background_jobs(&mut jobs);
         drop(jobs);
     }
 
-    fn sample_row(number: u32) -> CheckedPull {
+    fn sample_row(number: u64) -> CheckedPull {
         CheckedPull {
             number,
             title: format!("PR {number}"),
@@ -1822,7 +2117,7 @@ mod tests {
         }
     }
 
-    fn ready_row(number: u32) -> CheckedPull {
+    fn ready_row(number: u64) -> CheckedPull {
         CheckedPull {
             number,
             title: format!("PR {number}"),

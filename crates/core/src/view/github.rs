@@ -1,14 +1,29 @@
 use secrecy::SecretString;
 
+use super::Generation;
+
 /// Events emitted by GitHub authentication and API interactions.
 #[derive(Debug, Clone)]
 pub enum GithubEvent {
     /// Device flow completed successfully; carries the new access token.
-    DeviceAuthComplete(SecretString),
+    DeviceAuthComplete {
+        /// The sign-in attempt this token belongs to.
+        generation: Generation,
+        /// The token GitHub issued.
+        token: SecretString,
+    },
     /// Device flow code expired before the user authorized.
-    DeviceAuthExpired,
+    DeviceAuthExpired {
+        /// The sign-in attempt that expired.
+        generation: Generation,
+    },
     /// Device flow failed with an error message.
-    DeviceAuthError(String),
+    DeviceAuthError {
+        /// The sign-in attempt that failed.
+        generation: Generation,
+        /// What went wrong.
+        message: String,
+    },
     /// A GitHub API call returned 401 or 403 — the token in use is invalid,
     /// revoked, or missing required scopes.
     ///
@@ -18,6 +33,8 @@ pub enum GithubEvent {
     TokenInvalid,
     /// The device-flow code is available, so the view can show it.
     DeviceAuthStarted {
+        /// The sign-in attempt the code belongs to.
+        generation: Generation,
         /// Where the user must go to authorize.
         verification_uri: String,
         /// The short code the user must enter.
@@ -27,7 +44,12 @@ pub enum GithubEvent {
     ///
     /// The check is a view-owned job holding a Wi-Fi lease, so it reports back
     /// here rather than blocking the main loop for the retry budget.
-    StableReleaseCheck(StableReleaseCheckOutcome),
+    StableReleaseCheck {
+        /// The install attempt the check belongs to.
+        generation: Generation,
+        /// What the check concluded.
+        outcome: StableReleaseCheckOutcome,
+    },
 }
 
 /// What the stable-release version check concluded.

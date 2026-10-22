@@ -20,18 +20,6 @@ msgstr ""
 msgid "No open pull requests"
 msgstr ""
 
-#: crates/core/ui/ota/window.slint:65
-msgid "Check for Updates"
-msgstr ""
-
-#: crates/core/ui/ota/window.slint:86
-msgid "No open pull requests"
-msgstr ""
-
-#: crates/core/ui/ota/window.slint:153 crates/core/ui/ota/window.slint:191
-msgid "Cancel"
-msgstr ""
-
 #: crates/core/ui/settings/shell/category_bar.slint:46
 msgid "General"
 msgstr ""

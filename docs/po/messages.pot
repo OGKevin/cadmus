@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-10-21T17:12:30+02:00\n"
+"POT-Creation-Date: 2026-10-22T05:27:51-04:00\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -114,7 +114,7 @@ msgstr ""
 msgid "Database Backup"
 msgstr ""
 
-#: src/SUMMARY.md:30 src/installation/ota.md:102 src/troubleshooting/index.md:1
+#: src/SUMMARY.md:30 src/installation/ota.md:104 src/troubleshooting/index.md:1
 msgid "Troubleshooting"
 msgstr ""
 
@@ -387,7 +387,7 @@ msgid ""
 "out changes that haven't been released yet"
 msgstr ""
 
-#: src/installation/index.md:25 src/installation/ota.md:96
+#: src/installation/index.md:25 src/installation/ota.md:98
 msgid "First-time setup"
 msgstr ""
 
@@ -740,78 +740,82 @@ msgid ""
 msgstr ""
 
 #: src/installation/ota.md:79
-msgid ""
-"Use the arrows to see more pull requests. Use the refresh button to load the "
-"list again."
+msgid "Cadmus asks you to confirm before it downloads the build you picked."
 msgstr ""
 
-#: src/installation/ota.md:82
+#: src/installation/ota.md:81
+msgid ""
+"Use the arrows to see more pull requests. The page buttons on your Kobo move "
+"through the list as well. Use the refresh button to load the list again."
+msgstr ""
+
+#: src/installation/ota.md:84
 msgid ""
 "If you haven't signed in before, Cadmus will guide you through GitHub "
 "sign-in. See [Authentication](#authentication) for details."
 msgstr ""
 
-#: src/installation/ota.md:85
+#: src/installation/ota.md:87
 msgid "Normal vs test builds"
 msgstr ""
 
-#: src/installation/ota.md:87
+#: src/installation/ota.md:89
 msgid ""
 "OTA works for both types of builds. The type you're currently using "
 "determines what gets downloaded:"
 msgstr ""
 
-#: src/installation/ota.md:90
+#: src/installation/ota.md:92
 msgid "**Normal builds** update to `KoboRoot.tgz` in `/mnt/onboard/.adds/cadmus`"
 msgstr ""
 
-#: src/installation/ota.md:91
+#: src/installation/ota.md:93
 msgid ""
 "**Test builds** update to `KoboRoot-test.tgz` in "
 "`/mnt/onboard/.adds/cadmus-tst`"
 msgstr ""
 
-#: src/installation/ota.md:93
+#: src/installation/ota.md:95
 msgid ""
 "See the [available packages](./index.md#available-packages) table for all "
 "options."
 msgstr ""
 
-#: src/installation/ota.md:98
+#: src/installation/ota.md:100
 msgid ""
 "OTA only works for updating an existing installation. To install Cadmus for "
 "the first time, follow the [installation guide](./index.md) or the [test "
 "builds guide](./test-builds.md) to copy a KoboRoot file via USB."
 msgstr ""
 
-#: src/installation/ota.md:104
+#: src/installation/ota.md:106
 msgid "\"Insufficient disk space\" error"
 msgstr ""
 
-#: src/installation/ota.md:106
+#: src/installation/ota.md:108
 msgid ""
 "If Cadmus shows an error like _\"Insufficient disk space: need 100MB, have "
 "XMB\"_ while downloading an update:"
 msgstr ""
 
-#: src/installation/ota.md:109
+#: src/installation/ota.md:111
 msgid "Cadmus downloads update files into a `tmp` folder:"
 msgstr ""
 
-#: src/installation/ota.md:110
+#: src/installation/ota.md:112
 msgid "**With SD card**: `/mnt/sd/.cadmus/tmp` (uses SD card space)"
 msgstr ""
 
-#: src/installation/ota.md:111
+#: src/installation/ota.md:113
 msgid ""
 "**Without SD card**: `/mnt/onboard/.adds/cadmus/tmp` (uses internal storage)"
 msgstr ""
 
-#: src/installation/ota.md:112
+#: src/installation/ota.md:114
 msgid "If you see this error and have an SD card inserted, the card may be full"
 msgstr ""
 
-#: src/installation/ota.md:113
+#: src/installation/ota.md:115
 msgid ""
 "If you do not have an SD card, free up space on internal storage by deleting "
 "books or other files you do not need"
