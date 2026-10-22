@@ -31,6 +31,7 @@
 //! | [`bundle`](tasks::bundle) | Package a `KoboRoot.tgz` ready for device installation |
 //! | [`setup`](tasks::setup) | Build thirdparty deps (SQLite) needed before `cargo build` |
 //! | [`sqlx_prepare`](tasks::sqlx_prepare) | Rebuild `.sqlx/` from a temporary database |
+//! | [`list-devices`](tasks::list_devices) | List Cadmus devices on the LAN via mDNS |
 //! | [`ci`](tasks::ci) | CI-specific setup tasks (e.g. `install-doc-tools`) |
 //!
 //! ## Design
@@ -49,8 +50,8 @@ pub use clap::Parser;
 pub use tasks::{
     bench::BenchArgs, build_kobo::BuildKoboArgs, bundle::BundleArgs, ci::CiArgs,
     clippy::ClippyArgs, dist::DistArgs, docs::DocsArgs, fmt::FmtArgs,
-    install_importer::InstallImporterArgs, run_emulator::RunEmulatorArgs, setup::SetupArgs,
-    test::TestArgs,
+    install_importer::InstallImporterArgs, list_devices::ListDevicesArgs,
+    run_emulator::RunEmulatorArgs, setup::SetupArgs, test::TestArgs,
 };
 
 /// Cadmus build automation.
@@ -79,6 +80,8 @@ pub enum Command {
     RunEmulator(RunEmulatorArgs),
     /// Install the Cadmus importer crate.
     InstallImporter(InstallImporterArgs),
+    /// List Cadmus devices advertised on the LAN via mDNS.
+    ListDevices(ListDevicesArgs),
     /// Build the full documentation website (mdBook + cargo doc + Next.js).
     Docs(DocsArgs),
     /// Download static asset directories from the latest GitHub release.
@@ -112,6 +115,7 @@ pub fn run() -> Result<()> {
         Command::BuildKobo(args) => tasks::build_kobo::run(args),
         Command::RunEmulator(args) => tasks::run_emulator::run(args),
         Command::InstallImporter(args) => tasks::install_importer::run(args),
+        Command::ListDevices(args) => tasks::list_devices::run(args),
         Command::Docs(args) => tasks::docs::run(args),
         Command::DownloadAssets => tasks::download_assets::run(),
         Command::DownloadFonts => tasks::download_fonts::run(),

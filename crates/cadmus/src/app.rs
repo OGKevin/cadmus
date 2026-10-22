@@ -656,6 +656,8 @@ pub async fn run() -> Result<(), Error> {
     )
     .await?;
 
+    context.mdns.start();
+
     tracing::info!(duration = ?start_time.elapsed(), "App started");
 
     context.release_startup_lease();
@@ -1263,6 +1265,8 @@ pub async fn run() -> Result<(), Error> {
         ExitStatus::Restart | ExitStatus::Reboot => !context.shared,
         _ => true,
     };
+
+    context.mdns.shutdown_and_wait().await;
 
     if let Err(e) = AppDevice::on_shutdown(&mut context.shutdown(), exit_status, &tasks).await {
         tracing::error!(error = %e, "Failed to run on_shutdown");
