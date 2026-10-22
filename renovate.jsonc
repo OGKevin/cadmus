@@ -291,6 +291,7 @@
       "managerFilePatterns": [
         "/^\\.github\\/workflows\\/cadmus-docs\\.yml$/",
         "/^\\.github\\/workflows\\/cargo\\.yml$/",
+        "/^\\.github\\/workflows\\/opencode\\.yml$/",
         "/^\\.github\\/workflows\\/release\\.yml$/",
         "/^\\.github\\/workflows\\/actions-lint\\.yml$/",
         "/^\\.github\\/workflows\\/website\\.yml$/",

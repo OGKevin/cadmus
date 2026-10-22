@@ -46,6 +46,7 @@ logs
 .workspaces/
 **/.fat32-epoch
 /node_modules
+.opencode/node_modules
 docs/mermaid.min.js
 docs/src/mermaid-images/
 cadmus.sqlite

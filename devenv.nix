@@ -807,6 +807,16 @@ in
       before = [ "devenv:enterShell" ];
     };
 
+    # Install OpenCode plugin tooling (only when package files change)
+    "opencode:install" = {
+      exec = "cd ${config.devenv.root}/.opencode && npm install";
+      execIfModified = [
+        ".opencode/package.json"
+        ".opencode/package-lock.json"
+      ];
+      before = [ "devenv:enterShell" ];
+    };
+
     # Release cadmuscli on PATH; rebuild when xtask sources change.
     "cadmuscli:install" = {
       exec = ''
@@ -863,6 +873,13 @@ in
     cadmus-build-kobo.exec = ''
       cadmuscli build-kobo "$@"
       cadmuscli dist
+    '';
+
+    # Typecheck and test the OpenCode plugins
+    cadmus-opencode-check.exec = ''
+      cd .opencode
+      npm run typecheck
+      npm test
     '';
 
     # Run clippy filtered to lines changed relative to master

@@ -1,0 +1,14 @@
+{
+  "name": "cadmus-opencode",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"test/*.test.ts\""
+  },
+  "devDependencies": {
+    "@opencode/plugin": "2.1.2",
+    "@types/node": "^24.19.2",
+    "typescript": "^5.9.3"
+  }
+}
