@@ -826,9 +826,11 @@ in
         /*) ;;
         *) target_dir="$DEVENV_ROOT/$target_dir" ;;
         esac
-        mkdir -p "$DEVENV_STATE/bin"
+        mkdir -p "$DEVENV_STATE/bin" "$DEVENV_STATE/completions"
         ln -sfn "$target_dir/release/cadmuscli" "$DEVENV_STATE/bin/cadmuscli"
         test -e "$DEVENV_STATE/bin/cadmuscli"
+        "$DEVENV_STATE/bin/cadmuscli" completions zsh --output-dir "$DEVENV_STATE/completions"
+        "$DEVENV_STATE/bin/cadmuscli" completions bash --output-dir "$DEVENV_STATE/completions"
       '';
       execIfModified = [
         "xtask/**"
@@ -972,11 +974,11 @@ in
     echo ""
     echo "Available commands:"
     echo "  cadmus-docs-build     - Build complete documentation portal"
-    echo "  cadmus-docs-serve     - Serve website locally (http://localhost:3000)"
     echo "  cadmus-docs-preview   - wrangler dev for website/out (Workers, matches CI)"
-    echo "  cargo test            - Run tests (after setup)"
-    echo "  cadmuscli run-emulator - Run the emulator (after setup)"
+    echo "  cadmus-docs-serve     - Serve website locally (http://localhost:3000)"
     echo "  cadmus-translate      - Regenerate docs/po/messages.pot (translations on Crowdin)"
+    echo "  cadmuscli run-emulator - Run the emulator (after setup)"
+    echo "  cargo test            - Run tests (after setup)"
     echo ""
     echo "Coverage (diff base: $CADMUS_DEFAULT_BRANCH):"
     echo "  cadmus-test-coverage  - Run tests with llvm-cov instrumentation"
@@ -984,18 +986,39 @@ in
     echo "  cadmus-coverage-diff  - Patch HTML vs origin/\$CADMUS_DEFAULT_BRANCH or [branch] arg"
     echo ""
     echo "cadmuscli commands (cadmuscli <cmd> --help for options):"
-    echo "  cadmuscli fmt             - Check formatting"
     echo "  cadmus-clippy             - Lint lines changed vs master (reviewdog)"
-    echo "  cadmuscli clippy          - Lint across feature matrix"
-    echo "  cadmuscli test            - Test across feature matrix"
-    echo "  cadmuscli docs            - Build documentation portal"
-    echo "  cadmuscli dist            - Assemble Kobo distribution"
     echo "  cadmuscli bundle          - Package KoboRoot.tgz"
+    echo "  cadmuscli clippy          - Lint across feature matrix"
+    echo "  cadmuscli dist            - Assemble Kobo distribution"
+    echo "  cadmuscli docs            - Build documentation portal"
+    echo "  cadmuscli fmt             - Check formatting"
+    echo "  cadmuscli test            - Test across feature matrix"
     echo "  cargo xtask still works as a debug cargo run alias."
     echo ""
   ''
   + ''
     export PATH="${config.env.DEVENV_STATE}/bin:${linaroToolchain}/bin:$PATH"
+
+    _cadmuscli_completions="${config.env.DEVENV_STATE}/completions"
+    if [ -d "$_cadmuscli_completions" ]; then
+      export FPATH="$_cadmuscli_completions''${FPATH:+:$FPATH}"
+      if [ -n "''${BASH_VERSION:-}" ] && [ -f "$_cadmuscli_completions/cadmuscli.bash" ]; then
+        . "$_cadmuscli_completions/cadmuscli.bash"
+      fi
+      _cadmuscli_zshrc="${config.env.DEVENV_DOTFILE}/zsh/.zshrc"
+      _cadmuscli_zsh_marker="# cadmuscli shell completions"
+      if [ -f "$_cadmuscli_zshrc" ] && ! grep -q "$_cadmuscli_zsh_marker" "$_cadmuscli_zshrc"; then
+        cat >> "$_cadmuscli_zshrc" <<'EOF'
+
+# cadmuscli shell completions
+if [[ -n "$DEVENV_STATE" && -f "$DEVENV_STATE/completions/_cadmuscli" ]]; then
+  fpath=("$DEVENV_STATE/completions" $fpath)
+  autoload -Uz _cadmuscli
+  compdef _cadmuscli cadmuscli
+fi
+EOF
+      fi
+    fi
 
     echo "Cross-compilation:"
     echo "  cadmus-build-kobo         - Build for Kobo (cross-compile + dist)"

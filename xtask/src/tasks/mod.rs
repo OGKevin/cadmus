@@ -10,6 +10,7 @@ pub mod build_kobo;
 pub mod bundle;
 pub mod ci;
 pub mod clippy;
+pub mod completions;
 pub mod dist;
 pub mod docs;
 pub mod download_assets;

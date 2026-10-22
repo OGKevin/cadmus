@@ -32,6 +32,14 @@ pub struct CiArgs {
 /// Subcommands available under `cadmuscli ci`.
 #[derive(Debug, Subcommand)]
 pub enum CiCommand {
+    /// Deduplicate clippy JSON artifacts and post a single reviewdog report.
+    ///
+    /// Reads every `.json` file produced by `cadmuscli clippy --save-json`
+    /// from `--artifacts-dir`, deduplicates diagnostics across feature labels,
+    /// and pipes the unique set through `reviewdog` once using the
+    /// `github-pr-review` reporter.
+    ClippyReport(ClippyReportArgs),
+
     /// Install and cache mdBook, mdbook-epub, mdbook-mermaid, and optionally Zola.
     ///
     /// Reads from the GitHub Actions cache (populated by `actions/cache` before
@@ -45,14 +53,6 @@ pub enum CiCommand {
     /// Writes `matrix=<json>` to `$GITHUB_OUTPUT` (or stdout when run locally).
     /// Consume the output with `fromJson(needs.<job>.outputs.matrix)`.
     Matrix,
-
-    /// Deduplicate clippy JSON artifacts and post a single reviewdog report.
-    ///
-    /// Reads every `.json` file produced by `cadmuscli clippy --save-json`
-    /// from `--artifacts-dir`, deduplicates diagnostics across feature labels,
-    /// and pipes the unique set through `reviewdog` once using the
-    /// `github-pr-review` reporter.
-    ClippyReport(ClippyReportArgs),
 }
 
 /// Dispatches `cadmuscli ci <subcommand>`.
@@ -62,8 +62,8 @@ pub enum CiCommand {
 /// Propagates any error returned by the selected subcommand.
 pub fn run(args: CiArgs) -> Result<()> {
     match args.command {
+        CiCommand::ClippyReport(args) => clippy_report::run(args),
         CiCommand::InstallDocTools(args) => install_doc_tools::run(args),
         CiCommand::Matrix => matrix::run(),
-        CiCommand::ClippyReport(args) => clippy_report::run(args),
     }
 }

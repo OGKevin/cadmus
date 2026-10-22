@@ -32,6 +32,7 @@
 //! | [`setup`](tasks::setup) | Build thirdparty deps (SQLite) needed before `cargo build` |
 //! | [`sqlx_prepare`](tasks::sqlx_prepare) | Rebuild `.sqlx/` from a temporary database |
 //! | [`ci`](tasks::ci) | CI-specific setup tasks (e.g. `install-doc-tools`) |
+//! | [`completions`](tasks::completions) | Emit shell completion scripts |
 //!
 //! ## Design
 //!
@@ -48,7 +49,7 @@ pub use clap::Parser;
 
 pub use tasks::{
     bench::BenchArgs, build_kobo::BuildKoboArgs, bundle::BundleArgs, ci::CiArgs,
-    clippy::ClippyArgs, dist::DistArgs, docs::DocsArgs, fmt::FmtArgs,
+    clippy::ClippyArgs, completions::CompletionsArgs, dist::DistArgs, docs::DocsArgs, fmt::FmtArgs,
     install_importer::InstallImporterArgs, run_emulator::RunEmulatorArgs, setup::SetupArgs,
     test::TestArgs,
 };
@@ -65,36 +66,38 @@ pub struct Cli {
 
 #[derive(Debug, clap::Subcommand)]
 pub enum Command {
-    /// Check (or apply) rustfmt formatting across the workspace.
-    Fmt(FmtArgs),
-    /// Run cargo clippy across the full feature matrix.
-    Clippy(ClippyArgs),
-    /// Run cargo test across the full feature matrix.
-    Test(TestArgs),
     /// Run benchmarks with the bench feature enabled.
     Bench(BenchArgs),
     /// Cross-compile Cadmus for Kobo devices (Linux & macOS).
     BuildKobo(BuildKoboArgs),
-    /// Run the Cadmus emulator.
-    RunEmulator(RunEmulatorArgs),
-    /// Install the Cadmus importer crate.
-    InstallImporter(InstallImporterArgs),
+    /// Package a KoboRoot.tgz ready for device installation.
+    Bundle(BundleArgs),
+    /// CI-specific setup tasks (install-doc-tools, etc.).
+    Ci(CiArgs),
+    /// Run cargo clippy across the full feature matrix.
+    Clippy(ClippyArgs),
+    /// Emit shell completion scripts.
+    Completions(CompletionsArgs),
+    /// Assemble the Kobo distribution directory from build outputs.
+    Dist(DistArgs),
     /// Build the full documentation website (mdBook + cargo doc + Next.js).
     Docs(DocsArgs),
     /// Download static asset directories from the latest GitHub release.
     DownloadAssets,
     /// Download bundled font files into the workspace `fonts/` directory.
     DownloadFonts,
-    /// Assemble the Kobo distribution directory from build outputs.
-    Dist(DistArgs),
-    /// Package a KoboRoot.tgz ready for device installation.
-    Bundle(BundleArgs),
+    /// Check (or apply) rustfmt formatting across the workspace.
+    Fmt(FmtArgs),
+    /// Install the Cadmus importer crate.
+    InstallImporter(InstallImporterArgs),
+    /// Run the Cadmus emulator.
+    RunEmulator(RunEmulatorArgs),
     /// Build thirdparty deps (SQLite) that must exist before `cargo build`.
     Setup(SetupArgs),
     /// Rebuild `.sqlx/` from a temporary database that contains both schemas.
     SqlxPrepare,
-    /// CI-specific setup tasks (install-doc-tools, etc.).
-    Ci(CiArgs),
+    /// Run cargo test across the full feature matrix.
+    Test(TestArgs),
 }
 
 /// Run the xtask CLI with the given arguments.
@@ -105,20 +108,40 @@ pub fn run() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Command::Fmt(args) => tasks::fmt::run(args),
-        Command::Clippy(args) => tasks::clippy::run(args),
-        Command::Test(args) => tasks::test::run(args),
         Command::Bench(args) => tasks::bench::run(args),
         Command::BuildKobo(args) => tasks::build_kobo::run(args),
-        Command::RunEmulator(args) => tasks::run_emulator::run(args),
-        Command::InstallImporter(args) => tasks::install_importer::run(args),
+        Command::Bundle(args) => tasks::bundle::run(args),
+        Command::Ci(args) => tasks::ci::run(args),
+        Command::Clippy(args) => tasks::clippy::run(args),
+        Command::Completions(args) => tasks::completions::run(args),
+        Command::Dist(args) => tasks::dist::run(args),
         Command::Docs(args) => tasks::docs::run(args),
         Command::DownloadAssets => tasks::download_assets::run(),
         Command::DownloadFonts => tasks::download_fonts::run(),
-        Command::Dist(args) => tasks::dist::run(args),
-        Command::Bundle(args) => tasks::bundle::run(args),
+        Command::Fmt(args) => tasks::fmt::run(args),
+        Command::InstallImporter(args) => tasks::install_importer::run(args),
+        Command::RunEmulator(args) => tasks::run_emulator::run(args),
         Command::Setup(args) => tasks::setup::run(args),
         Command::SqlxPrepare => tasks::sqlx_prepare::run(),
-        Command::Ci(args) => tasks::ci::run(args),
+        Command::Test(args) => tasks::test::run(args),
+    }
+}
+
+#[cfg(test)]
+mod cli_tests {
+    use clap::CommandFactory;
+
+    use super::Cli;
+
+    #[test]
+    fn top_level_subcommands_are_alphabetical() {
+        let cmd = Cli::command();
+        let names: Vec<String> = cmd
+            .get_subcommands()
+            .map(|subcommand| subcommand.get_name().to_string())
+            .collect();
+        let mut sorted = names.clone();
+        sorted.sort();
+        assert_eq!(names, sorted);
     }
 }
