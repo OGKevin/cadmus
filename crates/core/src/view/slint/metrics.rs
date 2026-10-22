@@ -7,16 +7,23 @@ use crate::device::{DeviceCapabilities as _, DeviceHardware as _, DeviceIdentity
 use crate::framebuffer::Framebuffer as _;
 use crate::view::slint::generated::{InkMetrics, InkScreen, MaterialPalette};
 
+/// The factor that turns one logical pixel into physical pixels.
+///
+/// A window draws in logical pixels (`physical * 300 / dpi`); the panel draws
+/// in physical pixels. One factor serves both directions.
+pub(in crate::view) fn pixel_scale(dpi: u16) -> f32 {
+    f32::from(dpi.max(1)) / crate::unit::BASE_DPI
+}
+
 /// Logical framebuffer size (`physical * 300 / dpi`).
 pub(in crate::view) fn logical_size(context: &AppContext) -> (f32, f32) {
     let (width, height) = context.device.framebuffer().dims();
-    let dpi = f32::from(context.device.dpi().max(1));
-    let scale = dpi / crate::unit::BASE_DPI;
+    let scale = pixel_scale(context.device.dpi());
     (width as f32 / scale, height as f32 / scale)
 }
 
 /// Hairlines, screen size, and the color-panel flag for one window.
-pub(in crate::view) fn apply_ink<W>(window: &W, context: &AppContext)
+pub(crate) fn apply_ink<W>(window: &W, context: &AppContext)
 where
     W: ComponentHandle,
     for<'a> InkMetrics<'a>: Global<'a, W>,

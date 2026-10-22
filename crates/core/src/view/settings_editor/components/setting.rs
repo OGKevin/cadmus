@@ -34,8 +34,9 @@ use crate::view::settings_editor::kinds::reader::{
 };
 use crate::view::settings_editor::kinds::telemetry::{LogLevel, LoggingEnabled};
 use crate::view::settings_editor::kinds::{SettingKind, SettingsFetchData, WidgetKind};
-use crate::view::slint::changed_model;
-use crate::view::slint::generated::{SettingRow, SettingsCategory, StaticLine};
+use crate::view::slint::ListRow;
+use crate::view::slint::generated::{PagedLine, SettingsCategory};
+use crate::view::slint::paged_line;
 use crate::view::{Bus, EntryId, Event};
 
 #[cfg(feature = "tracing")]
@@ -45,10 +46,53 @@ use crate::view::settings_editor::kinds::telemetry::PyroscopeEndpoint;
 #[cfg(all(feature = "test", feature = "kobo"))]
 use crate::view::settings_editor::kinds::telemetry::{EnableDbusLog, EnableKernLog};
 
+/// One row of a settings page.
+///
+/// The row names the setting, so a tap does not depend on a list index.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::view::settings_editor) enum SettingRow {
+    Locale,
+    AutoShare,
+    AutoTime,
+    NtpServer,
+    AutoFrontlight,
+    AutoFrontlightBrightness,
+    AutoFrontlightManualCoordinates,
+    WifiIdleTimeout,
+    ButtonScheme,
+    KeyboardLayout,
+    SettingsRetention,
+    DbBackupRetention,
+    StartupMode,
+    AutosleepMode,
+    IndicateAutosleepLed,
+    AutosleepGrace,
+    AutoSuspend,
+    AutoPowerOff,
+    SleepCover,
+    FontFamily,
+    FinishedAction,
+    DitheredKinds,
+    RefreshRate,
+    IntermissionSuspend,
+    IntermissionPowerOff,
+    IntermissionShare,
+    IntermissionFillColor,
+    ForceFullImport,
+    ImportSyncMetadata,
+    AllowedKinds,
+    LoggingEnabled,
+    LogLevel,
+    OtlpEndpoint,
+    PyroscopeEndpoint,
+    EnableKernLog,
+    EnableDbusLog,
+}
+
 /// Which row a tap named.
 ///
-/// Static rows are a [`SettingRow`] from Slint. A library row is an index into
-/// the library model, starting at 0.
+/// Static rows are a [`SettingRow`]. A library row is an index into the
+/// library model, starting at 0.
 #[derive(Clone, Copy, Debug)]
 pub(super) enum PressedRow {
     Setting(SettingRow),
@@ -235,27 +279,26 @@ fn visible_rows(category: SettingsCategory, context: &AppContext) -> Vec<Setting
         .collect()
 }
 
-fn line_of(row: SettingRow, kind: &dyn SettingKind, context: &AppContext) -> StaticLine {
-    StaticLine {
-        label: kind.label(&context.settings).into(),
-        value: display_of(kind, context).into(),
-        row,
-    }
+fn line_of(kind: &dyn SettingKind, context: &AppContext) -> PagedLine {
+    paged_line(ListRow {
+        label: kind.label(&context.settings),
+        value: display_of(kind, context),
+        ..Default::default()
+    })
 }
 
-/// The row model to assign, or `None` when `current` already shows `category`.
-///
-/// Each visible row's [`SettingKind`] is built once.
-pub(super) fn publish_rows(
-    current: &slint::ModelRc<StaticLine>,
+/// The rows `category` shows, in order, with the line each one draws.
+pub(super) fn shown_rows(
     category: SettingsCategory,
     context: &AppContext,
-) -> Option<slint::ModelRc<StaticLine>> {
-    let lines = shown(category, context)
+) -> Vec<(SettingRow, PagedLine)> {
+    shown(category, context)
         .iter()
-        .map(|shown| line_of(shown.row, shown.kind.as_ref(), context))
-        .collect();
-    changed_model(current, lines)
+        .map(|shown| {
+            let line = line_of(shown.kind.as_ref(), context);
+            (shown.row, line)
+        })
+        .collect()
 }
 
 /// Turns a row tap into the [`Step`] that shows or applies it.
@@ -429,23 +472,24 @@ pub(super) fn entry_id(entry: &crate::view::EntryKind) -> Option<EntryId> {
     }
 }
 
+/// The index of `row` among the rows a page shows.
 #[cfg(test)]
-pub(super) fn row_ids(rows: &slint::ModelRc<StaticLine>) -> Vec<SettingRow> {
-    use slint::Model as _;
-
-    rows.iter().map(|line| line.row).collect()
+pub(in crate::view::settings_editor) fn row_index(rows: &[SettingRow], row: SettingRow) -> usize {
+    rows.iter()
+        .position(|candidate| *candidate == row)
+        .unwrap_or_else(|| panic!("missing {row:?}"))
 }
 
+/// The value the row at `index` shows.
 #[cfg(test)]
 pub(in crate::view::settings_editor) fn row_value(
-    rows: &slint::ModelRc<StaticLine>,
-    row: SettingRow,
+    rows: &slint::ModelRc<PagedLine>,
+    index: usize,
 ) -> String {
     use slint::Model as _;
 
-    rows.iter()
-        .find(|line| line.row == row)
-        .unwrap_or_else(|| panic!("missing {row:?}"))
+    rows.row_data(index)
+        .unwrap_or_else(|| panic!("missing row {index}"))
         .value
         .to_string()
 }
@@ -474,18 +518,14 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn a_row_label_is_the_fluent_string() {
-        use slint::{Model, ModelRc, VecModel};
-
         let context = create_test_context().await;
 
-        let current = ModelRc::new(VecModel::from(Vec::<StaticLine>::new()));
-        let lines =
-            publish_rows(&current, SettingsCategory::General, &context).expect("published rows");
-        let language = lines
+        let rows = shown_rows(SettingsCategory::General, &context);
+        let language = rows
             .iter()
-            .find(|line| line.row == SettingRow::Locale)
+            .find(|(row, _)| *row == SettingRow::Locale)
             .expect("language row");
-        assert_eq!(language.label.as_str(), fl!("settings-general-language"));
+        assert_eq!(language.1.label.as_str(), fl!("settings-general-language"));
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

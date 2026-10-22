@@ -6,6 +6,7 @@ use crate::color::Color;
 use crate::device::AppContext;
 use crate::framebuffer::{Framebuffer, Pixmap, UpdateMode};
 use crate::geom::Rectangle;
+use crate::view::slint::{SlintHost, SlintScreen};
 
 /// Writes the UI fonts into the device install directory.
 ///
@@ -53,7 +54,6 @@ pub(crate) struct RecordingFramebuffer {
     pub(crate) pixmap: Pixmap,
     pub(crate) updates: Vec<(Rectangle, UpdateMode)>,
 }
-
 impl RecordingFramebuffer {
     pub(crate) fn new(width: u32, height: u32) -> Self {
         Self {
@@ -61,6 +61,21 @@ impl RecordingFramebuffer {
             updates: Vec::new(),
         }
     }
+}
+
+/// Opens a screen on a test device and returns the host with its context.
+///
+/// The fonts are installed first, so the window opens with the app font.
+pub(crate) async fn open_screen<S: SlintScreen>(screen: S) -> (AppContext, SlintHost<S>) {
+    use crate::context::test_helpers::create_test_context;
+    use crate::device::DeviceHardware as _;
+
+    let mut context = create_test_context().await;
+    install_ui_font(&context).await;
+    let rect = context.device.framebuffer().rect();
+    let mut rq = crate::view::RenderQueue::new();
+    let host = SlintHost::mount(rect, &mut rq, &mut context, screen);
+    (context, host)
 }
 
 impl Framebuffer for RecordingFramebuffer {

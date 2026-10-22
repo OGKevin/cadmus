@@ -3,15 +3,11 @@ import { InkBottomBar } from "ink/bottom_bar.slint";
 import { InkMetrics } from "ink/metrics.slint";
 
 // Previous, page label, next. The bar is always on screen. Disabled arrows
-// stay in place when there is one page. `external-paging` leaves the page
-// in the caller's hands (a network list, for example).
+// stay in place when there is one page. The bar shows the page the list
+// draws and asks the list to move it.
 export component PagerBar inherits Rectangle {
-    in-out property <int> page;
+    in property <int> page: 0;
     in property <int> page-count: 1;
-    in property <bool> external-paging: false;
-    in property <bool> can-previous: false;
-    in property <bool> can-next: false;
-    in property <string> page-label;
     in property <bool> show-action: false;
     in property <image> action-icon: ChromeIcons.add;
     callback previous-clicked();
@@ -24,27 +20,19 @@ export component PagerBar inherits Rectangle {
     InkBottomBar {
         width: 100%;
         height: 100%;
-        label: root.external-paging ? root.page-label : "\{root.page + 1} / \{root.page-count}";
+        label: "\{root.page + 1} / \{root.page-count}";
         previous-icon: ChromeIcons.chevron-backward;
-        previous-enabled: root.external-paging ? root.can-previous : root.page > 0;
+        previous-enabled: root.page > 0;
         next-icon: ChromeIcons.chevron-forward;
-        next-enabled: root.external-paging ? root.can-next : root.page + 1 < root.page-count;
+        next-enabled: root.page + 1 < root.page-count;
         show-action: root.show-action;
         action-icon: root.action-icon;
 
         previous-clicked => {
-            if (root.external-paging) {
-                root.previous-clicked();
-            } else if (root.page > 0) {
-                root.page -= 1;
-            }
+            root.previous-clicked();
         }
         next-clicked => {
-            if (root.external-paging) {
-                root.next-clicked();
-            } else if (root.page + 1 < root.page-count) {
-                root.page += 1;
-            }
+            root.next-clicked();
         }
         action-clicked => {
             root.action-clicked();

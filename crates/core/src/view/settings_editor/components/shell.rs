@@ -12,7 +12,7 @@ use anyhow::Context as _;
 use super::{Component, Env, Step};
 use crate::device::AppContext;
 use crate::view::slint::generated::{SettingsCategory, SettingsWindow};
-use crate::view::slint::{CallbackQueue, Session, apply_ink, connect};
+use crate::view::slint::{CallbackQueue, Session, connect};
 
 /// Opens the settings window on the device framebuffer, using the app font.
 pub(in crate::view::settings_editor) fn open(
@@ -20,7 +20,6 @@ pub(in crate::view::settings_editor) fn open(
 ) -> anyhow::Result<Session<SettingsWindow>> {
     crate::view::slint::open(&context.device, |_family| {
         let ui = SettingsWindow::new().context("failed to create slint settings window")?;
-        apply_ink(&ui, context);
         Ok(ui)
     })
 }
@@ -61,8 +60,7 @@ impl Component for Shell {
         self.queue.drain()
     }
 
-    fn sync(&mut self, window: &SettingsWindow, context: &AppContext) {
-        apply_ink(window, context);
+    fn sync(&mut self, window: &SettingsWindow, _context: &AppContext) {
         window.set_category(self.category);
     }
 
@@ -100,6 +98,7 @@ mod tests {
                 create_test_context_from_device(TestDevice::new().with_screen(600, 800, dpi)).await;
             install_ui_font(&context).await;
             let session = super::open(&mut context).expect("settings session");
+            crate::view::slint::apply_ink(session.component(), &context);
             let metrics = session.component().global::<InkMetrics>();
             let stroke = |actual: f32, design: f32| {
                 assert_eq!(

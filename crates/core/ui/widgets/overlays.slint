@@ -6,11 +6,10 @@ import { KeyAction, KeyCap } from "keyboard.slint";
 import { TextSheet } from "text_sheet.slint";
 
 // The shared overlays, each with the global Rust drives it through. A window
-// shows an overlay with `if ChoiceSheetIo.open: ChoiceSheetOverlay {}` and
-// exports the global. The Rust side is generic over any window that does:
-// Slint generates the global's accessor for every exported component that
-// uses it. Each overlay fills its window (`width` and `height` 100%), so the
-// window size is the overlay's own size.
+// shows them with `SharedOverlays {}` and exports the globals. The Rust side
+// is generic over any window that does: Slint generates the global's accessor
+// for every exported component that uses it. Each overlay fills its window
+// (`width` and `height` 100%), so the window size is the overlay's own size.
 
 // Option list fields and callbacks. `entry-pressed` passes the index into
 // `entries`, starting at 0. `page` is the visible page, also starting at 0.
@@ -93,7 +92,6 @@ export component FileBrowserOverlay inherits Rectangle {
     FileChooser {
         width: 100%;
         height: 100%;
-        window-height: root.height;
         path: FileBrowserIo.path;
         entries: FileBrowserIo.entries;
         can-select-folder: FileBrowserIo.can-select-folder;
@@ -164,22 +162,15 @@ export component TextSheetOverlay inherits Rectangle {
     }
 }
 
-// The four shared overlays, front-most last. A screen that has no file
-// browser or text dialog leaves those flags off so a stale global cannot
-// cover the page.
+// The four shared overlays, front-most last. Each one shows itself while
+// the global that drives it is open.
 export component SharedOverlays inherits Rectangle {
-    in property <bool> show-files: false;
-    in property <bool> show-text: false;
-
-    property <bool> files-open: root.show-files && FileBrowserIo.open;
-    property <bool> text-open: root.show-text && TextSheetIo.open;
-
     width: 100%;
     height: 100%;
-    visible: root.files-open || ConfirmSheetIo.open || ChoiceSheetIo.open || root.text-open;
+    visible: FileBrowserIo.open || ConfirmSheetIo.open || ChoiceSheetIo.open || TextSheetIo.open;
 
-    if root.files-open: FileBrowserOverlay {}
+    if FileBrowserIo.open: FileBrowserOverlay {}
     if ConfirmSheetIo.open: ConfirmSheetOverlay {}
     if ChoiceSheetIo.open: ChoiceSheetOverlay {}
-    if root.text-open: TextSheetOverlay {}
+    if TextSheetIo.open: TextSheetOverlay {}
 }

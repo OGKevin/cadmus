@@ -1,7 +1,8 @@
-import { SettingLine, SettingRow, SettingsCategory, StaticLine } from "setting_line.slint";
-import { DictionaryPageIo } from "categories/dictionaries.slint";
-import { LibraryPageIo } from "categories/libraries.slint";
-import { StaticPageIo } from "categories/settings_page.slint";
+import { ChromeIcons } from "../icons/icons.slint";
+import { PagedLine, PagedList } from "../widgets/paged_list.slint";
+import { DictionaryPageIo } from "./categories/dictionaries.slint";
+import { LibraryPageIo } from "./categories/libraries.slint";
+import { StaticPageIo } from "./categories/settings_page.slint";
 import {
     ChoiceSheetIo,
     ConfirmSheetIo,
@@ -9,23 +10,19 @@ import {
     SharedOverlays,
     TextSheetIo,
 } from "../widgets/overlays.slint";
-import { LibraryEditor, LibraryEditorIo } from "editors/library_editor.slint";
-import { RefreshRates, RefreshRatesIo } from "editors/refresh_rates.slint";
+import { LibraryEditor, LibraryEditorIo } from "./editors/library_editor.slint";
+import { RefreshRates, RefreshRatesIo } from "./editors/refresh_rates.slint";
 import { InkMetrics } from "../widgets/ink/metrics.slint";
+import { InkScreen } from "../widgets/ink/screen.slint";
 import { MaterialPalette } from "../widgets/ink/palette.slint";
 import { InkScaffold } from "../widgets/ink/scaffold.slint";
-import { InkScreen } from "../widgets/ink/screen.slint";
 import { InkWindow } from "../widgets/ink/window.slint";
 import { Hairline } from "../widgets/hairline.slint";
-import { PagerBar } from "../widgets/pager_bar.slint";
 import { CategoryBar } from "shell/category_bar.slint";
-import { SettingsPages } from "shell/pages.slint";
+import { SettingsCategory } from "./category.slint";
 
 export {
-    SettingLine,
-    SettingRow,
     SettingsCategory,
-    StaticLine,
     StaticPageIo,
     DictionaryPageIo,
     LibraryPageIo,
@@ -43,31 +40,34 @@ export component SettingsWindow inherits InkWindow {
     callback category-pressed(SettingsCategory);
     callback action-pressed();
 
-    property <length> window-height: InkScreen.window-height;
     property <bool> show-action: root.category == SettingsCategory.libraries;
-    property <int> active-count:
-        root.category == SettingsCategory.dictionaries ? DictionaryPageIo.row-count :
-        root.category == SettingsCategory.libraries ? LibraryPageIo.row-count :
-        StaticPageIo.row-count;
-    // The app bar and the footer stay on every category, including pages
-    // that fit in one screen. Their height is reserved up front so the
-    // row window does not jump when the pager appears.
-    out property <length> top-chrome: InkMetrics.app-bar + InkMetrics.hairline + category-bar.bar-height + InkMetrics.hairline;
-    property <length> reserved: root.top-chrome + InkMetrics.bottom-bar;
-    // Rows that fit between the chrome and the footer.
-    out property <int> per-page: Math.max(1, Math.floor((root.window-height - root.reserved) / InkMetrics.row));
-    property <int> page-count: Math.max(1, Math.ceil(root.active-count * 1.0 / Math.max(1, root.per-page)));
+    // The rows of the visible category. Libraries and dictionaries publish
+    // their own rows; the other categories share the static rows.
+    property <[PagedLine]> lines:
+        root.category == SettingsCategory.libraries ? LibraryPageIo.rows :
+        root.category == SettingsCategory.dictionaries ? DictionaryPageIo.rows :
+        StaticPageIo.rows;
+    // The height above the list: the app bar, the rule under it, the
+    // category bar, and the rule under that.
+    out property <length> list-top: scaffold.chrome-height + category-bar.bar-height + InkMetrics.hairline;
+    // The height the list may use.
+    out property <length> available-height: InkScreen.window-height - root.list-top;
 
     changed category => {
         root.page = 0;
     }
-    changed page-count => {
-        if (root.page >= root.page-count) {
-            root.page = Math.max(0, root.page-count - 1);
+
+    function press-row(index: int) {
+        if (root.category == SettingsCategory.libraries) {
+            LibraryPageIo.row-pressed(index);
+        } else if (root.category == SettingsCategory.dictionaries) {
+            DictionaryPageIo.row-pressed(index);
+        } else {
+            StaticPageIo.row-pressed(index);
         }
     }
 
-    InkScaffold {
+    scaffold := InkScaffold {
         width: 100%;
         height: 100%;
         title: @tr("Settings");
@@ -86,17 +86,22 @@ export component SettingsWindow inherits InkWindow {
             line-color: MaterialPalette.outline;
         }
 
-        SettingsPages {
+        PagedList {
             vertical-stretch: 1;
-            category: root.category;
-            page: root.page;
-            per-page: root.per-page;
-        }
-
-        PagerBar {
-            page <=> root.page;
-            page-count: root.page-count;
+            lines: root.lines;
+            available-height: root.available-height;
+            holdable: root.category == SettingsCategory.libraries;
             show-action: root.show-action;
+            action-icon: ChromeIcons.add;
+            page <=> root.page;
+            line-pressed(index) => {
+                root.press-row(index);
+            }
+            line-held(index) => {
+                if (root.category == SettingsCategory.libraries) {
+                    LibraryPageIo.row-held(index);
+                }
+            }
             action-clicked => {
                 root.action-pressed();
             }
@@ -105,8 +110,5 @@ export component SettingsWindow inherits InkWindow {
 
     if LibraryEditorIo.open: LibraryEditor {}
     if RefreshRatesIo.open: RefreshRates {}
-    SharedOverlays {
-        show-files: true;
-        show-text: true;
-    }
+    SharedOverlays {}
 }

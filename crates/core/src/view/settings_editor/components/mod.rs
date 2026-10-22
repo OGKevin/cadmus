@@ -37,10 +37,11 @@ use text_limits::TextLimits;
 
 use crate::device::AppContext;
 use crate::document::file_extension::FileExtension;
+use crate::view::slint::Asked;
 use crate::view::slint::Flow;
 use crate::view::slint::OverlayStack;
 use crate::view::slint::components::{choice_sheet, confirm_sheet, file_browser, text_sheet};
-use crate::view::slint::generated::{SettingRow, SettingsCategory, SettingsWindow};
+use crate::view::slint::generated::{SettingsCategory, SettingsWindow};
 pub(super) use crate::view::slint::{Component, Env};
 use crate::view::{Bus, EntryId, EntryKind, Event, Hub};
 
@@ -112,7 +113,7 @@ impl ApplyEnv {
 
 /// Every published row has a non-empty label.
 #[cfg(test)]
-fn assert_labels(rows: &slint::ModelRc<crate::view::slint::generated::StaticLine>) {
+fn assert_labels(rows: &slint::ModelRc<crate::view::slint::generated::PagedLine>) {
     use slint::Model as _;
 
     assert!(rows.iter().all(|line| !line.label.is_empty()));
@@ -131,6 +132,9 @@ fn notification(rx: &mut crate::view::HubReceiver) -> String {
 }
 
 use setting::PressedRow;
+pub(in crate::view::settings_editor) use setting::SettingRow;
+#[cfg(test)]
+pub(in crate::view::settings_editor) use setting::row_index;
 
 /// What one settings callback asks the coordinator to do.
 ///
@@ -241,9 +245,10 @@ enum Editor {
 /// Which control is waiting on the open shared sheet.
 ///
 /// One option list, file browser, text dialog, and confirmation dialog serve
-/// every settings control. The overlay returns the pick. This remembers who
-/// asked, because that is settings state, not part of the overlay.
-#[derive(Debug)]
+/// every settings control. The overlay returns the pick. This names who asked,
+/// because that is settings state, not part of the overlay. The sheet it
+/// opened keeps it.
+#[derive(Clone, Debug)]
 enum Waiting {
     SettingChoice(PressedRow),
     SettingText(PressedRow),
@@ -331,14 +336,13 @@ pub(super) struct Parts {
     static_page: static_page::StaticPage,
     libraries: libraries::Libraries,
     dictionaries: Dictionaries,
-    files: Files,
-    choice: ChoiceList,
-    text: text_sheet::TextSheet<SettingsWindow>,
-    confirm: confirm_sheet::ConfirmSheet<SettingsWindow>,
+    /// The shared sheets. Each one remembers the control that opened it.
+    files: Asked<Waiting, Files>,
+    choice: Asked<Waiting, ChoiceList>,
+    text: Asked<Waiting, text_sheet::TextSheet<SettingsWindow>>,
+    confirm: Asked<Waiting, confirm_sheet::ConfirmSheet<SettingsWindow>>,
     refresh: RefreshRates,
     library: LibraryEditor,
-    /// Which control is waiting on the open shared sheet.
-    waiting: Option<Waiting>,
 }
 
 fn elapsed_us(started: std::time::Instant) -> u64 {
@@ -354,19 +358,24 @@ impl Parts {
             static_page: static_page::StaticPage::new(),
             libraries: libraries::Libraries::new(),
             dictionaries: Dictionaries::new(service),
-            files: Files::new(),
-            choice: ChoiceList::new(),
-            text: text_sheet::TextSheet::new(),
-            confirm: confirm_sheet::ConfirmSheet::new(),
+            files: Asked::new(Files::new()),
+            choice: Asked::new(ChoiceList::new()),
+            text: Asked::new(text_sheet::TextSheet::new()),
+            confirm: Asked::new(confirm_sheet::ConfirmSheet::new()),
             refresh: RefreshRates::new(),
             library: LibraryEditor::new(),
-            waiting: None,
         }
     }
 
     #[cfg(test)]
     pub(super) fn category(&self) -> SettingsCategory {
         self.shell.category()
+    }
+
+    /// The rows the visible category shows, in order.
+    #[cfg(test)]
+    pub(super) fn static_rows(&self) -> &[SettingRow] {
+        self.static_page.rows()
     }
 
     #[cfg(test)]
@@ -469,7 +478,7 @@ impl Parts {
                     return Flow::Redraw;
                 }
                 Step::Dismissed => {
-                    self.waiting = None;
+                    self.forget_reason();
                     return Flow::Redraw;
                 }
                 Step::Ask(waiting, sheet) => {
@@ -481,30 +490,30 @@ impl Parts {
                     return Flow::Redraw;
                 }
                 Step::Rows(entries) => {
-                    self.choice.set_rows(choice_rows(entries));
+                    self.choice.sheet_mut().set_rows(choice_rows(entries));
                     return Flow::Redraw;
                 }
                 Step::Picked(id) => {
-                    let waiting = self.waiting.take();
+                    let waiting = self.choice.reason().cloned();
                     tracing::debug!(?waiting, "settings choice");
                     let next = self.route_choice(waiting.as_ref(), id, env).await;
                     self.finish_pick(waiting, &next);
                     next
                 }
                 Step::ChoseFile(path) => {
-                    let waiting = self.waiting.take();
+                    let waiting = self.files.take_reason();
                     tracing::debug!(?waiting, "settings file chosen");
                     self.route_file(waiting, path, env.context);
                     return Flow::Redraw;
                 }
                 Step::Submitted(text) => {
-                    let waiting = self.waiting.take();
+                    let waiting = self.text.take_reason();
                     tracing::debug!(?waiting, "settings text submitted");
                     self.route_text(waiting, text, env);
                     return Flow::Redraw;
                 }
                 Step::Confirmed => {
-                    let waiting = self.waiting.take();
+                    let waiting = self.confirm.take_reason();
                     tracing::debug!(?waiting, "settings confirmed");
                     self.route_confirm(waiting, env).await
                 }
@@ -515,35 +524,50 @@ impl Parts {
     /// Opens a shared sheet for the control `waiting` names.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     async fn open_sheet(&mut self, waiting: Waiting, sheet: Sheet) {
-        self.waiting = Some(waiting);
+        self.forget_reason();
         match sheet {
             Sheet::Choice { title, entries } => {
-                self.text.close();
-                self.choice.open(title, choice_rows(entries));
+                self.text.sheet_mut().close();
+                self.choice.sheet_mut().open(title, choice_rows(entries));
+                self.choice.set_reason(Some(waiting));
             }
             Sheet::Text {
                 label,
                 initial,
                 limits,
             } => {
-                self.choice.close();
+                self.choice.sheet_mut().close();
                 self.text
+                    .sheet_mut()
                     .open(label, initial, limits.numbers, limits.max_chars);
+                self.text.set_reason(Some(waiting));
             }
             Sheet::File { start, mode } => {
-                self.choice.close();
-                self.text.close();
-                self.files.open(start, mode).await;
+                self.choice.sheet_mut().close();
+                self.text.sheet_mut().close();
+                self.files.sheet_mut().open(start, mode).await;
+                self.files.set_reason(Some(waiting));
             }
-            Sheet::Confirm { message, accept } => self.confirm.open(message, accept),
+            Sheet::Confirm { message, accept } => {
+                self.confirm.sheet_mut().open(message, accept);
+                self.confirm.set_reason(Some(waiting));
+            }
         }
+    }
+
+    /// Forgets which control opened the open sheet.
+    fn forget_reason(&mut self) {
+        self.choice.set_reason(None);
+        self.text.set_reason(None);
+        self.confirm.set_reason(None);
+        self.files.set_reason(None);
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, context)))]
     fn open_editor(&mut self, editor: Editor, context: &AppContext) {
-        self.waiting = None;
-        self.choice.close();
-        self.text.close();
+        self.forget_reason();
+        self.choice.sheet_mut().close();
+        self.text.sheet_mut().close();
         match editor {
             Editor::RefreshRates => self.refresh.show(),
             Editor::Library(index) => self.library.open(index, context),
@@ -553,13 +577,14 @@ impl Parts {
     /// Closes the option list when `next` accepted the row.
     ///
     /// [`Step::Idle`] is a row the screen ignored, and [`Step::Rows`] refreshes
-    /// the same list. Either way the list stays open and `waiting` still names
-    /// the control that opened it.
+    /// the same list. Either way the list stays open and keeps the control that
+    /// opened it.
     fn finish_pick(&mut self, waiting: Option<Waiting>, next: &Step) {
         if matches!(next, Step::Idle | Step::Rows(_)) {
-            self.waiting = waiting;
+            self.choice.set_reason(waiting);
         } else {
-            self.choice.close();
+            self.choice.sheet_mut().close();
+            self.choice.set_reason(None);
         }
     }
 
@@ -672,10 +697,10 @@ impl Parts {
     }
 
     pub(super) fn is_plain(&self) -> bool {
-        !self.choice.is_open()
-            && !self.text.is_open()
-            && !self.confirm.is_open()
-            && !self.files.is_open()
+        !self.choice.sheet().is_open()
+            && !self.text.sheet().is_open()
+            && !self.confirm.sheet().is_open()
+            && !self.files.sheet().is_open()
             && !self.refresh.kind_is_open()
             && !self.refresh.is_open()
             && !self.library.is_open()
@@ -693,16 +718,11 @@ impl Parts {
     }
 
     pub(super) fn close_top(&mut self) -> bool {
-        if self.shared_overlays().close_top() {
-            self.waiting = None;
-            true
-        } else {
-            false
-        }
+        self.shared_overlays().close_top()
     }
 
     pub(super) fn text_is_open(&self) -> bool {
-        self.text.is_open()
+        self.text.sheet().is_open()
     }
 
     /// Moves the front-most paged overlay. Returns whether that overlay claimed
@@ -712,13 +732,13 @@ impl Parts {
     }
 
     pub(super) fn dismiss_all(&mut self) {
-        self.waiting = None;
-        self.choice.close();
-        self.text.close();
-        self.confirm.close();
+        self.forget_reason();
+        self.choice.sheet_mut().close();
+        self.text.sheet_mut().close();
+        self.confirm.sheet_mut().close();
         self.library.close();
         self.refresh.close();
-        self.files.close();
+        self.files.sheet_mut().close();
     }
 
     pub(super) async fn reload_dictionaries(&mut self, context: &AppContext) {
@@ -745,18 +765,19 @@ impl Parts {
 
     #[cfg(test)]
     pub(super) fn choice_is_open(&self) -> bool {
-        self.choice.is_open()
+        self.choice.sheet().is_open()
     }
 
     #[cfg(test)]
     pub(super) fn show_confirm(&mut self) {
         self.confirm
+            .sheet_mut()
             .open("Delete this library?".into(), "Delete".into());
     }
 
     #[cfg(test)]
     pub(super) fn confirm_is_open(&self) -> bool {
-        self.confirm.is_open()
+        self.confirm.sheet().is_open()
     }
 
     #[cfg(test)]
@@ -771,15 +792,15 @@ impl Parts {
 mod tests {
     use super::*;
 
+    use super::SettingRow;
     use crate::context::test_helpers::create_test_context;
     use crate::settings::LibrarySettings;
     use crate::view::slint::components::choice_sheet::Row;
-    use crate::view::slint::generated::SettingRow;
 
-    /// What `dispatch` does with an accepted row: it takes `waiting` before
+    /// What `dispatch` does with an accepted row: it takes the reason before
     /// `finish_pick`. The list closes and that control is not put back.
     fn finish_accepted(parts: &mut Parts) {
-        let waiting = parts.waiting.take();
+        let waiting = parts.choice.take_reason();
         parts.finish_pick(waiting, &Step::Redraw);
     }
 
@@ -794,22 +815,22 @@ mod tests {
     #[test]
     fn finish_pick_keeps_an_ignored_row_open() {
         let mut parts = Parts::new(None);
-        parts.choice.open(
+        parts.choice.sheet_mut().open(
             "Format".into(),
             vec![row("leave", EntryId::DeleteLibrary(0))],
         );
         parts.finish_pick(Some(Waiting::AddKind), &Step::Idle);
-        assert!(parts.choice.is_open());
-        assert!(matches!(parts.waiting, Some(Waiting::AddKind)));
+        assert!(parts.choice.sheet().is_open());
+        assert!(matches!(parts.choice.reason(), Some(Waiting::AddKind)));
 
-        parts.waiting = None;
+        parts.choice.set_reason(None);
         parts.finish_pick(Some(Waiting::AddKind), &Step::Rows(Vec::new()));
-        assert!(parts.choice.is_open());
-        assert!(matches!(parts.waiting, Some(Waiting::AddKind)));
+        assert!(parts.choice.sheet().is_open());
+        assert!(matches!(parts.choice.reason(), Some(Waiting::AddKind)));
 
         finish_accepted(&mut parts);
-        assert!(!parts.choice.is_open());
-        assert!(parts.waiting.is_none());
+        assert!(!parts.choice.sheet().is_open());
+        assert!(parts.choice.reason().is_none());
     }
 
     #[test]
@@ -817,23 +838,76 @@ mod tests {
         let mut parts = Parts::new(None);
         parts
             .confirm
+            .sheet_mut()
             .open("Delete this library?".into(), "Delete".into());
-        parts.waiting = Some(Waiting::DeleteLibrary(1));
+        parts.confirm.set_reason(Some(Waiting::DeleteLibrary(1)));
         assert!(parts.close_top());
-        assert!(!parts.confirm.is_open());
-        assert!(parts.waiting.is_none());
+        assert!(!parts.confirm.sheet().is_open());
+        assert!(parts.confirm.reason().is_none());
 
-        parts.choice.open(
+        parts.choice.sheet_mut().open(
             "Language".into(),
             vec![row("English", EntryId::DeleteLibrary(0))],
         );
-        parts.waiting = Some(Waiting::SettingChoice(PressedRow::Setting(
-            SettingRow::Locale,
-        )));
+        parts
+            .choice
+            .set_reason(Some(Waiting::SettingChoice(PressedRow::Setting(
+                SettingRow::Locale,
+            ))));
         assert!(parts.close_top());
-        assert!(!parts.choice.is_open());
-        assert!(parts.waiting.is_none());
+        assert!(!parts.choice.sheet().is_open());
+        assert!(parts.choice.reason().is_none());
         assert!(!parts.close_top());
+    }
+
+    /// The sheet remembers the control that opened it, so the coordinator does
+    /// not keep a second list of what it is waiting for.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn an_opened_sheet_remembers_the_control_that_opened_it() {
+        let mut parts = Parts::new(None);
+        parts
+            .open_sheet(
+                Waiting::AddKind,
+                Sheet::Choice {
+                    title: "Format".into(),
+                    entries: vec![EntryKind::Command(
+                        "leave".into(),
+                        EntryId::DeleteLibrary(0),
+                    )],
+                },
+            )
+            .await;
+        assert!(matches!(parts.choice.reason(), Some(Waiting::AddKind)));
+        assert!(parts.text.reason().is_none());
+        assert!(parts.confirm.reason().is_none());
+        assert!(parts.files.reason().is_none());
+    }
+
+    /// A new sheet takes the reason over. Only one control waits at a time.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn opening_another_sheet_forgets_the_first_reason() {
+        let mut parts = Parts::new(None);
+        parts
+            .open_sheet(
+                Waiting::AddKind,
+                Sheet::Choice {
+                    title: "Format".into(),
+                    entries: Vec::new(),
+                },
+            )
+            .await;
+        parts
+            .open_sheet(
+                Waiting::RefreshRegular,
+                Sheet::Text {
+                    label: "Regular".into(),
+                    initial: "12".into(),
+                    limits: text_limits::REFRESH_RATE,
+                },
+            )
+            .await;
+        assert!(parts.choice.reason().is_none());
+        assert!(matches!(parts.text.reason(), Some(Waiting::RefreshRegular)));
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -843,15 +917,44 @@ mod tests {
         let (hub, _rx) = crate::view::hub_channel();
         let mut bus = Bus::new();
         let mut env = super::settings_env(&hub, &mut bus, &mut context);
-        parts.waiting = Some(Waiting::ForceImport);
+        parts.confirm.set_reason(Some(Waiting::ForceImport));
         assert_eq!(
             parts.dispatch(Step::Dismissed, &mut env).await,
             Flow::Redraw
         );
-        assert!(parts.waiting.is_none());
+        assert!(parts.confirm.reason().is_none());
 
         assert_eq!(parts.dispatch(Step::Leave, &mut env).await, Flow::Redraw);
         assert!(matches!(bus.pop_front(), Some(Event::Back)));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_submitted_text_reaches_the_control_that_opened_the_sheet() {
+        let mut context = create_test_context().await;
+        let mut parts = Parts::new(None);
+        let (hub, _rx) = crate::view::hub_channel();
+        let mut bus = Bus::new();
+        let mut env = super::settings_env(&hub, &mut bus, &mut context);
+        parts
+            .open_sheet(
+                Waiting::RefreshRegular,
+                Sheet::Text {
+                    label: "Regular".into(),
+                    initial: "12".into(),
+                    limits: text_limits::REFRESH_RATE,
+                },
+            )
+            .await;
+
+        assert_eq!(
+            parts.dispatch(Step::Submitted("15".into()), &mut env).await,
+            Flow::Redraw
+        );
+        assert_eq!(
+            context.settings.reader.refresh_rate.global.regular, 15,
+            "the submitted text did not reach the control that asked"
+        );
+        assert!(parts.text.reason().is_none());
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -886,8 +989,11 @@ mod tests {
                 .await,
             Flow::Idle
         );
-        assert!(parts.choice.is_open(), "an ignored row closed the list");
-        assert!(matches!(parts.waiting, Some(Waiting::AddKind)));
+        assert!(
+            parts.choice.sheet().is_open(),
+            "an ignored row closed the list"
+        );
+        assert!(matches!(parts.choice.reason(), Some(Waiting::AddKind)));
 
         parts
             .open_sheet(
@@ -907,8 +1013,8 @@ mod tests {
                 .await,
             Flow::Redraw
         );
-        assert!(!parts.choice.is_open());
-        assert!(parts.waiting.is_none());
+        assert!(!parts.choice.sheet().is_open());
+        assert!(parts.choice.reason().is_none());
         assert_eq!(env.context.settings.libraries.len(), before - 1);
     }
 }

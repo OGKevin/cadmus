@@ -1,0 +1,33 @@
+// The visible page of a list.
+//
+// One list owns its page. The page count follows the number of rows, and
+// the page never leaves the list: `shown-page` is the page the list draws,
+// and the raw page is pulled back to it.
+export component Paging inherits Rectangle {
+    in property <int> count: 0;
+    in property <int> per-page: 1;
+    in-out property <int> page: 0;
+
+    out property <int> page-count: Math.max(1, Math.ceil(root.count * 1.0 / Math.max(1, root.per-page)));
+    // The page the list draws. It is never past the last page.
+    out property <int> shown-page: Math.max(0, Math.min(root.page, root.page-count - 1));
+
+    width: 0px;
+    height: 0px;
+
+    changed count => {
+        root.clamp();
+    }
+    changed per-page => {
+        root.clamp();
+    }
+    changed page => {
+        root.clamp();
+    }
+
+    function clamp() {
+        if (root.page != root.shown-page) {
+            root.page = root.shown-page;
+        }
+    }
+}

@@ -11,7 +11,7 @@ use slint::{ComponentHandle, Global};
 use crate::device::AppContext;
 use crate::view::slint::component::{Component, Env};
 use crate::view::slint::generated::{ChoiceEntry, ChoiceSheetIo};
-use crate::view::slint::{CallbackQueue, changed_model, connect};
+use crate::view::slint::{CallbackQueue, PagedIo, changed_model, connect};
 
 /// One row of an option list, carrying the screen's value for that row.
 pub(in crate::view) struct Row<T> {
@@ -144,8 +144,7 @@ where
 {
     /// Moves the visible page by `delta`. The sheet clamps it.
     pub(in crate::view) fn bump(window: &W, delta: i32) {
-        let io = window.global::<ChoiceSheetIo>();
-        io.set_page(io.get_page().saturating_add(delta).max(0));
+        window.global::<ChoiceSheetIo>().bump(delta);
     }
 }
 
@@ -186,6 +185,9 @@ where
     fn sync(&mut self, window: &W, _context: &AppContext) {
         let io = window.global::<ChoiceSheetIo>();
         io.set_open(self.open);
+        if !self.open {
+            return;
+        }
         io.set_title(self.title.as_str().into());
         if std::mem::take(&mut self.reset_page) {
             io.set_page(0);

@@ -38,105 +38,16 @@ fn elapsed_ms(started: Instant) -> u64 {
 mod tests {
     use std::path::Path;
 
-    use anyhow::Error;
+    use crate::framebuffer::{Framebuffer as _, UpdateMode};
+    use crate::view::slint::testing::RecordingFramebuffer;
 
-    use crate::color::Color;
-    use crate::framebuffer::{Framebuffer, Pixmap, UpdateMode};
-    use crate::geom::Rectangle;
-
-    fn startup_window(family: &str) -> anyhow::Result<super::StartupWindow> {
-        let ui = super::new_startup_window()?;
-        ui.set_font_family(family.into());
-        Ok(ui)
+    fn startup_window(_family: &str) -> anyhow::Result<super::StartupWindow> {
+        super::new_startup_window()
     }
 
-    struct RecordingFramebuffer {
-        pixmap: Pixmap,
-        updates: Vec<(Rectangle, UpdateMode)>,
-    }
-
-    impl RecordingFramebuffer {
-        fn new(width: u32, height: u32) -> Self {
-            Self {
-                pixmap: Pixmap::new(width, height, 3),
-                updates: Vec::new(),
-            }
-        }
-    }
-
-    impl Framebuffer for RecordingFramebuffer {
-        fn set_pixel(&mut self, x: u32, y: u32, color: Color) {
-            self.pixmap.set_pixel(x, y, color);
-        }
-
-        fn set_blended_pixel(&mut self, x: u32, y: u32, color: Color, alpha: f32) {
-            self.pixmap.set_blended_pixel(x, y, color, alpha);
-        }
-
-        fn invert_region(&mut self, rect: &Rectangle) {
-            self.pixmap.invert_region(rect);
-        }
-
-        fn shift_region(&mut self, rect: &Rectangle, drift: u8) {
-            self.pixmap.shift_region(rect, drift);
-        }
-
-        fn update(&mut self, rect: &Rectangle, mode: UpdateMode) -> Result<u32, Error> {
-            self.updates.push((*rect, mode));
-            Ok(1)
-        }
-
-        fn wait(&self, _token: u32) -> Result<i32, Error> {
-            Ok(1)
-        }
-
-        fn save(&self, _path: &str) -> Result<(), Error> {
-            Ok(())
-        }
-
-        fn set_rotation(&mut self, _n: i8) -> Result<(u32, u32), Error> {
-            Ok(self.pixmap.dims())
-        }
-
-        fn set_monochrome(&mut self, enable: bool) {
-            self.pixmap.set_monochrome(enable);
-        }
-
-        fn set_dithered(&mut self, enable: bool) {
-            self.pixmap.set_dithered(enable);
-        }
-
-        fn set_inverted(&mut self, enable: bool) {
-            self.pixmap.set_inverted(enable);
-        }
-
-        fn monochrome(&self) -> bool {
-            self.pixmap.monochrome()
-        }
-
-        fn dithered(&self) -> bool {
-            self.pixmap.dithered()
-        }
-
-        fn inverted(&self) -> bool {
-            self.pixmap.inverted()
-        }
-
-        fn width(&self) -> u32 {
-            self.pixmap.width()
-        }
-
-        fn height(&self) -> u32 {
-            self.pixmap.height()
-        }
-
-        fn rotation(&self) -> i8 {
-            self.pixmap.rotation()
-        }
-    }
-
+    /// The face the startup sentence uses.
     fn font_bytes() -> Vec<u8> {
-        let font = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fonts/NotoSans-Regular.ttf");
+        let font = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fonts/Cormorant-Regular.ttf");
         std::fs::read(&font).unwrap_or_else(|error| panic!("read {}: {error}", font.display()))
     }
 

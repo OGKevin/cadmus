@@ -1,0 +1,11 @@
+// The rectangle a progress bar occupies, in logical pixels.
+//
+// The panel that draws the bar publishes it here. A screen that draws the bar
+// with the fast waveform reads it and scales it to physical pixels.
+
+export global InkBar {
+    in-out property <length> x;
+    in-out property <length> y;
+    in-out property <length> width;
+    in-out property <length> height;
+}

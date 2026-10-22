@@ -1,12 +1,11 @@
 import { ActionBar } from "action_bar.slint";
-import { PagedLine, PagedList } from "paged_list.slint";
-import { ScreenHeader } from "screen_header.slint";
-import { ValueRow } from "value_row.slint";
+import { InkListRow, PagedLine, PagedList } from "paged_list.slint";
 import { InkMetrics } from "ink/metrics.slint";
+import { InkScreen } from "ink/screen.slint";
+import { InkScaffold } from "ink/scaffold.slint";
 import { MaterialPalette } from "ink/palette.slint";
 
 export component FileChooser inherits Rectangle {
-    in property <length> window-height;
     in property <string> path;
     in property <[PagedLine]> entries;
     in property <bool> can-select-folder;
@@ -20,31 +19,26 @@ export component FileChooser inherits Rectangle {
     height: 100%;
     background: MaterialPalette.surface;
     property <length> row-height: InkMetrics.row;
-    // Header, the Up row, the list's bottom bar, and the optional action.
+    // The header, the Up row, and the optional action row.
     property <length> chrome:
-        InkMetrics.app-bar + root.row-height + InkMetrics.bottom-bar
-        + (root.can-select-folder ? root.row-height : 0px);
-    property <int> per-page: Math.max(1, Math.floor((root.window-height - root.chrome) / root.row-height));
+        scaffold.chrome-height + root.row-height + (root.can-select-folder ? root.row-height : 0px);
+    property <length> available-height: InkScreen.window-height - root.chrome;
 
     TouchArea {
         width: 100%;
         height: 100%;
     }
 
-    VerticalLayout {
+    scaffold := InkScaffold {
         width: 100%;
         height: 100%;
-
-        ScreenHeader {
-            heading: root.path;
-            back-pressed => {
-                root.dismissed();
-            }
+        title: root.path;
+        back-pressed => {
+            root.dismissed();
         }
 
-        ValueRow {
+        InkListRow {
             label: @tr("Up");
-            value: "";
             pressed => {
                 root.up-pressed();
             }
@@ -52,7 +46,8 @@ export component FileChooser inherits Rectangle {
 
         PagedList {
             lines: root.entries;
-            per-page: root.per-page;
+            available-height: root.available-height;
+            row-height: root.row-height;
             page <=> root.page;
             line-pressed(index) => {
                 root.entry-pressed(index);

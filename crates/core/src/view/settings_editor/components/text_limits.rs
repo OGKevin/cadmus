@@ -4,9 +4,8 @@
 //! Counts and timeouts start on digits. Names and addresses start on letters.
 //! Refresh rates are three digits, matching the old input.
 
-use super::setting::PressedRow;
+use super::setting::{PressedRow, SettingRow};
 use crate::device::AppContext;
-use crate::view::slint::generated::SettingRow;
 
 /// How a settings text field behaves.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -70,8 +69,8 @@ mod tests {
 
     #[tokio::test]
     async fn limits_follow_the_field() {
+        use super::SettingRow;
         use crate::context::test_helpers::create_test_context;
-        use crate::view::slint::generated::SettingRow;
 
         let context = create_test_context().await;
         let row = |row, numbers, max_chars| {

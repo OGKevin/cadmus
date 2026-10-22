@@ -2,6 +2,39 @@
 
 use slint::{Model, ModelRc, VecModel};
 
+use super::generated::PagedLine;
+
+/// One row of a shared list.
+///
+/// The fields are named so a call site says what it means: a row that
+/// cannot be tapped is `disabled`, and a row that is still being checked
+/// is `busy`.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct ListRow {
+    /// The text on the left.
+    pub label: String,
+    /// The text on the right.
+    pub value: String,
+    /// The second line, under the label.
+    pub description: String,
+    /// The row cannot be tapped.
+    pub disabled: bool,
+    /// The row is still being checked.
+    pub busy: bool,
+}
+
+/// The row a shared list shows.
+pub(crate) fn paged_line(line: ListRow) -> PagedLine {
+    PagedLine {
+        label: line.label.into(),
+        value: line.value.into(),
+        selected: false,
+        description: line.description.into(),
+        disabled: line.disabled,
+        busy: line.busy,
+    }
+}
+
 /// Builds a model of `rows`, or returns `None` when `current` already shows them.
 ///
 /// A [`VecModel`] of the same length is updated in place. Assigning a fresh
