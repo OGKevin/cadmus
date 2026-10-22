@@ -5,38 +5,41 @@ import { HoldTouch } from "hold_touch.slint";
 import { InkMetrics } from "ink/metrics.slint";
 import { MaterialPalette } from "ink/palette.slint";
 import { PagerBar } from "pager_bar.slint";
+import { Paging } from "paging.slint";
 
+// One row of a paged list.
 export struct PagedLine {
     label: string,
-    value: string,
-    selected: bool,
-    // Empty keeps the single-line row the file chooser and refresh-rate
-    // list already draw. A non-empty value adds a second line and a taller row.
-    description: string,
-    // False dims the row and ignores taps. Callers whose every row can be
-    // chosen set this true.
-    selectable: bool,
+    value: string = "",
+    selected: bool = false,
+    // Empty keeps the single-line row the settings pages and the file
+    // chooser draw. A description adds a second line.
+    description: string = "",
+    // True dims the row and ignores taps. Callers whose every row can be
+    // chosen leave this false.
+    disabled: bool = false,
     // True while the second line is still being checked. A short bar sits
-    // on the right of `description`. Callers that are not waiting set this false.
-    checking: bool,
+    // on the right of `description`. Callers that are not waiting set this
+    // false.
+    busy: bool = false,
 }
 
 // One choice or file row. The selected row keeps black text and adds a
 // dot, colored only when the panel can show it. A press does not paint
 // a second state. Hold is off unless the list says the row has one.
-component InkListRow inherits Rectangle {
+export component InkListRow inherits Rectangle {
     in property <string> label;
     in property <string> value;
     in property <string> description;
     in property <bool> selected;
-    in property <bool> selectable: true;
-    in property <bool> checking: false;
+    in property <bool> disabled: false;
+    in property <bool> busy: false;
     in property <bool> holdable: false;
     callback pressed();
     callback held();
 
     property <bool> two-line: root.description != "";
-    property <color> text-color: root.selectable ? MaterialPalette.on-surface : MaterialPalette.disabled;
+    property <color> text-color: root.disabled ? MaterialPalette.disabled : MaterialPalette.on-surface;
 
     height: InkMetrics.row;
     background: MaterialPalette.surface;
@@ -53,7 +56,7 @@ component InkListRow inherits Rectangle {
 
             Text {
                 text: root.label;
-                font-size: 16px * InkMetrics.dp;
+                font-size: InkMetrics.body;
                 font-weight: root.selected ? InkMetrics.label-weight : 400;
                 color: root.text-color;
                 vertical-alignment: center;
@@ -63,10 +66,12 @@ component InkListRow inherits Rectangle {
 
             if root.value != "": Text {
                 text: root.value;
-                font-size: 16px * InkMetrics.dp;
+                font-size: InkMetrics.body;
                 color: root.text-color;
                 vertical-alignment: center;
                 horizontal-alignment: right;
+                width: 55%;
+                overflow: elide;
             }
 
             if root.selected: VerticalLayout {
@@ -94,7 +99,7 @@ component InkListRow inherits Rectangle {
                 horizontal-stretch: 1;
             }
 
-            if root.checking: EinkBar {
+            if root.busy: EinkBar {
                 indeterminate: true;
                 width: 64px * InkMetrics.dp;
                 horizontal-stretch: 0;
@@ -106,10 +111,10 @@ component InkListRow inherits Rectangle {
     Hairline {
         y: parent.height - self.height;
         width: 100%;
-        line-color: MaterialPalette.outline;
+        line-color: MaterialPalette.divider;
     }
 
-    if root.selectable: HoldTouch {
+    if !root.disabled: HoldTouch {
         width: 100%;
         height: 100%;
         holdable: root.holdable;
@@ -127,20 +132,18 @@ export component InkList inherits VerticalLayout {
     in property <[PagedLine]> lines;
     in property <int> page: 0;
     in property <int> per-page: 1;
-    in property <bool> external-paging: false;
+    in property <length> row-height: InkMetrics.row;
     in property <bool> holdable: false;
     callback line-pressed(int);
     callback line-held(int);
 
     alignment: start;
     vertical-stretch: 1;
-    property <int> page-size: Math.max(1, root.per-page);
 
     for line[index] in root.lines: Rectangle {
         property <bool> shown:
-            root.external-paging || (index >= root.page * root.page-size && index < (root.page + 1) * root.page-size);
-        property <length> row-height: line.description == "" ? InkMetrics.row : InkMetrics.two-line-row;
-        height: shown ? row-height : 0px;
+            index >= root.page * root.per-page && index < (root.page + 1) * root.per-page;
+        height: shown ? root.row-height : 0px;
 
         if shown: InkListRow {
             width: 100%;
@@ -149,8 +152,8 @@ export component InkList inherits VerticalLayout {
             value: line.value;
             description: line.description;
             selected: line.selected;
-            selectable: line.selectable;
-            checking: line.checking;
+            disabled: line.disabled;
+            busy: line.busy;
             holdable: root.holdable;
             pressed => {
                 root.line-pressed(index);
@@ -168,38 +171,25 @@ export component InkList inherits VerticalLayout {
 // would still build its text, rule, and hold timer.
 export component PagedList inherits Rectangle {
     in property <[PagedLine]> lines;
-    in property <int> per-page: 1;
+    // The height the list may use, bar included. The rows take what is
+    // left of it.
+    in property <length> available-height: 0px;
+    in property <length> row-height: InkMetrics.row;
     in-out property <int> page: 0;
     in property <bool> show-action: false;
     in property <bool> holdable: false;
     in property <image> action-icon: ChromeIcons.add;
-    // When set, previous and next are the caller's pages (a network page,
-    // for example) instead of slices of `lines`.
-    in property <bool> external-paging: false;
-    in property <bool> can-previous: false;
-    in property <bool> can-next: false;
-    in property <string> page-label;
     callback line-pressed(int);
     callback line-held(int);
     callback action-clicked();
-    callback previous-clicked();
-    callback next-clicked();
 
     vertical-stretch: 1;
-    property <int> page-size: Math.max(1, root.per-page);
-    property <int> page-count: Math.max(1, Math.ceil(root.lines.length * 1.0 / root.page-size));
+    property <int> per-page: Math.max(1, Math.floor((root.available-height - InkMetrics.bottom-bar) / root.row-height));
 
-    changed page-count => {
-        if (root.page >= root.page-count) {
-            root.page = Math.max(0, root.page-count - 1);
-        }
-    }
-    changed page => {
-        if (root.page < 0) {
-            root.page = 0;
-        } else if (root.page >= root.page-count) {
-            root.page = Math.max(0, root.page-count - 1);
-        }
+    paging := Paging {
+        count: root.lines.length;
+        per-page: root.per-page;
+        page <=> root.page;
     }
 
     VerticalLayout {
@@ -209,9 +199,9 @@ export component PagedList inherits Rectangle {
         InkList {
             vertical-stretch: 1;
             lines: root.lines;
-            page: root.page;
-            per-page: root.per-page;
-            external-paging: root.external-paging;
+            page: paging.shown-page;
+            per-page: paging.per-page;
+            row-height: root.row-height;
             holdable: root.holdable;
             line-pressed(index) => {
                 root.line-pressed(index);
@@ -222,19 +212,15 @@ export component PagedList inherits Rectangle {
         }
 
         PagerBar {
-            page <=> root.page;
-            page-count: root.page-count;
-            external-paging: root.external-paging;
-            can-previous: root.can-previous;
-            can-next: root.can-next;
-            page-label: root.page-label;
+            page: paging.shown-page;
+            page-count: paging.page-count;
             show-action: root.show-action;
             action-icon: root.action-icon;
             previous-clicked => {
-                root.previous-clicked();
+                paging.page = paging.shown-page - 1;
             }
             next-clicked => {
-                root.next-clicked();
+                paging.page = paging.shown-page + 1;
             }
             action-clicked => {
                 root.action-clicked();

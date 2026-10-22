@@ -13,8 +13,8 @@ use slint::{ComponentHandle, Global};
 
 use crate::device::AppContext;
 use crate::view::slint::component::{Component, Env};
-use crate::view::slint::generated::{FileBrowserIo, PagedLine};
-use crate::view::slint::{CallbackQueue, changed_model, connect};
+use crate::view::slint::generated::FileBrowserIo;
+use crate::view::slint::{CallbackQueue, ListRow, PagedIo, changed_model, connect, paged_line};
 
 /// Whether the browser lists files too, or only directories.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -184,8 +184,7 @@ where
 {
     /// Moves the visible page by `delta`. The list clamps it.
     pub(in crate::view) fn bump(window: &W, delta: i32) {
-        let io = window.global::<FileBrowserIo>();
-        io.set_page(io.get_page().saturating_add(delta).max(0));
+        window.global::<FileBrowserIo>().bump(delta);
     }
 }
 
@@ -242,13 +241,11 @@ where
         let entries = state
             .entries
             .iter()
-            .map(|entry| PagedLine {
-                label: entry.label.as_str().into(),
-                value: Default::default(),
-                selected: false,
-                description: Default::default(),
-                selectable: true,
-                checking: false,
+            .map(|entry| {
+                paged_line(ListRow {
+                    label: entry.label.clone(),
+                    ..Default::default()
+                })
             })
             .collect();
         if let Some(model) = changed_model(&io.get_entries(), entries) {

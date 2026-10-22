@@ -1,22 +1,7 @@
-import { ModelPage } from "model_page.slint";
-import { SettingLine } from "../setting_line.slint";
+import { PagedLine } from "../../widgets/paged_list.slint";
 
 // Dictionary rows. `row-pressed` passes the model index, starting at 0.
 export global DictionaryPageIo {
-    in property <[SettingLine]> rows;
-    out property <int> row-count: rows.length;
+    in property <[PagedLine]> rows;
     callback row-pressed(int);
-}
-
-export component DictionaryPage inherits VerticalLayout {
-    in property <int> page;
-    in property <int> per-page;
-
-    ModelPage {
-        vertical-stretch: 1;
-        rows: DictionaryPageIo.rows;
-        page: root.page;
-        per-page: root.per-page;
-        row-pressed(index) => { DictionaryPageIo.row-pressed(index); }
-    }
 }

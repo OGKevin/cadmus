@@ -1,25 +1,8 @@
-import { StaticPage } from "static_page.slint";
-import { SettingRow, StaticLine } from "../setting_line.slint";
+import { PagedLine } from "../../widgets/paged_list.slint";
 
 // Rows and the row callback for every static category. Rust publishes the
 // visible category's rows; a hidden category is not synced.
 export global StaticPageIo {
-    in property <[StaticLine]> rows;
-    out property <int> row-count: rows.length;
-    callback row-pressed(SettingRow);
-}
-
-export component SettingsPage inherits VerticalLayout {
-    in property <int> page;
-    in property <int> per-page;
-
-    StaticPage {
-        vertical-stretch: 1;
-        rows: StaticPageIo.rows;
-        page: root.page;
-        per-page: root.per-page;
-        row-pressed(row) => {
-            StaticPageIo.row-pressed(row);
-        }
-    }
+    in property <[PagedLine]> rows;
+    callback row-pressed(int);
 }

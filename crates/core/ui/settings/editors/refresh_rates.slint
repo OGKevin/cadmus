@@ -1,9 +1,9 @@
 import { ActionBar } from "../../widgets/action_bar.slint";
-import { PagedLine, PagedList } from "../../widgets/paged_list.slint";
-import { ScreenHeader } from "../../widgets/screen_header.slint";
-import { ValueRow } from "../../widgets/value_row.slint";
+import { InkListRow, PagedLine, PagedList } from "../../widgets/paged_list.slint";
 import { InkMetrics } from "../../widgets/ink/metrics.slint";
 import { InkScreen } from "../../widgets/ink/screen.slint";
+import { InkScaffold } from "../../widgets/ink/scaffold.slint";
+import { MaterialPalette } from "../../widgets/ink/palette.slint";
 
 // Refresh-rate editor fields and callbacks. Rust sets these; the window does not.
 // `kind-pressed` and `kind-held` pass the index into `kinds`, starting at 0.
@@ -17,9 +17,6 @@ export global RefreshRatesIo {
     in property <string> inverted;
     in property <[PagedLine]> kinds;
     in-out property <int> page: 0;
-    // Rows of the kind list that fit under the header. The option menu
-    // reads this so a held row anchors to the row that is on screen.
-    in-out property <int> list-per-page: 1;
     in property <bool> kind-open: false;
     in property <string> kind-title;
     in property <string> kind-regular;
@@ -39,36 +36,26 @@ export global RefreshRatesIo {
 export component RefreshRates inherits Rectangle {
     width: 100%;
     height: 100%;
-    background: #ffffff;
+    background: MaterialPalette.surface;
     property <length> row-height: InkMetrics.row;
-    // Header, regular, inverted, and the list's bottom bar (with the add FAB).
-    property <length> chrome: InkMetrics.app-bar + root.row-height * 2 + InkMetrics.bottom-bar;
-    property <int> per-page: Math.max(1, Math.floor((InkScreen.window-height - root.chrome) / root.row-height));
-
-    changed per-page => {
-        RefreshRatesIo.list-per-page = root.per-page;
-    }
-    init => {
-        RefreshRatesIo.list-per-page = root.per-page;
-    }
+    // The header and the two rate rows sit above the list.
+    property <length> chrome: scaffold.chrome-height + root.row-height * 2;
+    property <length> available-height: InkScreen.window-height - root.chrome;
 
     TouchArea {
         width: 100%;
         height: 100%;
     }
 
-    VerticalLayout {
+    scaffold := InkScaffold {
         width: 100%;
         height: 100%;
-
-        ScreenHeader {
-            heading: RefreshRatesIo.heading;
-            back-pressed => {
-                RefreshRatesIo.dismissed();
-            }
+        title: RefreshRatesIo.heading;
+        back-pressed => {
+            RefreshRatesIo.dismissed();
         }
 
-        ValueRow {
+        InkListRow {
             label: RefreshRatesIo.regular-label;
             value: RefreshRatesIo.regular;
             pressed => {
@@ -76,7 +63,7 @@ export component RefreshRates inherits Rectangle {
             }
         }
 
-        ValueRow {
+        InkListRow {
             label: RefreshRatesIo.inverted-label;
             value: RefreshRatesIo.inverted;
             pressed => {
@@ -86,7 +73,8 @@ export component RefreshRates inherits Rectangle {
 
         PagedList {
             lines: RefreshRatesIo.kinds;
-            per-page: root.per-page;
+            available-height: root.available-height;
+            row-height: root.row-height;
             page <=> RefreshRatesIo.page;
             show-action: true;
             holdable: true;
@@ -112,52 +100,38 @@ export component RefreshRates inherits Rectangle {
             accept
         }
 
-        Rectangle {
+        InkScaffold {
             width: 100%;
             height: 100%;
-            background: #ffffff;
-
-            TouchArea {
-                width: 100%;
-                height: 100%;
+            title: RefreshRatesIo.kind-title;
+            back-pressed => {
+                RefreshRatesIo.kind-dismissed();
             }
 
-            VerticalLayout {
-                width: 100%;
-                height: 100%;
-
-                ScreenHeader {
-                    heading: RefreshRatesIo.kind-title;
-                    back-pressed => {
-                        RefreshRatesIo.kind-dismissed();
-                    }
+            InkListRow {
+                label: RefreshRatesIo.regular-label;
+                value: RefreshRatesIo.kind-regular;
+                pressed => {
+                    RefreshRatesIo.kind-regular-pressed();
                 }
+            }
 
-                ValueRow {
-                    label: RefreshRatesIo.regular-label;
-                    value: RefreshRatesIo.kind-regular;
-                    pressed => {
-                        RefreshRatesIo.kind-regular-pressed();
-                    }
+            InkListRow {
+                label: RefreshRatesIo.inverted-label;
+                value: RefreshRatesIo.kind-inverted;
+                pressed => {
+                    RefreshRatesIo.kind-inverted-pressed();
                 }
+            }
 
-                ValueRow {
-                    label: RefreshRatesIo.inverted-label;
-                    value: RefreshRatesIo.kind-inverted;
-                    pressed => {
-                        RefreshRatesIo.kind-inverted-pressed();
-                    }
-                }
+            Rectangle {
+                vertical-stretch: 1;
+            }
 
-                Rectangle {
-                    vertical-stretch: 1;
-                }
-
-                ActionBar {
-                    label: RefreshRatesIo.accept-label;
-                    clicked => {
-                        RefreshRatesIo.kind-accepted();
-                    }
+            ActionBar {
+                label: RefreshRatesIo.accept-label;
+                clicked => {
+                    RefreshRatesIo.kind-accepted();
                 }
             }
         }

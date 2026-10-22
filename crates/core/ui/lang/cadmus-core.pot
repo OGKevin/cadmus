@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
-"POT-Creation-Date: 2026-10-20 06:09+0000\n"
+"POT-Creation-Date: 2026-10-22 09:27+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -11,6 +11,14 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
+
+#: crates/core/ui/ota/window.slint:53
+msgid "Check for Updates"
+msgstr ""
+
+#: crates/core/ui/ota/window.slint:67
+msgid "No open pull requests"
+msgstr ""
 
 #: crates/core/ui/settings/shell/category_bar.slint:46
 msgid "General"
@@ -44,18 +52,22 @@ msgstr ""
 msgid "Telemetry"
 msgstr ""
 
-#: crates/core/ui/settings/window.slint:95
+#: crates/core/ui/settings/window.slint:73
 msgid "Settings"
 msgstr ""
 
-#: crates/core/ui/startup/window.slint:4
+#: crates/core/ui/startup/window.slint:7
 msgid "Cadmus starting up…"
 msgstr ""
 
-#: crates/core/ui/widgets/file_chooser.slint:46
+#: crates/core/ui/widgets/file_chooser.slint:41
 msgid "Up"
 msgstr ""
 
-#: crates/core/ui/widgets/file_chooser.slint:63
+#: crates/core/ui/widgets/file_chooser.slint:58
 msgid "Select this folder"
+msgstr ""
+
+#: crates/core/ui/widgets/status_panel.slint:58
+msgid "Cancel"
 msgstr ""

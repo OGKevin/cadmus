@@ -143,7 +143,7 @@ impl<C: ComponentHandle> Session<C> {
             .with(|slot| slot.borrow_mut().take())
             .context("slint window was not installed")?;
 
-        let scale = f32::from(dpi.max(1)) / crate::unit::BASE_DPI;
+        let scale = super::pixel_scale(dpi);
         if let Err(error) = component.window().dispatch_event_with_result(
             slint::platform::WindowEvent::ScaleFactorChanged {
                 scale_factor: scale,

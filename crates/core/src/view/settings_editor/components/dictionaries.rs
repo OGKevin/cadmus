@@ -14,8 +14,8 @@ use crate::fl;
 use crate::view::settings_editor::actions::start_dictionary_download;
 use crate::view::settings_editor::kinds::dictionary::{self, DictionaryInfo};
 use crate::view::settings_editor::kinds::{SettingKind, SettingsFetchData, WidgetKind};
-use crate::view::slint::generated::{DictionaryPageIo, SettingLine, SettingsWindow};
-use crate::view::slint::{CallbackQueue, changed_model, connect};
+use crate::view::slint::generated::{DictionaryPageIo, PagedLine, SettingsWindow};
+use crate::view::slint::{CallbackQueue, ListRow, changed_model, connect, paged_line};
 use crate::view::{EntryId, Event, NotificationEvent};
 
 /// One callback from the dictionary list.
@@ -183,11 +183,14 @@ impl Component for Dictionaries {
     }
 }
 
-fn dictionary_lines(rows: &[DictionaryInfo], context: &AppContext) -> Vec<SettingLine> {
+fn dictionary_lines(rows: &[DictionaryInfo], context: &AppContext) -> Vec<PagedLine> {
     rows.iter()
-        .map(|info| SettingLine {
-            label: info.label.clone().into(),
-            value: setting::display_of(info, context).into(),
+        .map(|info| {
+            paged_line(ListRow {
+                label: info.label.clone(),
+                value: setting::display_of(info, context),
+                ..Default::default()
+            })
         })
         .collect()
 }
@@ -205,10 +208,10 @@ mod tests {
     use crate::dictionary::{MonolingualDictionaryService, reconcile_installed_dictionaries};
     use crate::fl;
     use crate::settings::WifiMode;
-    use crate::view::slint::generated::{DictionaryPageIo, SettingLine};
+    use crate::view::slint::generated::{DictionaryPageIo, PagedLine};
     use crate::view::{EntryId, Event};
 
-    fn line_at(rows: &slint::ModelRc<SettingLine>, index: usize) -> SettingLine {
+    fn line_at(rows: &slint::ModelRc<PagedLine>, index: usize) -> PagedLine {
         rows.row_data(index)
             .unwrap_or_else(|| panic!("missing dictionary {index}"))
     }

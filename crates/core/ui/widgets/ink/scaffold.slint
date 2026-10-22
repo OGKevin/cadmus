@@ -3,20 +3,21 @@ import { Hairline } from "../hairline.slint";
 import { MaterialPalette } from "palette.slint";
 import { InkAppBar } from "app_bar.slint";
 import { InkMetrics } from "metrics.slint";
-import { TouchLabel } from "../touch_label.slint";
 
-// App bar, hairline, then the screen body. An optional action label sits
-// under the body. Use-site children go between the hairline and that bar.
+// App bar, hairline, then the screen body. Use-site children go between
+// the hairline and the bottom of the body.
 
 export component InkScaffold inherits Rectangle {
     in property <string> title;
     in property <bool> back-enabled: true;
-    in property <string> action-label;
     callback back-pressed();
-    callback action-clicked();
 
     property <image> no-icon;
     background: MaterialPalette.surface;
+
+    // The chrome the scaffold puts above the body. A screen that fills the
+    // window leaves the rest of the height to its body.
+    out property <length> chrome-height: InkMetrics.app-bar + InkMetrics.hairline;
 
     VerticalLayout {
         width: 100%;
@@ -24,7 +25,7 @@ export component InkScaffold inherits Rectangle {
 
         InkAppBar {
             title: root.title;
-            leading-icon: root.back-enabled ? ChromeIcons.arrow-back : root.no-icon;
+            leading-icon: root.back-enabled ? ChromeIcons.arrow_back : root.no-icon;
             leading-clicked => {
                 if (root.back-enabled) {
                     root.back-pressed();
@@ -37,13 +38,5 @@ export component InkScaffold inherits Rectangle {
         }
 
         @children
-
-        if root.action-label != "": TouchLabel {
-            height: InkMetrics.row;
-            label: root.action-label;
-            clicked => {
-                root.action-clicked();
-            }
-        }
     }
 }

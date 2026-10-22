@@ -1,10 +1,11 @@
 import { EinkBar } from "eink_bar.slint";
+import { InkBar } from "ink/bar.slint";
 import { InkMetrics } from "ink/metrics.slint";
 import { MaterialPalette } from "ink/palette.slint";
 import { TouchLabel } from "touch_label.slint";
 
 // Centered status copy, optional code, optional bar, optional cancel.
-// Sign-in and download progress share this. The bar rectangle is copied
+// Sign-in and download progress share this. The bar rectangle is published
 // when `geom-token` changes, because the first read of the laid-out bar
 // does not run a change handler.
 export component StatusPanel inherits VerticalLayout {
@@ -15,10 +16,6 @@ export component StatusPanel inherits VerticalLayout {
     in property <bool> progress-indeterminate: false;
     in property <bool> show-cancel: true;
     in property <int> geom-token: 0;
-    in-out property <length> bar-x;
-    in-out property <length> bar-y;
-    in-out property <length> bar-width;
-    in-out property <length> bar-height;
     callback cancel();
 
     alignment: center;
@@ -49,10 +46,10 @@ export component StatusPanel inherits VerticalLayout {
 
         property <int> geom-seen: root.geom-token;
         changed geom-seen => {
-            root.bar-x = bar.origin-x;
-            root.bar-y = bar.origin-y;
-            root.bar-width = bar.span-width;
-            root.bar-height = bar.span-height;
+            InkBar.x = bar.origin-x;
+            InkBar.y = bar.origin-y;
+            InkBar.width = bar.span-width;
+            InkBar.height = bar.span-height;
         }
     }
 

@@ -9,8 +9,8 @@ use super::setting::{self, PressedRow};
 use super::{Component, Env, Step, Waiting};
 use crate::device::AppContext;
 use crate::fl;
-use crate::view::slint::generated::{LibraryPageIo, SettingLine, SettingsWindow};
-use crate::view::slint::{CallbackQueue, changed_model, connect};
+use crate::view::slint::generated::{LibraryPageIo, PagedLine, SettingsWindow};
+use crate::view::slint::{CallbackQueue, ListRow, changed_model, connect, paged_line};
 use crate::view::{EntryId, EntryKind};
 
 /// One callback from the library list.
@@ -107,14 +107,17 @@ pub(super) fn delete(index: usize, context: &mut AppContext) {
     }
 }
 
-fn library_lines(context: &AppContext) -> Vec<SettingLine> {
+fn library_lines(context: &AppContext) -> Vec<PagedLine> {
     context
         .settings
         .libraries
         .iter()
-        .map(|library| SettingLine {
-            label: library.name.clone().into(),
-            value: library.path.display().to_string().into(),
+        .map(|library| {
+            paged_line(ListRow {
+                label: library.name.clone(),
+                value: library.path.display().to_string(),
+                ..Default::default()
+            })
         })
         .collect()
 }

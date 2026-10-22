@@ -31,6 +31,10 @@ The confirmation dialog is a centered card, like the option list. A tap on the
 page outside the card closes it. Download, re-download, and force-import
 questions use that card.
 
+Every screen draws its chrome with `InkScaffold`: the app bar, the back
+button, the rule under it, and the body. A screen that is one message, like
+the startup frame, uses `InkWindow` alone and has no app bar.
+
 Rust follows the same split:
 
 - [`slint/components`](slint/components/) holds reusable overlay state: the
@@ -42,13 +46,18 @@ Rust follows the same split:
   (and `FileBrowser<SettingsWindow>`, `TextSheet<SettingsWindow>`,
   `ConfirmSheet<SettingsWindow>`). An overlay does not store which control
   opened it. `WindowOf<W>` only puts `W` in the overlay's type.
+- [`Asked`](slint/overlay.rs) is a sheet and the control that opened it. The
+  reason belongs with the sheet, so a screen does not keep a second list of
+  what it is waiting for. Closing the sheet forgets the reason.
 - [`settings_editor`](settings_editor/) is the settings screen. Category pages,
   the shell, the footer, the library editor, and the refresh-rate editor stay
   here. They edit settings data. A callback returns
   [`Step`](settings_editor/components/mod.rs), which names the sheet to open or
-  the result to apply. `Waiting` remembers which control opened the shared
-  sheet. [`Flow`](slint/mod.rs) is only the renderer instruction (`Idle` or
-  `Redraw`); `dispatch` reduces `Step` to it.
+  the result to apply. `Waiting` names the control that opened the shared
+  sheet, and the sheet keeps it. [`Flow`](slint/mod.rs) is only the renderer
+  instruction (`Idle` or `Redraw`); `dispatch` reduces `Step` to it.
+- [`ota`](ota/) is the Check for Updates screen. List, auth, and progress are
+  components. It reuses the same overlays and host as settings.
 - Another screen gets its own folder under `view/` and under `ui/`. It reuses
   the overlays by constructing them with its own row type and window. It
   does not grow a second copy of the file browser or the confirmation dialog.
@@ -65,29 +74,90 @@ page, and the open overlays into the window. Models go through
 place, so one changed row does not rebuild the others or drop their widget
 state. A different length replaces the model.
 
-Slint timers (press-and-hold) need the view loop awake. [`SlintView::drive`](slint/mod.rs)
-forwards one event, applies queued callbacks, and queues dirty rectangles.
-[`SlintView::on_timer`](slint/mod.rs) does that for `Event::SlintTimer`. Both
-call `Session::wake_for_timers`, which posts that event when Slint's next
-timer is due. The wait is a detached task, not a [`Job`](../runtime.rs):
-there is nothing to cancel, and a late event is ignored once the screen is
-gone. Handle the event with `Session::tick`. Do not add per-widget workarounds
-for a hold that fires late.
+## Lists and paging
 
-Settings uses those methods for every event except the category and page
-buttons. The press that changes the category or the page remembers that
-button and swallows only its release and repeats. Forwarding that release
-turns it into an arrow key and opens the first row. A button whose press was
-forwarded is released normally, so the keyboard is not left held down.
+One list type and one pager. The shared list is
+[`PagedList`](../../ui/widgets/paged_list.slint): it draws `PagedLine` rows and
+owns the page. The settings pages, the file browser, the refresh-rate editor,
+and the OTA list all use it. A row is built only when it is on the visible
+page, so a long list does not build every row.
 
-The text dialog's keyboard is as tall as the reader keyboard and sits just
-above the bottom edge. The field floats above it. A pressed key is drawn
-black for that finger-down frame. The dialog decides that refresh
-(`frame_refresh`, `skip_press_frame`); the host does not pick the waveform.
-The key caps come from the selected keyboard layout, including Russian,
-terminal, and any layout loaded from disk. Holding a character key opens
-the accented forms of that character above the keys. The combine key is
-not drawn.
+The page count and the clamp live in one place,
+[`Paging`](../../ui/widgets/paging.slint). `shown-page` is the page the list
+draws; it is never past the last page. The raw page follows it, one event-loop
+turn later, because a Slint change callback runs after the frame. A list that
+moves its page moves it from `shown-page`, so the raw page never drifts.
+
+Rust moves the page with [`PagedIo`](slint/page.rs). The trait gives the
+window's page and moves it by a delta, so the hardware page buttons and the
+list's own arrows move the same page. The page itself lives in the window or
+in the overlay's global; Rust reads it, it does not keep a copy.
+
+A row is a [`ListRow`](slint/model.rs) in Rust. The fields are named, so a
+call site says what it means: a row that cannot be tapped is `disabled`, and a
+row that is still being checked is `busy`. A settings row also has an identity:
+[`SettingRow`](settings_editor/components/setting.rs) names the setting, and
+the page that shows it maps the tapped index back to that name. A library or
+dictionary row is its index in the model.
+
+The window size has one source: `InkScreen.window-height`. A list that needs
+to know how many rows fit takes the height it may use, and the shared list
+turns that into a page size. The scaffold reports the chrome it puts above the
+body (`chrome-height`), so a screen does not re-derive the app bar.
+
+Slint timers (press-and-hold) need the view loop awake. The host forwards one
+event, applies queued callbacks, and queues dirty rectangles; its timer path
+does that for `Event::SlintTimer`. Both call `Session::wake_for_timers`, which
+posts that event when Slint's next timer is due. The wait is a detached task,
+not a [`Job`](../runtime.rs): there is nothing to cancel, and a late event is
+ignored once the screen is gone. Handle the event with `Session::tick`. Do not
+add per-widget workarounds for a hold that fires late.
+
+Settings uses the host for every event except the category and page buttons.
+The press that changes the category or the page remembers that button and
+swallows only its release and repeats. Forwarding that release turns it into
+an arrow key and opens the first row. A button whose press was forwarded is
+released normally, so the keyboard is not left held down.
+
+The host owns the frame loop. A screen only says how a frame reaches the
+panel: its `refresh` hook fills a [`RefreshPlan`](slint/host.rs) with regions
+and their waveform, and the host queues them. A progress bar reports the
+rectangle it occupies in the `InkBar` global. The screen scales that rectangle
+to physical pixels with [`pixel_scale`](slint/metrics.rs) and hands it to
+[`FastInk`](slint/waveform.rs), which keeps the physical one. The text dialog's keyboard is as
+tall as the reader keyboard and sits just above the bottom edge. The field
+floats above it. A pressed key is drawn black for that finger-down frame. The
+dialog decides that refresh (`frame_refresh`, `skip_press_frame`); the host
+does not pick the waveform. The key caps come from the selected keyboard
+layout, including Russian, terminal, and any layout loaded from disk. Holding
+a character key opens the accented forms of that character above the keys. The
+combine key is not drawn.
+
+## The host and the screen
+
+[`SlintHost`](slint/host.rs) owns the session, the event loop, the resize, and
+the panel updates. A screen implements [`SlintScreen`](slint/host.rs):
+
+- `open` and `wire` build the window and connect its callbacks.
+- `start` runs once, before the first sync.
+- `sync` copies the screen's state into the window. The host redraws
+  afterwards, so a screen never captures a frame itself.
+- `apply_callbacks` applies what the window queued and returns [`Flow`].
+- `consume_back`, `on_event`, and `take_device` are the screen's own
+  shortcuts. The screen that takes an event says so, and the host syncs.
+- `refresh` plans how the dirty rectangles reach the panel.
+- `stop_jobs` and `take_background_jobs` hand the screen's jobs over.
+
+[`OverlayStack`](slint/overlay.rs) is the list of open sheets, front-most
+first. It closes the top sheet and moves the page of the top sheet that pages.
+A sheet that is closed does not rebuild its rows.
+
+[`PagerBar`](../../ui/widgets/pager_bar.slint) draws the page arrows and the
+page label. It emits callbacks; the list moves the page.
+
+Tests use the harness in [`slint/testing.rs`](slint/testing.rs):
+`install_ui_font` writes the app fonts, `open_screen` mounts a screen on a test
+device, and `RecordingFramebuffer` records the panel updates.
 
 A screen lists its pieces once. Settings uses `each_part` in
 [`settings_editor/components`](settings_editor/components/mod.rs) to wire, sync,

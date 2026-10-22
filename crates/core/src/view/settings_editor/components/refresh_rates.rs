@@ -18,7 +18,9 @@ use crate::view::settings_editor::kinds::reader::{
     RefreshRateInvertedSetting, RefreshRateRegularSetting,
 };
 use crate::view::slint::generated::{PagedLine, RefreshRatesIo, SettingsWindow};
-use crate::view::slint::{CallbackQueue, Overlay, changed_model, connect};
+use crate::view::slint::{
+    CallbackQueue, ListRow, Overlay, PagedIo, changed_model, connect, paged_line,
+};
 use crate::view::{Bus, EntryId, EntryKind, Event, ViewId};
 
 /// One callback from the refresh-rate editor.
@@ -144,8 +146,7 @@ impl RefreshRates {
     }
 
     pub(super) fn bump(window: &SettingsWindow, delta: i32) {
-        let io = window.global::<RefreshRatesIo>();
-        io.set_page(io.get_page().saturating_add(delta).max(0));
+        window.global::<RefreshRatesIo>().bump(delta);
     }
 
     fn kind_text(&self, regular: bool) -> Option<(String, String)> {
@@ -219,10 +220,11 @@ impl Component for RefreshRates {
 
     fn sync(&mut self, window: &SettingsWindow, context: &AppContext) {
         let io = window.global::<RefreshRatesIo>();
+        io.set_open(self.open);
         if !self.open {
             io.set_page(0);
+            return;
         }
-        io.set_open(self.open);
         io.set_heading(fl!("settings-reader-refresh-rate").into());
         io.set_regular_label(fl!("settings-reader-refresh-rate-regular").into());
         io.set_inverted_label(fl!("settings-reader-refresh-rate-inverted").into());
@@ -396,14 +398,11 @@ fn kind_lines(context: &AppContext) -> Vec<PagedLine> {
             let pair = context.settings.reader.refresh_rate.by_kind.get(&ext);
             let regular = pair.map(|pair| pair.regular).unwrap_or(0);
             let inverted = pair.map(|pair| pair.inverted).unwrap_or(0);
-            PagedLine {
-                label: ext.to_string().to_uppercase().into(),
-                value: format!("{regular} / {inverted}").into(),
-                selected: false,
-                description: Default::default(),
-                selectable: true,
-                checking: false,
-            }
+            paged_line(ListRow {
+                label: ext.to_string().to_uppercase(),
+                value: format!("{regular} / {inverted}"),
+                ..Default::default()
+            })
         })
         .collect()
 }

@@ -3,6 +3,7 @@ import { Hairline } from "hairline.slint";
 import { InkBottomBar } from "ink/bottom_bar.slint";
 import { InkMetrics } from "ink/metrics.slint";
 import { MaterialPalette } from "ink/palette.slint";
+import { Paging } from "paging.slint";
 
 // One row of the option list. `checked` marks the current value on a
 // single-choice list, or one toggled option on a checkbox list.
@@ -42,21 +43,11 @@ export component ChoiceSheet inherits Rectangle {
     property <int> fit-paged: Math.max(1, Math.floor(root.room-paged / root.row-height));
     property <bool> paged: root.entries.length > root.fit-plain;
     property <int> per-page: root.paged ? root.fit-paged : Math.max(1, root.entries.length);
-    property <int> page-count: Math.max(1, Math.ceil(root.entries.length * 1.0 / root.per-page));
 
-    // `page` is the reader's page. Rust sets it to 0 when it opens a new
-    // list and leaves it alone when it refreshes the rows of the same list.
-    changed page-count => {
-        if (root.page >= root.page-count) {
-            root.page = Math.max(0, root.page-count - 1);
-        }
-    }
-    changed page => {
-        if (root.page < 0) {
-            root.page = 0;
-        } else if (root.page >= root.page-count) {
-            root.page = Math.max(0, root.page-count - 1);
-        }
+    paging := Paging {
+        count: root.entries.length;
+        per-page: root.per-page;
+        page <=> root.page;
     }
 
     // A tap outside the dialog closes it. The page underneath stays.
@@ -118,8 +109,8 @@ export component ChoiceSheet inherits Rectangle {
                             // Only the visible page gets a row.
                             for entry[index] in root.entries: Rectangle {
                                 property <bool> shown:
-                                    index >= root.page * root.per-page
-                                    && index < (root.page + 1) * root.per-page;
+                                    index >= paging.shown-page * paging.per-page
+                                    && index < (paging.shown-page + 1) * paging.per-page;
                                 height: shown ? root.row-height : 0px;
 
                                 if shown: TouchArea {
@@ -166,20 +157,16 @@ export component ChoiceSheet inherits Rectangle {
                     if root.paged: InkBottomBar {
                         width: 100%;
                         height: InkMetrics.bottom-bar;
-                        label: "\{root.page + 1} / \{root.page-count}";
+                        label: "\{paging.shown-page + 1} / \{paging.page-count}";
                         previous-icon: ChromeIcons.chevron-backward;
-                        previous-enabled: root.page > 0;
+                        previous-enabled: paging.shown-page > 0;
                         next-icon: ChromeIcons.chevron-forward;
-                        next-enabled: root.page + 1 < root.page-count;
+                        next-enabled: paging.shown-page + 1 < paging.page-count;
                         previous-clicked => {
-                            if (root.page > 0) {
-                                root.page -= 1;
-                            }
+                            paging.page = paging.shown-page - 1;
                         }
                         next-clicked => {
-                            if (root.page + 1 < root.page-count) {
-                                root.page += 1;
-                            }
+                            paging.page = paging.shown-page + 1;
                         }
                     }
                 }
