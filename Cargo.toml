@@ -16,6 +16,7 @@ async_zip = { version = "0.0.19", default-features = false, features = ["deflate
 blake3 = "1"
 bytes = "1"
 cc = "1"
+gethostname = "1.1.0"
 http = "1"
 http-body-util = "0.1"
 io_tee = "0.1"

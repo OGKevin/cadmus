@@ -27,6 +27,7 @@ use anyhow::{Context, Result, bail};
 use build_deps::build::kobo;
 use build_deps::build::{mupdf_wrapper, native};
 use build_deps::cargo_features::{cargo_feature_env_key, collect_enabled_feature_names};
+use nix::unistd::{Uid, User};
 
 const BUNDLED_ASSET_DIRS: &[&str] = &[
     "bin",
@@ -495,28 +496,28 @@ struct BuildAttributes {
 /// Captures build provenance values passed to rustc as compile-time env vars.
 fn get_build_attributes() -> Result<BuildAttributes> {
     Ok(BuildAttributes {
-        user: command_output("whoami")?,
-        host: command_output("hostname")?,
+        user: build_user(),
+        host: or_unknown(&gethostname::gethostname().to_string_lossy()),
         timestamp: build_timestamp()?,
     })
 }
 
-/// Runs a command and returns its trimmed stdout, or `unknown` if it fails.
-fn command_output(command: &str) -> Result<String> {
-    let output = Command::new(command)
-        .output()
-        .with_context(|| format!("failed to spawn `{command}`"))?;
+/// Account name for this process from the OS user database.
+fn build_user() -> String {
+    User::from_uid(Uid::effective())
+        .ok()
+        .flatten()
+        .map(|user| or_unknown(&user.name))
+        .unwrap_or_else(|| "unknown".to_string())
+}
 
-    if !output.status.success() {
-        return Ok("unknown".to_string());
-    }
-
-    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    Ok(if value.is_empty() {
+fn or_unknown(value: &str) -> String {
+    let value = value.trim();
+    if value.is_empty() {
         "unknown".to_string()
     } else {
-        value
-    })
+        value.to_string()
+    }
 }
 
 /// Returns the current Unix epoch timestamp for this build script run.

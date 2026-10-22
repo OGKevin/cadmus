@@ -972,6 +972,22 @@ mod tests {
     }
 
     #[test]
+    fn test_get_build_attributes_user_and_host_are_non_empty() {
+        let attrs = get_build_attributes();
+        assert!(!attrs.user.is_empty());
+        assert!(!attrs.host.is_empty());
+    }
+
+    #[test]
+    fn test_build_user_matches_os_account() {
+        let expected = nix::unistd::User::from_uid(nix::unistd::Uid::effective())
+            .expect("passwd lookup")
+            .expect("account for euid")
+            .name;
+        assert_eq!(get_build_attributes().user, expected);
+    }
+
+    #[test]
     fn test_parse_release_version() {
         let v = GitVersion::parse("v0.9.46").unwrap();
         assert_eq!(v.major(), 0);
