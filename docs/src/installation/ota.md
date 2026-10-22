@@ -76,8 +76,10 @@ When a build is ready, you can tap the row. A draft is labelled, and you can
 still install it when a build is ready. Rows that are still building, failed,
 or have no build stay on the list but cannot be installed.
 
-Use the arrows to see more pull requests. Use the refresh button to load the
-list again.
+Cadmus asks you to confirm before it downloads the build you picked.
+
+Use the arrows to see more pull requests. The page buttons on your Kobo move
+through the list as well. Use the refresh button to load the list again.
 
 If you haven't signed in before, Cadmus will guide you through GitHub sign-in.
 See [Authentication](#authentication) for details.

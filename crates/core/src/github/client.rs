@@ -71,6 +71,9 @@ fn grants_required_scope(required: &str, granted: &[&str]) -> bool {
 pub enum GithubRequestError {
     #[error(transparent)]
     Middleware(#[from] reqwest_middleware::Error),
+    /// GitHub rejected the token. The reader has to sign in again.
+    #[error("GitHub rejected the token")]
+    Unauthorized,
     #[error("{0}")]
     Message(String),
 }
@@ -226,14 +229,14 @@ impl ApiRequest<'_> {
         let response = crab
             ._get_with_headers(url.as_str(), headers)
             .await
-            .map_err(|error| map_octocrab(&url, error))?;
+            .map_err(map_octocrab)?;
         let status = response.status();
         let headers = response.headers().clone();
         let body = response
             .into_body()
             .collect()
             .await
-            .map_err(|error| map_octocrab(&url, error))?
+            .map_err(map_octocrab)?
             .to_bytes();
         Ok(ApiResponse {
             status,
@@ -754,7 +757,7 @@ impl GithubClient {
     /// One page of open pull requests, newest update first.
     #[cfg_attr(
         feature = "tracing",
-        tracing::instrument(skip(self), fields(per_page, page), err)
+        tracing::instrument(skip(self), fields(per_page, page))
     )]
     pub(crate) async fn list_open_pulls(
         &self,
@@ -772,7 +775,7 @@ impl GithubClient {
             .page(page)
             .send()
             .await
-            .map_err(|error| map_octocrab("list open pull requests", error))?;
+            .map_err(map_octocrab)?;
         let has_next = github_page_has_next(listed.next.is_some(), listed.items.len(), per_page);
         let pulls: Vec<ListedPull> = listed
             .items
@@ -795,20 +798,11 @@ impl GithubClient {
     /// Every open pull request, newest activity first.
     ///
     /// Stops after [`OPEN_PULL_PAGE_CAP`] pages.
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), err))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub(crate) async fn list_all_open_pulls(&self) -> Result<Vec<ListedPull>, GithubRequestError> {
         let mut all = Vec::new();
         for page in 1..=OPEN_PULL_PAGE_CAP {
-            let listed = self
-                .list_open_pulls(OPEN_PULL_PAGE, page)
-                .await
-                .inspect_err(|error| {
-                    tracing::warn!(
-                        error = %error,
-                        page,
-                        "open pull list failed"
-                    );
-                })?;
+            let listed = self.list_open_pulls(OPEN_PULL_PAGE, page).await?;
             let has_next = listed.has_next;
             all.extend(listed.pulls);
             if !has_next {
@@ -824,7 +818,7 @@ impl GithubClient {
     /// The hundred newest pull-request runs of `cargo.yml`. Each run keeps its
     /// id so the install check can read that run's packages. A pull request
     /// whose run is older than this list is not checked.
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), err))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub(crate) async fn list_cargo_pull_request_runs(
         &self,
     ) -> Result<Vec<ListedRun>, GithubRequestError> {
@@ -836,7 +830,7 @@ impl GithubClient {
             .per_page(100u8)
             .send()
             .await
-            .map_err(|error| map_octocrab("list cargo pull-request runs", error))?;
+            .map_err(map_octocrab)?;
         let runs: Vec<ListedRun> = listed
             .items
             .into_iter()
@@ -855,10 +849,7 @@ impl GithubClient {
     /// Packages uploaded by one workflow run.
     ///
     /// One page of 100. A Cargo run uploads a handful of packages.
-    #[cfg_attr(
-        feature = "tracing",
-        tracing::instrument(skip(self), fields(run_id), err)
-    )]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(run_id)))]
     pub(crate) async fn list_run_artifacts(
         &self,
         run_id: u64,
@@ -870,7 +861,7 @@ impl GithubClient {
             .per_page(100u8)
             .send()
             .await
-            .map_err(|error| map_octocrab("list workflow run artifacts", error))?;
+            .map_err(map_octocrab)?;
         let Some(page) = listed.value else {
             return Ok(Vec::new());
         };
@@ -1023,8 +1014,8 @@ fn github_page_has_next(link: bool, count: usize, per_page: u8) -> bool {
 /// `octocrab::Error::GitHub`'s own `Display` is only the variant name, so
 /// every API failure would otherwise read as "GitHub" with no status or body.
 /// The status code and GitHub's own message come from its source instead.
-fn map_octocrab(request: &str, error: octocrab::Error) -> GithubRequestError {
-    let mapped = match error {
+fn map_octocrab(error: octocrab::Error) -> GithubRequestError {
+    match error {
         octocrab::Error::Service { source, .. } => match source.downcast::<TransportError>() {
             Ok(error) => match *error {
                 TransportError::Middleware(error) => GithubRequestError::Middleware(error),
@@ -1032,19 +1023,31 @@ fn map_octocrab(request: &str, error: octocrab::Error) -> GithubRequestError {
             },
             Err(error) => GithubRequestError::Message(error.to_string()),
         },
-        octocrab::Error::GitHub { source, .. } => GithubRequestError::Message(format!(
-            "HTTP {} from GitHub: {source}",
-            source.status_code
-        )),
+        octocrab::Error::GitHub { source, .. } => {
+            github_status_error(source.status_code, &source.to_string())
+        }
         other => GithubRequestError::Message(other.to_string()),
-    };
-    tracing::debug!(request, error = %mapped, "github request failed");
-    mapped
+    }
+}
+
+/// Maps a GitHub response status to a request error.
+///
+/// A 401 means the token was revoked or expired, so the reader has to sign in
+/// again. Every other status is a plain API failure.
+fn github_status_error(status: StatusCode, detail: &str) -> GithubRequestError {
+    if status == StatusCode::UNAUTHORIZED {
+        GithubRequestError::Unauthorized
+    } else {
+        GithubRequestError::Message(format!("HTTP {status} from GitHub: {detail}"))
+    }
 }
 
 fn verify_transport(error: GithubRequestError) -> VerifyScopesError {
     match error {
         GithubRequestError::Middleware(error) => VerifyScopesError::from(error),
+        GithubRequestError::Unauthorized => VerifyScopesError::HttpStatus {
+            status: StatusCode::UNAUTHORIZED,
+        },
         GithubRequestError::Message(message) => VerifyScopesError::Transport(message),
     }
 }
@@ -1113,6 +1116,19 @@ mod tests {
             error.to_string().contains("Bad credentials"),
             "the message is the only thing that says why: {error}"
         );
+    }
+
+    #[test]
+    fn a_401_is_an_unauthorized_token() {
+        let error = github_status_error(StatusCode::UNAUTHORIZED, "Bad credentials");
+        assert!(matches!(error, GithubRequestError::Unauthorized));
+    }
+
+    #[test]
+    fn another_status_is_a_plain_api_failure() {
+        let error = github_status_error(StatusCode::NOT_FOUND, "Not Found");
+        assert!(matches!(error, GithubRequestError::Message(_)));
+        assert!(error.to_string().contains("404"), "{error}");
     }
 
     #[test]

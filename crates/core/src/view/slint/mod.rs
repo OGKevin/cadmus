@@ -14,7 +14,6 @@ mod metrics;
 mod model;
 mod overlay;
 mod page;
-mod paging;
 mod queue;
 mod renderer;
 #[cfg(test)]
@@ -30,7 +29,6 @@ pub(in crate::view) use metrics::pixel_scale;
 pub(crate) use model::{ListRow, changed_model, paged_line};
 pub(in crate::view) use overlay::{Asked, Overlay, OverlayStack};
 pub(in crate::view) use page::PagedIo;
-pub(in crate::view) use paging::Pager;
 pub(in crate::view) use queue::{CallbackQueue, connect};
 pub use renderer::Session;
 #[cfg(test)]

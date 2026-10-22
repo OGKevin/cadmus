@@ -16,6 +16,7 @@ pub use self::view::{Ota, OtaView};
 
 use self::download::DownloadOutcome;
 use crate::ota::CheckedPull;
+use crate::view::Generation;
 
 /// Events the OTA jobs send back to the screen.
 #[derive(Debug, Clone)]
@@ -23,14 +24,14 @@ pub enum OtaEvent {
     /// The open pull requests arrived. Install status is still unknown.
     PrListed {
         /// Bumped each time the screen starts a fetch, so a late job is ignored.
-        generation: u64,
+        generation: Generation,
         /// Every open pull request, newest activity first. Each build is pending.
         rows: Vec<CheckedPull>,
     },
     /// A newer picture of which rows can be installed.
     PrStatus {
         /// See [`Self::PrListed::generation`].
-        generation: u64,
+        generation: Generation,
         /// The full list. Ready rows can be tapped. The rest stay pending until
         /// `failed` is set or the check finishes.
         rows: Vec<CheckedPull>,
@@ -40,8 +41,13 @@ pub enum OtaEvent {
     /// The open-pull list itself failed. No rows were replaced.
     PrListFailed {
         /// See [`Self::PrListed::generation`].
-        generation: u64,
+        generation: Generation,
     },
     /// The progress screen should close.
-    DownloadFinished(DownloadOutcome),
+    DownloadFinished {
+        /// The install attempt this belongs to.
+        generation: Generation,
+        /// How the attempt ended.
+        outcome: DownloadOutcome,
+    },
 }

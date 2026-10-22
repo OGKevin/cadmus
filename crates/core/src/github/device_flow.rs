@@ -1,6 +1,8 @@
 use secrecy::{ExposeSecret, SecretString};
-use std::fs::{self, File};
-use std::io::{Read, Write};
+use std::fs;
+use std::fs::File;
+use std::io::Read;
+use tokio::io::AsyncWriteExt as _;
 
 /// Filename of the token written under [`crate::device::DevicePaths::install_dir()`].
 const TOKEN_FILENAME: &str = ".github_token";
@@ -169,28 +171,55 @@ pub fn resolve_auth_token(install_dir: &std::path::Path) -> Result<Option<Secret
 /// # Errors
 ///
 /// Returns an error string if directory creation or file write fails.
-pub fn save_token(token: &SecretString, install_dir: &std::path::Path) -> Result<(), String> {
+pub async fn save_token(token: &SecretString, install_dir: &std::path::Path) -> Result<(), String> {
     let path = install_dir.join(TOKEN_FILENAME);
     tracing::debug!(path = %path.display(), "Saving GitHub token");
 
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("Failed to create token dir: {}", e))?;
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|e| format!("Failed to create token dir: {}", e))?;
     }
 
-    let mut file =
-        File::create(&path).map_err(|e| format!("Failed to create token file: {}", e))?;
+    let mut file = open_private(&path)
+        .await
+        .map_err(|e| format!("Failed to create token file: {}", e))?;
     file.write_all(token.expose_secret().as_bytes())
+        .await
+        .map_err(|e| format!("Failed to write token: {}", e))?;
+    file.flush()
+        .await
         .map_err(|e| format!("Failed to write token: {}", e))?;
 
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o600))
+        tokio::fs::set_permissions(&path, fs::Permissions::from_mode(0o600))
+            .await
             .map_err(|e| format!("Failed to set token file permissions: {}", e))?;
     }
 
     tracing::info!("GitHub token saved");
     Ok(())
+}
+
+/// Opens the token file so that only its owner can read it.
+#[cfg(unix)]
+async fn open_private(path: &std::path::Path) -> std::io::Result<tokio::fs::File> {
+    let mut options = tokio::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true).mode(0o600);
+    options.open(path).await
+}
+
+/// Opens the token file.
+#[cfg(not(unix))]
+async fn open_private(path: &std::path::Path) -> std::io::Result<tokio::fs::File> {
+    tokio::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(path)
+        .await
 }
 
 /// Loads a previously saved GitHub OAuth token from disk.
@@ -237,15 +266,15 @@ pub fn load_token(install_dir: &std::path::Path) -> Result<Option<SecretString>,
 /// # Errors
 ///
 /// Returns an error string if the file exists but cannot be removed.
-pub fn delete_token(install_dir: &std::path::Path) -> Result<(), String> {
+pub async fn delete_token(install_dir: &std::path::Path) -> Result<(), String> {
     let path = install_dir.join(TOKEN_FILENAME);
     tracing::debug!(path = %path.display(), "Deleting GitHub token");
 
-    if !path.exists() {
-        return Ok(());
+    match tokio::fs::remove_file(&path).await {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(format!("Failed to delete token file: {}", error)),
     }
-
-    fs::remove_file(&path).map_err(|e| format!("Failed to delete token file: {}", e))?;
     tracing::info!("GitHub token deleted");
     Ok(())
 }
@@ -325,10 +354,12 @@ mod tests {
         assert!(auth.effective().is_none());
     }
 
-    #[test]
-    fn reject_saved_token_clears_memory_only() {
+    #[tokio::test]
+    async fn reject_saved_token_clears_memory_only() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        save_token(&SecretString::from("file-token".to_owned()), tmp.path()).unwrap();
+        save_token(&SecretString::from("file-token".to_owned()), tmp.path())
+            .await
+            .unwrap();
 
         let mut auth =
             ResolvedAuth::from_parts(Some(SecretString::from("file-token".to_owned())), None);
@@ -340,6 +371,20 @@ mod tests {
                 .expect("load")
                 .is_some_and(|token| token.expose_secret() == "file-token")
         );
+    }
+
+    #[tokio::test]
+    async fn a_saved_token_can_be_deleted() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        save_token(&SecretString::from("file-token".to_owned()), tmp.path())
+            .await
+            .expect("save");
+        assert!(tmp.path().join(TOKEN_FILENAME).exists());
+
+        delete_token(tmp.path()).await.expect("delete");
+        assert!(!tmp.path().join(TOKEN_FILENAME).exists());
+
+        delete_token(tmp.path()).await.expect("delete again");
     }
 
     fn unreadable_token_dir() -> tempfile::TempDir {

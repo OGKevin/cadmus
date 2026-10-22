@@ -473,6 +473,26 @@ pub fn wait_for_all(updating: &mut Vec<UpdateData>, context: &mut AppContext) {
     }
 }
 
+/// Identifies one attempt at a background job.
+///
+/// A screen bumps the generation when it starts a job. The job carries the
+/// generation in every event it sends, so an event from an attempt the reader
+/// has already left can be told apart from the current one.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Generation(u64);
+
+impl Generation {
+    /// The generation with this number.
+    pub fn new(value: u64) -> Self {
+        Self(value)
+    }
+
+    /// The generation that follows this one.
+    pub fn next(self) -> Self {
+        Self(self.0.wrapping_add(1))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ToggleEvent {
     View(ViewId),
@@ -676,16 +696,13 @@ pub enum Event {
     /// The OTA screen updates its label and bar from this. `cancelable: false`
     /// means the install is committed and the reader can no longer cancel.
     OtaDownloadProgress {
+        /// The install attempt the update belongs to.
+        generation: Generation,
         label: String,
         percent: u8,
         /// When false, the update is committed and cancel must be hidden.
         cancelable: bool,
     },
-    /// Signal to start downloading the stable release after version check.
-    ///
-    /// This event is sent from the version check thread when the remote version
-    /// is newer than the current version, triggering the actual download to begin.
-    StartStableReleaseDownload,
     /// A result from an OTA background job: a pull-request page, or the end of
     /// a download that did not reboot.
     Ota(ota::OtaEvent),

@@ -58,7 +58,6 @@ ok = OK
 # GitHub device authorization
 device-auth-connecting = Connecting to GitHub…
 device-auth-go-to-uri = Go to: { $uri }
-device-auth-enter-code = Enter code: { $code }
 device-auth-cancelled-on-github = Authorization cancelled
 
 # Top Menu Strings
@@ -106,7 +105,6 @@ ota-status-failed = Failed
 ota-status-no-build = No build
 ota-status-ready = Ready
 ota-status-unknown = Could not check
-ota-version-comparison-error = Version comparison failed
 ota-version-newer = Your version is newer than the latest release
 
 # Settings - Button Scheme

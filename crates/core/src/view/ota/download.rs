@@ -19,8 +19,8 @@ use crate::ota::{
     CancelFlag, CancelFunc, DeployOutcome, DownloadedArtifact, OtaClient, OtaError, OtaProgress,
     clean_bundled_files, cleanup_ota_cancel,
 };
-use crate::view::github::GithubEvent;
-use crate::view::{EntryId, Event, Hub, NotificationEvent};
+use crate::view::github::{GithubEvent, TokenAttempt};
+use crate::view::{EntryId, Event, Generation, Hub, NotificationEvent};
 
 use super::OtaEvent;
 
@@ -43,7 +43,7 @@ pub(super) enum OtaDownloadKind {
     /// A pull-request artifact the picker already resolved.
     Pr {
         /// Pull request number, used for the status text and the temp file name.
-        number: u32,
+        number: u64,
         /// GitHub artifact id.
         artifact_id: u64,
         /// Size in bytes, so the download can pick memory or disk.
@@ -71,6 +71,8 @@ impl OtaDownloadKind {
 /// Parameters for a background OTA download started by [`run_ota_download`].
 pub(super) struct OtaDownloadContext {
     pub(super) kind: OtaDownloadKind,
+    /// The install attempt this download belongs to.
+    pub(super) generation: Generation,
     pub(super) hub: Hub,
     pub(super) tmp_dir: PathBuf,
     pub(super) install_dir: PathBuf,
@@ -89,7 +91,12 @@ async fn finish_ota_cancelled(tmp_dir: &Path, deploy_path: &Path) {
 /// Completes a published OTA install, including the committed-but-not-durable
 /// case where parent-directory sync failed after rename.
 #[cfg_attr(feature = "tracing", tracing::instrument(level = "trace", skip_all))]
-async fn finish_successful_deploy(hub: &Hub, install_dir: &Path, outcome: DeployOutcome) {
+async fn finish_successful_deploy(
+    hub: &Hub,
+    generation: Generation,
+    install_dir: &Path,
+    outcome: DeployOutcome,
+) {
     if let DeployOutcome::CommittedNotDurable { path, error } = &outcome {
         tracing::warn!(
             path = ?path,
@@ -101,22 +108,40 @@ async fn finish_successful_deploy(hub: &Hub, install_dir: &Path, outcome: Deploy
     if let Err(e) = clean_bundled_files(install_dir).await {
         tracing::warn!(path = ?install_dir, error = %e, "Failed to clean bundled OTA files");
     }
-    send_ota_progress(hub, fl!("ota-installing-and-rebooting"), 100, false);
+    send_ota_progress(
+        hub,
+        generation,
+        fl!("ota-installing-and-rebooting"),
+        100,
+        false,
+    );
 }
 
 #[cfg_attr(feature = "tracing", tracing::instrument(level = "trace", skip_all))]
-fn report_artifact_download_progress(hub: &Hub, kind: OtaDownloadKind, ota_progress: OtaProgress) {
+fn report_artifact_download_progress(
+    hub: &Hub,
+    generation: Generation,
+    kind: OtaDownloadKind,
+    ota_progress: OtaProgress,
+) {
     if let OtaProgress::DownloadingArtifact { downloaded, total } = ota_progress {
         let percent = (downloaded as f32 / total as f32 * 100.0) as u8;
-        send_ota_progress(hub, kind.progress_label(percent), percent, true);
+        send_ota_progress(hub, generation, kind.progress_label(percent), percent, true);
     }
 }
 
 /// Sends an [`Event::OtaDownloadProgress`] update to the UI thread.
 #[cfg_attr(feature = "tracing", tracing::instrument(level = "trace", skip_all))]
-fn send_ota_progress(hub: &Hub, label: String, percent: u8, cancelable: bool) {
+fn send_ota_progress(
+    hub: &Hub,
+    generation: Generation,
+    label: String,
+    percent: u8,
+    cancelable: bool,
+) {
     hub.send(
         (Event::OtaDownloadProgress {
+            generation,
             label,
             percent,
             cancelable,
@@ -127,9 +152,15 @@ fn send_ota_progress(hub: &Hub, label: String, percent: u8, cancelable: bool) {
 }
 
 #[cfg_attr(feature = "tracing", tracing::instrument(level = "trace", skip_all))]
-fn finish(hub: &Hub, outcome: DownloadOutcome) {
-    hub.send((Event::Ota(OtaEvent::DownloadFinished(outcome))).into())
-        .ok();
+fn finish(hub: &Hub, generation: Generation, outcome: DownloadOutcome) {
+    hub.send(
+        (Event::Ota(OtaEvent::DownloadFinished {
+            generation,
+            outcome,
+        }))
+        .into(),
+    )
+    .ok();
 }
 
 /// Runs an OTA download and deployment on the runtime.
@@ -143,6 +174,7 @@ fn finish(hub: &Hub, outcome: DownloadOutcome) {
 pub(super) fn run_ota_download(ctx: OtaDownloadContext) -> crate::runtime::Job {
     let OtaDownloadContext {
         kind,
+        generation,
         hub,
         tmp_dir,
         install_dir,
@@ -169,14 +201,14 @@ pub(super) fn run_ota_download(ctx: OtaDownloadContext) -> crate::runtime::Job {
     crate::runtime::Job::with_token(job_cancel, move |job_cancel| async move {
         let mut unwind_guard = crate::runtime::UnwindGuard::arm({
             let hub = hub.clone();
-            move || close_ota_after_panic(&hub)
+            move || close_ota_after_panic(&hub, generation)
         });
         let committed = async move {
             let hub2 = hub.clone();
             let should_cancel = CancelFunc::from_flag(&cancelled);
             let mut close_on_drop = crate::runtime::DropGuard::arm({
                 let hub = hub2.clone();
-                move || finish(&hub, DownloadOutcome::Failed)
+                move || finish(&hub, generation, DownloadOutcome::Failed)
             });
 
             let _full_hold =
@@ -237,10 +269,10 @@ pub(super) fn run_ota_download(ctx: OtaDownloadContext) -> crate::runtime::Job {
             let client = OtaClient::new(github, tmp_dir.clone());
             let deploy_path = client.deploy_path();
 
-            send_ota_progress(&hub2, kind.progress_label(0), 0, true);
+            send_ota_progress(&hub2, generation, kind.progress_label(0), 0, true);
 
             let progress = |ota_progress| {
-                report_artifact_download_progress(&hub2, kind, ota_progress);
+                report_artifact_download_progress(&hub2, generation, kind, ota_progress);
             };
             let download_result = match kind {
                 OtaDownloadKind::Pr {
@@ -278,7 +310,7 @@ pub(super) fn run_ota_download(ctx: OtaDownloadContext) -> crate::runtime::Job {
 
             if matches!(download_result, Err(OtaError::Cancelled)) {
                 finish_ota_cancelled(&tmp_dir, &deploy_path).await;
-                finish(&hub2, DownloadOutcome::Cancelled);
+                finish(&hub2, generation, DownloadOutcome::Cancelled);
                 close_on_drop.disarm();
                 return false;
             }
@@ -299,7 +331,7 @@ pub(super) fn run_ota_download(ctx: OtaDownloadContext) -> crate::runtime::Job {
 
                     if matches!(deploy_result, Err(OtaError::Cancelled)) {
                         finish_ota_cancelled(&tmp_dir, &deploy_path).await;
-                        finish(&hub2, DownloadOutcome::Cancelled);
+                        finish(&hub2, generation, DownloadOutcome::Cancelled);
                         close_on_drop.disarm();
                         return false;
                     }
@@ -307,7 +339,8 @@ pub(super) fn run_ota_download(ctx: OtaDownloadContext) -> crate::runtime::Job {
                     match deploy_result {
                         Ok(outcome) => {
                             hub2.send((Event::ClearDeferredSuspend).into()).ok();
-                            finish_successful_deploy(&hub2, &install_dir, outcome).await;
+                            finish_successful_deploy(&hub2, generation, &install_dir, outcome)
+                                .await;
                             close_on_drop.disarm();
                             return true;
                         }
@@ -325,8 +358,13 @@ pub(super) fn run_ota_download(ctx: OtaDownloadContext) -> crate::runtime::Job {
                 }
                 Err(OtaError::Unauthorized) | Err(OtaError::InsufficientScopes(_)) => {
                     tracing::warn!("GitHub token rejected — triggering re-auth");
-                    hub2.send((Event::Github(GithubEvent::TokenInvalid)).into())
-                        .ok();
+                    hub2.send(
+                        (Event::Github(GithubEvent::TokenInvalid {
+                            attempt: TokenAttempt::Install(generation),
+                        }))
+                        .into(),
+                    )
+                    .ok();
                     close_on_drop.disarm();
                 }
                 Err(e) => {
@@ -351,9 +389,9 @@ pub(super) fn run_ota_download(ctx: OtaDownloadContext) -> crate::runtime::Job {
 
 /// Tells the screen the download task panicked.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-fn close_ota_after_panic(hub: &Hub) {
+fn close_ota_after_panic(hub: &Hub, generation: Generation) {
     error!("OTA download task panicked");
-    finish(hub, DownloadOutcome::Failed);
+    finish(hub, generation, DownloadOutcome::Failed);
     hub.send((Event::Notification(NotificationEvent::Show(fl!("ota-download-failed")))).into())
         .ok();
 }
@@ -373,9 +411,10 @@ mod tests {
     #[test]
     fn a_panic_tells_the_screen_the_download_failed() {
         let (hub, mut rx) = crate::view::hub_channel();
+        let generation = Generation::default();
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let _guard = crate::runtime::UnwindGuard::arm(move || {
-                close_ota_after_panic(&hub);
+                close_ota_after_panic(&hub, generation);
             });
             panic!("download task");
         }));
@@ -384,7 +423,10 @@ mod tests {
         let finished = rx.try_recv().expect("finished");
         assert!(matches!(
             finished.event,
-            Event::Ota(OtaEvent::DownloadFinished(DownloadOutcome::Failed))
+            Event::Ota(OtaEvent::DownloadFinished {
+                generation: reported,
+                outcome: DownloadOutcome::Failed,
+            }) if reported == generation
         ));
         let note = rx.try_recv().expect("notification");
         assert!(matches!(
@@ -416,18 +458,18 @@ mod tests {
         use std::time::Duration;
 
         let (hub, mut rx) = crate::view::hub_channel();
-        let job = crate::runtime::Job::spawn(move |_| request_ota_reboot(hub));
+        let (hold_tx, hold_rx) = tokio::sync::oneshot::channel();
+        let job = crate::runtime::Job::spawn(move |_| async move {
+            let _ = hold_rx.await;
+            request_ota_reboot(hub).await;
+        });
 
-        let premature: Vec<Event> = std::iter::from_fn(|| rx.try_recv().ok())
-            .map(|message| message.event)
-            .collect();
         assert!(
-            !premature
-                .iter()
-                .any(|event| matches!(event, Event::Select(EntryId::Reboot))),
+            rx.try_recv().is_err(),
             "reboot must not be visible before the download job is joined"
         );
 
+        let _ = hold_tx.send(());
         crate::runtime::finish_within_deadline(vec![job], Duration::from_secs(5)).await;
 
         let drained: Vec<Event> = std::iter::from_fn(|| rx.try_recv().ok())
@@ -525,18 +567,21 @@ mod tests {
     #[test]
     fn download_progress_is_posted_on_the_hub() {
         let (hub, mut rx) = crate::view::hub_channel();
-        send_ota_progress(&hub, "x".into(), 40, true);
+        let generation = Generation::new(2);
+        send_ota_progress(&hub, generation, "x".into(), 40, true);
         assert!(matches!(
             rx.try_recv().expect("progress").event,
             Event::OtaDownloadProgress {
+                generation: reported,
                 percent: 40,
                 cancelable: true,
                 ..
-            }
+            } if reported == generation
         ));
 
         report_artifact_download_progress(
             &hub,
+            generation,
             OtaDownloadKind::DefaultBranch,
             OtaProgress::DownloadingArtifact {
                 downloaded: 50,
@@ -546,23 +591,28 @@ mod tests {
         assert!(matches!(
             rx.try_recv().expect("artifact").event,
             Event::OtaDownloadProgress {
+                generation: reported,
                 percent: 50,
                 cancelable: true,
                 ..
-            }
+            } if reported == generation
         ));
 
         report_artifact_download_progress(
             &hub,
+            generation,
             OtaDownloadKind::DefaultBranch,
             OtaProgress::Complete,
         );
         assert!(rx.try_recv().is_err());
 
-        finish(&hub, DownloadOutcome::Cancelled);
+        finish(&hub, Generation::default(), DownloadOutcome::Cancelled);
         assert!(matches!(
             rx.try_recv().expect("finished").event,
-            Event::Ota(OtaEvent::DownloadFinished(DownloadOutcome::Cancelled))
+            Event::Ota(OtaEvent::DownloadFinished {
+                outcome: DownloadOutcome::Cancelled,
+                ..
+            })
         ));
     }
 }

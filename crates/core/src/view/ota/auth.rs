@@ -14,7 +14,7 @@ use crate::fl;
 use crate::github::{GithubClient, TokenPollResult};
 use crate::http::CancelFlag;
 use crate::view::github::GithubEvent;
-use crate::view::{Event, Hub};
+use crate::view::{Event, Generation, Hub};
 
 /// Starts GitHub device-flow sign-in and polls until it finishes.
 ///
@@ -22,10 +22,12 @@ use crate::view::{Event, Hub};
 /// [`GithubEvent::DeviceAuthStarted`] so the screen can draw that code. It
 /// then polls until the reader approves, the code expires, GitHub cancels,
 /// or the screen drops the job. Each of those endings is one [`Event::Github`].
-/// This function does not draw the window.
+/// Every event carries `generation`, so the screen can tell this attempt
+/// apart from a later one. This function does not draw the window.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
 pub(super) fn spawn_device_flow_job(
     hub: &Hub,
+    generation: Generation,
     cancelled: Arc<CancelFlag>,
     wifi_session: Arc<crate::device::wifi::WifiSession>,
 ) -> crate::runtime::Job {
@@ -39,18 +41,23 @@ pub(super) fn spawn_device_flow_job(
                 Ok(client) => client,
                 Err(e) => {
                     tracing::error!(error = %e, "Failed to create device-flow client");
-                    hub2.send((Event::Github(GithubEvent::DeviceAuthError(e.to_string()))).into())
-                        .ok();
+                    send_auth_error(&hub2, generation, e.to_string());
                     return;
                 }
             };
 
-            let _wifi = match wifi_session.acquire("device-auth").await {
+            let _wifi = match tokio::select! {
+                biased;
+                () = job_cancel.cancelled() => {
+                    tracing::info!("Device flow cancelled before Wi-Fi");
+                    return;
+                }
+                lease = wifi_session.acquire("device-auth") => lease,
+            } {
                 Ok(lease) => lease,
                 Err(e) => {
                     tracing::warn!(error = %e, "device flow could not acquire Wi-Fi");
-                    hub2.send((Event::Github(GithubEvent::DeviceAuthError(e.to_string()))).into())
-                        .ok();
+                    send_auth_error(&hub2, generation, e.to_string());
                     return;
                 }
             };
@@ -60,8 +67,7 @@ pub(super) fn spawn_device_flow_job(
                 Some(Ok(response)) => response,
                 Some(Err(e)) => {
                     tracing::error!(error = %e, "Device flow initiation failed");
-                    hub2.send((Event::Github(GithubEvent::DeviceAuthError(e.to_string()))).into())
-                        .ok();
+                    send_auth_error(&hub2, generation, e.to_string());
                     return;
                 }
                 None => {
@@ -77,6 +83,7 @@ pub(super) fn spawn_device_flow_job(
 
             hub2.send(
                 (Event::Github(GithubEvent::DeviceAuthStarted {
+                    generation,
                     verification_uri: response.verification_uri,
                     user_code: response.user_code,
                 }))
@@ -107,35 +114,31 @@ pub(super) fn spawn_device_flow_job(
                     }
                     Some(Ok(TokenPollResult::Complete(token))) => {
                         tracing::info!("Device flow authorization complete");
-                        hub2.send((Event::Github(GithubEvent::DeviceAuthComplete(token))).into())
-                            .ok();
+                        hub2.send(
+                            (Event::Github(GithubEvent::DeviceAuthComplete { generation, token }))
+                                .into(),
+                        )
+                        .ok();
                         return;
                     }
                     Some(Ok(TokenPollResult::Expired)) => {
                         tracing::warn!("Device flow code expired");
-                        hub2.send((Event::Github(GithubEvent::DeviceAuthExpired)).into())
-                            .ok();
+                        hub2.send(
+                            (Event::Github(GithubEvent::DeviceAuthExpired { generation })).into(),
+                        )
+                        .ok();
                         return;
                     }
                     Some(Ok(TokenPollResult::Cancelled)) => {
                         tracing::info!("Device flow cancelled by user on GitHub");
-                        hub2.send(
-                            (Event::Github(GithubEvent::DeviceAuthError(fl!(
-                                "device-auth-cancelled-on-github"
-                            ))))
-                            .into(),
-                        )
-                        .ok();
+                        send_auth_error(&hub2, generation, fl!("device-auth-cancelled-on-github"));
                         return;
                     }
                     Some(Err(e)) => {
                         poll_errors += 1;
                         if poll_errors > MAX_CONSECUTIVE_POLL_ERRORS {
                             tracing::error!(error = %e, "Device flow poll error");
-                            hub2.send(
-                                (Event::Github(GithubEvent::DeviceAuthError(e.to_string()))).into(),
-                            )
-                            .ok();
+                            send_auth_error(&hub2, generation, e.to_string());
                             return;
                         }
                         tracing::warn!(
@@ -150,6 +153,18 @@ pub(super) fn spawn_device_flow_job(
         }
         .instrument(span)
     })
+}
+
+/// Tells the screen that this sign-in attempt failed.
+fn send_auth_error(hub: &Hub, generation: Generation, message: String) {
+    hub.send(
+        (Event::Github(GithubEvent::DeviceAuthError {
+            generation,
+            message,
+        }))
+        .into(),
+    )
+    .ok();
 }
 
 #[cfg_attr(feature = "tracing", tracing::instrument(level = "trace", skip_all))]
