@@ -877,7 +877,7 @@ in
 
     # Typecheck and test the OpenCode plugins
     cadmus-opencode-check.exec = ''
-      cd .opencode
+      cd ${config.devenv.root}/.opencode
       npm run typecheck
       npm test
     '';
