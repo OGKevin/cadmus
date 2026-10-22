@@ -30,6 +30,7 @@ use cadmus_core::metadata::Info;
 use cadmus_core::settings::versioned::SettingsManager;
 use cadmus_core::settings::{ButtonScheme, Settings, StartupMode};
 use cadmus_core::task::TaskManager;
+use cadmus_core::unix_signals::UnixSignals;
 use cadmus_core::version::{get_current_version, get_version};
 use cadmus_core::view::HubReceiver;
 use cadmus_core::view::calculator::Calculator;
@@ -167,10 +168,17 @@ async fn stop_producers_and_drain(
 /// `Quit` mapping still run. Any other event can only mutate UI or platform state
 /// that teardown is already dismantling, so it is dropped rather than replayed.
 fn is_shutdown_related_event(evt: &Event) -> bool {
+    matches!(evt, Event::CheckBattery) || is_exit_intent(evt)
+}
+
+/// Whether an event asks the process to exit.
+///
+/// The device can refuse these while the Full inhibit is held, so the caller
+/// has to tell a refused exit from an accepted one.
+fn is_exit_intent(evt: &Event) -> bool {
     matches!(
         evt,
-        Event::CheckBattery
-            | Event::Quit
+        Event::Quit
             | Event::Select(EntryId::PowerOff)
             | Event::Select(EntryId::Restart)
             | Event::Select(EntryId::Reboot)
@@ -462,6 +470,8 @@ pub async fn run() -> Result<(), Error> {
 
     let mut exit_status = ExitStatus::Quit;
 
+    let unix_signals = UnixSignals::install();
+
     let mut device = AppDevice::from_environment()
         .await
         .expect("failed to initialize device");
@@ -567,6 +577,7 @@ pub async fn run() -> Result<(), Error> {
         context.settings.button_scheme,
         std::sync::Arc::clone(&context.inhibitor),
     );
+    unix_signals.attach(tx.clone());
 
     let mut tasks: Vec<DeviceTask> = Vec::new();
     let mut background_tasks = TaskManager::new();
@@ -719,6 +730,13 @@ pub async fn run() -> Result<(), Error> {
         #[cfg(not(feature = "tracing"))]
         let device_outcome =
             AppDevice::handle_event(&evt, &tx, &mut bus, &mut rq, &mut context, &mut runtime).await;
+
+        if is_exit_intent(&evt)
+            && !matches!(device_outcome, cadmus_core::device::EventOutcome::Exit(_))
+        {
+            unix_signals.reset();
+        }
+
         match device_outcome {
             cadmus_core::device::EventOutcome::Handled => {
                 process_render_queue(view.as_mut(), &mut rq, &mut context, &mut updating);
@@ -1193,6 +1211,8 @@ pub async fn run() -> Result<(), Error> {
         process_render_queue(view.as_ref(), &mut rq, &mut context, &mut updating);
         drain_bus(&mut bus, &tx);
     }
+
+    unix_signals.stop().await;
 
     let _shutdown_wake = match context
         .inhibitor

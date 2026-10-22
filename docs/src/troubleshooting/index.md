@@ -82,6 +82,8 @@ If Cadmus crashes 3 times in a row, it will exit back to Nickel instead of
 restarting. This prevents the device from getting stuck in an infinite loop of
 crashes.
 
+Only unexpected exits count as crashes; quitting Cadmus normally does not.
+
 When this happens:
 
 1. Check `info.log` in the Cadmus folder for the panic error

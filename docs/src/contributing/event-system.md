@@ -346,6 +346,31 @@ impl View for Dialog {
 }
 ```
 
+## Unix signals
+
+Cadmus maps process signals onto the same hub events as the top-menu Quit and
+Restart commands. `contrib/cadmus.sh` already treats exit 0 as a clean stop:
+with `/tmp/restart` it relaunches Cadmus; without it, Nickel starts and the
+crash count is left unchanged.
+
+- `SIGTERM` / `SIGINT` (`kill -TERM`, `kill -INT`): `Event::Select(EntryId::Quit)`
+- `SIGUSR1` (`kill -USR1`): `Event::Select(EntryId::Restart)`
+- `SIGHUP`: ignored so an SSH hangup does not stop Cadmus or count as a crash
+
+The handlers are installed at the start of `app::run`, before the device is
+opened, so a signal that arrives during startup is captured instead of killing
+the process with the default disposition. A shutdown signal that arrives before
+the hub exists is held until the hub is attached.
+
+The first shutdown signal decides. A later one is logged and ignored, so a
+restart request can never turn a pending quit into a restart. The listener is
+stopped when the main loop ends, before the shutdown drain replays queued
+events.
+
+Signals are subject to the same rules as the menu commands. The Full inhibit
+(an OTA in progress) blocks Quit and Restart, so a `SIGTERM` during an OTA is
+refused. A refused signal is not retried; send it again once the OTA ends.
+
 ## Summary
 
 | Aspect           | Hub                                   | Bus                             |

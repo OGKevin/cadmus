@@ -51,6 +51,7 @@ pub mod task;
 pub mod telemetry;
 pub mod time_manager;
 mod unit;
+pub mod unix_signals;
 pub mod version;
 pub mod view;
 
