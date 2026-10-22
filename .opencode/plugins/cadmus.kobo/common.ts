@@ -71,6 +71,7 @@ export function run(
       env: process.env,
     });
     let output = "";
+    let stdinError: string | undefined;
     let settled = false;
     const settle = (result: RunResult) => {
       if (settled) return;
@@ -82,18 +83,28 @@ export function run(
       settled = true;
       reject(error);
     };
+    const recordStdinError = (error: Error) => {
+      stdinError = `stdin error: ${error.message}`;
+    };
 
     child.stdout.on("data", (chunk) => (output += chunk));
     child.stderr.on("data", (chunk) => (output += chunk));
     child.on("error", fail);
-    child.on("close", (code) => settle({ code: code ?? -1, output }));
+    child.on("close", (code) =>
+      settle({
+        code: code ?? -1,
+        output: stdinError ? `${output}\n${stdinError}` : output,
+      }),
+    );
 
     if (options.stdin !== undefined) {
-      child.stdin.on("error", (error) => {
-        output += `\nstdin error: ${error.message}`;
-      });
-      child.stdin.write(options.stdin);
-      child.stdin.end();
+      child.stdin.on("error", recordStdinError);
+      try {
+        child.stdin.write(options.stdin);
+        child.stdin.end();
+      } catch (error) {
+        recordStdinError(error as Error);
+      }
     }
 
     options.signal?.addEventListener("abort", () => child.kill("SIGTERM"), {

@@ -160,6 +160,9 @@ test("a command that is already cancelled never starts", async () => {
 });
 
 test("a command that writes to a closed stdin settles once", async () => {
-  const result = await run("sh", ["-c", "exit 3"], { stdin: "ignored" });
+  const result = await run("sh", ["-c", "exit 3"], {
+    stdin: "x".repeat(1024 * 1024),
+  });
   assert.equal(result.code, 3);
+  assert.match(result.output, /stdin error/);
 });
