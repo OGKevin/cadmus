@@ -99,6 +99,13 @@ export function run(
   options: { cwd?: string; signal?: AbortSignal } = {},
 ): Promise<RunResult> {
   return new Promise((resolve, reject) => {
+    if (options.signal?.aborted) {
+      reject(
+        options.signal.reason ??
+          new DOMException("This operation was aborted", "AbortError"),
+      );
+      return;
+    }
     const child = spawn(command, args, {
       cwd: options.cwd,
       signal: options.signal,

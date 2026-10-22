@@ -366,8 +366,8 @@ The first shutdown signal decides. A later `SIGUSR1` is logged and ignored, so
 a restart request can never turn a pending quit into a restart. A later
 `SIGINT` or `SIGTERM` logs a warning and ends the process immediately
 (`128 + signo`), including a second Ctrl-C in the emulator. After the listener
-stops, `SIGTERM` and `SIGINT` return to the default disposition so a hung
-teardown can still be killed.
+stops during process teardown, `SIGTERM` and `SIGINT` return to the default
+disposition so a hung teardown can still be killed.
 
 Signals are subject to the same rules as the menu commands. The Full inhibit
 (an OTA in progress) blocks Quit and Restart, so a `SIGTERM` during an OTA is

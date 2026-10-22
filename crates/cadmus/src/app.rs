@@ -1219,6 +1219,7 @@ pub async fn run() -> Result<(), Error> {
     }
 
     unix_signals.stop().await;
+    UnixSignals::restore_default_termination();
 
     let _shutdown_wake = match context
         .inhibitor

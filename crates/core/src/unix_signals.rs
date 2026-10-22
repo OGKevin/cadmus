@@ -164,13 +164,31 @@ impl UnixSignals {
     }
 
     /// Stops the listener and waits for it to finish.
+    ///
+    /// Does not restore SIGTERM/SIGINT. Call [`UnixSignals::restore_default_termination`]
+    /// during process teardown so a hung shutdown can still be killed.
     pub async fn stop(mut self) {
         if let Some(job) = self.job.take() {
             job.cancel();
             let _ = job.join(STOP_DEADLINE).await;
         }
-        drop(self);
-        restore_default_termination();
+    }
+
+    /// Restores SIGTERM and SIGINT to SIG_DFL so a hung teardown can still be killed.
+    ///
+    /// Tokio leaves its handlers installed after the listener job stops. Call this
+    /// only after that job has been joined (or was never started).
+    ///
+    /// # Safety
+    ///
+    /// The listener has been joined or never spawned, so nothing in this process
+    /// is awaiting these tokio::signal streams. `SIG_DFL` is the POSIX default
+    /// disposition and makes a later SIGTERM/SIGINT terminate the process.
+    pub fn restore_default_termination() {
+        unsafe {
+            libc::signal(libc::SIGTERM, libc::SIG_DFL);
+            libc::signal(libc::SIGINT, libc::SIG_DFL);
+        }
     }
 
     /// Allows another exit request after the device refused one.
@@ -253,23 +271,6 @@ async fn recv_optional(stream: &mut Option<SignalStream>) -> Option<()> {
     match stream.as_mut() {
         Some(signal) => signal.recv().await,
         None => pending().await,
-    }
-}
-
-/// Restores SIGTERM and SIGINT to SIG_DFL so a hung teardown can still be killed.
-///
-/// Tokio leaves its handlers installed after the listener job stops. Call this
-/// only after that job has been joined (or was never started).
-///
-/// # Safety
-///
-/// The listener has been joined or never spawned, so nothing in this process
-/// is awaiting these tokio::signal streams. `SIG_DFL` is the POSIX default
-/// disposition and makes a later SIGTERM/SIGINT terminate the process.
-fn restore_default_termination() {
-    unsafe {
-        libc::signal(libc::SIGTERM, libc::SIG_DFL);
-        libc::signal(libc::SIGINT, libc::SIG_DFL);
     }
 }
 

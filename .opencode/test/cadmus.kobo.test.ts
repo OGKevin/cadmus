@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -395,7 +401,14 @@ test("deploy stops after a failed build", async () => {
 });
 
 test("an already-aborted signal never starts a command", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "cadmus-kobo-"));
+  const marker = join(dir, "started");
+  const bin = writeStub(dir, "mark-started", `touch "${marker}"`);
   const controller = new AbortController();
   controller.abort();
-  await assert.rejects(() => run("true", [], { signal: controller.signal }));
+  await assert.rejects(
+    () => run(bin, [], { signal: controller.signal }),
+    (error: Error) => error.name === "AbortError",
+  );
+  assert.equal(existsSync(marker), false);
 });
