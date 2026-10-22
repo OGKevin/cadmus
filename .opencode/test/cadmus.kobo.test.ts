@@ -10,6 +10,7 @@ import {
   buildArgs,
   distArgs,
   rsyncArgs,
+  run,
 } from "../plugins/cadmus.kobo/common.ts";
 import { RESTART_SCRIPT } from "../plugins/cadmus.kobo/restart.ts";
 
@@ -98,6 +99,19 @@ test("the deploy tool rsyncs to the test install", () => {
   assert.match(INSTALL_DIR, /^\/mnt\/onboard\/\.adds\/cadmus-tst$/);
 });
 
+test("the deploy tool brackets an IPv6 host for rsync", () => {
+  assert.deepEqual(rsyncArgs("fe80::1", ["dist/cadmus"]), [
+    "-Prc",
+    "dist/cadmus",
+    `root@[fe80::1]:${INSTALL_DIR}`,
+  ]);
+  assert.deepEqual(rsyncArgs("fe80::1%wlan0", ["dist/cadmus"]), [
+    "-Prc",
+    "dist/cadmus",
+    `root@[fe80::1%wlan0]:${INSTALL_DIR}`,
+  ]);
+});
+
 test("the deploy tool refuses a host with shell metacharacters", async () => {
   const { tools } = await setup();
   const deploy = tools[0]!;
@@ -129,4 +143,23 @@ test("the restart script is valid shell", () => {
 test("the restart script asks Cadmus to restart", () => {
   assert.match(RESTART_SCRIPT, /kill -USR1/);
   assert.match(RESTART_SCRIPT, /pidof cadmus/);
+});
+
+test("the restart script fails when Cadmus does not restart", () => {
+  assert.match(RESTART_SCRIPT, /RESULT: cadmus did not restart/);
+  assert.match(RESTART_SCRIPT, /exit 2/);
+});
+
+test("a command that is already cancelled never starts", async () => {
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(
+    () => run("true", [], { signal: controller.signal }),
+    /cancelled before it started/,
+  );
+});
+
+test("a command that writes to a closed stdin settles once", async () => {
+  const result = await run("sh", ["-c", "exit 3"], { stdin: "ignored" });
+  assert.equal(result.code, 3);
 });

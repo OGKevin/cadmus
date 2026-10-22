@@ -96,6 +96,7 @@ Once inside the devenv shell, these commands are available:
 | `cadmus-test-coverage`      | Run tests with coverage instrumentation                     |
 | `cadmus-coverage-show`      | Open project-wide HTML coverage report                      |
 | `cadmus-coverage-diff`      | Open patch coverage HTML vs `origin/$CADMUS_DEFAULT_BRANCH` |
+| `cadmus-opencode-check`     | Typecheck and test the OpenCode plugins                     |
 
 Run `cadmuscli --help` to see all available subcommands, or `cadmuscli <cmd> --help` for
 options on a specific command. `cargo xtask` still works as a debug `cargo run` alias.
@@ -124,14 +125,16 @@ Tasks are defined in `devenv.nix` and can be run with `devenv tasks run <task>`.
 | ------------------- | ----------------------------------------------------------------- | ------------------- |
 | `cadmuscli:install` | `cargo build -p xtask --release` and link onto PATH               | None                |
 | `website:install`   | `npm install` in `website/`                                       | None                |
+| `opencode:install`  | `npm install` in `.opencode/`                                     | None                |
 | `docs:build`        | `cadmuscli docs --mdbook-only`                                    | `cadmuscli:install` |
 | `build:kobo`        | `cadmuscli build-kobo`                                            | `docs:build`        |
 
 `cadmuscli:install` builds the release binary; it does not call `cadmuscli`.
-`website:install` only installs website npm dependencies. `docs:build` and
-`build:kobo` invoke `cadmuscli`. `cadmuscli:install` and `website:install` run
-before `devenv:enterShell`. `cadmuscli:install` also runs before `docs:build`,
-and reruns when xtask sources change or the PATH binary is missing.
+`website:install` and `opencode:install` only install npm dependencies.
+`docs:build` and `build:kobo` invoke `cadmuscli`. `cadmuscli:install`,
+`website:install` and `opencode:install` run before `devenv:enterShell`.
+`cadmuscli:install` also runs before `docs:build`, and reruns when xtask
+sources change or the PATH binary is missing.
 
 ### How Tasks Work
 

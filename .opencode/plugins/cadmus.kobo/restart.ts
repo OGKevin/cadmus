@@ -5,10 +5,14 @@ type RestartInput = {
   ip: string;
 };
 
+/// Exit codes the remote script uses.
+const EXIT_NOT_RUNNING = 1;
+const EXIT_NOT_RESTARTED = 2;
+
 export const RESTART_SCRIPT = `BEFORE=$(pidof cadmus 2>/dev/null | tr ' ' '\\n' | head -1)
 if [ -z "$BEFORE" ]; then
   echo "cadmus is not running"
-  exit 0
+  exit ${EXIT_NOT_RUNNING}
 fi
 
 kill -USR1 "$BEFORE"
@@ -18,9 +22,10 @@ AFTER=$(pidof cadmus 2>/dev/null | tr ' ' '\\n' | head -1)
 echo "cadmus pid: $BEFORE -> \${AFTER:-none}"
 if [ -n "$AFTER" ] && [ "$AFTER" != "$BEFORE" ]; then
   echo "RESULT: restarted"
-else
-  echo "RESULT: cadmus did not restart"
+  exit 0
 fi
+echo "RESULT: cadmus did not restart"
+exit ${EXIT_NOT_RESTARTED}
 `;
 
 async function restart(input: RestartInput, signal: AbortSignal) {
@@ -39,6 +44,12 @@ async function restart(input: RestartInput, signal: AbortSignal) {
     { signal, stdin: RESTART_SCRIPT },
   );
   const body = result.output.trim();
+  if (result.code === EXIT_NOT_RUNNING) {
+    return `Cadmus is not running on ${input.ip}. Start it from the device, then try again.`;
+  }
+  if (result.code === EXIT_NOT_RESTARTED) {
+    return `Cadmus did not restart on ${input.ip}:\n${body}`;
+  }
   if (result.code !== 0) {
     return `ssh to ${input.ip} failed (exit ${result.code})\n${body}\nThe device may be asleep; wake it or reboot it and try again.`;
   }

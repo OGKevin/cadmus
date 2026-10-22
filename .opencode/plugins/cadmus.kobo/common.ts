@@ -34,7 +34,15 @@ export function distArgs() {
 }
 
 export function rsyncArgs(ip: string, files: string[]) {
-  return ["-Prc", ...files, `root@${ip}:${INSTALL_DIR}`];
+  return ["-Prc", ...files, `root@${rsyncHost(ip)}:${INSTALL_DIR}`];
+}
+
+/// The host as rsync wants it.
+///
+/// Rsync separates the remote host from the path with a colon, so an IPv6
+/// address has to be bracketed.
+function rsyncHost(ip: string) {
+  return ip.includes(":") ? `[${ip}]` : ip;
 }
 
 export function resolveBin(name: string) {
@@ -53,19 +61,41 @@ export function run(
   options: { cwd?: string; signal?: AbortSignal; stdin?: string },
 ): Promise<RunResult> {
   return new Promise((resolve, reject) => {
+    if (options.signal?.aborted) {
+      reject(new Error(`${command} was cancelled before it started`));
+      return;
+    }
+
     const child = spawn(command, args, {
       cwd: options.cwd ?? process.cwd(),
       env: process.env,
     });
     let output = "";
+    let settled = false;
+    const settle = (result: RunResult) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+
     child.stdout.on("data", (chunk) => (output += chunk));
     child.stderr.on("data", (chunk) => (output += chunk));
-    child.on("error", reject);
-    child.on("close", (code) => resolve({ code: code ?? -1, output }));
+    child.on("error", fail);
+    child.on("close", (code) => settle({ code: code ?? -1, output }));
+
     if (options.stdin !== undefined) {
+      child.stdin.on("error", (error) => {
+        output += `\nstdin error: ${error.message}`;
+      });
       child.stdin.write(options.stdin);
       child.stdin.end();
     }
+
     options.signal?.addEventListener("abort", () => child.kill("SIGTERM"), {
       once: true,
     });

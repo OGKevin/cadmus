@@ -1,3 +1,5 @@
+#![cfg(unix)]
+
 //! Signal delivery tests.
 //!
 //! These live in an integration test so the unit-test binary keeps the
