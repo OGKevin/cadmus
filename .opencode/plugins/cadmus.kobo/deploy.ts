@@ -1,22 +1,16 @@
 import type { ToolContext } from "@opencode/plugin/promise/tool";
 import {
-  DEFAULT_FEATURES,
   INSTALL_DIR,
-  assertHost,
-  buildArgs,
-  distArgs,
+  cargoFeatures,
+  deployInputSchema,
   distEntries,
   report,
   resolveBin,
   rsyncArgs,
   run,
   runInShell,
+  type DeployInput,
 } from "./common.ts";
-
-type DeployInput = {
-  ip: string;
-  features?: string;
-};
 
 async function deploy(
   input: DeployInput,
@@ -24,19 +18,20 @@ async function deploy(
   signal: AbortSignal,
   status: (text: string) => Promise<void>,
 ) {
-  assertHost(input.ip);
-  const features = input.features ?? DEFAULT_FEATURES;
+  const features = cargoFeatures(input.features);
   const lines: string[] = [];
 
   await status(`building ${features} for ARM`);
-  const build = await runInShell(root, ["cadmuscli", ...buildArgs(features)], {
-    signal,
-  });
+  const build = await runInShell(
+    root,
+    ["cadmuscli", "build-kobo", "--features", features],
+    { signal },
+  );
   lines.push(report(`build (${features})`, build));
   if (build.code !== 0) return lines.join("\n\n");
 
   await status("assembling dist/");
-  const dist = await runInShell(root, ["cadmuscli", ...distArgs()], { signal });
+  const dist = await runInShell(root, ["cadmuscli", "dist"], { signal });
   lines.push(report("dist", dist));
   if (dist.code !== 0) return lines.join("\n\n");
 
@@ -63,6 +58,8 @@ export function createDeployTool(root: string) {
     description: [
       "Build Cadmus for Kobo (ARM), assemble the distribution and rsync it to a Kobo over SSH.",
       "Use this to install the current working tree on a device.",
+      "Always includes test,kobo so the binary matches the cadmus-tst install path.",
+      "Pass extra Cargo features such as tracing; they are added on top of that pair.",
       "The device keeps running the old binary until Cadmus is restarted with the restart tool.",
     ].join(" "),
     input: {
@@ -74,7 +71,8 @@ export function createDeployTool(root: string) {
         },
         features: {
           type: "string",
-          description: `Cargo features for the ARM build (default ${DEFAULT_FEATURES})`,
+          description:
+            "Extra Cargo features to add on top of test,kobo, for example tracing",
         },
       },
       required: ["ip"],
@@ -86,7 +84,7 @@ export function createDeployTool(root: string) {
     },
     execute: async (input: unknown, context: ToolContext) => {
       const text = await deploy(
-        input as DeployInput,
+        deployInputSchema.parse(input),
         root,
         context.signal,
         (text) => context.progress({ status: text }),

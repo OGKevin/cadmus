@@ -13,7 +13,7 @@ use cadmus_core::device::rtc::shutdown_rtc;
 use cadmus_core::device::wifi::WifiManager;
 use cadmus_core::device::{
     DeviceIdentity, DeviceInput, DeviceLifecycle, DevicePaths, DeviceRuntime, DeviceTask,
-    ExitStatus, HistoryItem, InputSource,
+    EventOutcome, ExitStatus, HistoryItem, InputSource,
 };
 use cadmus_core::document::sys_info_as_html;
 use cadmus_core::font::Fonts;
@@ -184,6 +184,14 @@ fn is_exit_intent(evt: &Event) -> bool {
             | Event::Select(EntryId::Reboot)
             | Event::Select(EntryId::Quit)
     )
+}
+
+/// Whether the device swallowed an exit intent instead of leaving.
+///
+/// [`Event::CheckBattery`] is not an exit intent, so a routine battery check
+/// must never re-arm the signal listener.
+fn exit_was_refused(evt: &Event, outcome: &EventOutcome) -> bool {
+    is_exit_intent(evt) && !matches!(outcome, EventOutcome::Exit(_))
 }
 
 /// Exit intents queued during shutdown. Higher precedence wins when several are
@@ -470,7 +478,7 @@ pub async fn run() -> Result<(), Error> {
 
     let mut exit_status = ExitStatus::Quit;
 
-    let unix_signals = UnixSignals::install();
+    let mut unix_signals = UnixSignals::install();
 
     let mut device = AppDevice::from_environment()
         .await
@@ -731,9 +739,7 @@ pub async fn run() -> Result<(), Error> {
         let device_outcome =
             AppDevice::handle_event(&evt, &tx, &mut bus, &mut rq, &mut context, &mut runtime).await;
 
-        if is_exit_intent(&evt)
-            && !matches!(device_outcome, cadmus_core::device::EventOutcome::Exit(_))
-        {
+        if exit_was_refused(&evt, &device_outcome) {
             unix_signals.reset();
         }
 
@@ -1312,5 +1318,32 @@ mod tests {
         assert!(!is_shutdown_related_event(&Event::PrepareShare));
         assert!(!is_shutdown_related_event(&Event::Share));
         assert!(!is_shutdown_related_event(&Event::ToggleFrontlight));
+    }
+
+    #[test]
+    fn is_exit_intent_covers_quit_paths() {
+        assert!(!is_exit_intent(&Event::CheckBattery));
+        assert!(is_exit_intent(&Event::Select(EntryId::Quit)));
+        assert!(is_exit_intent(&Event::Select(EntryId::Restart)));
+        assert!(is_exit_intent(&Event::Select(EntryId::PowerOff)));
+        assert!(is_exit_intent(&Event::Select(EntryId::Reboot)));
+        assert!(is_exit_intent(&Event::Quit));
+    }
+
+    #[test]
+    fn exit_was_refused_table() {
+        let cases = [
+            (Event::CheckBattery, EventOutcome::Handled, false),
+            (Event::Select(EntryId::Quit), EventOutcome::Handled, true),
+            (
+                Event::Select(EntryId::Quit),
+                EventOutcome::Exit(ExitStatus::Quit),
+                false,
+            ),
+            (Event::Select(EntryId::Restart), EventOutcome::Handled, true),
+        ];
+        for (evt, outcome, expected) in cases {
+            assert_eq!(exit_was_refused(&evt, &outcome), expected);
+        }
     }
 }

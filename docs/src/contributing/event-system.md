@@ -359,17 +359,22 @@ crash count is left unchanged.
 
 The handlers are installed at the start of `app::run`, before the device is
 opened, so a signal that arrives during startup is captured instead of killing
-the process with the default disposition. A shutdown signal that arrives before
-the hub exists is held until the hub is attached.
+the process with the default disposition. Tokio buffers a shutdown signal that
+arrives before the hub exists and delivers it when the hub is attached.
 
-The first shutdown signal decides. A later one is logged and ignored, so a
-restart request can never turn a pending quit into a restart. The listener is
-stopped when the main loop ends, before the shutdown drain replays queued
-events.
+The first shutdown signal decides. A later `SIGUSR1` is logged and ignored, so
+a restart request can never turn a pending quit into a restart. A later
+`SIGINT` or `SIGTERM` logs a warning and ends the process immediately
+(`128 + signo`), including a second Ctrl-C in the emulator. After the listener
+stops, `SIGTERM` and `SIGINT` return to the default disposition so a hung
+teardown can still be killed.
 
 Signals are subject to the same rules as the menu commands. The Full inhibit
 (an OTA in progress) blocks Quit and Restart, so a `SIGTERM` during an OTA is
-refused. A refused signal is not retried; send it again once the OTA ends.
+refused. Quit and Restart are also refused while onboard storage is exported
+(USB share): `on_shutdown` does not tear the share down, and quitting then
+would save settings against unmounted storage. A refused signal is not retried;
+send it again once the OTA ends or the share is released.
 
 ## Summary
 

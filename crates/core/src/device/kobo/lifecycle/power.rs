@@ -55,7 +55,7 @@ pub(super) async fn handle_event(
             EventOutcome::Exit(ExitStatus::PowerOff)
         }
         Event::Select(EntryId::Restart) => {
-            if user_exit_blocked(context) {
+            if user_exit_blocked(context) || context.shared {
                 return EventOutcome::Handled;
             }
             EventOutcome::Exit(ExitStatus::Restart)
@@ -67,7 +67,7 @@ pub(super) async fn handle_event(
             EventOutcome::Exit(ExitStatus::Reboot)
         }
         Event::Select(EntryId::Quit) => {
-            if user_exit_blocked(context) {
+            if user_exit_blocked(context) || context.shared {
                 return EventOutcome::Handled;
             }
             EventOutcome::Exit(ExitStatus::Quit)
@@ -99,6 +99,72 @@ mod tests {
     use crate::device::inhibitor::Kind;
     use crate::device::suspend::has_task;
     use crate::device::test_harness::DeviceRuntimeHarness;
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn usb_share_ignores_quit() {
+        let mut harness = DeviceRuntimeHarness::new().await;
+        harness.context.shared = true;
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            handle_event(
+                &Event::Select(EntryId::Quit),
+                hub,
+                bus,
+                rq,
+                context,
+                runtime,
+            )
+        });
+        assert_eq!(outcome, EventOutcome::Handled);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn usb_share_ignores_restart() {
+        let mut harness = DeviceRuntimeHarness::new().await;
+        harness.context.shared = true;
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            handle_event(
+                &Event::Select(EntryId::Restart),
+                hub,
+                bus,
+                rq,
+                context,
+                runtime,
+            )
+        });
+        assert_eq!(outcome, EventOutcome::Handled);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_quit_exits_when_not_shared() {
+        let mut harness = DeviceRuntimeHarness::new().await;
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            handle_event(
+                &Event::Select(EntryId::Quit),
+                hub,
+                bus,
+                rq,
+                context,
+                runtime,
+            )
+        });
+        assert_eq!(outcome, EventOutcome::Exit(ExitStatus::Quit));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_restart_exits_when_not_shared() {
+        let mut harness = DeviceRuntimeHarness::new().await;
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            handle_event(
+                &Event::Select(EntryId::Restart),
+                hub,
+                bus,
+                rq,
+                context,
+                runtime,
+            )
+        });
+        assert_eq!(outcome, EventOutcome::Exit(ExitStatus::Restart));
+    }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn handle_event_power_off_exits() {

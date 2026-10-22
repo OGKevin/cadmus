@@ -2,11 +2,56 @@ import { spawn } from "node:child_process";
 import { existsSync, readdirSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { z } from "zod";
 
 export const INSTALL_DIR = "/mnt/onboard/.adds/cadmus-tst";
-export const DEFAULT_FEATURES = "test,kobo";
+export const FEATURES = "test,kobo";
 
 const HOST_PATTERN = /^[A-Za-z0-9._:%-]+$/;
+const FEATURE_PATTERN = /^[A-Za-z0-9_-]+$/;
+
+export const hostSchema = z.string().regex(HOST_PATTERN, "invalid host");
+
+export const deployInputSchema = z
+  .object({
+    ip: hostSchema,
+    features: z.string().optional(),
+  })
+  .strict();
+
+export const restartInputSchema = z.object({ ip: hostSchema }).strict();
+
+export type DeployInput = z.infer<typeof deployInputSchema>;
+export type RestartInput = z.infer<typeof restartInputSchema>;
+
+/**
+ * Cargo features for a cadmus-tst binary.
+ *
+ * `test,kobo` is always first so the install and data paths stay on the test
+ * tree. Extra names are appended; repeats of the required pair are dropped.
+ */
+export function cargoFeatures(extra?: string): string {
+  const required = FEATURES.split(",");
+  const extras = (extra ?? "")
+    .split(",")
+    .map((feature) => feature.trim())
+    .filter((feature) => feature.length > 0);
+  for (const feature of extras) {
+    if (!FEATURE_PATTERN.test(feature)) {
+      throw new Error(`invalid feature: ${feature}`);
+    }
+  }
+  const seen = new Set(required);
+  const features = [...required];
+  for (const feature of extras) {
+    if (seen.has(feature)) continue;
+    seen.add(feature);
+    features.push(feature);
+  }
+  return features.join(",");
+}
+
+const SSH_BATCH = "ssh -o BatchMode=yes -o ConnectTimeout=15";
 
 const FALLBACK_BIN_DIRS = [
   "/run/current-system/sw/bin",
@@ -19,28 +64,21 @@ const FALLBACK_BIN_DIRS = [
 
 export type RunResult = { code: number; output: string };
 
-export function assertHost(ip: string) {
-  if (!HOST_PATTERN.test(ip)) {
-    throw new Error(`invalid host: ${ip}`);
-  }
-}
-
-export function buildArgs(features: string) {
-  return ["build-kobo", "--features", features];
-}
-
-export function distArgs() {
-  return ["dist"];
-}
-
+/**
+ * Rsync arguments for the test install.
+ *
+ * IPv6 hosts are bracketed because rsync splits host and path on a colon.
+ */
 export function rsyncArgs(ip: string, files: string[]) {
-  return ["-Prc", ...files, `root@${rsyncHost(ip)}:${INSTALL_DIR}`];
+  return [
+    "-rc",
+    "-e",
+    SSH_BATCH,
+    ...files,
+    `root@${rsyncHost(ip)}:${INSTALL_DIR}`,
+  ];
 }
 
-/// The host as rsync wants it.
-///
-/// Rsync separates the remote host from the path with a colon, so an IPv6
-/// address has to be bracketed.
 function rsyncHost(ip: string) {
   return ip.includes(":") ? `[${ip}]` : ip;
 }
@@ -58,58 +96,19 @@ export function resolveBin(name: string) {
 export function run(
   command: string,
   args: string[],
-  options: { cwd?: string; signal?: AbortSignal; stdin?: string },
+  options: { cwd?: string; signal?: AbortSignal } = {},
 ): Promise<RunResult> {
   return new Promise((resolve, reject) => {
-    if (options.signal?.aborted) {
-      reject(new Error(`${command} was cancelled before it started`));
-      return;
-    }
-
     const child = spawn(command, args, {
-      cwd: options.cwd ?? process.cwd(),
-      env: process.env,
+      cwd: options.cwd,
+      signal: options.signal,
+      stdio: ["ignore", "pipe", "pipe"],
     });
     let output = "";
-    let stdinError: string | undefined;
-    let settled = false;
-    const settle = (result: RunResult) => {
-      if (settled) return;
-      settled = true;
-      resolve(result);
-    };
-    const fail = (error: Error) => {
-      if (settled) return;
-      settled = true;
-      reject(error);
-    };
-    const recordStdinError = (error: Error) => {
-      stdinError = `stdin error: ${error.message}`;
-    };
-
     child.stdout.on("data", (chunk) => (output += chunk));
     child.stderr.on("data", (chunk) => (output += chunk));
-    child.on("error", fail);
-    child.on("close", (code) =>
-      settle({
-        code: code ?? -1,
-        output: stdinError ? `${output}\n${stdinError}` : output,
-      }),
-    );
-
-    if (options.stdin !== undefined) {
-      child.stdin.on("error", recordStdinError);
-      try {
-        child.stdin.write(options.stdin);
-        child.stdin.end();
-      } catch (error) {
-        recordStdinError(error as Error);
-      }
-    }
-
-    options.signal?.addEventListener("abort", () => child.kill("SIGTERM"), {
-      once: true,
-    });
+    child.on("error", reject);
+    child.on("close", (code) => resolve({ code: code ?? -1, output }));
   });
 }
 
@@ -130,7 +129,7 @@ function insideDevenv(root: string) {
 export async function runInShell(
   root: string,
   args: string[],
-  options: { signal?: AbortSignal; stdin?: string },
+  options: { signal?: AbortSignal } = {},
 ): Promise<RunResult> {
   const [command, ...rest] = args;
   if (!command) throw new Error("no command to run");
@@ -154,6 +153,7 @@ export function distEntries(root: string) {
 
 export function report(name: string, result: RunResult) {
   const status = result.code === 0 ? "ok" : `failed (exit ${result.code})`;
+  if (result.code === 0) return `${name}: ${status}`;
   const body = result.output.trim();
   return body ? `${name}: ${status}\n${body}` : `${name}: ${status}`;
 }
