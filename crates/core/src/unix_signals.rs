@@ -1,8 +1,8 @@
 //! Unix process signals mapped onto the same hub events as the top-menu Quit
 //! and Restart commands.
 //!
-//! SIGTERM and SIGINT post [`Event::Select`](crate::view::Event::Select) with
-//! [`EntryId::Quit`](crate::view::EntryId::Quit). SIGUSR1 posts Restart.
+//! SIGTERM and SIGINT post [`Event::Select`] with
+//! [`EntryId::Quit`]. SIGUSR1 posts Restart.
 //! SIGHUP is ignored so an SSH hangup does not stop Cadmus.
 //!
 //! # Two-step setup
