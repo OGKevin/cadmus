@@ -901,10 +901,16 @@ impl Default for ImportSettings {
     fn default() -> Self {
         ImportSettings {
             sync_metadata: true,
-            metadata_kinds: [FileExtension::Epub, FileExtension::Pdf, FileExtension::Djvu]
-                .iter()
-                .copied()
-                .collect(),
+            metadata_kinds: [
+                FileExtension::Epub,
+                FileExtension::Pdf,
+                FileExtension::Djvu,
+                FileExtension::Cbz,
+                FileExtension::Cbr,
+            ]
+            .iter()
+            .copied()
+            .collect(),
             allowed_kinds: [
                 FileExtension::Pdf,
                 FileExtension::Djvu,

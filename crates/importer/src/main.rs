@@ -4,9 +4,13 @@ use cadmus_core::db::Database;
 use cadmus_core::helpers::datetime_format;
 // use cadmus_core::library::importer;
 use cadmus_core::document::file_extension::FileExtension;
+use cadmus_core::document::file_extension::FileExtension::{Cbr, Cbz};
 use cadmus_core::library::Library;
 use cadmus_core::metadata::{consolidate, rename_from_info};
-use cadmus_core::metadata::{extract_metadata_from_document, extract_metadata_from_filename};
+use cadmus_core::metadata::{
+    extract_comicinfo_metadata, extract_metadata_from_document, extract_metadata_from_filename,
+};
+use cadmus_core::runtime;
 use cadmus_core::settings::ImportSettings;
 // use cadmus_core::view::{Event, ViewId, ID_FEEDER};
 use getopts::Options;
@@ -172,7 +176,15 @@ async fn run() -> Result<(), Error> {
                     if opt_extract_metadata_document
                         && info.file.kind.is_some_and(|k| metadata_kinds.contains(&k))
                     {
-                        extract_metadata_from_document(path, info, Path::new(""));
+                        match info.file.kind {
+                            Some(Cbz | Cbr) => {
+                                runtime::current_handle()
+                                    .block_on(extract_comicinfo_metadata(path, info));
+                            }
+                            _ => {
+                                extract_metadata_from_document(path, info, Path::new(""));
+                            }
+                        }
                     }
 
                     if opt_extract_metadata_filename {

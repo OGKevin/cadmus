@@ -1,5 +1,6 @@
 use crate::db::types::UnixTimestamp;
 use crate::document::asciify;
+use crate::document::comicinfo::{apply_comicinfo_read, read_comicinfo_from_path};
 use crate::document::djvu::DjvuOpener;
 use crate::document::epub::EpubDocument;
 use crate::document::file_extension::FileExtension;
@@ -1032,6 +1033,28 @@ lazy_static! {
         );
         p
     };
+}
+
+/// Refreshes ComicInfo.xml metadata from a CBZ or CBR file into `info`.
+///
+/// ComicInfo-mapped fields are replaced when the archive member is read and parsed.
+/// Confirmed absence of a ComicInfo member clears those fields. Archive I/O failures and
+/// parse errors leave stored metadata unchanged. Field values omitted from a successful
+/// parse are cleared. Cadmus does not track per-field manual overrides; edits to
+/// ComicInfo-mapped fields can be overwritten when library metadata sync runs, matching
+/// other document extractors.
+///
+/// Call this from async import paths. Sync callers on a blocking thread may use
+/// [`crate::runtime::current_handle`] and `block_on` when they cannot await directly.
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(info)))]
+pub async fn extract_comicinfo_metadata(prefix: &Path, info: &mut Info) {
+    let kind = match info.file.kind {
+        Some(kind @ (FileExtension::Cbz | FileExtension::Cbr)) => kind,
+        _ => return,
+    };
+    let path = prefix.join(&info.file.path);
+    let result = read_comicinfo_from_path(&path, kind).await;
+    apply_comicinfo_read(result, info);
 }
 
 #[inline]

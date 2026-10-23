@@ -1,3 +1,4 @@
+pub(crate) mod comicinfo;
 pub mod djvu;
 pub mod epub;
 pub mod file_extension;

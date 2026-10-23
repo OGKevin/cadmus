@@ -844,7 +844,7 @@ File extensions of documents whose metadata is extracted during import.
 
 ```toml
 [import]
-metadata-kinds = ["epub", "pdf", "djvu"]
+metadata-kinds = ["epub", "pdf", "djvu", "cbz", "cbr"]
 ```
 
 <!-- i18n:skip-end -->

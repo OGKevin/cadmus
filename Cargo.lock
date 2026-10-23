@@ -32,6 +32,7 @@ dependencies = [
  "cipher",
  "cpubits",
  "cpufeatures 0.3.1",
+ "zeroize",
 ]
 
 [[package]]
@@ -543,6 +544,7 @@ dependencies = [
  "pyroscope",
  "rand_core 0.10.1",
  "rand_xoshiro",
+ "rars",
  "regex",
  "reqwest",
  "reqwest-middleware",
@@ -4732,6 +4734,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "662effc7698e08ea324d3acccf8d9d7f7bf79b9785e270a174ea36e56900c91d"
 dependencies = [
  "rand_core 0.10.1",
+]
+
+[[package]]
+name = "rars"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cbcc0f38a45a8eb1021f333c910caaccb22660685c324f9fe5d04b0398d98c4e"
+dependencies = [
+ "aes",
+ "aho-corasick",
+ "hmac 0.13.0",
+ "sha1",
+ "sha2 0.11.0",
+ "zeroize",
 ]
 
 [[package]]

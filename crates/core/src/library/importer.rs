@@ -1,11 +1,13 @@
 #[cfg(test)]
 use crate::db::types::UnixTimestamp;
+use crate::document::file_extension::FileExtension;
 use crate::document::file_kind;
 use crate::fl;
 use crate::helpers::{Fingerprint, FingerprintStamp, Fp, IsHidden};
 use crate::library::book_status::BookStatus;
 use crate::library::db::{Db as LibraryDb, ImportFlush, PathUpdate};
-use crate::metadata::{FileInfo, Info, extract_metadata_from_document};
+use crate::metadata::{FileInfo, Info, extract_comicinfo_metadata, extract_metadata_from_document};
+use crate::runtime;
 use crate::settings::ImportSettings;
 use crate::view::notification::PinnedProgress;
 use crate::view::{Event, NotificationEvent, ViewId};
@@ -144,19 +146,28 @@ const IGNORED_TOP_LEVEL_DIRS: &[&str] = &["target", "node_modules", "thirdparty"
 /// `Info` clone: the former is the only part they already knew, while the
 /// latter copied every title, category and path for every new book.
 async fn extract_metadata(home: &Path, install_dir: &Path, info: Info) -> Option<Info> {
-    let home = home.to_path_buf();
-    let install_dir = install_dir.to_path_buf();
-    match tokio::task::spawn_blocking(move || {
-        let mut info = info;
-        extract_metadata_from_document(&home, &mut info, &install_dir);
-        info
-    })
-    .await
-    {
-        Ok(info) => Some(info),
-        Err(error) => {
-            error!(error = %error, "metadata extraction task panicked");
-            None
+    match info.file.kind {
+        Some(FileExtension::Cbz | FileExtension::Cbr) => {
+            let mut info = info;
+            extract_comicinfo_metadata(home, &mut info).await;
+            Some(info)
+        }
+        _ => {
+            let home = home.to_path_buf();
+            let install_dir = install_dir.to_path_buf();
+            match runtime::spawn_blocking(move || {
+                let mut info = info;
+                extract_metadata_from_document(&home, &mut info, &install_dir);
+                info
+            })
+            .await
+            {
+                Ok(info) => Some(info),
+                Err(error) => {
+                    error!(error = %error, "metadata extraction task panicked");
+                    None
+                }
+            }
         }
     }
 }

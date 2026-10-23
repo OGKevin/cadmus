@@ -31,6 +31,7 @@ octocrab = { version = "0.54.2", default-features = false, features = [
 reqwest-middleware = { version = "0.5.2", default-features = false }
 reqwest-retry = { version = "0.9.1", default-features = false }
 reqwest-tracing = { version = "0.7.1", default-features = false }
+rars = { version = "0.12", default-features = false, features = ["encryption"] }
 rust-embed = "8"
 rustls = { version = "0.23", default-features = false, features = [
   "ring",

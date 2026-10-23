@@ -11,6 +11,9 @@ A CBZ file is a zip archive of images. When you open one, Cadmus opens the
 archive and builds an ordered **list of image file names** that count as pages.
 It does **not** decode every image up front.
 
+If the archive includes a `ComicInfo.xml` file (CBZ or CBR), Cadmus reads it
+during import to fill in title, author, series, and other shelf metadata.
+
 ```mermaid
 flowchart TD
   open[Open CBZ] --> zip[Open zip archive]
