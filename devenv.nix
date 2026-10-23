@@ -1008,15 +1008,17 @@ in
       _cadmuscli_zshrc="${config.env.DEVENV_DOTFILE}/zsh/.zshrc"
       _cadmuscli_zsh_marker="# cadmuscli shell completions"
       if [ -f "$_cadmuscli_zshrc" ] && ! grep -q "$_cadmuscli_zsh_marker" "$_cadmuscli_zshrc"; then
-        cat >> "$_cadmuscli_zshrc" <<'EOF'
-
-# cadmuscli shell completions
-if [[ -n "$DEVENV_STATE" && -f "$DEVENV_STATE/completions/_cadmuscli" ]]; then
-  fpath=("$DEVENV_STATE/completions" $fpath)
-  autoload -Uz _cadmuscli
-  compdef _cadmuscli cadmuscli
-fi
-EOF
+        printf '%s\n' \
+          "" \
+          '# cadmuscli shell completions' \
+          'if [[ -n "$DEVENV_STATE" && -f "$DEVENV_STATE/completions/_cadmuscli" ]]; then' \
+          '  fpath=("$DEVENV_STATE/completions" $fpath)' \
+          '  autoload -Uz compinit' \
+          '  compinit -C' \
+          '  autoload -Uz _cadmuscli' \
+          '  compdef _cadmuscli cadmuscli' \
+          'fi' \
+          >> "$_cadmuscli_zshrc"
       fi
     fi
 
