@@ -42,6 +42,7 @@ pub enum SettingIdentity {
     DbBackupRetention,
     LogLevel,
     ImportSyncMetadata,
+    MetadataKinds,
     AllowedKinds,
     ForceFullImport,
     #[cfg(feature = "tracing")]

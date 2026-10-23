@@ -1031,6 +1031,8 @@ pub enum EntryId {
     AddRefreshRateByKind,
     /// Toggle whether a file extension is indexed during import.
     ToggleAllowedKind(FileExtension),
+    /// Toggle whether metadata is extracted for a file extension during import.
+    ToggleMetadataKind(FileExtension),
     /// Toggle whether a file extension is rendered with dithering.
     ToggleDitheredKind(FileExtension),
     SyncTime,

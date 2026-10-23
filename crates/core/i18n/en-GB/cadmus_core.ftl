@@ -197,6 +197,7 @@ settings-import-force-full-import-confirm = Re-import all the files from all you
                                             This could take time and consume battery, it's
                                             advisable to keep your device plugged in while this runs.
 settings-import-force-full-import-confirm-button = Re-import All
+settings-import-metadata-kinds = Metadata File Types
 settings-import-sync-metadata = Sync Metadata
 
 # Importer

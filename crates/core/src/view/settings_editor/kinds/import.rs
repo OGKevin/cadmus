@@ -79,6 +79,62 @@ impl SettingKind for ImportSyncMetadata {
     }
 }
 
+/// File extensions whose metadata is extracted during import.
+pub struct MetadataKindsSetting;
+
+impl SettingKind for MetadataKindsSetting {
+    fn identity(&self) -> SettingIdentity {
+        SettingIdentity::MetadataKinds
+    }
+
+    fn label(&self, _settings: &Settings) -> String {
+        fl!("settings-import-metadata-kinds")
+    }
+
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
+        let entries = FileExtension::all()
+            .iter()
+            .copied()
+            .map(|kind| {
+                EntryKind::CheckBox(
+                    kind.to_string().to_uppercase(),
+                    EntryId::ToggleMetadataKind(kind),
+                    data.settings.import.metadata_kinds.contains(&kind),
+                )
+            })
+            .collect();
+
+        SettingData {
+            value: kinds_summary(data.settings.import.metadata_kinds.len()),
+            widget: WidgetKind::SubMenu(entries),
+        }
+    }
+
+    fn handle(
+        &self,
+        evt: &Event,
+        context: &mut AppContext,
+        _bus: &mut Bus,
+    ) -> (Option<String>, bool) {
+        if let Event::Select(EntryId::ToggleMetadataKind(kind)) = evt {
+            if !context.settings.import.metadata_kinds.remove(kind) {
+                context.settings.import.metadata_kinds.insert(*kind);
+            }
+
+            return (
+                Some(kinds_summary(context.settings.import.metadata_kinds.len())),
+                true,
+            );
+        }
+
+        (None, false)
+    }
+
+    fn keep_menu_open(&self) -> bool {
+        true
+    }
+}
+
 /// Allowed file extensions setting.
 pub struct AllowedKindsSetting;
 
@@ -246,6 +302,81 @@ mod tests {
             );
 
             assert!(result.0.is_none());
+        }
+    }
+
+    mod metadata_kinds_setting {
+        use super::*;
+
+        #[test]
+        fn fetch_builds_checkbox_submenu_for_all_extensions() {
+            let setting = MetadataKindsSetting;
+            let settings = Settings::default();
+
+            let data = setting.fetch(super::SettingsFetchData {
+                settings: &settings,
+                install_dir: None,
+            });
+
+            assert_eq!(
+                data.value,
+                kinds_summary(settings.import.metadata_kinds.len())
+            );
+            let WidgetKind::SubMenu(entries) = data.widget else {
+                panic!("expected submenu widget");
+            };
+            assert_eq!(entries.len(), FileExtension::all().len());
+            assert!(matches!(
+                entries.first(),
+                Some(EntryKind::CheckBox(_, EntryId::ToggleMetadataKind(_), _))
+            ));
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_toggle_adds_and_removes_extensions() {
+            let setting = MetadataKindsSetting;
+            let mut context = create_test_context().await;
+            context.settings = Settings::default();
+            context
+                .settings
+                .import
+                .metadata_kinds
+                .remove(&FileExtension::Cbz);
+            let mut bus: Bus = VecDeque::new();
+
+            let add = setting.handle(
+                &Event::Select(EntryId::ToggleMetadataKind(FileExtension::Cbz)),
+                &mut context,
+                &mut bus,
+            );
+            assert_eq!(
+                add.0,
+                Some(kinds_summary(context.settings.import.metadata_kinds.len()))
+            );
+            assert!(
+                context
+                    .settings
+                    .import
+                    .metadata_kinds
+                    .contains(&FileExtension::Cbz)
+            );
+
+            let remove = setting.handle(
+                &Event::Select(EntryId::ToggleMetadataKind(FileExtension::Cbz)),
+                &mut context,
+                &mut bus,
+            );
+            assert_eq!(
+                remove.0,
+                Some(kinds_summary(context.settings.import.metadata_kinds.len()))
+            );
+            assert!(
+                !context
+                    .settings
+                    .import
+                    .metadata_kinds
+                    .contains(&FileExtension::Cbz)
+            );
         }
     }
 

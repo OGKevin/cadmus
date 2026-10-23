@@ -836,6 +836,8 @@ sync-metadata = true
 
 ### `import.metadata-kinds`
 
+✏️
+
 File extensions of documents whose metadata is extracted during import.
 
 <!-- i18n:skip-start -->

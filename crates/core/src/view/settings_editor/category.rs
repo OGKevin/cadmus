@@ -5,7 +5,9 @@ use super::kinds::general::{
     ButtonScheme, DbBackupRetentionSetting, KeyboardLayout, Locale, NtpServer, SettingsRetention,
     StartupModeSetting, WifiIdleTimeout,
 };
-use super::kinds::import::{AllowedKindsSetting, ForceFullImport, ImportSyncMetadata};
+use super::kinds::import::{
+    AllowedKindsSetting, ForceFullImport, ImportSyncMetadata, MetadataKindsSetting,
+};
 use super::kinds::intermission::{
     IntermissionFillColor, IntermissionPowerOff, IntermissionShare, IntermissionSuspend,
 };
@@ -122,6 +124,7 @@ impl Category {
             Category::Import => vec![
                 Box::new(ForceFullImport),
                 Box::new(ImportSyncMetadata),
+                Box::new(MetadataKindsSetting),
                 Box::new(AllowedKindsSetting),
             ],
             Category::Telemetry => {
