@@ -1,12 +1,13 @@
 //! Cadmus inhibitor subsystem.
 //!
 //! Named **inhibitor leases** let features tell Cadmus (and, on Linux, the
-//! kernel) that critical or in-flight work must not be interrupted. Two kinds
+//! kernel) that critical or in-flight work must not be interrupted. Three kinds
 //! exist:
 //!
 //! | Kind | Wake lock | Blocks Cadmus suspend | Blocks user exits |
 //! |------|-----------|----------------------|-------------------|
 //! | [`Kind::SoftSuspend`] | Yes (Linux) | No | No |
+//! | [`Kind::Sleep`] | Yes (implies SoftSuspend) | Auto Suspend only | No |
 //! | [`Kind::Full`] | Yes (implies SoftSuspend) | Yes | Yes |
 //!
 //! # API ownership
@@ -28,6 +29,9 @@
 //! status-LED pulse live in the `full` implementation module. On Kobo the last
 //! Full drop posts [`Event::FullInhibitCleared`](crate::view::Event::FullInhibitCleared)
 //! so the suspend orchestrator can flush a deferred explicit suspend.
+//! [`Kind::Sleep`] tracking and the nested `"sleep-inhibit"` wake lock live in
+//! the `sleep` implementation module. Last Sleep drop does not post
+//! `FullInhibitCleared`.
 //!
 //! ```ignore
 //! match inhibitor.acquire(Kind::SoftSuspend, SoftSuspendName::Wifi) {
@@ -40,6 +44,7 @@ mod error;
 mod full;
 mod guard;
 mod kind;
+mod sleep;
 pub(crate) mod soft_suspend;
 
 pub use error::InhibitorError;
@@ -78,11 +83,13 @@ pub(crate) const FULL_INHIBIT_MIN_CAPACITY_PERCENT: f32 = 20.0;
 /// [`Context`](crate::context::Context) and acquire via [`Self::acquire`].
 ///
 /// Implements [`SoftSuspendBackend`] by forwarding settings and holder queries
-/// to the injected SoftSuspend kind. Full-holder liveness is a separate query
-/// (`full_active`, Kobo / tests), not this trait.
+/// to the injected SoftSuspend kind. Full-holder and Sleep-holder liveness are
+/// separate queries (`full_active` / `sleep_active`, Kobo / tests), not this
+/// trait.
 pub struct Inhibitor {
     soft_suspend: Arc<dyn SoftSuspendKind>,
     full: full::FullInhibitState,
+    sleep: sleep::SleepInhibitState,
     battery: Arc<dyn Battery>,
 }
 
@@ -90,17 +97,20 @@ impl Inhibitor {
     /// Composes an inhibitor from SoftSuspend backend, LED arbiter, and shared battery.
     ///
     /// The same [`SoftSuspendKind`] is used for direct SoftSuspend acquires and
-    /// for the nested `"full-inhibit"` lease taken while any Full holder is
-    /// active. [`StatusLed`] multiplexes Full pulse over soft-indicate.
+    /// for the nested `"full-inhibit"` / `"sleep-inhibit"` leases taken while
+    /// any Full or Sleep holder is active. [`StatusLed`] multiplexes Full pulse
+    /// over soft-indicate.
     pub fn new(
         soft_suspend: Arc<dyn SoftSuspendKind>,
         status_led: Arc<StatusLed>,
         battery: Arc<dyn Battery>,
     ) -> Arc<Self> {
         let full = full::FullInhibitState::new(Arc::clone(&soft_suspend), Arc::clone(&status_led));
+        let sleep = sleep::SleepInhibitState::new(Arc::clone(&soft_suspend));
         Arc::new(Self {
             soft_suspend,
             full,
+            sleep,
             battery,
         })
     }
@@ -172,21 +182,35 @@ impl Inhibitor {
         self.full.full_active()
     }
 
+    /// Returns whether any [`Kind::Sleep`] holder is active.
+    ///
+    /// The Auto Suspend path defers while this is true. Explicit `start_cycle`
+    /// (cover, power button, menu Suspend) still runs. User exits and live
+    /// AutoPowerOff are not blocked.
+    #[cfg(any(test, feature = "kobo", docsrs))]
+    pub(crate) fn sleep_active(&self) -> bool {
+        self.sleep.sleep_active()
+    }
+
     /// Acquires a named inhibitor guard.
     ///
     /// [`Kind::SoftSuspend`] maps to the injected SoftSuspend-kind wake lock and
-    /// always succeeds on supported backends. [`Kind::Full`] also registers a
-    /// Full holder, nested `"full-inhibit"` wake lock, and status-LED blink.
+    /// always succeeds on supported backends. [`Kind::Sleep`] registers a Sleep
+    /// holder and nested `"sleep-inhibit"` wake lock and always succeeds.
+    /// [`Kind::Full`] also registers a Full holder, nested `"full-inhibit"` wake
+    /// lock, and status-LED blink.
     ///
     /// Drop the returned [`InhibitorGuard`] to release. The last Full drop
     /// fires the last-release notifier if one is installed (Kobo posts
     /// [`Event::FullInhibitCleared`](crate::view::Event::FullInhibitCleared)).
+    /// The last Sleep drop does not fire that notifier.
     ///
     /// # Errors
     ///
     /// [`Kind::Full`] fails with [`InhibitorError::BatteryTooLow`] when shared
     /// battery capacity is below [`FULL_INHIBIT_MIN_CAPACITY_PERCENT`] or
-    /// cannot be read. [`Kind::SoftSuspend`] is never battery-gated.
+    /// cannot be read. [`Kind::SoftSuspend`] and [`Kind::Sleep`] are never
+    /// battery-gated.
     pub fn acquire(
         &self,
         kind: Kind,
@@ -197,6 +221,7 @@ impl Inhibitor {
             Kind::SoftSuspend => Ok(InhibitorGuard::soft_suspend(
                 self.soft_suspend.acquire_lease(name),
             )),
+            Kind::Sleep => Ok(InhibitorGuard::sleep(self.sleep.acquire(name))),
             Kind::Full => {
                 self.ensure_battery_allows_full()?;
                 let lease = self.full.acquire(name);
@@ -348,5 +373,51 @@ mod tests {
         assert_eq!(fired.load(Ordering::SeqCst), 0);
         drop(guard);
         assert_eq!(fired.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn sleep_acquire_allowed_below_min_capacity() {
+        let inhibitor = inhibitor_with_capacity(FULL_INHIBIT_MIN_CAPACITY_PERCENT - 1.0);
+        let guard = inhibitor.acquire(Kind::Sleep, "main-menu").unwrap();
+        assert!(guard.is_active());
+        assert!(inhibitor.sleep_active());
+        assert!(!inhibitor.full_active());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn sleep_tracking_on_noop() {
+        let inhibitor = Inhibitor::noop();
+        let guard = inhibitor.acquire(Kind::Sleep, "main-menu").unwrap();
+        assert!(inhibitor.sleep_active());
+        assert!(!inhibitor.full_active());
+        drop(guard);
+        assert!(!inhibitor.sleep_active());
+        assert!(!inhibitor.full_active());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn sleep_implies_nested_soft_suspend_wake_lock() {
+        let inhibitor = Inhibitor::noop();
+        let _guard = inhibitor.acquire(Kind::Sleep, "main-menu").unwrap();
+        assert!(
+            inhibitor
+                .holders()
+                .iter()
+                .any(|name| name.as_str() == "sleep-inhibit")
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn sleep_and_full_coexist() {
+        let inhibitor = inhibitor_with_capacity(50.0);
+        let sleep = inhibitor.acquire(Kind::Sleep, "main-menu").unwrap();
+        let full = inhibitor.acquire(Kind::Full, "ota").unwrap();
+        assert!(inhibitor.sleep_active());
+        assert!(inhibitor.full_active());
+        drop(sleep);
+        assert!(!inhibitor.sleep_active());
+        assert!(inhibitor.full_active());
+        drop(full);
+        assert!(!inhibitor.full_active());
     }
 }

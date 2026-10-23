@@ -1,13 +1,15 @@
 //! Inhibitor lease kinds.
 //!
-//! Cadmus exposes exactly two kinds, modelled after systemd inhibitors but scoped
+//! Cadmus exposes three kinds, modelled after systemd inhibitors but scoped
 //! to e-reader constraints. [`Kind::SoftSuspend`] keeps the kernel awake during
-//! background work; [`Kind::Full`] additionally blocks Cadmus suspend and
-//! user-initiated exits until the last holder releases.
+//! background work; [`Kind::Sleep`] also defers Auto Suspend; [`Kind::Full`]
+//! additionally blocks all Cadmus suspend and user-initiated exits until the
+//! last holder releases.
 //!
-//! Acquire both through [`Inhibitor::acquire`](super::Inhibitor::acquire). Full
-//! holder tracking and the nested `"full-inhibit"` wake lock live in the `full`
-//! implementation module.
+//! Acquire all three through [`Inhibitor::acquire`](super::Inhibitor::acquire).
+//! Full holder tracking and the nested `"full-inhibit"` wake lock live in the
+//! `full` implementation module. Sleep tracking and `"sleep-inhibit"` live in
+//! `sleep`.
 
 /// Kind of inhibitor lease.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -33,4 +35,11 @@ pub enum Kind {
     /// [`FULL_INHIBIT_MIN_CAPACITY_PERCENT`](crate::device::inhibitor::FULL_INHIBIT_MIN_CAPACITY_PERCENT)
     /// or cannot be read.
     Full,
+    /// Nested wake lock `"sleep-inhibit"`; defers Auto `start_cycle` only.
+    ///
+    /// Blocks opportunistic autosleep and Auto Suspend. Does not block user
+    /// exits, explicit suspend (menu Suspend, power button, cover), or live
+    /// AutoPowerOff. No battery gate, no status LED. Last drop does not post
+    /// [`Event::FullInhibitCleared`](crate::view::Event::FullInhibitCleared).
+    Sleep,
 }

@@ -67,15 +67,17 @@ pub struct Context<D: Device> {
     #[cfg(any(feature = "kobo", docsrs))]
     pub(crate) suspend: Option<crate::device::suspend::SuspendCycle>,
     /// Queued when [`crate::device::suspend::start_cycle`] was refused while
-    /// [`crate::device::inhibitor::Kind::Full`] was active.
+    /// [`crate::device::inhibitor::Kind::Full`] was active, or when Auto Suspend
+    /// was refused while [`crate::device::inhibitor::Kind::Sleep`] was active.
     ///
     /// Flushed on [`Event::FullInhibitCleared`](crate::view::Event::FullInhibitCleared)
     /// unless [`Event::ClearDeferredSuspend`](crate::view::Event::ClearDeferredSuspend)
     /// or [`crate::device::reschedule_auto_suspend_alarm`] cleared it first.
+    /// Last Sleep drop does not flush.
     #[cfg(any(feature = "kobo", docsrs))]
     pub(crate) deferred_suspend: bool,
     pub wifi_session: std::sync::Arc<crate::device::wifi::WifiSession>,
-    /// Top-level inhibitor: SoftSuspend settings, Full holders, wake locks, LED.
+    /// Top-level inhibitor: SoftSuspend settings, Full and Sleep holders, wake locks, LED.
     pub inhibitor: Arc<Inhibitor>,
     /// Test-only inject queue for deep-idle wait outcomes.
     #[cfg(all(test, feature = "kobo"))]

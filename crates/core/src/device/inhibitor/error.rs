@@ -3,7 +3,7 @@
 //! [`Inhibitor::acquire`](super::Inhibitor::acquire) returns
 //! [`InhibitorError::BatteryTooLow`] for [`super::Kind::Full`] when capacity is below
 //! [`FULL_INHIBIT_MIN_CAPACITY_PERCENT`](crate::device::inhibitor::FULL_INHIBIT_MIN_CAPACITY_PERCENT)
-//! or cannot be read. SoftSuspend acquires do not produce this error.
+//! or cannot be read. SoftSuspend and Sleep acquires do not produce this error.
 
 use thiserror::Error;
 

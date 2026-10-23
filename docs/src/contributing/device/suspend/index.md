@@ -61,14 +61,18 @@ Code that needs inhibitor behaviour acquires a guard through
 — see [Inhibitor](inhibitor.md) for API detail, LED patterns, deferred suspend,
 and OTA.
 
-| Goal                                                                   | Acquire             | Effect                                                                                                                |
-| ---------------------------------------------------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Keep device awake for **opportunistic** autosleep between events       | `Kind::SoftSuspend` | Holds kernel `cadmus` wake lock (Linux). **Does not** block explicit suspend.                                         |
-| Block **explicit** suspend and user exits on Kobo during critical work | `Kind::Full`        | Defers `start_cycle`; ignores gated user exits. Registers a nested `"full-inhibit"` lease on the SoftSuspend backend. |
+| Goal                                                                   | Acquire             | Effect                                                                                                                                   |
+| ---------------------------------------------------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Keep device awake for **opportunistic** autosleep between events       | `Kind::SoftSuspend` | Holds kernel `cadmus` wake lock (Linux). **Does not** block explicit suspend.                                                            |
+| Defer Auto Suspend and opportunistic autosleep without blocking exits  | `Kind::Sleep`       | Auto path (`start_cycle_from_auto`) defers; nested `"sleep-inhibit"` wake lock. cadmus-test top menu. Explicit `start_cycle` still runs. |
+| Block **explicit** suspend and user exits on Kobo during critical work | `Kind::Full`        | Defers `start_cycle`; ignores gated user exits. Registers a nested `"full-inhibit"` lease on the SoftSuspend backend.                    |
 
 ```rust
 // Background work — block opportunistic nap only
 let _guard = inhibitor.acquire(Kind::SoftSuspend, SoftSuspendName::Wifi)?;
+
+// Top menu (cadmus-test) — block opportunistic nap and Auto Suspend
+let _guard = inhibitor.acquire(Kind::Sleep, "main-menu")?;
 
 // OTA install — block explicit suspend and user power-off/reboot
 let _guard = inhibitor.acquire(Kind::Full, "ota")?;
@@ -76,16 +80,16 @@ let _guard = inhibitor.acquire(Kind::Full, "ota")?;
 
 Use standard names from
 <a href="/api/cadmus_core/device/inhibitor/enum.SoftSuspendName.html">`SoftSuspendName`</a>
-where they exist (`input`, `wifi`, `main-loop`, …). Full holders use free-form
-names (`"ota"`, …).
+where they exist (`input`, `wifi`, `main-loop`, …). Sleep and Full holders use
+free-form names (`"main-menu"`, `"ota"`, …).
 
 ## Pages
 
-| Page                                    | Read this for                                                                          |
-| --------------------------------------- | -------------------------------------------------------------------------------------- |
-| [Suspend orchestrator](orchestrator.md) | `SuspendCycle` phases, Classic vs DeepIdle, RTC alarms, `start_cycle` vs `enter_sleep` |
-| [Soft suspend](soft-suspend.md)         | Autosleep sysfs, wake-lock worker, grace, `SoftSuspendKind` backends                   |
-| [Inhibitor](inhibitor.md)               | `Kind::SoftSuspend` vs `Kind::Full`, deferred suspend, exit gate, status LED, OTA      |
-| [Kobo suspend](kobo/suspend.md)         | Lifecycle forwarding, `state-extended`, Classic vs DeepIdle on device                  |
+| Page                                    | Read this for                                                                                      |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| [Suspend orchestrator](orchestrator.md) | `SuspendCycle` phases, Classic vs DeepIdle, RTC alarms, `start_cycle` vs `enter_sleep`             |
+| [Soft suspend](soft-suspend.md)         | Autosleep sysfs, wake-lock worker, grace, `SoftSuspendKind` backends                               |
+| [Inhibitor](inhibitor.md)               | `Kind::SoftSuspend` vs `Kind::Sleep` vs `Kind::Full`, deferred suspend, exit gate, status LED, OTA |
+| [Kobo suspend](kobo/suspend.md)         | Lifecycle forwarding, `state-extended`, Classic vs DeepIdle on device                              |
 
 <!-- i18n:skip-end -->

@@ -1255,3 +1255,50 @@ async fn reschedule_auto_suspend_clears_deferred_suspend() {
     reschedule_auto_suspend_alarm(&mut harness.context);
     assert!(!harness.context.deferred_suspend);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn start_cycle_from_auto_defers_while_sleep_inhibit_active() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    let _sleep = harness
+        .context
+        .inhibitor
+        .acquire(Kind::Sleep, "main-menu")
+        .unwrap();
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        start_cycle_from_auto(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+    });
+    assert!(harness.context.deferred_suspend);
+    assert!(!has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn start_cycle_runs_while_sleep_inhibit_active() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    let _sleep = harness
+        .context
+        .inhibitor
+        .acquire(Kind::Sleep, "main-menu")
+        .unwrap();
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+    });
+    assert!(!harness.context.deferred_suspend);
+    assert!(has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn sleep_inhibit_drop_does_not_flush_deferred_suspend() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    let sleep = harness
+        .context
+        .inhibitor
+        .acquire(Kind::Sleep, "main-menu")
+        .unwrap();
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        start_cycle_from_auto(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+    });
+    assert!(harness.context.deferred_suspend);
+    drop(sleep);
+    assert!(harness.context.deferred_suspend);
+    assert!(!has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
+}

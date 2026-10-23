@@ -9,7 +9,7 @@
 //! Auto Suspend is scheduled as [`AlarmType::AutoSuspend`] on the device RTC
 //! Activity calls [`crate::device::reschedule_auto_suspend_alarm`]; when the IRQ listener
 //! claims the alarm it emits [`Event::RtcAlarmFired`], which calls
-//! [`start_cycle`]. Monotonic idle (`Instant::elapsed`) is not
+//! [`start_cycle_from_auto`]. Monotonic idle (`Instant::elapsed`) is not
 //! authoritative: soft sleep does not advance it, so the wall-clock RTC
 //! deadline is the idle source of truth.
 
@@ -341,7 +341,7 @@ async fn handle_auto_suspend_fired(
         return EventOutcome::Handled;
     }
 
-    start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks).await;
+    start_cycle_from_auto(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks).await;
     EventOutcome::Handled
 }
 
@@ -887,6 +887,30 @@ async fn handle_post_wake(
     EventOutcome::Handled
 }
 
+/// Auto Suspend idle path: defers while Full **or** Sleep inhibit is held.
+///
+/// Explicit callers ([`start_cycle`]) still run while Sleep is held. Cover,
+/// power button, and menu Suspend use that path. Last Sleep drop does not
+/// flush deferred suspend; the next gesture's
+/// [`crate::device::reschedule_auto_suspend_alarm`] clears it.
+pub(crate) async fn start_cycle_from_auto(
+    context: &mut AppContext,
+    view: &mut dyn View,
+    hub: &Hub,
+    bus: &mut crate::view::Bus,
+    rq: &mut crate::view::RenderQueue,
+    tasks: &mut Vec<DeviceTask>,
+) {
+    let full = context.inhibitor.full_active();
+    let sleep = context.inhibitor.sleep_active();
+    if full || sleep {
+        context.deferred_suspend = true;
+        tracing::debug!(full, sleep, "deferring Auto suspend while inhibit active");
+        return;
+    }
+    start_cycle(context, view, hub, bus, rq, tasks).await;
+}
+
 /// Start an explicit suspend cycle: fix kind, show intermission, schedule prepare.
 ///
 /// Does **not** put the SoC to sleep. Sleep happens later via
@@ -896,7 +920,9 @@ async fn handle_post_wake(
 /// When [`Inhibitor::full_active`](crate::device::inhibitor::Inhibitor::full_active)
 /// is true, sets
 /// [`Context::deferred_suspend`](crate::context::Context::deferred_suspend)
-/// and returns without a cycle. SoftSuspend-only holders do not defer.
+/// and returns without a cycle. SoftSuspend-only and Sleep holders do not defer
+/// this explicit path. Auto Suspend uses [`start_cycle_from_auto`], which also
+/// defers on Sleep.
 pub(crate) async fn start_cycle(
     context: &mut AppContext,
     view: &mut dyn View,

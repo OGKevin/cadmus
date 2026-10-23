@@ -204,6 +204,27 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn sleep_inhibit_allows_user_quit() {
+        let mut harness = DeviceRuntimeHarness::new().await;
+        let _guard = harness
+            .context
+            .inhibitor
+            .acquire(Kind::Sleep, "main-menu")
+            .unwrap();
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            handle_event(
+                &Event::Select(EntryId::Quit),
+                hub,
+                bus,
+                rq,
+                context,
+                runtime,
+            )
+        });
+        assert_eq!(outcome, EventOutcome::Exit(ExitStatus::Quit));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn full_inhibit_ignores_user_reboot() {
         let mut harness = DeviceRuntimeHarness::new().await;
         let _guard = harness

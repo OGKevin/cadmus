@@ -8,6 +8,8 @@ use crate::color::{BLACK, SEPARATOR_NORMAL, SEPARATOR_STRONG, WHITE};
 use crate::device::AppContext;
 use crate::device::DeviceHardware as _;
 use crate::device::DeviceIdentity;
+#[cfg(feature = "test")]
+use crate::device::inhibitor::{InhibitorGuard, Kind};
 use crate::font::{NORMAL_STYLE, font_from_style};
 use crate::framebuffer::Framebuffer as _;
 use crate::framebuffer::UpdateMode;
@@ -25,6 +27,8 @@ pub struct Menu {
     root: bool,
     sub_id: u8,
     dir: i32,
+    #[cfg(feature = "test")]
+    _sleep_lease: Option<InhibitorGuard>,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -241,6 +245,23 @@ impl Menu {
 
         let rect = rect![x_min, y_min, x_max, y_max];
 
+        #[cfg(feature = "test")]
+        let _sleep_lease = if view_id == ViewId::MainMenu {
+            match context.inhibitor.acquire(Kind::Sleep, "main-menu") {
+                Ok(guard) => Some(guard),
+                Err(error) => {
+                    tracing::error!(
+                        error = %error,
+                        sleep_lease = "main-menu",
+                        "failed to acquire sleep lease for top menu"
+                    );
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         Menu {
             id,
             rect,
@@ -251,6 +272,8 @@ impl Menu {
             root: true,
             sub_id: 0,
             dir,
+            #[cfg(feature = "test")]
+            _sleep_lease,
         }
     }
 

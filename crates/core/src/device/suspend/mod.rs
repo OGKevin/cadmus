@@ -62,6 +62,10 @@
 //! [`Event::ClearDeferredSuspend`](crate::view::Event::ClearDeferredSuspend)
 //! first so reboot is not raced by a flush.
 //!
+//! [`crate::device::inhibitor::Kind::Sleep`] defers only the Auto Suspend path
+//! ([`start_cycle_from_auto`](orchestrator::start_cycle_from_auto)). Explicit
+//! `start_cycle` still runs. Last Sleep drop does not flush deferred suspend.
+//!
 //! [`crate::device::reschedule_auto_suspend_alarm`] also clears deferred
 //! intent (user activity) without starting a cycle.
 

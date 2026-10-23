@@ -483,3 +483,36 @@ pub fn toggle_keyboard_layout_menu(
             .push(Box::new(keyboard_layout_menu) as Box<dyn View>);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::color::WHITE;
+    use crate::context::test_helpers::create_test_context;
+    use crate::device::soft_suspend::SoftSuspendBackend as _;
+    use crate::view::filler::Filler;
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn toggle_main_menu_holds_sleep_lease_on_cadmus_test() {
+        let mut context = create_test_context().await;
+        context.release_startup_lease();
+        let mut parent = Filler::new(rect![0, 0, 600, 800], WHITE);
+        let mut rq = RenderQueue::new();
+        let target = rect![10, 10, 100, 40];
+        toggle_main_menu(&mut parent, target, Some(true), &mut rq, &mut context);
+        if cfg!(feature = "test") {
+            assert!(context.inhibitor.sleep_active());
+            assert!(
+                context
+                    .inhibitor
+                    .holders()
+                    .iter()
+                    .any(|name| name.as_str() == "sleep-inhibit")
+            );
+        } else {
+            assert!(!context.inhibitor.sleep_active());
+        }
+        toggle_main_menu(&mut parent, target, Some(false), &mut rq, &mut context);
+        assert!(!context.inhibitor.sleep_active());
+    }
+}

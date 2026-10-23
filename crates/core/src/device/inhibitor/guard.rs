@@ -5,7 +5,8 @@
 //! the last guard dropping may start the configured release-grace timer before
 //! `wake_unlock` is written. The last [`Kind::Full`] drop also releases the
 //! nested `"full-inhibit"` wake lock / LED and may fire the Full last-release
-//! notifier.
+//! notifier. The last [`Kind::Sleep`] drop releases the nested `"sleep-inhibit"`
+//! wake lock and does not fire that notifier.
 
 use super::Kind;
 use crate::lease::Lease;
@@ -16,6 +17,8 @@ use crate::lease::Lease;
 /// guard dropping may start the release-grace timer before `wake_unlock` is
 /// written. On [`Kind::Full`], dropping the last named holder (for example
 /// `"ota"`) runs the Full 1→0 transition (nested wake lock, LED, notifier).
+/// On [`Kind::Sleep`], dropping the last named holder (for example
+/// `"main-menu"`) releases the nested `"sleep-inhibit"` wake lock only.
 ///
 /// Holders that reboot must drop Full **first**, then send the reboot event,
 /// so the notifier does not start a suspend cycle across reboot. OTA sends
@@ -39,6 +42,13 @@ impl InhibitorGuard {
     pub(crate) fn full(lease: Lease) -> Self {
         Self {
             kind: Kind::Full,
+            lease: Some(lease),
+        }
+    }
+
+    pub(crate) fn sleep(lease: Lease) -> Self {
+        Self {
+            kind: Kind::Sleep,
             lease: Some(lease),
         }
     }
