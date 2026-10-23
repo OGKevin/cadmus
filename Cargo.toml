@@ -17,6 +17,11 @@ blake3 = "1"
 bytes = "1"
 cc = "1"
 gethostname = "1.1.0"
+gix = { version = "0.90", default-features = false, features = [
+  "revision",
+  "sha1",
+  "status",
+] }
 http = "1"
 http-body-util = "0.1"
 io_tee = "0.1"

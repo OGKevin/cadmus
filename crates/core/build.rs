@@ -27,6 +27,8 @@ use anyhow::{Context, Result, bail};
 use build_deps::build::kobo;
 use build_deps::build::{mupdf_wrapper, native};
 use build_deps::cargo_features::{cargo_feature_env_key, collect_enabled_feature_names};
+use build_deps::thirdparty_versions::{collect_thirdparty_versions, submodule_git_dir};
+use build_deps::versions::LIBRARY_NAMES;
 use nix::unistd::{Uid, User};
 
 const BUNDLED_ASSET_DIRS: &[&str] = &[
@@ -103,29 +105,29 @@ fn try_main() -> Result<()> {
 
     if skip_thirdparty_deps() {
         println!("Skipping thirdparty deps");
-
-        return Ok(());
-    }
-
-    let host = env::var("HOST").context("HOST not set")?;
-    if target == "arm-unknown-linux-gnueabihf" {
-        emit_kobo_link_directives();
-        kobo::ensure_kobo_artifacts(&root)?;
     } else {
-        if host != target {
-            bail!(
-                "cross-compilation detected: HOST={host} != TARGET={target}. Run with CADMUS_SKIP_THIRDPARTY_DEPS=1 or set up cross-compilation support."
-            );
+        let host = env::var("HOST").context("HOST not set")?;
+        if target == "arm-unknown-linux-gnueabihf" {
+            emit_kobo_link_directives();
+            kobo::ensure_kobo_artifacts(&root)?;
+        } else {
+            if host != target {
+                bail!(
+                    "cross-compilation detected: HOST={host} != TARGET={target}. Run with CADMUS_SKIP_THIRDPARTY_DEPS=1 or set up cross-compilation support."
+                );
+            }
+
+            let artifacts =
+                native::ensure_native_artifacts(&root).context("failed to build native deps")?;
+            mupdf_wrapper::build_native_if_needed(&root, &artifacts.include)
+                .context("failed to build mupdf_wrapper")?;
+            emit_native_link_directives(&root, &target)?;
         }
 
-        let artifacts =
-            native::ensure_native_artifacts(&root).context("failed to build native deps")?;
-        mupdf_wrapper::build_native_if_needed(&root, &artifacts.include)
-            .context("failed to build mupdf_wrapper")?;
-        emit_native_link_directives(&root, &target)?;
+        emit_common_link_directives();
     }
 
-    emit_common_link_directives();
+    generate_thirdparty_versions(&root)?;
 
     Ok(())
 }
@@ -526,6 +528,46 @@ fn build_timestamp() -> Result<String> {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs().to_string())
         .or_else(|_| Ok("unknown".to_string()))
+}
+
+/// Writes `OUT_DIR/thirdparty_versions.rs` from the current submodule checkouts.
+///
+/// Call after native or Kobo artifact preparation so stamps match the pin
+/// those helpers just checked out. Still call when `CADMUS_SKIP_THIRDPARTY_DEPS`
+/// is set so rustc always has the generated file.
+fn generate_thirdparty_versions(root: &Path) -> Result<()> {
+    println!(
+        "cargo:rerun-if-changed={}",
+        root.join(".gitmodules").display()
+    );
+    for name in LIBRARY_NAMES {
+        println!(
+            "cargo:rerun-if-changed={}",
+            root.join("thirdparty").join(name).display()
+        );
+        if let Some(module_head) = submodule_git_dir(root, name)
+            .map(|dir| dir.join("HEAD"))
+            .filter(|path| path.exists())
+        {
+            println!("cargo:rerun-if-changed={}", module_head.display());
+        }
+    }
+
+    let versions = collect_thirdparty_versions(root);
+    let entries: String = versions
+        .iter()
+        .map(|(name, version)| format!("    ({name:?}, {version:?}),\n"))
+        .collect();
+    let generated = format!(
+        "/// Bundled third-party submodule versions for this build (`git describe`).\nconst BUILD_THIRDPARTY_DEPS: &[(&str, &str)] = &[\n{entries}];\n"
+    );
+    let out_dir = env::var("OUT_DIR").context("OUT_DIR not set")?;
+    fs::write(
+        Path::new(&out_dir).join("thirdparty_versions.rs"),
+        generated,
+    )
+    .context("failed to write thirdparty_versions.rs")?;
+    Ok(())
 }
 
 fn generate_cargo_features() -> Result<()> {

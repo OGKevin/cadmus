@@ -17,6 +17,7 @@ use sqlx::error::BoxDynError;
 use sqlx::sqlite::{Sqlite, SqliteArgumentsBuffer, SqliteTypeInfo, SqliteValueRef};
 
 include!(concat!(env!("OUT_DIR"), "/cargo_features.rs"));
+include!(concat!(env!("OUT_DIR"), "/thirdparty_versions.rs"));
 
 /// Result of comparing two versions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -120,6 +121,7 @@ pub struct Version {
     pull_request: Option<PullRequestInfo>,
     build: BuildAttributes,
     features: BuildFeatures,
+    thirdparty: BuildThirdpartyDeps,
     build_kind: BuildKind,
 }
 
@@ -142,6 +144,12 @@ pub struct PullRequestInfo {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BuildFeatures {
     features: &'static [&'static str],
+}
+
+/// Bundled third-party submodule versions captured at build time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BuildThirdpartyDeps {
+    deps: &'static [(&'static str, &'static str)],
 }
 
 /// Compile-time build provenance attributes.
@@ -261,14 +269,18 @@ impl Version {
         );
 
         if !self.features.is_empty() {
-            buf.push_str("\t\t\t<tr>\n");
-            buf.push_str("\t\t\t\t<td class=\"key\">Features</td>\n");
-            buf.push_str("\t\t\t\t<td class=\"value\"><ul>\n");
-            for feature in self.features.as_slice() {
-                buf.push_str(&format!("\t\t\t\t\t<li>{feature}</li>\n"));
-            }
-            buf.push_str("\t\t\t\t</ul></td>\n");
-            buf.push_str("\t\t\t</tr>\n");
+            push_sysinfo_list_row(buf, "Features", self.features.as_slice().iter().copied());
+        }
+
+        if !self.thirdparty.is_empty() {
+            push_sysinfo_list_row(
+                buf,
+                "Third-party",
+                self.thirdparty
+                    .as_slice()
+                    .iter()
+                    .map(|(name, version)| format!("{name} {version}")),
+            );
         }
 
         buf.push_str("\t\t\t<tr class=\"sep\"></tr>\n");
@@ -279,6 +291,21 @@ fn push_sysinfo_row(buf: &mut String, key: &str, value: &str) {
     buf.push_str("\t\t\t<tr>\n");
     buf.push_str(&format!("\t\t\t\t<td class=\"key\">{key}</td>\n"));
     buf.push_str(&format!("\t\t\t\t<td class=\"value\">{value}</td>\n"));
+    buf.push_str("\t\t\t</tr>\n");
+}
+
+fn push_sysinfo_list_row(
+    buf: &mut String,
+    key: &str,
+    items: impl IntoIterator<Item = impl std::fmt::Display>,
+) {
+    buf.push_str("\t\t\t<tr>\n");
+    buf.push_str(&format!("\t\t\t\t<td class=\"key\">{key}</td>\n"));
+    buf.push_str("\t\t\t\t<td class=\"value\"><ul>\n");
+    for item in items {
+        buf.push_str(&format!("\t\t\t\t\t<li>{item}</li>\n"));
+    }
+    buf.push_str("\t\t\t\t</ul></td>\n");
     buf.push_str("\t\t\t</tr>\n");
 }
 
@@ -313,6 +340,18 @@ impl BuildFeatures {
     /// Returns the enabled Cargo features.
     pub fn as_slice(&self) -> &'static [&'static str] {
         self.features
+    }
+}
+
+impl BuildThirdpartyDeps {
+    /// Returns whether any bundled third-party versions were recorded.
+    pub fn is_empty(&self) -> bool {
+        self.deps.is_empty()
+    }
+
+    /// Returns the bundled third-party `(name, version)` pairs.
+    pub fn as_slice(&self) -> &'static [(&'static str, &'static str)] {
+        self.deps
     }
 }
 
@@ -686,6 +725,9 @@ pub fn get_version() -> Version {
         features: BuildFeatures {
             features: BUILD_FEATURES,
         },
+        thirdparty: BuildThirdpartyDeps {
+            deps: BUILD_THIRDPARTY_DEPS,
+        },
         build_kind: get_build_kind(),
     }
 }
@@ -851,6 +893,7 @@ mod tests {
             features: BuildFeatures {
                 features: &["kobo", "test"],
             },
+            thirdparty: BuildThirdpartyDeps { deps: &[] },
             build_kind: BuildKind::Test,
         };
         let build_attributes = crate::fl!(
@@ -879,6 +922,7 @@ mod tests {
             features: BuildFeatures {
                 features: &["kobo", "tracing"],
             },
+            thirdparty: BuildThirdpartyDeps { deps: &[] },
             build_kind: BuildKind::Standard,
         };
         let build_attributes = crate::fl!(
@@ -906,6 +950,7 @@ mod tests {
                 timestamp: BuildTimestamp::parse("1234567890"),
             },
             features: BuildFeatures { features: &[] },
+            thirdparty: BuildThirdpartyDeps { deps: &[] },
             build_kind: BuildKind::Standard,
         };
 
@@ -925,6 +970,7 @@ mod tests {
             features: BuildFeatures {
                 features: &["kobo", "tracing"],
             },
+            thirdparty: BuildThirdpartyDeps { deps: &[] },
             build_kind: BuildKind::Standard,
         };
         let mut html = String::new();
@@ -942,6 +988,45 @@ mod tests {
     }
 
     #[test]
+    fn test_version_write_as_html_to_includes_thirdparty_list() {
+        let version = Version {
+            git: GitVersion::parse("v0.9.46").unwrap(),
+            pull_request: None,
+            build: BuildAttributes {
+                user: "builder",
+                host: "host",
+                timestamp: BuildTimestamp::parse("1234567890"),
+            },
+            features: BuildFeatures {
+                features: &["kobo", "tracing"],
+            },
+            thirdparty: BuildThirdpartyDeps {
+                deps: &[("libwebp", "v1.6.0"), ("mupdf", "1.28.0")],
+            },
+            build_kind: BuildKind::Standard,
+        };
+        let mut html = String::new();
+        version.write_as_html_to(&mut html);
+
+        assert!(html.contains("<td class=\"key\">Features</td>"));
+        assert!(html.contains("<li>kobo</li>"));
+        assert!(html.contains("<li>tracing</li>"));
+        assert!(html.contains("<td class=\"key\">Third-party</td>"));
+        assert!(html.contains("<li>libwebp v1.6.0</li>"));
+        assert!(html.contains("<li>mupdf 1.28.0</li>"));
+        assert!(
+            html.find("<li>libwebp v1.6.0</li>").unwrap()
+                < html.find("<li>mupdf 1.28.0</li>").unwrap(),
+            "third-party entries should follow LIBRARY_NAMES order"
+        );
+        assert!(
+            html.find("<td class=\"key\">Features</td>").unwrap()
+                < html.find("<td class=\"key\">Third-party</td>").unwrap(),
+            "third-party row should follow features"
+        );
+    }
+
+    #[test]
     fn test_version_display_without_pull_request() {
         let version = Version {
             git: GitVersion::parse("v0.9.46").unwrap(),
@@ -954,6 +1039,7 @@ mod tests {
             features: BuildFeatures {
                 features: &["kobo"],
             },
+            thirdparty: BuildThirdpartyDeps { deps: &[] },
             build_kind: BuildKind::Standard,
         };
         let build_attributes = crate::fl!(

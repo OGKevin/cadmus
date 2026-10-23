@@ -19,6 +19,9 @@ each library may
 link against earlier entries on the include and library search path. Do not
 reorder without checking link dependencies.
 
+System Info lists each `LIBRARY_NAMES` submodule version from `git describe` of
+that checkout.
+
 ## Submodule inventory
 
 | Library   | Upstream                                                                  | Patched (tiers)           | Contributor notes         |

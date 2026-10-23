@@ -38,6 +38,7 @@ pub mod cmd;
 pub mod manifest;
 pub mod markers;
 pub mod patches;
+pub mod thirdparty_versions;
 pub mod utils;
 pub mod versions;
 
