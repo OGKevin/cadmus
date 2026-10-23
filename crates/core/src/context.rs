@@ -6,7 +6,7 @@ use crate::device::leds::StatusLed;
 use crate::device::rtc::AlarmManager;
 use crate::device::soft_suspend::SoftSuspendBackend as _;
 #[cfg(any(feature = "kobo", docsrs))]
-use crate::device::suspend::SuspendCycle;
+use crate::device::suspend::{DeferredSuspend, SuspendCycle};
 use crate::device::wifi::WifiSession;
 use crate::dictionary::{Dictionary, DictionaryDb, load_dictionary_from_db};
 use crate::font::Fonts;
@@ -73,9 +73,10 @@ pub struct Context<D: Device> {
     /// Flushed on [`Event::FullInhibitCleared`](crate::view::Event::FullInhibitCleared)
     /// unless [`Event::ClearDeferredSuspend`](crate::view::Event::ClearDeferredSuspend)
     /// or [`crate::device::reschedule_auto_suspend_alarm`] cleared it first.
+    /// Auto origin rechecks Sleep on flush; Explicit does not.
     /// Last Sleep drop does not flush.
     #[cfg(any(feature = "kobo", docsrs))]
-    pub(crate) deferred_suspend: bool,
+    pub(crate) deferred_suspend: Option<DeferredSuspend>,
     pub wifi_session: std::sync::Arc<crate::device::wifi::WifiSession>,
     /// Top-level inhibitor: SoftSuspend settings, Full and Sleep holders, wake locks, LED.
     pub inhibitor: Arc<Inhibitor>,
@@ -173,7 +174,7 @@ impl<D: Device> Context<D> {
             #[cfg(any(feature = "kobo", docsrs))]
             suspend: None,
             #[cfg(any(feature = "kobo", docsrs))]
-            deferred_suspend: false,
+            deferred_suspend: None,
             wifi_session,
             inhibitor,
             #[cfg(all(test, feature = "kobo"))]

@@ -61,11 +61,11 @@ Code that needs inhibitor behaviour acquires a guard through
 — see [Inhibitor](inhibitor.md) for API detail, LED patterns, deferred suspend,
 and OTA.
 
-| Goal                                                                   | Acquire             | Effect                                                                                                                                   |
-| ---------------------------------------------------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| Keep device awake for **opportunistic** autosleep between events       | `Kind::SoftSuspend` | Holds kernel `cadmus` wake lock (Linux). **Does not** block explicit suspend.                                                            |
-| Defer Auto Suspend and opportunistic autosleep without blocking exits  | `Kind::Sleep`       | Auto path (`start_cycle_from_auto`) defers; nested `"sleep-inhibit"` wake lock. cadmus-test top menu. Explicit `start_cycle` still runs. |
-| Block **explicit** suspend and user exits on Kobo during critical work | `Kind::Full`        | Defers `start_cycle`; ignores gated user exits. Registers a nested `"full-inhibit"` lease on the SoftSuspend backend.                    |
+| Goal                                                                   | Acquire             | Effect                                                                                                                                                                                                                                                                 |
+| ---------------------------------------------------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Keep device awake for **opportunistic** autosleep between events       | `Kind::SoftSuspend` | Holds kernel `cadmus` wake lock (Linux). **Does not** block explicit suspend.                                                                                                                                                                                          |
+| Defer Auto Suspend and opportunistic autosleep without blocking exits  | `Kind::Sleep`       | Auto path (`start_cycle_from_auto`) defers; nested `"sleep-inhibit"` wake lock (paused during explicit cycle). Pause drops only that nested lease — other SoftSuspend holders (`wifi`, `input`, …) stay held. cadmus-test top menu. Explicit `start_cycle` still runs. |
+| Block **explicit** suspend and user exits on Kobo during critical work | `Kind::Full`        | Defers `start_cycle`; ignores gated user exits. Registers a nested `"full-inhibit"` lease on the SoftSuspend backend.                                                                                                                                                  |
 
 ```rust
 // Background work — block opportunistic nap only

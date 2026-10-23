@@ -40,6 +40,20 @@ use std::time::Duration;
 
 const DEEP_IDLE_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
+/// Origin of a deferred suspend so Full-release flush can pick the right path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum DeferredSuspend {
+    Auto,
+    Explicit,
+}
+
+fn queue_deferred_suspend(context: &mut AppContext, origin: DeferredSuspend) {
+    if context.deferred_suspend == Some(DeferredSuspend::Explicit) {
+        return;
+    }
+    context.deferred_suspend = Some(origin);
+}
+
 /// Whether an explicit suspend cycle is already in flight (prepare task, Suspend
 /// RTC, or stored [`SuspendCycle`]).
 fn is_suspend_active(context: &AppContext, tasks: &[DeviceTask]) -> bool {
@@ -88,6 +102,9 @@ fn arm_deep_idle_lease(context: &mut AppContext) -> bool {
 }
 
 /// Restores autosleep mode and disarms kernel deep idle when leaving a DeepIdle leg.
+///
+/// Re-takes the nested `"sleep-inhibit"` wake lock if Sleep holders remain
+/// (menu still open after kernel wake).
 fn leave_deep_idle_if_needed(context: &mut AppContext) {
     let Some(cycle) = context.suspend.as_mut() else {
         return;
@@ -106,6 +123,7 @@ fn leave_deep_idle_if_needed(context: &mut AppContext) {
             tracing::error!(error = %error, "power_manager() failed while leaving deep idle");
         }
     }
+    context.inhibitor.resume_sleep_wake_lock();
 }
 
 /// Converts auto-power-off days from settings to a chrono duration (minimum one second).
@@ -255,10 +273,9 @@ pub(crate) async fn handle_event(
 /// and user activity ([`crate::device::reschedule_auto_suspend_alarm`]).
 /// Returns whether a flag was actually cleared.
 pub(crate) fn clear_deferred_suspend(context: &mut AppContext, reason: &'static str) -> bool {
-    if !context.deferred_suspend {
+    if context.deferred_suspend.take().is_none() {
         return false;
     }
-    context.deferred_suspend = false;
     tracing::debug!(reason, "cleared deferred suspend intent");
     true
 }
@@ -276,8 +293,8 @@ fn handle_clear_deferred_suspend(context: &mut AppContext) -> EventOutcome {
 ///
 /// Posted by the Full last-release notifier
 /// ([`Inhibitor::set_full_release_notifier`](crate::device::inhibitor::Inhibitor::set_full_release_notifier)).
-/// If [`Context::deferred_suspend`](crate::context::Context::deferred_suspend)
-/// is still set, starts a cycle now that Full is gone.
+/// Explicit origin runs [`start_cycle`] even if Sleep is held. Auto origin
+/// goes through [`start_cycle_from_auto`], which re-defers while Sleep remains.
 async fn handle_full_inhibit_cleared(
     context: &mut AppContext,
     view: &mut dyn View,
@@ -286,8 +303,22 @@ async fn handle_full_inhibit_cleared(
     rq: &mut RenderQueue,
     tasks: &mut Vec<DeviceTask>,
 ) -> EventOutcome {
-    if clear_deferred_suspend(context, "full_inhibit_cleared") {
-        start_cycle(context, view, hub, bus, rq, tasks).await;
+    match context.deferred_suspend.take() {
+        Some(DeferredSuspend::Explicit) => {
+            tracing::debug!(
+                reason = "full_inhibit_cleared",
+                "flushing deferred explicit suspend"
+            );
+            start_cycle(context, view, hub, bus, rq, tasks).await;
+        }
+        Some(DeferredSuspend::Auto) => {
+            tracing::debug!(
+                reason = "full_inhibit_cleared",
+                "flushing deferred Auto suspend"
+            );
+            start_cycle_from_auto(context, view, hub, bus, rq, tasks).await;
+        }
+        None => {}
     }
     EventOutcome::Handled
 }
@@ -638,6 +669,7 @@ async fn schedule_alarms_before_sleep(
 
 /// Arms mem autosleep, kernel deep idle, and periodic [`Event::PollDeepIdleWait`] polling.
 fn start_deep_idle_wait(hub: &Hub, context: &mut AppContext, tasks: &mut Vec<DeviceTask>) {
+    context.inhibitor.pause_sleep_wake_lock();
     let before = Local::now();
     tracing::info!(
         "{}",
@@ -802,6 +834,7 @@ fn perform_suspend_resume(
         framebuffer_dims = ?context.device.framebuffer().dims(),
         "display state before suspend"
     );
+    context.inhibitor.pause_sleep_wake_lock();
     match context.device.power_manager() {
         Ok(power) => {
             if let Err(error) = power.suspend() {
@@ -825,6 +858,7 @@ fn perform_suspend_resume(
             tracing::error!(error = %error, "power_manager() initialization failed for resume");
         }
     }
+    context.inhibitor.resume_sleep_wake_lock();
     tracing::debug!(
         rotation = context.display.rotation,
         dims = ?context.display.dims,
@@ -890,7 +924,9 @@ async fn handle_post_wake(
 /// Auto Suspend idle path: defers while Full **or** Sleep inhibit is held.
 ///
 /// Explicit callers ([`start_cycle`]) still run while Sleep is held. Cover,
-/// power button, and menu Suspend use that path. Last Sleep drop does not
+/// power button, and menu Suspend use that path. Queues
+/// [`DeferredSuspend::Auto`] so [`handle_full_inhibit_cleared`] rechecks Sleep
+/// instead of flushing through `start_cycle`. Last Sleep drop does not
 /// flush deferred suspend; the next gesture's
 /// [`crate::device::reschedule_auto_suspend_alarm`] clears it.
 pub(crate) async fn start_cycle_from_auto(
@@ -904,7 +940,7 @@ pub(crate) async fn start_cycle_from_auto(
     let full = context.inhibitor.full_active();
     let sleep = context.inhibitor.sleep_active();
     if full || sleep {
-        context.deferred_suspend = true;
+        queue_deferred_suspend(context, DeferredSuspend::Auto);
         tracing::debug!(full, sleep, "deferring Auto suspend while inhibit active");
         return;
     }
@@ -921,7 +957,8 @@ pub(crate) async fn start_cycle_from_auto(
 /// is true, sets
 /// [`Context::deferred_suspend`](crate::context::Context::deferred_suspend)
 /// and returns without a cycle. SoftSuspend-only and Sleep holders do not defer
-/// this explicit path. Auto Suspend uses [`start_cycle_from_auto`], which also
+/// this explicit path; Sleep's nested `"sleep-inhibit"` wake lock is paused for
+/// the cycle. Auto Suspend uses [`start_cycle_from_auto`], which also
 /// defers on Sleep.
 pub(crate) async fn start_cycle(
     context: &mut AppContext,
@@ -932,10 +969,12 @@ pub(crate) async fn start_cycle(
     tasks: &mut Vec<DeviceTask>,
 ) {
     if context.inhibitor.full_active() {
-        context.deferred_suspend = true;
+        queue_deferred_suspend(context, DeferredSuspend::Explicit);
         tracing::debug!("deferring suspend while Full inhibit active");
         return;
     }
+
+    context.inhibitor.pause_sleep_wake_lock();
 
     cancel_auto_suspend_alarm(context);
     cancel_suspend_rtcs(context);
@@ -1015,6 +1054,7 @@ pub(in crate::device::suspend) fn finish_cycle(
     });
     leave_deep_idle_if_needed(context);
     context.suspend = None;
+    context.inhibitor.resume_sleep_wake_lock();
     context.set_frontlight(context.settings.frontlight);
     if context.settings.wifi.wants_radio_at_rest() {
         context.wifi_session.set_desired_radio_on(true);
@@ -1080,6 +1120,7 @@ pub(in crate::device::suspend) fn cancel_prepare(
     });
     leave_deep_idle_if_needed(context);
     context.suspend = None;
+    context.inhibitor.resume_sleep_wake_lock();
     if let Some(index) = locate::<Intermission>(view) {
         let rect = *view.child(index).rect();
         view.children_mut().remove(index);

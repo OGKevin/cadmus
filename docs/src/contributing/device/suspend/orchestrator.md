@@ -55,7 +55,10 @@ flowchart TD
 <a href="/api/cadmus_core/device/rtc/enum.AlarmType.html#variant.Suspend">`AlarmType::Suspend`</a>
 mean **enter sleep now** (after prepare), not “start a new cycle”.
 
-Full inhibit defers `start_cycle`. Sleep defers the Auto path only — [Inhibitor § Deferred explicit suspend](inhibitor.md#deferred-explicit-suspend).
+Full inhibit defers `start_cycle` as Explicit origin. Sleep defers the Auto
+path only. `FullInhibitCleared` flushes Auto through `start_cycle_from_auto`
+(Sleep still defers) and Explicit through `start_cycle`. Explicit Sleep cycles
+pause the nested `"sleep-inhibit"` wake lock; kernel wake re-takes it if Sleep is still held — [Inhibitor § Deferred explicit suspend](inhibitor.md#deferred-explicit-suspend).
 
 ## Kind and phase
 

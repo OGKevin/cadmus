@@ -185,11 +185,28 @@ impl Inhibitor {
     /// Returns whether any [`Kind::Sleep`] holder is active.
     ///
     /// The Auto Suspend path defers while this is true. Explicit `start_cycle`
-    /// (cover, power button, menu Suspend) still runs. User exits and live
+    /// (cover, power button, menu Suspend) still runs; that path pauses the
+    /// nested `"sleep-inhibit"` wake lock for the cycle. User exits and live
     /// AutoPowerOff are not blocked.
     #[cfg(any(test, feature = "kobo", docsrs))]
     pub(crate) fn sleep_active(&self) -> bool {
         self.sleep.sleep_active()
+    }
+
+    /// Drops the nested `"sleep-inhibit"` wake lock without releasing Sleep holders.
+    ///
+    /// [`start_cycle`](crate::device::suspend::start_cycle) calls this so an
+    /// explicit cycle can sleep while the menu (or other Sleep holder) stays up.
+    /// Other SoftSuspend holders (`wifi`, `input`, …) keep their leases.
+    #[cfg(any(feature = "kobo", docsrs))]
+    pub(crate) fn pause_sleep_wake_lock(&self) {
+        self.sleep.pause_wake_lock();
+    }
+
+    /// Restores `"sleep-inhibit"` after an explicit cycle if Sleep holders remain.
+    #[cfg(any(feature = "kobo", docsrs))]
+    pub(crate) fn resume_sleep_wake_lock(&self) {
+        self.sleep.resume_wake_lock();
     }
 
     /// Acquires a named inhibitor guard.

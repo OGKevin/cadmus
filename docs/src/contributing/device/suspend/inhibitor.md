@@ -18,7 +18,7 @@ Overview of how this relates to
 | Kind                                                                                             | Wake lock                      | Blocks [explicit suspend](orchestrator.md) on Kobo | Blocks opportunistic [soft suspend](soft-suspend.md) | Blocks Kobo user exits |
 | ------------------------------------------------------------------------------------------------ | ------------------------------ | -------------------------------------------------- | ---------------------------------------------------- | ---------------------- |
 | <a href="/api/cadmus_core/device/inhibitor/enum.Kind.html#variant.SoftSuspend">`SoftSuspend`</a> | Yes (Linux)                    | **No**                                             | **Yes** (while guard held)                           | No                     |
-| <a href="/api/cadmus_core/device/inhibitor/enum.Kind.html#variant.Sleep">`Sleep`</a>             | Yes (nested `"sleep-inhibit"`) | Auto Suspend path only                             | **Yes**                                              | No                     |
+| <a href="/api/cadmus_core/device/inhibitor/enum.Kind.html#variant.Sleep">`Sleep`</a>             | Yes (nested `"sleep-inhibit"`) | **No**                                             | **Yes**                                              | No                     |
 | <a href="/api/cadmus_core/device/inhibitor/enum.Kind.html#variant.Full">`Full`</a>               | Yes (nested `"full-inhibit"`)  | **Yes**                                            | **Yes**                                              | Yes                    |
 
 ## Keep the device awake
@@ -34,9 +34,15 @@ for the lifetime of the work or UI. Dropping it releases the lease.
   can still run.
 - **`Kind::Sleep`** blocks opportunistic autosleep and Auto Suspend without
   blocking user exits or explicit suspend (menu Suspend, power button, cover).
-  Live AutoPowerOff is not blocked. No battery gate, no status LED, last drop
-  does not post `FullInhibitCleared`. cadmus-test holds this kind while the top
-  menu (`ViewId::MainMenu`) is open:
+  Explicit `start_cycle` pauses the nested `"sleep-inhibit"` wake lock for
+  kernel sleep so DeepIdle / Classic sleep is not pinned. Pause drops only
+  that nested lease; other SoftSuspend holders (`wifi`, `input`, …) stay
+  held. Kernel wake and `finish_cycle` re-take `"sleep-inhibit"` if Sleep
+  holders remain (top menu still open).
+  Live AutoPowerOff is not
+  blocked. No battery gate, no status LED, last drop does not post
+  `FullInhibitCleared`. cadmus-test holds this kind while the top menu
+  (`ViewId::MainMenu`) is open:
 
   ```rust
   let _guard = inhibitor.acquire(Kind::Sleep, "main-menu")?;
@@ -68,16 +74,19 @@ battery-gated.
 
 While any Full holder is active,
 <a href="/api/cadmus_core/device/suspend/orchestrator/fn.start_cycle.html">`start_cycle`</a>
-sets `Context::deferred_suspend` and returns without a cycle.
+queues `Context::deferred_suspend` as **Explicit** and returns without a cycle.
 
 The Auto Suspend path
 (<a href="/api/cadmus_core/device/suspend/orchestrator/fn.start_cycle_from_auto.html">`start_cycle_from_auto`</a>)
-also defers while Sleep is held. Explicit `start_cycle` (cover, power button,
-menu Suspend) still runs during Sleep.
+queues **Auto** while Full or Sleep is held. Explicit `start_cycle` (cover,
+power button, menu Suspend) still runs during Sleep. Nested `"sleep-inhibit"`
+is paused for kernel sleep and re-taken on wake if Sleep holders remain.
 
 When the last Full holder drops, Kobo posts
 <a href="/api/cadmus_core/view/enum.Event.html#variant.FullInhibitCleared">`Event::FullInhibitCleared`</a>;
-the orchestrator flushes on the main loop. Last Sleep drop does **not** flush.
+the orchestrator flushes on the main loop. Auto origin goes through
+`start_cycle_from_auto` (Sleep still defers). Explicit origin runs
+`start_cycle` even if Sleep is held. Last Sleep drop does **not** flush.
 The next user gesture calls
 <a href="/api/cadmus_core/device/fn.reschedule_auto_suspend_alarm.html">`reschedule_auto_suspend_alarm`</a>,
 which clears deferred intent without starting a cycle.
