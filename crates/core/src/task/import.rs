@@ -16,13 +16,15 @@ use tokio_util::sync::CancellationToken;
 ///
 /// When `force` is `false` the import is incremental: files whose stored `mtime` and
 /// `file_size` have not changed are skipped without re-fingerprinting. When `force` is
-/// `true` every file is re-fingerprinted regardless.
+/// `true` every file is re-fingerprinted regardless and metadata is re-extracted for
+/// books whose fingerprint is unchanged.
 pub struct ImportTask {
     database: Database,
     settings: Settings,
     /// Which library to import. `None` means all configured libraries.
     library_index: Option<usize>,
-    /// When `true`, skip the mtime/size cache and re-fingerprint every file.
+    /// When `true`, skip the mtime/size cache, re-fingerprint every file and
+    /// re-extract metadata for books whose fingerprint is unchanged.
     force: bool,
     install_dir: PathBuf,
     inhibitor: Arc<Inhibitor>,

@@ -25,8 +25,11 @@ re-import:
 4. Confirm when prompted.
 
 This bypasses the incremental import cache and re-fingerprints all files in your
-library directories. Be aware that this can take time and drain the battery for
-large libraries, so keep your device plugged in while it runs.
+library directories. It also reads the title, author, and other details from
+your books again, so changes to your metadata settings apply to books you have
+already imported. If Cadmus can't read a book's details, it keeps what it had
+before. Be aware that this can take time and drain the battery for large
+libraries, so keep your device plugged in while it runs.
 
 ## If import is interrupted
 

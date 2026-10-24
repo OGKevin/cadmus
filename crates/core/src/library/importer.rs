@@ -35,6 +35,16 @@ struct PendingRelocation {
     file_size: u64,
 }
 
+/// An already-known book whose metadata a forced import re-extracts even
+/// though its fingerprint did not change.
+///
+/// `file` carries the current on-disk state so the refreshed record also heals
+/// a moved path or stale size.
+struct ForcedRefresh {
+    fp: Fp,
+    file: FileInfo,
+}
+
 struct ProgressTracker {
     last_sent: Instant,
     last_percent: u8,
@@ -93,6 +103,7 @@ struct ScanResult {
     path_updates: Vec<PathUpdate>,
     books_to_delete: Vec<Fp>,
     pending_relocations: Vec<PendingRelocation>,
+    forced_refreshes: Vec<ForcedRefresh>,
     thumbnails_to_delete: Vec<Fp>,
 }
 
@@ -105,6 +116,7 @@ impl ScanResult {
             path_updates: Vec::new(),
             books_to_delete: Vec::new(),
             pending_relocations: Vec::new(),
+            forced_refreshes: Vec::new(),
             thumbnails_to_delete: Vec::new(),
         }
     }
@@ -419,6 +431,20 @@ async fn process_scan_entry<'a>(
                     "pending book found but kind not allowed; leaving pending"
                 );
             }
+        } else if let Some(kind) =
+            allowed_kind.filter(|kind| force && settings.metadata_kinds.contains(kind))
+        {
+            debug!(fp = %fp, path = %relat.display(), "queueing forced metadata refresh");
+            result.forced_refreshes.push(ForcedRefresh {
+                fp,
+                file: FileInfo {
+                    path: relat.to_path_buf(),
+                    absolute_path: path.to_path_buf(),
+                    kind: Some(kind),
+                    size: i64::from(current_size) as u64,
+                    mtime: current_mtime,
+                },
+            });
         }
 
         send_progress(ctx.hub, ctx.notif_id, tracker, idx, total);
@@ -662,6 +688,55 @@ async fn resolve_relocations(
     }
 }
 
+/// Re-extracts metadata for books a forced import found unchanged.
+///
+/// Starts from the stored record so that anything extraction cannot read keeps
+/// its current value: an unreadable document, a panicked extractor, or a failed
+/// lookup all leave the stored metadata untouched.
+#[cfg_attr(
+    feature = "tracing",
+    tracing::instrument(skip(db, home, install_dir, refreshes, result))
+)]
+async fn resolve_forced_refreshes(
+    db: &LibraryDb,
+    library_id: i64,
+    home: &Path,
+    install_dir: &Path,
+    refreshes: Vec<ForcedRefresh>,
+    result: &mut ScanResult,
+) {
+    let fps: Vec<Fp> = refreshes.iter().map(|refresh| refresh.fp).collect();
+    let mut stored = match db.batch_get_books_by_fingerprints(library_id, &fps).await {
+        Ok(books) => books,
+        Err(error) => {
+            tracing::error!(error = %error, "skipping forced refresh after fingerprint lookup failed");
+            return;
+        }
+    };
+
+    for refresh in refreshes {
+        let Some(mut info) = stored.remove(&refresh.fp) else {
+            continue;
+        };
+        info.file = refresh.file;
+        let fallback = info.clone();
+        let info = extract_metadata(home, install_dir, info)
+            .await
+            .unwrap_or_else(|| {
+                warn!(
+                    fp = %refresh.fp,
+                    path = %fallback.file.path.display(),
+                    "forced metadata refresh failed; keeping stored metadata"
+                );
+                fallback
+            });
+        result.books_to_update.push(BookWrite {
+            fp: refresh.fp,
+            info,
+        });
+    }
+}
+
 /// Book paths the walk did not report, split into the ones that are provably
 /// gone and the ones that are merely invisible to this scan.
 ///
@@ -783,7 +858,9 @@ async fn flush_to_db(db: &LibraryDb, library_id: i64, result: ScanResult, purged
 /// When `force` is `false` (incremental mode), files whose stored `mtime` and
 /// `file_size` have not changed since the last import are skipped without
 /// re-fingerprinting. When `force` is `true` every file is re-fingerprinted
-/// regardless of its stored values.
+/// regardless of its stored values, and books whose fingerprint is unchanged
+/// have their metadata re-extracted when their kind is in `metadata_kinds`.
+/// Metadata that cannot be re-extracted keeps its stored value.
 ///
 /// Sends pinned progress notifications to `hub` via `notif_id` while running.
 /// Checks `shutdown` between entries and exits early if shutdown is requested.
@@ -957,6 +1034,18 @@ async fn run_scan(
             std::mem::take(&mut result.pending_relocations),
             &mut result,
             &book_statuses,
+        )
+        .await;
+    }
+
+    if !result.forced_refreshes.is_empty() {
+        resolve_forced_refreshes(
+            db,
+            library_id,
+            home,
+            install_dir,
+            std::mem::take(&mut result.forced_refreshes),
+            &mut result,
         )
         .await;
     }
@@ -1653,5 +1742,178 @@ mod tests {
             unreadable.is_empty(),
             "hidden entries must not be reported as unreadable"
         );
+    }
+
+    fn html_settings() -> ImportSettings {
+        ImportSettings {
+            allowed_kinds: [FileExtension::Html, FileExtension::Epub]
+                .into_iter()
+                .collect(),
+            metadata_kinds: [FileExtension::Html, FileExtension::Epub]
+                .into_iter()
+                .collect(),
+            ..ImportSettings::default()
+        }
+    }
+
+    async fn run_import_with(
+        lib: &Library,
+        dir: &Path,
+        settings: &ImportSettings,
+        force: bool,
+    ) -> ImportOutcome {
+        let (tx, _rx) = crate::view::hub_channel();
+        run(
+            &lib.db,
+            lib.library_id,
+            dir,
+            Path::new(""),
+            settings,
+            force,
+            &tx,
+            ViewId::MessageNotif(0),
+            &CancellationToken::new(),
+        )
+        .await
+    }
+
+    async fn insert_stored_book(
+        lib: &Library,
+        dir: &Path,
+        name: &str,
+        kind: FileExtension,
+        title: &str,
+    ) -> Fp {
+        let abs = dir.join(name);
+        let fp = abs.fingerprint().await.expect("fingerprint");
+        let info = Info {
+            title: title.to_string(),
+            file: FileInfo {
+                path: PathBuf::from(name),
+                absolute_path: abs,
+                kind: Some(kind),
+                size: 1,
+                mtime: None,
+            },
+            ..Default::default()
+        };
+        lib.db
+            .batch_insert_books(lib.library_id, &[(fp, &info)])
+            .await
+            .expect("insert stored book");
+        fp
+    }
+
+    async fn stored_title(lib: &Library, fp: Fp) -> String {
+        lib.db
+            .get_all_books(lib.library_id)
+            .await
+            .expect("shelf")
+            .into_iter()
+            .find(|book| book.fp == Some(fp))
+            .expect("stored book")
+            .title
+    }
+
+    const HTML_BOOK: &[u8] = b"<html><head><title>Fresh</title></head><body>text</body></html>";
+
+    #[tokio::test]
+    async fn forced_import_refreshes_metadata_of_unchanged_fingerprint() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("book.html"), HTML_BOOK).expect("write");
+        let db = create_migrated_db().await;
+        let lib = Library::new(dir.path(), &db, "test")
+            .await
+            .expect("library");
+        let fp =
+            insert_stored_book(&lib, dir.path(), "book.html", FileExtension::Html, "Stale").await;
+
+        let outcome = run_import_with(&lib, dir.path(), &html_settings(), true).await;
+
+        assert_eq!(outcome, ImportOutcome::Completed);
+        assert_eq!(stored_title(&lib, fp).await, "Fresh");
+    }
+
+    #[tokio::test]
+    async fn ordinary_import_keeps_metadata_of_unchanged_fingerprint() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("book.html"), HTML_BOOK).expect("write");
+        let db = create_migrated_db().await;
+        let lib = Library::new(dir.path(), &db, "test")
+            .await
+            .expect("library");
+        let fp =
+            insert_stored_book(&lib, dir.path(), "book.html", FileExtension::Html, "Stale").await;
+
+        run_import_with(&lib, dir.path(), &html_settings(), false).await;
+
+        assert_eq!(stored_title(&lib, fp).await, "Stale");
+    }
+
+    #[tokio::test]
+    async fn forced_import_skips_kinds_outside_metadata_kinds() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("book.html"), HTML_BOOK).expect("write");
+        let db = create_migrated_db().await;
+        let lib = Library::new(dir.path(), &db, "test")
+            .await
+            .expect("library");
+        let fp =
+            insert_stored_book(&lib, dir.path(), "book.html", FileExtension::Html, "Stale").await;
+        let settings = ImportSettings {
+            metadata_kinds: [FileExtension::Epub].into_iter().collect(),
+            ..html_settings()
+        };
+
+        run_import_with(&lib, dir.path(), &settings, true).await;
+
+        assert_eq!(stored_title(&lib, fp).await, "Stale");
+    }
+
+    #[tokio::test]
+    async fn forced_import_keeps_stored_metadata_when_extraction_fails() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("broken.epub"), b"not an epub").expect("write");
+        let db = create_migrated_db().await;
+        let lib = Library::new(dir.path(), &db, "test")
+            .await
+            .expect("library");
+        let fp = insert_stored_book(
+            &lib,
+            dir.path(),
+            "broken.epub",
+            FileExtension::Epub,
+            "Keep me",
+        )
+        .await;
+
+        let outcome = run_import_with(&lib, dir.path(), &html_settings(), true).await;
+
+        assert_eq!(outcome, ImportOutcome::Completed);
+        assert_eq!(stored_title(&lib, fp).await, "Keep me");
+    }
+
+    #[tokio::test]
+    async fn changed_fingerprint_extracts_metadata_as_new_book() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db = create_migrated_db().await;
+        let lib = Library::new(dir.path(), &db, "test")
+            .await
+            .expect("library");
+        std::fs::write(
+            dir.path().join("book.html"),
+            b"<html><head><title>Old</title></head></html>",
+        )
+        .expect("write old");
+        let old_fp =
+            insert_stored_book(&lib, dir.path(), "book.html", FileExtension::Html, "Old").await;
+        std::fs::write(dir.path().join("book.html"), HTML_BOOK).expect("rewrite");
+
+        run_import_with(&lib, dir.path(), &html_settings(), false).await;
+
+        let books = lib.db.get_all_books(lib.library_id).await.expect("shelf");
+        assert_eq!(books.len(), 1);
+        assert_ne!(books[0].fp, Some(old_fp));
+        assert_eq!(books[0].title, "Fresh");
     }
 }
