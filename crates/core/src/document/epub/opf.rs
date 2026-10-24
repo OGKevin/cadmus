@@ -1,7 +1,6 @@
-//! Lightweight, roxmltree-backed parsers for EPUB structural XML files.
+//! xml5ever-backed parsers for EPUB structural XML files.
 //!
-//! Three kinds of XML are handled here — none of which are HTML and none of
-//! which require byte-offset tracking:
+//! Three kinds of XML are handled here, none of which need byte-offset tracking:
 //!
 //! - `META-INF/container.xml` — locates the OPF root file.
 //! - The OPF (Open Packaging Format) file — manifest, spine, metadata.
@@ -12,27 +11,20 @@
 
 use crate::document::Location;
 use crate::document::TocEntry;
+use crate::document::html::dom::NodeRef;
+use crate::document::html::xml::parse_xml;
 use crate::helpers::{Normalize, decode_entities};
 use percent_encoding::percent_decode_str;
 use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
 
-/// XML namespace URI for Dublin Core Elements 1.1.
-///
-/// EPUB OPF files use Dublin Core to store book metadata such as `<dc:title>`,
-/// `<dc:creator>`, `<dc:language>`, etc. The `dc:` prefix in the source is a
-/// local alias that can vary between EPUBs; roxmltree resolves it to this URI,
-/// which is the stable identifier used for matching.
-const DC_NS: &str = "http://purl.org/dc/elements/1.1/";
-
 /// Extracts the OPF root-file path from a `META-INF/container.xml` string.
 ///
-/// Returns `None` if the document is malformed or the `full-path` attribute
-/// is missing.
+/// Returns `None` if `rootfile` or its `full-path` attribute is missing.
 pub fn opf_path_from_container(text: &str) -> Option<String> {
-    let doc = roxmltree::Document::parse(text).ok()?;
-    doc.descendants()
-        .find(|n| n.is_element() && n.tag_name().name() == "rootfile")
+    parse_xml(text)
+        .root()
+        .find("rootfile")
         .and_then(|n| n.attribute("full-path"))
         .map(String::from)
 }
@@ -57,16 +49,18 @@ pub struct OpfDocument {
 impl OpfDocument {
     /// Parse an OPF source string, extracting all fields eagerly.
     ///
-    /// Returns `None` if the XML is malformed.
+    /// Returns `None` when the tree has no `<package>` element.
     pub fn parse(source: String) -> Option<Self> {
-        let doc = roxmltree::Document::parse(&source).ok()?;
+        let tree = parse_xml(&source);
+        let root = tree.root();
+        root.find("package")?;
 
-        let manifest = extract_manifest(&doc);
-        let (spine_idrefs, spine_toc_id) = extract_spine(&doc);
-        let dc_metadata = extract_dc_metadata(&doc);
-        let cover_href = extract_cover_href(&doc, &manifest);
-        let series = extract_series(&doc);
-        let categories = extract_categories(&doc);
+        let manifest = extract_manifest(root);
+        let (spine_idrefs, spine_toc_id) = extract_spine(root);
+        let dc_metadata = extract_dc_metadata(root);
+        let cover_href = extract_cover_href(root, &manifest);
+        let series = extract_series(root);
+        let categories = extract_categories(root);
 
         Some(OpfDocument {
             manifest,
@@ -100,23 +94,6 @@ impl OpfDocument {
     /// together with the `<spine toc="...">` attribute value if present.
     pub fn spine_idrefs(&self) -> (&[String], Option<&str>) {
         (&self.spine_idrefs, self.spine_toc_id.as_deref())
-    }
-
-    /// Returns the href of the TOC file: first tries `<spine toc="ncx-id">`,
-    /// then looks for a manifest item with `properties="nav"`.
-    pub fn toc_href(&self) -> Option<String> {
-        let via_ncx = self
-            .spine_toc_id
-            .as_deref()
-            .and_then(|ncx_id| self.manifest.iter().find(|e| e.id == ncx_id))
-            .map(|e| e.href.clone());
-
-        via_ncx.or_else(|| {
-            self.manifest
-                .iter()
-                .find(|e| e.properties.split_whitespace().any(|p| p == "nav"))
-                .map(|e| e.href.clone())
-        })
     }
 
     /// Returns the value of a Dublin Core metadata element by local name,
@@ -154,87 +131,109 @@ pub struct ManifestEntry {
     pub properties: String,
 }
 
-fn extract_manifest(doc: &roxmltree::Document<'_>) -> Vec<ManifestEntry> {
-    doc.descendants()
-        .filter(|n| n.is_element() && n.tag_name().name() == "manifest")
-        .flat_map(|manifest| {
-            manifest
-                .children()
-                .filter(|n| n.is_element() && n.tag_name().name() == "item")
-                .filter_map(|item| {
-                    let id = item.attribute("id")?;
-                    let href = item.attribute("href")?;
-                    Some(ManifestEntry {
-                        id: id.to_string(),
-                        href: href.to_string(),
-                        media_type: item.attribute("media-type").unwrap_or("").to_string(),
-                        properties: item.attribute("properties").unwrap_or("").to_string(),
-                    })
-                })
-                .collect::<Vec<_>>()
+// shortcut: DC elems matched by `dc:` prefix, not URI. Upgrade if an EPUB uses another prefix.
+fn is_dc(node: NodeRef<'_>) -> bool {
+    node.tag_qualified_name()
+        .is_some_and(|name| name.starts_with("dc:"))
+}
+
+fn extract_manifest(root: NodeRef<'_>) -> Vec<ManifestEntry> {
+    let Some(manifest) = root.find("manifest") else {
+        tracing::debug!("OPF has no manifest element");
+        return Vec::new();
+    };
+
+    manifest
+        .children()
+        .filter(|n| n.tag_name() == Some("item"))
+        .filter_map(|item| {
+            let (Some(id), Some(href)) = (item.attribute("id"), item.attribute("href")) else {
+                tracing::debug!(
+                    id = ?item.attribute("id"),
+                    href = ?item.attribute("href"),
+                    "Skipping manifest item without id or href"
+                );
+                return None;
+            };
+            let media_type = item.attribute("media-type").unwrap_or("");
+            if media_type.is_empty() {
+                tracing::debug!(id, "Manifest item has no media-type");
+            }
+            Some(ManifestEntry {
+                id: id.to_string(),
+                href: href.to_string(),
+                media_type: media_type.to_string(),
+                properties: item.attribute("properties").unwrap_or("").to_string(),
+            })
         })
         .collect()
 }
 
-fn extract_spine(doc: &roxmltree::Document<'_>) -> (Vec<String>, Option<String>) {
-    let spine = doc
-        .descendants()
-        .find(|n| n.is_element() && n.tag_name().name() == "spine");
+fn extract_spine(root: NodeRef<'_>) -> (Vec<String>, Option<String>) {
+    let Some(spine) = root.find("spine") else {
+        tracing::debug!("OPF has no spine element");
+        return (Vec::new(), None);
+    };
 
-    let toc_id = spine
-        .as_ref()
-        .and_then(|s| s.attribute("toc"))
-        .map(String::from);
-
+    let toc_id = spine.attribute("toc").map(String::from);
     let idrefs = spine
-        .iter()
-        .flat_map(|s| s.children())
-        .filter(|n| n.is_element() && n.tag_name().name() == "itemref")
-        .filter_map(|item| item.attribute("idref").map(String::from))
+        .children()
+        .filter(|n| n.tag_name() == Some("itemref"))
+        .filter_map(|item| {
+            let idref = item.attribute("idref");
+            if idref.is_none() {
+                tracing::debug!(
+                    attributes = ?item.attributes(),
+                    "Skipping spine itemref without idref"
+                );
+            }
+            idref.map(String::from)
+        })
         .collect();
-
     (idrefs, toc_id)
 }
 
-fn extract_dc_metadata(doc: &roxmltree::Document<'_>) -> HashMap<String, String> {
+fn extract_dc_metadata(root: NodeRef<'_>) -> HashMap<String, String> {
     let mut map = HashMap::new();
-    let Some(md) = doc
-        .descendants()
-        .find(|n| n.is_element() && n.tag_name().name() == "metadata")
-    else {
+    let Some(md) = root.find("metadata") else {
         return map;
     };
 
     for child in md.children().filter(|n| n.is_element()) {
-        if child.tag_name().namespace() == Some(DC_NS)
-            && let Some(text) = child.text()
-        {
-            map.entry(child.tag_name().name().to_string())
-                .or_insert_with(|| decode_entities(text).into_owned());
+        if is_dc(child) {
+            let text = child.text();
+            if text.is_empty() {
+                tracing::debug!(
+                    name = ?child.tag_name(),
+                    "Ignoring Dublin Core element with empty text"
+                );
+            } else {
+                map.entry(child.tag_name().unwrap_or("").to_string())
+                    .or_insert_with(|| decode_entities(&text).into_owned());
+            }
         }
     }
 
     map
 }
 
-fn extract_cover_href(doc: &roxmltree::Document<'_>, manifest: &[ManifestEntry]) -> Option<String> {
-    let via_meta = doc
-        .descendants()
-        .find(|n| n.is_element() && n.tag_name().name() == "metadata")
+fn extract_cover_href(root: NodeRef<'_>, manifest: &[ManifestEntry]) -> Option<String> {
+    let via_meta = root
+        .find("metadata")
         .and_then(|md| {
-            md.children().find(|n| {
-                n.is_element()
-                    && n.tag_name().name() == "meta"
-                    && n.attribute("name") == Some("cover")
-            })
+            md.children()
+                .find(|n| n.tag_name() == Some("meta") && n.attribute("name") == Some("cover"))
         })
         .and_then(|meta| meta.attribute("content").map(String::from))
-        .and_then(|cover_id| {
-            manifest
-                .iter()
-                .find(|e| e.id == cover_id)
-                .map(|e| e.href.clone())
-        });
+        .and_then(
+            |cover_id| match manifest.iter().find(|e| e.id == cover_id) {
+                Some(entry) => Some(entry.href.clone()),
+                None => {
+                    tracing::debug!(cover_id, "Cover meta id has no matching manifest item");
+                    None
+                }
+            },
+        );
 
     via_meta.or_else(|| {
         manifest
@@ -247,64 +246,65 @@ fn extract_cover_href(doc: &roxmltree::Document<'_>, manifest: &[ManifestEntry])
     })
 }
 
-fn extract_series(doc: &roxmltree::Document<'_>) -> Option<(String, String)> {
-    let md = doc
-        .descendants()
-        .find(|n| n.is_element() && n.tag_name().name() == "metadata")?;
-
+fn extract_series(root: NodeRef<'_>) -> Option<(String, String)> {
+    let md = root.find("metadata")?;
     let mut title = None;
     let mut index = None;
 
-    for child in md.children().filter(|n| n.is_element()) {
-        if child.tag_name().name() == "meta" {
-            match child.attribute("name") {
-                Some("calibre:series") => {
-                    title = child
-                        .attribute("content")
-                        .map(|s| decode_entities(s).into_owned());
-                }
-                Some("calibre:series_index") => {
-                    index = child
-                        .attribute("content")
-                        .map(|s| decode_entities(s).into_owned());
-                }
-                _ => {}
+    for child in md.children().filter(|n| n.tag_name() == Some("meta")) {
+        match child.attribute("name") {
+            Some("calibre:series") => {
+                title = child
+                    .attribute("content")
+                    .map(|s| decode_entities(s).into_owned());
             }
-            if child.attribute("property") == Some("belongs-to-collection") {
-                title = child.text().map(|t| decode_entities(t).into_owned());
-            } else if child.attribute("property") == Some("group-position") {
-                index = child.text().map(|t| decode_entities(t).into_owned());
+            Some("calibre:series_index") => {
+                index = child
+                    .attribute("content")
+                    .map(|s| decode_entities(s).into_owned());
             }
+            Some(name) => tracing::debug!(
+                name,
+                content = child.attribute("content").unwrap_or_default(),
+                "Ignoring unrecognized series meta name"
+            ),
+            None => tracing::debug!(
+                property = child.attribute("property").unwrap_or_default(),
+                content = child.attribute("content").unwrap_or_default(),
+                "Series meta without a name attribute"
+            ),
+        }
+        if child.attribute("property") == Some("belongs-to-collection") {
+            title = Some(decode_entities(&child.text()).into_owned());
+        } else if child.attribute("property") == Some("group-position") {
+            index = Some(decode_entities(&child.text()).into_owned());
         }
     }
 
     title.zip(index)
 }
 
-fn extract_categories(doc: &roxmltree::Document<'_>) -> BTreeSet<String> {
+fn extract_categories(root: NodeRef<'_>) -> BTreeSet<String> {
     let mut result = BTreeSet::new();
-
-    let Some(md) = doc
-        .descendants()
-        .find(|n| n.is_element() && n.tag_name().name() == "metadata")
-    else {
+    let Some(md) = root.find("metadata") else {
         return result;
     };
 
-    for child in md.children().filter(|n| n.is_element()) {
-        if child.tag_name().name() == "subject"
-            && child.tag_name().namespace() == Some(DC_NS)
-            && let Some(text) = child.text()
-        {
-            let subject = decode_entities(text);
-            if subject.contains(" / ") {
-                for categ in subject.split('|') {
-                    let start_index = categ.find(" - ").map(|i| i + 3).unwrap_or(0);
-                    result.insert(categ[start_index..].trim().replace(" / ", "."));
-                }
-            } else {
-                result.insert(subject.into_owned());
+    for child in md
+        .children()
+        .filter(|n| n.tag_name() == Some("subject") && is_dc(*n))
+    {
+        let text = child.text();
+        let subject = decode_entities(&text);
+        if subject.contains(" / ") {
+            for categ in subject.split('|') {
+                let start_index = categ.find(" - ").map(|i| i + 3).unwrap_or(0);
+                result.insert(categ[start_index..].trim().replace(" / ", "."));
             }
+        } else if subject.is_empty() {
+            tracing::debug!("Ignoring Dublin Core subject with empty text");
+        } else {
+            result.insert(subject.into_owned());
         }
     }
 
@@ -326,15 +326,18 @@ pub(super) fn epub_type_has_toc(value: &str) -> bool {
     value.split_whitespace().any(|token| token == "toc")
 }
 
-fn nav_is_toc(node: &roxmltree::Node<'_, '_>) -> bool {
-    if !node.is_element() || node.tag_name().name() != "nav" {
+fn nav_is_toc(node: NodeRef<'_>) -> bool {
+    if node.tag_name() != Some("nav") {
         return false;
     }
     if node.attribute("epub:type").is_some_and(epub_type_has_toc) {
         return true;
     }
-    node.attributes()
-        .any(|a| a.name() == "type" && epub_type_has_toc(a.value()))
+    node.attributes().is_some_and(|attrs| {
+        attrs
+            .iter()
+            .any(|(name, value)| name == "type" && epub_type_has_toc(value))
+    })
 }
 
 /// Parses an NCX or EPUB3 Navigation Document and returns a [`Toc`].
@@ -343,44 +346,49 @@ fn nav_is_toc(node: &roxmltree::Node<'_, '_>) -> bool {
 /// `is_ncx` selects the NCX `navMap` vs EPUB 3 `nav` document, matching the OPF
 /// spine/manifest kind rather than the filename.
 pub fn parse_toc(text: &str, name: &str, is_ncx: bool) -> Option<Toc> {
-    let doc = roxmltree::Document::parse(text).ok()?;
+    let tree = parse_xml(text);
     let toc_dir = Path::new(name).parent().unwrap_or_else(|| Path::new(""));
     let mut index = 0;
 
     let entries = if is_ncx {
-        let map = doc
-            .descendants()
-            .find(|n| n.is_element() && n.tag_name().name() == "navMap")?;
+        let Some(map) = tree.root().find("navMap") else {
+            tracing::debug!(name, "NCX has no navMap element");
+            return None;
+        };
         walk_ncx(map, toc_dir, &mut index)
     } else {
-        let nav = doc.descendants().find(|n| nav_is_toc(n))?;
-        let ol = nav
-            .children()
-            .find(|n| n.is_element() && n.tag_name().name() == "ol")?;
+        let Some(nav) = tree.root().descendants().find(|n| nav_is_toc(*n)) else {
+            tracing::debug!(name, "Navigation document has no toc nav element");
+            return None;
+        };
+        let Some(ol) = nav.children().find(|n| n.tag_name() == Some("ol")) else {
+            tracing::debug!(name, "Navigation document toc nav has no ol element");
+            return None;
+        };
         walk_nav(ol, toc_dir, &mut index)
     };
 
     Some(Toc { entries })
 }
 
-fn walk_ncx(node: roxmltree::Node<'_, '_>, toc_dir: &Path, index: &mut usize) -> Vec<TocEntry> {
+fn walk_ncx(node: NodeRef<'_>, toc_dir: &Path, index: &mut usize) -> Vec<TocEntry> {
     let mut entries = Vec::new();
 
     for child in node.children().filter(|n| n.is_element()) {
-        if child.tag_name().name() != "navPoint" {
+        if child.tag_name() != Some("navPoint") {
             continue;
         }
 
         let title = child
-            .descendants()
-            .find(|n| n.is_element() && n.tag_name().name() == "text")
-            .and_then(|n| n.text())
-            .map(|t| decode_entities(t).into_owned())
+            .find("text")
+            .map(|n| decode_entities(&n.text()).into_owned())
             .unwrap_or_default();
+        if title.is_empty() {
+            tracing::debug!("NCX navPoint has no text title");
+        }
 
         let rel_uri = child
-            .descendants()
-            .find(|n| n.is_element() && n.tag_name().name() == "content")
+            .find("content")
             .and_then(|n| n.attribute("src"))
             .map(|src| {
                 percent_decode_str(&decode_entities(src))
@@ -388,6 +396,9 @@ fn walk_ncx(node: roxmltree::Node<'_, '_>, toc_dir: &Path, index: &mut usize) ->
                     .into_owned()
             })
             .unwrap_or_default();
+        if rel_uri.is_empty() {
+            tracing::debug!(title, "NCX navPoint has no content src");
+        }
 
         let loc = toc_dir
             .join(&rel_uri)
@@ -411,28 +422,39 @@ fn walk_ncx(node: roxmltree::Node<'_, '_>, toc_dir: &Path, index: &mut usize) ->
                 index: current_index,
                 children: sub_entries,
             });
+        } else {
+            tracing::debug!(
+                title,
+                uri = rel_uri,
+                "Skipping NCX navPoint with an unresolvable location"
+            );
         }
     }
 
     entries
 }
 
-fn walk_nav(node: roxmltree::Node<'_, '_>, toc_dir: &Path, index: &mut usize) -> Vec<TocEntry> {
+fn walk_nav(node: NodeRef<'_>, toc_dir: &Path, index: &mut usize) -> Vec<TocEntry> {
     let mut entries = Vec::new();
 
     for child in node.children().filter(|n| n.is_element()) {
-        if child.tag_name().name() != "li" {
+        if child.tag_name() != Some("li") {
             continue;
         }
 
-        let link = child
-            .children()
-            .find(|n| n.is_element() && n.tag_name().name() == "a");
+        let link = child.children().find(|n| n.tag_name() == Some("a"));
+        if link.is_none() {
+            tracing::debug!("Navigation list item has no a element");
+        } else if link.is_some_and(|a| a.attribute("href").is_none()) {
+            tracing::debug!("Navigation link has no href attribute");
+        }
 
         let title = link
-            .and_then(|a| a.text())
-            .map(|t| decode_entities(t).into_owned())
+            .map(|a| decode_entities(&a.text()).into_owned())
             .unwrap_or_default();
+        if title.is_empty() {
+            tracing::debug!("Navigation entry has no link text");
+        }
 
         let rel_uri = link
             .and_then(|a| a.attribute("href"))
@@ -454,7 +476,7 @@ fn walk_nav(node: roxmltree::Node<'_, '_>, toc_dir: &Path, index: &mut usize) ->
 
         let sub_entries = child
             .children()
-            .find(|n| n.is_element() && n.tag_name().name() == "ol")
+            .find(|n| n.tag_name() == Some("ol"))
             .map(|ol| walk_nav(ol, toc_dir, index))
             .unwrap_or_default();
 
@@ -465,6 +487,12 @@ fn walk_nav(node: roxmltree::Node<'_, '_>, toc_dir: &Path, index: &mut usize) ->
                 index: current_index,
                 children: sub_entries,
             });
+        } else {
+            tracing::debug!(
+                title,
+                uri = rel_uri,
+                "Skipping navigation entry with an unresolvable location"
+            );
         }
     }
 
@@ -687,43 +715,6 @@ mod tests {
             d.categories.contains("Science.Physics"),
             "expected 'Science.Physics', got: {:?}",
             d.categories
-        );
-    }
-
-    #[test]
-    fn toc_href_via_spine_toc_attribute() {
-        assert_eq!(doc().toc_href(), Some("toc.ncx".to_string()));
-    }
-
-    #[test]
-    fn toc_href_via_nav_properties() {
-        let xml = r#"<?xml version="1.0"?>
-<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
-  <metadata/>
-  <manifest>
-    <item id="nav" href="nav.xhtml"
-          media-type="application/xhtml+xml" properties="nav"/>
-    <item id="ch1" href="chapter1.xhtml" media-type="application/xhtml+xml"/>
-  </manifest>
-  <spine><itemref idref="ch1"/></spine>
-</package>"#;
-        let d = OpfDocument::parse(xml.to_string()).unwrap();
-        assert_eq!(d.toc_href(), Some("nav.xhtml".to_string()));
-    }
-
-    #[test]
-    fn toc_href_none_when_no_toc() {
-        let xml = r#"<?xml version="1.0"?>
-<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
-  <metadata/>
-  <manifest>
-    <item id="ch1" href="chapter1.xhtml" media-type="application/xhtml+xml"/>
-  </manifest>
-  <spine><itemref idref="ch1"/></spine>
-</package>"#;
-        assert_eq!(
-            OpfDocument::parse(xml.to_string()).unwrap().toc_href(),
-            None
         );
     }
 

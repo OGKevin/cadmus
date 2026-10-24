@@ -5,7 +5,7 @@ use crate::color::BLACK;
 use crate::device::AppContext;
 use crate::device::DeviceCapabilities as _;
 use crate::device::{DeviceIdentity as _, DevicePaths as _};
-use crate::document::html::Html5Document;
+use crate::document::html::XhtmlDocument;
 use crate::document::{Document, Location};
 use crate::framebuffer::{Pixmap, UpdateMode};
 use crate::geom::{CycleDir, Dir, Point, Rectangle, halves};
@@ -34,7 +34,7 @@ pub struct Dictionary {
     id: Id,
     rect: Rectangle,
     children: Vec<Box<dyn View>>,
-    doc: Html5Document,
+    doc: XhtmlDocument,
     location: usize,
     fuzzy: bool,
     query: String,
@@ -226,7 +226,7 @@ impl Dictionary {
         let image = Image::new(image_rect, Pixmap::new(1, 1, 1));
         children.push(Box::new(image) as Box<dyn View>);
 
-        let mut doc = Html5Document::new_from_memory("", &context.device.install_dir());
+        let mut doc = XhtmlDocument::new_from_memory("", &context.device.install_dir());
         doc.layout(
             image_rect.width(),
             image_rect.height(),

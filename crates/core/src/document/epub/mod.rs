@@ -5,7 +5,7 @@ use super::html::layout::TextAlign;
 use super::html::layout::{DrawCommand, DrawState, ImageCommand, RootData, TextCommand};
 use super::html::layout::{LoopContext, StyleData};
 use super::html::style::StyleSheet;
-use super::html::xml::parse_html5;
+use super::html::xml::parse_xml;
 use super::pdf::PdfOpener;
 use crate::document::{
     BoundedText, Document, Href, Location, TextLocation, TocEntry, chapter_from_uri,
@@ -249,7 +249,7 @@ impl<R: Read + Seek> EpubDocument<R> {
                 let mut zf = self.archive.by_name(name).ok()?;
                 zf.read_to_string(&mut text).ok()?;
             }
-            let root = parse_html5(&text);
+            let root = parse_xml(&text);
             self.cache_uris(root.root(), name, start_offset, cache);
             cache.get(uri).cloned()
         } else {
@@ -289,7 +289,7 @@ impl<R: Read + Seek> EpubDocument<R> {
             }
         }
 
-        let mut root = parse_html5(&text);
+        let mut root = parse_xml(&text);
         root.wrap_lost_inlines();
 
         let mut stylesheet = StyleSheet::new();
@@ -1024,8 +1024,7 @@ mod tests {
     );
 
     /// Collect `(tag_name, id_attr_value, byte_offset)` for every element that
-    /// has an `id` attribute, in document order.  Used to compare bookmark /
-    /// annotation anchor points between parsers.
+    /// has an `id` attribute, in document order.
     fn collect_id_offsets(tree: &XmlTree) -> Vec<(String, String, usize)> {
         tree.root()
             .descendants()
@@ -1090,7 +1089,7 @@ mod tests {
         zip.finish().unwrap().into_inner()
     }
 
-    /// Verify that `parse_html5` and `XmlParser` assign identical byte offsets
+    /// Verify that `parse_xml` and `XmlParser` assign identical byte offsets
     /// to every element that carries an `id` attribute in a realistic EPUB
     /// chapter.  These offsets are what gets stored as reading positions,
     /// bookmark targets, and annotation anchors.
@@ -1103,14 +1102,14 @@ mod tests {
         };
 
         let h5_offsets = {
-            let mut tree = parse_html5(CHAPTER_HTML);
+            let mut tree = parse_xml(CHAPTER_HTML);
             tree.wrap_lost_inlines();
             collect_id_offsets(&tree)
         };
 
         assert_eq!(
             xml_offsets, h5_offsets,
-            "id-attribute node offsets differ between XmlParser and parse_html5\n\
+            "id-attribute node offsets differ between XmlParser and parse_xml\n\
              XmlParser: {xml_offsets:?}\n\
              xml5ever: {h5_offsets:?}"
         );
@@ -1148,7 +1147,7 @@ mod tests {
 
         let h5_cache = {
             let mut cache = UriCache::default();
-            let tree = parse_html5(CHAPTER_HTML);
+            let tree = parse_xml(CHAPTER_HTML);
             let mut dummy_doc: EpubDocument<std::io::Cursor<Vec<u8>>> = EpubDocument {
                 archive: ZipArchive::new(std::io::Cursor::new(build_minimal_epub(CHAPTER_HTML)))
                     .unwrap(),
@@ -1168,7 +1167,7 @@ mod tests {
 
         assert_eq!(
             xml_cache, h5_cache,
-            "cache_uris maps differ between XmlParser and parse_html5\n\
+            "cache_uris maps differ between XmlParser and parse_xml\n\
              XmlParser: {xml_cache:?}\n\
              xml5ever: {h5_cache:?}"
         );
@@ -1176,7 +1175,7 @@ mod tests {
 
     /// Verify that `build_display_list` emits `DrawCommand::Marker` commands
     /// with identical offsets whether the spine chapter was parsed by
-    /// `XmlParser` or `parse_html5`.  Marker offsets are stored as reading
+    /// `XmlParser` or `parse_xml`.  Marker offsets are stored as reading
     /// positions and bookmark byte offsets, so they must be parser-independent.
     ///
     /// Uses a block-only chapter variant (no inline text nodes) so the engine
@@ -1192,7 +1191,7 @@ mod tests {
         };
 
         let h5_markers = {
-            let mut tree = parse_html5(CHAPTER_HTML_BLOCK_ONLY);
+            let mut tree = parse_xml(CHAPTER_HTML_BLOCK_ONLY);
             tree.wrap_lost_inlines();
             marker_offsets_from_tree(tree, start_offset)
         };
@@ -1203,7 +1202,7 @@ mod tests {
         );
         assert_eq!(
             xml_markers, h5_markers,
-            "Marker offsets differ between XmlParser and parse_html5\n\
+            "Marker offsets differ between XmlParser and parse_xml\n\
              XmlParser: {xml_markers:?}\n\
              xml5ever: {h5_markers:?}"
         );

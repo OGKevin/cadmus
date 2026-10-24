@@ -9,7 +9,7 @@
 
 use super::file_extension::FileExtension;
 use super::html::dom::NodeRef;
-use super::html::xml::parse_html5;
+use super::html::xml::parse_xml;
 use crate::helpers::decode_entities;
 use crate::metadata::Info;
 use crate::runtime;
@@ -408,7 +408,7 @@ fn parse_comicinfo_xml(xml: &str) -> Option<ComicInfoFields> {
     if !ends_with_comicinfo_close_tag(xml) {
         return None;
     }
-    let tree = parse_html5(xml);
+    let tree = parse_xml(xml);
     let comic_root = tree
         .root()
         .children()

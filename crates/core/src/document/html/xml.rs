@@ -1,22 +1,20 @@
-//! HTML parser and associated utilities that produce an [`XmlTree`].
+//! xml5ever parser that produces an [`XmlTree`].
 //!
-//! **Production code** should always use [`parse_html5`] to parse EPUB XHTML
-//! and other XML-ish HTML content. It uses xml5ever (XML5 / XHTML), not the
-//! html5ever HTML parser. Node offsets are byte-accurate source positions
-//! supplied by the `source-positions` feature on the `xml5ever` crate.
+//! [`parse_xml`] is the only XML / XHTML parser Cadmus uses in production.
+//! Node offsets are byte-accurate source positions from xml5ever's
+//! `source-positions` feature.
 //!
-//! [`XmlParser`] is only compiled in **test builds** (`#[cfg(test)]`). It is
-//! retained exclusively for parity tests that compare its output against
-//! `parse_html5` to validate byte-offset equivalence. Do not use it in
-//! production code.
+//! [`XmlParser`] is compiled only in test builds (`#[cfg(test)]`). It exists
+//! so parity tests can compare its offsets against [`parse_xml`]. Do not use
+//! it in production.
 
 use super::dom::{Attributes, NodeId, XmlTree, element, text, whitespace};
 use rustc_hash::FxHashMap;
 use std::cell::{Cell, Ref, RefCell};
 use xml5ever::interface::{ElementFlags, QuirksMode};
 use xml5ever::tendril::{Tendril, TendrilSink};
-use xml5ever::tree_builder::{NodeOrText, TreeSink};
-use xml5ever::{Attribute, QualName};
+use xml5ever::tree_builder::{NodeOrText, TreeSink, XmlTreeBuilderOpts};
+use xml5ever::{Attribute, QualName, SourcePosition};
 
 /// Extension trait that adds XML whitespace detection to [`char`].
 pub trait XmlExt {
@@ -33,10 +31,9 @@ impl XmlExt for char {
 
 /// Hand-rolled recursive-descent parser for XML and basic HTML documents.
 ///
-/// **Only available in test builds.** Production code uses [`parse_html5`] for
-/// XHTML content and `roxmltree` (via `epub::opf`) for XML metadata files.
+/// **Only available in test builds.** Production code uses [`parse_xml`].
 /// This parser is retained solely for parity tests that compare its output
-/// against `parse_html5` to validate byte-offset equivalence.
+/// against `parse_xml` to validate byte-offset equivalence.
 ///
 /// Produces an [`XmlTree`] where every node's `offset` field is the exact byte
 /// position of the opening `<` (elements) or first character (text nodes) in
@@ -158,9 +155,8 @@ impl<'a> XmlParser<'a> {
     /// Parses all child nodes of `parent_id` until a matching closing tag or
     /// EOF is reached.
     ///
-    /// Handles text nodes, whitespace, elements, processing instructions
-    /// (`<?…?>`), comments (`<!--…-->`), CDATA sections (`<![…]]>`), and
-    /// DOCTYPE declarations.
+    /// Handles text nodes, whitespace, elements, processing instructions,
+    /// comments, CDATA sections, and DOCTYPE declarations.
     fn parse_nodes(&mut self, tree: &mut XmlTree, parent_id: NodeId) {
         while !self.eof() {
             let offset = self.offset;
@@ -226,16 +222,11 @@ impl<'a> XmlParser<'a> {
     }
 }
 
-/// [`TreeSink`] implementation that bridges xml5ever's push-based API into
-/// an [`XmlTree`].
+/// [`TreeSink`] that builds an [`XmlTree`] from xml5ever tokens.
 ///
-/// Node offsets are byte-accurate source positions supplied by
-/// [`TreeSink::set_current_byte`], which xml5ever calls before every tree
-/// mutation when the `source-positions` feature is enabled on the `xml5ever`
-/// crate. This makes offsets stable and comparable to those produced by
-/// [`XmlParser`], enabling xml5ever-parsed documents to be used wherever
-/// persisted byte offsets are required (EPUB spine, bookmarks, annotations).
-struct Html5Sink {
+/// Node offsets come from [`TreeSink::set_current_source_position`] when
+/// xml5ever's `source-positions` feature is enabled.
+struct XmlSink {
     /// The tree being built. `RefCell` is required because multiple `TreeSink`
     /// methods need mutable access and Rust's borrow checker cannot see that
     /// xml5ever calls them non-concurrently.
@@ -247,14 +238,14 @@ struct Html5Sink {
     /// `NodeId`, as required by the HTML5 template element spec.
     template_contents: RefCell<FxHashMap<NodeId, NodeId>>,
     /// Byte offset of the most recent token in the source string, forwarded
-    /// from the tokenizer via [`TreeSink::set_current_byte`].
+    /// from the tokenizer via [`TreeSink::set_current_source_position`].
     current_byte: Cell<usize>,
 }
 
-impl Html5Sink {
+impl XmlSink {
     /// Creates a new sink with an empty tree and a zeroed byte offset.
     fn new() -> Self {
-        Html5Sink {
+        XmlSink {
             tree: RefCell::new(XmlTree::new()),
             qual_names: RefCell::new(FxHashMap::default()),
             template_contents: RefCell::new(FxHashMap::default()),
@@ -269,11 +260,15 @@ impl Html5Sink {
 
     /// Converts an xml5ever [`Attribute`] name to its string representation,
     /// prefixing with the namespace if one is present (e.g. `xml:lang`).
-    fn attr_name(attr: &Attribute) -> String {
-        match &attr.name.prefix {
-            Some(prefix) => format!("{}:{}", prefix.as_ref(), attr.name.local.as_ref()),
-            None => attr.name.local.as_ref().to_string(),
+    fn qual_name(name: &QualName) -> String {
+        match &name.prefix {
+            Some(prefix) => format!("{}:{}", prefix, name.local),
+            None => name.local.to_string(),
         }
+    }
+
+    fn attr_name(attr: &Attribute) -> String {
+        Self::qual_name(&attr.name)
     }
 
     /// Converts a `Vec<Attribute>` from xml5ever into the [`Attributes`] map
@@ -326,7 +321,7 @@ impl Html5Sink {
     }
 }
 
-impl TreeSink for Html5Sink {
+impl TreeSink for XmlSink {
     type Handle = NodeId;
     type Output = XmlTree;
     type ElemName<'a> = Ref<'a, QualName>;
@@ -335,14 +330,16 @@ impl TreeSink for Html5Sink {
         self.tree.into_inner()
     }
 
-    fn set_current_byte(&self, byte_offset: u64) {
-        self.current_byte.set(byte_offset as usize);
+    fn set_current_source_position(&self, position: SourcePosition) {
+        self.current_byte.set(position.byte.unwrap_or(0));
     }
 
-    /// Silently ignores all parse errors. EPUB XHTML and dictionary snippets
-    /// can be messy, and we rely on xml5ever's XML5 recovery rather than
-    /// failing on bad input.
-    fn parse_error(&self, _msg: std::borrow::Cow<'static, str>) {}
+    /// Logs parse errors at debug level and relies on xml5ever's XML5 recovery
+    /// rather than failing on bad input. EPUB XHTML and dictionary snippets
+    /// can be messy.
+    fn parse_error(&self, msg: std::borrow::Cow<'static, str>) {
+        tracing::debug!(error = %msg, "Recovered from XML parse error");
+    }
 
     fn get_document(&self) -> Self::Handle {
         NodeId::from_index(0)
@@ -365,10 +362,10 @@ impl TreeSink for Html5Sink {
         attrs: Vec<Attribute>,
         flags: ElementFlags,
     ) -> Self::Handle {
-        let tag_name = name.local.as_ref();
+        let tag_name = Self::qual_name(&name);
         let offset = self.current_byte.get();
         let attributes = Self::build_attributes(attrs);
-        let data = element(tag_name, offset, attributes);
+        let data = element(&tag_name, offset, attributes);
         let id = self.tree.borrow_mut().push_node(data);
         self.qual_names.borrow_mut().insert(id, name.clone());
 
@@ -507,25 +504,41 @@ impl TreeSink for Html5Sink {
     }
 }
 
-/// Parses `input` as XHTML using xml5ever and returns the resulting [`XmlTree`].
+/// Parses `input` as a single XML document and returns the resulting [`XmlTree`].
 ///
-/// EPUB spine chapters are XHTML. xml5ever honours self-closing tags such as
-/// `<title/>` and `<style/>` without the html5ever `xhtml-self-closing` hack.
-/// Named and numeric entities are decoded. Unclosed tags at EOF are closed.
+/// Used for EPUB XHTML, OPF/NCX, ComicInfo, and standalone HTML. Content after
+/// the document element is dropped. Use [`parse_xml_fragment`] for fragments.
+/// Self-closing tags such as `<title/>` are empty elements. Named and numeric
+/// entities are decoded. Unclosed tags at EOF are closed.
 ///
-/// **Offset semantics:** node offsets are byte-accurate source positions
-/// supplied by the `source-positions` feature of the `xml5ever` crate.
-/// Offsets for nodes that exist in both parsers' output are identical to those
-/// produced by [`XmlParser`].
+/// Node offsets are byte-accurate source positions from xml5ever's
+/// `source-positions` feature.
 ///
 /// The caller is responsible for calling [`XmlTree::wrap_lost_inlines`] on the
 /// returned tree if inline wrapping is required (it is for EPUB spine chapters
 /// and standalone HTML files, but not for all use cases).
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(input), fields(len = input.len())))]
-pub fn parse_html5(input: &str) -> XmlTree {
+pub fn parse_xml(input: &str) -> XmlTree {
+    parse_with_tree_builder(input, XmlTreeBuilderOpts::default())
+}
+
+/// Parses `input` as an XML fragment and returns the resulting [`XmlTree`].
+///
+/// Same as [`parse_xml`], but sibling top-level elements after the first are
+/// kept as document children. Used for dictionary snippets.
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(input), fields(len = input.len())))]
+pub fn parse_xml_fragment(input: &str) -> XmlTree {
+    parse_with_tree_builder(input, XmlTreeBuilderOpts { extra_roots: true })
+}
+
+fn parse_with_tree_builder(input: &str, tree_builder: XmlTreeBuilderOpts) -> XmlTree {
     use xml5ever::driver::{XmlParseOpts, parse_document};
 
-    let parser = parse_document(Html5Sink::new(), XmlParseOpts::default());
+    let opts = XmlParseOpts {
+        tree_builder,
+        ..Default::default()
+    };
+    let parser = parse_document(XmlSink::new(), opts);
     let input_tendril: Tendril<xml5ever::tendril::fmt::UTF8> = input.into();
     parser.one(input_tendril)
 }
@@ -536,14 +549,14 @@ mod tests {
 
     #[test]
     fn simple_element_has_correct_tag_name() {
-        let tree = parse_html5("<p></p>");
+        let tree = parse_xml("<p></p>");
         assert!(tree.root().find("p").is_some());
         assert_eq!(tree.root().find("p").unwrap().tag_name(), Some("p"));
     }
 
     #[test]
     fn simple_element_has_correct_offset() {
-        let tree = parse_html5("<p></p>");
+        let tree = parse_xml("<p></p>");
         let p = tree.root().find("p").unwrap();
         assert_eq!(p.offset(), 0);
     }
@@ -551,7 +564,7 @@ mod tests {
     #[test]
     fn attributes_double_and_single_quoted() {
         let text = r#"<a b="c" d='e"'></a>"#;
-        let tree = parse_html5(text);
+        let tree = parse_xml(text);
         let a = tree.root().find("a").unwrap();
         assert_eq!(a.attribute("b"), Some("c"));
         assert_eq!(a.attribute("d"), Some("e\""));
@@ -560,7 +573,7 @@ mod tests {
     #[test]
     fn text_node_content_and_offset() {
         let text = "<a>bcd</a>";
-        let tree = parse_html5(text);
+        let tree = parse_xml(text);
         let a = tree.root().find("a").unwrap();
         let child = a.children().find(|n| !n.text().is_empty());
         assert_eq!(child.map(|c| c.text()), Some("bcd".to_string()));
@@ -570,7 +583,7 @@ mod tests {
     #[test]
     fn whitespace_text_node_preserved_between_inline_siblings() {
         let text = "<p><b>x</b> <i>y</i></p>";
-        let tree = parse_html5(text);
+        let tree = parse_xml(text);
         let p = tree.root().find("p").unwrap();
         let space_node = p.children().find(|n| n.text() == " ");
         assert!(
@@ -582,7 +595,7 @@ mod tests {
     #[test]
     fn whitespace_text_inside_element_accessible_via_tree_text() {
         let text = "<p><span> </span></p>";
-        let tree = parse_html5(text);
+        let tree = parse_xml(text);
         let span = tree.root().find("span").unwrap();
         assert_eq!(span.text(), " ");
     }
@@ -590,7 +603,7 @@ mod tests {
     #[test]
     fn html5_void_element() {
         let text = "<br>";
-        let xml = parse_html5(text);
+        let xml = parse_xml(text);
         assert!(xml.root().find("br").is_some());
     }
 
@@ -603,7 +616,7 @@ mod tests {
             "<html><head><title/></head>",
             "<body><p>visible</p></body></html>",
         );
-        let tree = parse_html5(text);
+        let tree = parse_xml(text);
         let body = tree.root().find("body").expect("body should exist");
         let p = body
             .descendants()
@@ -619,7 +632,7 @@ mod tests {
             "<html><head><style/></head>",
             "<body><p>visible</p></body></html>",
         );
-        let tree = parse_html5(text);
+        let tree = parse_xml(text);
         let p = tree
             .root()
             .find("body")
@@ -633,7 +646,7 @@ mod tests {
     #[test]
     fn html5_normal_title_still_parses_as_rcdata() {
         let text = "<html><head><title>My Book</title></head><body></body></html>";
-        let tree = parse_html5(text);
+        let tree = parse_xml(text);
         let title = tree.root().find("title").expect("title should exist");
         assert_eq!(title.text(), "My Book");
     }
@@ -641,7 +654,7 @@ mod tests {
     #[test]
     fn html5_entity_decoding() {
         let text = "<p>hello&amp;world</p>";
-        let xml = parse_html5(text);
+        let xml = parse_xml(text);
         let p = xml.root().find("p").unwrap();
         assert_eq!(p.text(), "hello&world");
     }
@@ -649,7 +662,7 @@ mod tests {
     #[test]
     fn html5_entity_text_offsets_preserve_source_positions() {
         let text = "<p>a&amp;b</p>";
-        let xml = parse_html5(text);
+        let xml = parse_xml(text);
         let p = xml.root().find("p").unwrap();
         let text_nodes: Vec<_> = p
             .children()
@@ -666,7 +679,7 @@ mod tests {
     #[test]
     fn html5_text_after_entity_can_match_entity_name() {
         let text = "<p>a&amp;a</p>";
-        let xml = parse_html5(text);
+        let xml = parse_xml(text);
         let p = xml.root().find("p").unwrap();
         let text_nodes: Vec<_> = p
             .children()
@@ -683,7 +696,7 @@ mod tests {
     #[test]
     fn html5_adjacent_text_without_source_gap_is_coalesced() {
         let text = "<p>abc</p>";
-        let xml = parse_html5(text);
+        let xml = parse_xml(text);
         let p = xml.root().find("p").unwrap();
         let text_nodes: Vec<_> = p
             .children()
@@ -697,7 +710,7 @@ mod tests {
     #[test]
     fn html5_unclosed_p_tags() {
         let text = "<p>first<p>second";
-        let xml = parse_html5(text);
+        let xml = parse_xml(text);
         let count = xml
             .root()
             .descendants()
@@ -710,7 +723,7 @@ mod tests {
     fn html5_nested_ol_in_ol() {
         let text =
             r#"<ol><li>top</li><ol style="list-style-type:lower-alpha"><li>sub</li></ol></ol>"#;
-        let xml = parse_html5(text);
+        let xml = parse_xml(text);
         let inner_ol = xml
             .root()
             .descendants()
@@ -728,7 +741,7 @@ mod tests {
     #[test]
     fn html5_comment_does_not_coalesce_following_text() {
         let text = "<p>Hello<!-- comment -->World</p>";
-        let xml = parse_html5(text);
+        let xml = parse_xml(text);
 
         let p = xml.root().find("p").expect("p should exist");
         let children: Vec<_> = p.children().collect();
@@ -766,7 +779,7 @@ mod tests {
     #[test]
     fn html5_pi_does_not_coalesce_following_text() {
         let text = "<p>Hello<?target data?>World</p>";
-        let xml = parse_html5(text);
+        let xml = parse_xml(text);
 
         let p = xml.root().find("p").expect("p should exist");
         let children: Vec<_> = p.children().collect();
@@ -796,7 +809,7 @@ mod tests {
     #[test]
     fn html5_text_node_offsets_do_not_overlap() {
         let text = "<p><em>Cadmus</em> is a document reader for <em>Kobo</em>'s e-readers.</p>";
-        let xml = parse_html5(text);
+        let xml = parse_xml(text);
 
         let mut text_nodes: Vec<(usize, usize)> = xml
             .root()
@@ -870,7 +883,7 @@ mod tests {
     fn parity_simple_element() {
         let src = "<p>hello</p>";
         let xml = element_offsets(&XmlParser::new(src).parse());
-        let h5 = element_offsets(&parse_html5(src));
+        let h5 = element_offsets(&parse_xml(src));
         assert_eq!(xml, h5, "element offsets differ for {:?}", src);
     }
 
@@ -878,7 +891,7 @@ mod tests {
     fn parity_nested_elements() {
         let src = "<div><p>text</p></div>";
         let xml = element_offsets(&XmlParser::new(src).parse());
-        let h5 = element_offsets(&parse_html5(src));
+        let h5 = element_offsets(&parse_xml(src));
         assert_eq!(xml, h5, "element offsets differ for {:?}", src);
     }
 
@@ -886,7 +899,7 @@ mod tests {
     fn parity_adjacent_text_and_element() {
         let src = "<p><em>A</em> B</p>";
         let xml = element_offsets(&XmlParser::new(src).parse());
-        let h5 = element_offsets(&parse_html5(src));
+        let h5 = element_offsets(&parse_xml(src));
         assert_eq!(xml, h5, "element offsets differ for {:?}", src);
     }
 
@@ -894,7 +907,7 @@ mod tests {
     fn parity_text_first_offset_simple() {
         let src = "<p>hello</p>";
         let xml = text_first_offsets(&XmlParser::new(src).parse());
-        let h5 = text_first_offsets(&parse_html5(src));
+        let h5 = text_first_offsets(&parse_xml(src));
         assert_eq!(xml, h5, "text offsets differ for {:?}", src);
     }
 
@@ -902,7 +915,7 @@ mod tests {
     fn parity_text_first_offset_nested() {
         let src = "<p><em>A</em> B</p>";
         let xml = text_first_offsets(&XmlParser::new(src).parse());
-        let h5 = text_first_offsets(&parse_html5(src));
+        let h5 = text_first_offsets(&parse_xml(src));
         assert_eq!(xml, h5, "text offsets differ for {:?}", src);
     }
 
@@ -912,7 +925,7 @@ mod tests {
         // byte position of 'c', not the char index.
         let src = "<p>café</p>";
         let xml = text_first_offsets(&XmlParser::new(src).parse());
-        let h5 = text_first_offsets(&parse_html5(src));
+        let h5 = text_first_offsets(&parse_xml(src));
         assert_eq!(xml, h5, "text offsets differ for {:?}", src);
     }
 
@@ -920,7 +933,7 @@ mod tests {
     fn parity_sequential_siblings() {
         let src = "<h1>Title</h1><p>Body</p>";
         let xml = element_offsets(&XmlParser::new(src).parse());
-        let h5 = element_offsets(&parse_html5(src));
+        let h5 = element_offsets(&parse_xml_fragment(src));
         assert_eq!(xml, h5, "element offsets differ for {:?}", src);
     }
 
@@ -928,7 +941,7 @@ mod tests {
     fn parity_sequential_siblings_text() {
         let src = "<h1>Title</h1><p>Body</p>";
         let xml = text_first_offsets(&XmlParser::new(src).parse());
-        let h5 = text_first_offsets(&parse_html5(src));
+        let h5 = text_first_offsets(&parse_xml_fragment(src));
         assert_eq!(xml, h5, "text offsets differ for {:?}", src);
     }
 
@@ -936,11 +949,27 @@ mod tests {
     fn parity_deep_offset_accumulation() {
         let src = "<article><section><div><p>deep text</p></div></section></article>";
         let xml_el = element_offsets(&XmlParser::new(src).parse());
-        let h5_el = element_offsets(&parse_html5(src));
+        let h5_el = element_offsets(&parse_xml(src));
         assert_eq!(xml_el, h5_el, "element offsets differ for {:?}", src);
 
         let xml_tx = text_first_offsets(&XmlParser::new(src).parse());
-        let h5_tx = text_first_offsets(&parse_html5(src));
+        let h5_tx = text_first_offsets(&parse_xml(src));
         assert_eq!(xml_tx, h5_tx, "text offsets differ for {:?}", src);
+    }
+
+    #[test]
+    fn sequential_sibling_roots_keep_both_elements() {
+        let tree = parse_xml_fragment("<h1>Title</h1><p>Body</p>");
+        assert!(tree.root().find("h1").is_some());
+        assert!(tree.root().find("p").is_some());
+        assert_eq!(tree.root().find("h1").unwrap().offset(), 0);
+        assert_eq!(tree.root().find("p").unwrap().offset(), 14);
+    }
+
+    #[test]
+    fn document_parse_drops_sibling_roots() {
+        let tree = parse_xml("<h1>Title</h1><p>Body</p>");
+        assert!(tree.root().find("h1").is_some());
+        assert!(tree.root().find("p").is_none());
     }
 }

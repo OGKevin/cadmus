@@ -8,7 +8,7 @@
 //!   bookmarks, and annotations are persisted to disk. Used for standalone
 //!   HTML files and EPUB spine chapters.
 //!
-//! - [`Html5Document`] — also backed by xml5ever. Used for ephemeral
+//! - [`XhtmlDocument`] — also backed by xml5ever. Used for ephemeral
 //!   rendering where no positions are persisted (e.g. the dictionary view).
 //!
 //! The shared [`HtmlBase`] struct holds the parsed [`XmlTree`], the layout
@@ -18,13 +18,13 @@
 pub mod css;
 pub mod dom;
 pub mod engine;
-pub mod html5;
 pub mod layout;
 pub mod parse;
 pub mod style;
+pub mod xhtml;
 pub mod xml;
 
-pub use html5::Html5Document;
+pub use xhtml::XhtmlDocument;
 
 use self::css::CssParser;
 use self::dom::{NodeRef, XmlTree};
@@ -32,7 +32,7 @@ use self::engine::{Engine, Page, ResourceFetcher};
 use self::layout::{DrawCommand, ImageCommand, TextAlign, TextCommand};
 use self::layout::{DrawState, LoopContext, RootData, StyleData};
 use self::style::StyleSheet;
-use self::xml::parse_html5;
+use self::xml::parse_xml;
 use crate::document::{BoundedText, Document, Location, TextLocation, TocEntry};
 use crate::framebuffer::Pixmap;
 use crate::geom::{Boundary, CycleDir, Edge};
@@ -54,7 +54,7 @@ const USER_STYLESHEET: &str = "css/html-user.css";
 type UriCache = FxHashMap<String, usize>;
 
 /// Parser-independent rendering state shared by [`HtmlDocument`] and
-/// [`Html5Document`].
+/// [`XhtmlDocument`].
 ///
 /// Owns the parsed [`XmlTree`], the layout [`Engine`], a lazily-built page
 /// cache, and the stylesheet configuration. Neither parser-specific logic nor
@@ -480,7 +480,7 @@ impl HtmlDocument {
         let size = file.metadata()?.len() as usize;
         let mut text = String::new();
         file.read_to_string(&mut text)?;
-        let mut content = parse_html5(&text);
+        let mut content = parse_xml(&text);
         content.wrap_lost_inlines();
         let parent = path.as_ref().parent().unwrap_or_else(|| Path::new(""));
 
@@ -504,7 +504,7 @@ impl HtmlDocument {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(text), fields(len = text.len())))]
     pub fn new_from_memory(text: &str, install_dir: &Path) -> HtmlDocument {
         let size = text.len();
-        let mut content = parse_html5(text);
+        let mut content = parse_xml(text);
         content.wrap_lost_inlines();
 
         HtmlDocument {
@@ -525,7 +525,7 @@ impl HtmlDocument {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, text), fields(len = text.len())))]
     pub fn update(&mut self, text: &str) {
         self.base.size = text.len();
-        let mut content = parse_html5(text);
+        let mut content = parse_xml(text);
         content.wrap_lost_inlines();
         self.base.content = content;
         self.text = text.to_string();
