@@ -1112,7 +1112,7 @@ mod tests {
             xml_offsets, h5_offsets,
             "id-attribute node offsets differ between XmlParser and parse_html5\n\
              XmlParser: {xml_offsets:?}\n\
-             html5ever: {h5_offsets:?}"
+             xml5ever: {h5_offsets:?}"
         );
     }
 
@@ -1170,7 +1170,7 @@ mod tests {
             xml_cache, h5_cache,
             "cache_uris maps differ between XmlParser and parse_html5\n\
              XmlParser: {xml_cache:?}\n\
-             html5ever: {h5_cache:?}"
+             xml5ever: {h5_cache:?}"
         );
     }
 
@@ -1205,7 +1205,7 @@ mod tests {
             xml_markers, h5_markers,
             "Marker offsets differ between XmlParser and parse_html5\n\
              XmlParser: {xml_markers:?}\n\
-             html5ever: {h5_markers:?}"
+             xml5ever: {h5_markers:?}"
         );
     }
 
@@ -1280,10 +1280,10 @@ mod tests {
 
     #[test]
     fn epub_type_toc_matches_a_whitespace_separated_token() {
-        assert!(epub_type_has_toc("toc"));
-        assert!(epub_type_has_toc("landmarks toc"));
-        assert!(!epub_type_has_toc("landmarks"));
-        assert!(!epub_type_has_toc("tocpage"));
+        assert!(super::opf::epub_type_has_toc("toc"));
+        assert!(super::opf::epub_type_has_toc("landmarks toc"));
+        assert!(!super::opf::epub_type_has_toc("landmarks"));
+        assert!(!super::opf::epub_type_has_toc("tocpage"));
     }
 
     #[test]

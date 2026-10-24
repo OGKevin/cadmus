@@ -9,7 +9,7 @@
 
 use super::file_extension::FileExtension;
 use super::html::dom::NodeRef;
-use super::html::xml::XmlParser;
+use super::html::xml::parse_html5;
 use crate::helpers::decode_entities;
 use crate::metadata::Info;
 use crate::runtime;
@@ -408,7 +408,7 @@ fn parse_comicinfo_xml(xml: &str) -> Option<ComicInfoFields> {
     if !ends_with_comicinfo_close_tag(xml) {
         return None;
     }
-    let tree = XmlParser::new(xml).parse();
+    let tree = parse_html5(xml);
     let comic_root = tree
         .root()
         .children()
@@ -418,7 +418,7 @@ fn parse_comicinfo_xml(xml: &str) -> Option<ComicInfoFields> {
 
 /// Whether `xml` ends with `</ComicInfo>` after trimming trailing whitespace.
 ///
-/// [`XmlParser`] accepts unclosed elements at EOF, so a truncated member would otherwise
+/// xml5ever recovers unclosed elements at EOF, so a truncated member would otherwise
 /// parse as a complete document with empty fields.
 fn ends_with_comicinfo_close_tag(xml: &str) -> bool {
     const CLOSE_TAG: &str = "</ComicInfo>";

@@ -1,9 +1,9 @@
 //! HTML parser and associated utilities that produce an [`XmlTree`].
 //!
-//! **Production code** should always use [`parse_html5`] to parse HTML content.
-//! It handles entities, void elements, and the full HTML5 error-recovery
-//! algorithm. Node offsets are byte-accurate source positions supplied by the
-//! `source-positions` feature on the `html5ever` crate.
+//! **Production code** should always use [`parse_html5`] to parse EPUB XHTML
+//! and other XML-ish HTML content. It uses xml5ever (XML5 / XHTML), not the
+//! html5ever HTML parser. Node offsets are byte-accurate source positions
+//! supplied by the `source-positions` feature on the `xml5ever` crate.
 //!
 //! [`XmlParser`] is only compiled in **test builds** (`#[cfg(test)]`). It is
 //! retained exclusively for parity tests that compare its output against
@@ -11,11 +11,12 @@
 //! production code.
 
 use super::dom::{Attributes, NodeId, XmlTree, element, text, whitespace};
-use html5ever::tendril::{Tendril, TendrilSink};
-use html5ever::tree_builder::{ElementFlags, NodeOrText, QuirksMode, TreeSink};
-use html5ever::{Attribute, QualName};
 use rustc_hash::FxHashMap;
 use std::cell::{Cell, Ref, RefCell};
+use xml5ever::interface::{ElementFlags, QuirksMode};
+use xml5ever::tendril::{Tendril, TendrilSink};
+use xml5ever::tree_builder::{NodeOrText, TreeSink};
+use xml5ever::{Attribute, QualName};
 
 /// Extension trait that adds XML whitespace detection to [`char`].
 pub trait XmlExt {
@@ -33,7 +34,7 @@ impl XmlExt for char {
 /// Hand-rolled recursive-descent parser for XML and basic HTML documents.
 ///
 /// **Only available in test builds.** Production code uses [`parse_html5`] for
-/// HTML content and `roxmltree` (via `epub::opf`) for XML metadata files.
+/// XHTML content and `roxmltree` (via `epub::opf`) for XML metadata files.
 /// This parser is retained solely for parity tests that compare its output
 /// against `parse_html5` to validate byte-offset equivalence.
 ///
@@ -225,19 +226,19 @@ impl<'a> XmlParser<'a> {
     }
 }
 
-/// [`TreeSink`] implementation that bridges html5ever's push-based API into
+/// [`TreeSink`] implementation that bridges xml5ever's push-based API into
 /// an [`XmlTree`].
 ///
 /// Node offsets are byte-accurate source positions supplied by
-/// [`TreeSink::set_current_byte`], which html5ever calls before every tree
-/// mutation when the `source-positions` feature is enabled on the `html5ever`
+/// [`TreeSink::set_current_byte`], which xml5ever calls before every tree
+/// mutation when the `source-positions` feature is enabled on the `xml5ever`
 /// crate. This makes offsets stable and comparable to those produced by
-/// [`XmlParser`], enabling html5ever-parsed documents to be used wherever
+/// [`XmlParser`], enabling xml5ever-parsed documents to be used wherever
 /// persisted byte offsets are required (EPUB spine, bookmarks, annotations).
 struct Html5Sink {
     /// The tree being built. `RefCell` is required because multiple `TreeSink`
     /// methods need mutable access and Rust's borrow checker cannot see that
-    /// html5ever calls them non-concurrently.
+    /// xml5ever calls them non-concurrently.
     tree: RefCell<XmlTree>,
     /// Maps each element `NodeId` to its fully-qualified name so that
     /// `elem_name` can return a borrowed reference as required by the trait.
@@ -266,7 +267,7 @@ impl Html5Sink {
         text.chars().all(|c| c.is_ascii_whitespace())
     }
 
-    /// Converts an html5ever [`Attribute`] name to its string representation,
+    /// Converts an xml5ever [`Attribute`] name to its string representation,
     /// prefixing with the namespace if one is present (e.g. `xml:lang`).
     fn attr_name(attr: &Attribute) -> String {
         match &attr.name.prefix {
@@ -275,7 +276,7 @@ impl Html5Sink {
         }
     }
 
-    /// Converts a `Vec<Attribute>` from html5ever into the [`Attributes`] map
+    /// Converts a `Vec<Attribute>` from xml5ever into the [`Attributes`] map
     /// used by the DOM.
     fn build_attributes(attrs: Vec<Attribute>) -> Attributes {
         let mut attributes = Attributes::default();
@@ -338,9 +339,9 @@ impl TreeSink for Html5Sink {
         self.current_byte.set(byte_offset as usize);
     }
 
-    /// Silently ignores all parse errors. The dictionary content from
-    /// reader-dict is often malformed HTML, and we rely on html5ever's
-    /// error-recovery rather than failing on bad input.
+    /// Silently ignores all parse errors. EPUB XHTML and dictionary snippets
+    /// can be messy, and we rely on xml5ever's XML5 recovery rather than
+    /// failing on bad input.
     fn parse_error(&self, _msg: std::borrow::Cow<'static, str>) {}
 
     fn get_document(&self) -> Self::Handle {
@@ -386,7 +387,7 @@ impl TreeSink for Html5Sink {
 
     /// Maps an HTML comment to an empty whitespace node at the current source
     /// byte offset without contributing visible content.
-    fn create_comment(&self, _text: Tendril<html5ever::tendril::fmt::UTF8>) -> Self::Handle {
+    fn create_comment(&self, _text: Tendril<xml5ever::tendril::fmt::UTF8>) -> Self::Handle {
         let data = whitespace("", self.current_byte.get());
         self.tree.borrow_mut().push_node(data)
     }
@@ -395,8 +396,8 @@ impl TreeSink for Html5Sink {
     /// current source byte offset without contributing visible content.
     fn create_pi(
         &self,
-        _target: Tendril<html5ever::tendril::fmt::UTF8>,
-        _data: Tendril<html5ever::tendril::fmt::UTF8>,
+        _target: Tendril<xml5ever::tendril::fmt::UTF8>,
+        _data: Tendril<xml5ever::tendril::fmt::UTF8>,
     ) -> Self::Handle {
         let data = whitespace("", self.current_byte.get());
         self.tree.borrow_mut().push_node(data)
@@ -423,9 +424,8 @@ impl TreeSink for Html5Sink {
 
     /// Delegates to [`Self::append`] using `element` as the target parent.
     ///
-    /// Called by html5ever during foster-parenting and similar error-recovery
-    /// situations where the intended parent is determined by the element rather
-    /// than its previous sibling.
+    /// Called by xml5ever during error-recovery situations where the intended
+    /// parent is determined by the element rather than its previous sibling.
     fn append_based_on_parent_node(
         &self,
         element: &Self::Handle,
@@ -460,9 +460,9 @@ impl TreeSink for Html5Sink {
     /// DOCTYPE declarations are not represented in the tree.
     fn append_doctype_to_document(
         &self,
-        _name: Tendril<html5ever::tendril::fmt::UTF8>,
-        _public_id: Tendril<html5ever::tendril::fmt::UTF8>,
-        _system_id: Tendril<html5ever::tendril::fmt::UTF8>,
+        _name: Tendril<xml5ever::tendril::fmt::UTF8>,
+        _public_id: Tendril<xml5ever::tendril::fmt::UTF8>,
+        _system_id: Tendril<xml5ever::tendril::fmt::UTF8>,
     ) {
     }
 
@@ -507,19 +507,14 @@ impl TreeSink for Html5Sink {
     }
 }
 
-/// Parses `input` as HTML using the html5ever spec-compliant parser and
-/// returns the resulting [`XmlTree`].
+/// Parses `input` as XHTML using xml5ever and returns the resulting [`XmlTree`].
 ///
-/// Compared to [`XmlParser`] this handles the full range of HTML5 content
-/// correctly:
-///
-/// - Named and numeric entities (`&amp;`, `&#160;`, …) are decoded.
-/// - Void elements (`<br>`, `<img>`, `<input>`, …) are never given children.
-/// - Implicitly-closed block tags (`<p>`, `<li>`, …) are auto-closed per spec.
-/// - Unclosed tags at EOF are closed automatically.
+/// EPUB spine chapters are XHTML. xml5ever honours self-closing tags such as
+/// `<title/>` and `<style/>` without the html5ever `xhtml-self-closing` hack.
+/// Named and numeric entities are decoded. Unclosed tags at EOF are closed.
 ///
 /// **Offset semantics:** node offsets are byte-accurate source positions
-/// supplied by the `source-positions` feature of the `html5ever` crate.
+/// supplied by the `source-positions` feature of the `xml5ever` crate.
 /// Offsets for nodes that exist in both parsers' output are identical to those
 /// produced by [`XmlParser`].
 ///
@@ -528,10 +523,10 @@ impl TreeSink for Html5Sink {
 /// and standalone HTML files, but not for all use cases).
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(input), fields(len = input.len())))]
 pub fn parse_html5(input: &str) -> XmlTree {
-    use html5ever::{ParseOpts, parse_document};
+    use xml5ever::driver::{XmlParseOpts, parse_document};
 
-    let parser = parse_document(Html5Sink::new(), ParseOpts::default());
-    let input_tendril: Tendril<html5ever::tendril::fmt::UTF8> = input.into();
+    let parser = parse_document(Html5Sink::new(), XmlParseOpts::default());
+    let input_tendril: Tendril<xml5ever::tendril::fmt::UTF8> = input.into();
     parser.one(input_tendril)
 }
 
@@ -600,10 +595,8 @@ mod tests {
     }
 
     /// XHTML EPUB content frequently uses self-closing syntax on RCDATA/RAWTEXT
-    /// elements (`<title/>`, `<style/>`). Without the `xhtml-self-closing`
-    /// feature, html5ever treats `<title>` as opening a RCDATA region that
-    /// swallows the rest of the document, leaving the `<body>` empty. With the
-    /// feature, the self-closing flag is honoured and the body parses normally.
+    /// elements (`<title/>`, `<style/>`). xml5ever treats those as empty tags,
+    /// so the following `<body>` is not swallowed.
     #[test]
     fn html5_self_closing_title_does_not_swallow_body() {
         let text = concat!(
@@ -829,7 +822,7 @@ mod tests {
     }
 
     /// Collect `(tag_name, offset)` for every element in the tree, skipping
-    /// implicit wrapper tags that html5ever inserts but XmlParser does not
+    /// implicit wrapper tags that an HTML parser may insert but XmlParser does not
     /// (`html`, `head`, `body`, `anonymous`).
     fn element_offsets(tree: &XmlTree) -> Vec<(String, usize)> {
         tree.root()

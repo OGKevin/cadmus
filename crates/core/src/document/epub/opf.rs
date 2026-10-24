@@ -322,11 +322,11 @@ impl Toc {
     }
 }
 
-fn epub_type_has_toc(value: &str) -> bool {
+pub(super) fn epub_type_has_toc(value: &str) -> bool {
     value.split_whitespace().any(|token| token == "toc")
 }
 
-fn nav_is_toc(node: roxmltree::Node<'_, '_>) -> bool {
+fn nav_is_toc(node: &roxmltree::Node<'_, '_>) -> bool {
     if !node.is_element() || node.tag_name().name() != "nav" {
         return false;
     }

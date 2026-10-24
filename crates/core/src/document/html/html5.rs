@@ -1,4 +1,4 @@
-//! [`Html5Document`] — an HTML document backed by the html5ever parser.
+//! [`Html5Document`] — an HTML document backed by the xml5ever XHTML parser.
 //!
 //! This module exposes a single public type, [`Html5Document`], which wraps
 //! the shared [`HtmlBase`] rendering pipeline and uses [`parse_html5`] to
@@ -18,12 +18,11 @@ const VIEWER_STYLESHEET: &str = "css/dictionary.css";
 /// Default user-editable stylesheet for dictionary rendering.
 const USER_STYLESHEET: &str = "css/dictionary-user.css";
 
-/// HTML document backed by the html5ever spec-compliant parser.
+/// HTML document backed by xml5ever.
 ///
-/// Handles HTML entities, void elements (`<br>`, `<img>`), and implicitly-
-/// closed block tags correctly per the HTML5 spec. Node offsets are
+/// EPUB and dictionary snippets are parsed as XHTML. Node offsets are
 /// byte-accurate source positions supplied by the `source-positions` feature
-/// of `html5ever`, matching those produced by [`XmlParser`](super::xml::XmlParser)
+/// of `xml5ever`, matching those produced by [`XmlParser`](super::xml::XmlParser)
 /// for the same input.
 pub struct Html5Document {
     /// Shared rendering state (tree, engine, page cache, stylesheets).
@@ -34,7 +33,7 @@ unsafe impl Send for Html5Document {}
 unsafe impl Sync for Html5Document {}
 
 impl Html5Document {
-    /// Parses an in-memory HTML string using html5ever and returns a
+    /// Parses an in-memory HTML string using xml5ever and returns a
     /// ready-to-render document.
     ///
     /// Defaults to the dictionary viewer and user stylesheets; call

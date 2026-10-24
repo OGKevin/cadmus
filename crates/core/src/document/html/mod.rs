@@ -3,12 +3,12 @@
 //! This module provides two concrete document types that share a common
 //! rendering pipeline through [`HtmlBase`]:
 //!
-//! - [`HtmlDocument`] — backed by the html5ever parser. Node offsets are
+//! - [`HtmlDocument`] — backed by xml5ever (XHTML). Node offsets are
 //!   byte-accurate source positions, which is required when reading positions,
 //!   bookmarks, and annotations are persisted to disk. Used for standalone
 //!   HTML files and EPUB spine chapters.
 //!
-//! - [`Html5Document`] — also backed by html5ever. Used for ephemeral
+//! - [`Html5Document`] — also backed by xml5ever. Used for ephemeral
 //!   rendering where no positions are persisted (e.g. the dictionary view).
 //!
 //! The shared [`HtmlBase`] struct holds the parsed [`XmlTree`], the layout
@@ -455,7 +455,7 @@ impl ResourceFetcher for PathBuf {
     }
 }
 
-/// HTML document backed by html5ever.
+/// HTML document backed by xml5ever.
 ///
 /// Node offsets are byte-accurate source positions, making this suitable for
 /// standalone HTML files where reading positions are persisted to disk as
@@ -472,7 +472,7 @@ unsafe impl Send for HtmlDocument {}
 unsafe impl Sync for HtmlDocument {}
 
 impl HtmlDocument {
-    /// Opens the file at `path`, parses it with html5ever, and returns a
+    /// Opens the file at `path`, parses it with xml5ever, and returns a
     /// ready-to-render document.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(path), fields(path = %path.as_ref().display())))]
     pub fn new<P: AsRef<Path>>(path: P, install_dir: &Path) -> Result<HtmlDocument, Error> {

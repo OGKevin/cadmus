@@ -516,7 +516,6 @@ dependencies = [
  "futures-util",
  "gethostname",
  "globset",
- "html5ever",
  "http",
  "http-body-util",
  "humanize-bytes",
@@ -582,6 +581,7 @@ dependencies = [
  "walkdir",
  "webpki-roots",
  "xi-unicode",
+ "xml5ever",
  "zbus",
  "zip",
 ]
@@ -2805,15 +2805,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6303bc9732ae41b04cb554b844a762b4115a61bfaa81e3e83050991eeb56863f"
 dependencies = [
  "digest 0.11.3",
-]
-
-[[package]]
-name = "html5ever"
-version = "0.39.0"
-dependencies = [
- "log",
- "markup5ever",
- "memchr",
 ]
 
 [[package]]
@@ -6978,6 +6969,14 @@ name = "xi-unicode"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a67300977d3dc3f8034dae89778f502b6ba20b269527b3223ba59c0cf393bb8a"
+
+[[package]]
+name = "xml5ever"
+version = "0.39.0"
+dependencies = [
+ "log",
+ "markup5ever",
+]
 
 [[package]]
 name = "xtask"

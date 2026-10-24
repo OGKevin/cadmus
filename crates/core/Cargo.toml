@@ -49,7 +49,7 @@ secrecy = { version = "0.10", features = ["serde"] }
 sysinfo = { workspace = true }
 walkdir = "2.5.0"
 globset = "0.4.18"
-html5ever = { version = "0.39", features = ["source-positions", "xhtml-self-closing"] }
+xml5ever = { version = "0.39", features = ["source-positions"] }
 roxmltree = "0.21"
 humanize-bytes = "1.0.6"
 humantime = "2"

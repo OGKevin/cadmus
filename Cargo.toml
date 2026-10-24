@@ -53,8 +53,8 @@ await_holding_lock = "deny"
 await_holding_refcell_ref = "deny"
 
 [patch.crates-io]
-html5ever  = { path = "thirdparty/html5ever/html5ever" }
 markup5ever = { path = "thirdparty/html5ever/markup5ever" }
+xml5ever = { path = "thirdparty/html5ever/xml5ever" }
 
 [profile.release-minsized]
 inherits = "release"
