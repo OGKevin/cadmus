@@ -807,12 +807,13 @@ in
       before = [ "devenv:enterShell" ];
     };
 
-    # Install OpenCode plugin tooling (only when package files change)
+    # Install OpenCode plugin tooling when package files or node_modules change.
     "opencode:install" = {
       exec = "cd ${config.devenv.root}/.opencode && npm install";
       execIfModified = [
         ".opencode/package.json"
         ".opencode/package-lock.json"
+        ".opencode/node_modules"
       ];
       before = [ "devenv:enterShell" ];
     };

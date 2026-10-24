@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { existsSync, readdirSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { z } from "zod";
+import { z } from "../../node_modules/zod/index.js";
 
 export const INSTALL_DIR = "/mnt/onboard/.adds/cadmus-tst";
 export const FEATURES = "test,kobo";
