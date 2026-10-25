@@ -21,6 +21,7 @@ use std::path::Path;
 /// Extracts the OPF root-file path from a `META-INF/container.xml` string.
 ///
 /// Returns `None` if `rootfile` or its `full-path` attribute is missing.
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(text), fields(len = text.len())))]
 pub fn opf_path_from_container(text: &str) -> Option<String> {
     parse_xml(text)
         .root()
@@ -54,6 +55,7 @@ impl OpfDocument {
     /// Parse an OPF source string, extracting all fields eagerly.
     ///
     /// Returns `None` when the tree has no `<package>` element.
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(source), fields(len = source.len())))]
     pub fn parse(source: String) -> Option<Self> {
         let tree = parse_xml(&source);
         let root = tree.root();
@@ -158,6 +160,7 @@ fn is_dc(node: NodeRef<'_>) -> bool {
         .is_some_and(|name| name.starts_with("dc:"))
 }
 
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(root)))]
 fn extract_manifest(root: NodeRef<'_>) -> Vec<ManifestEntry> {
     let Some(manifest) = root.find("manifest") else {
         tracing::debug!("OPF has no manifest element");
@@ -190,6 +193,7 @@ fn extract_manifest(root: NodeRef<'_>) -> Vec<ManifestEntry> {
         .collect()
 }
 
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(root)))]
 fn extract_spine(root: NodeRef<'_>) -> (Vec<String>, Option<String>) {
     let Some(spine) = root.find("spine") else {
         tracing::debug!("OPF has no spine element");
@@ -214,6 +218,7 @@ fn extract_spine(root: NodeRef<'_>) -> (Vec<String>, Option<String>) {
     (idrefs, toc_id)
 }
 
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(root)))]
 fn extract_dc_metadata(root: NodeRef<'_>) -> HashMap<String, String> {
     let mut map = HashMap::new();
     let Some(md) = root.find("metadata") else {
@@ -238,6 +243,10 @@ fn extract_dc_metadata(root: NodeRef<'_>) -> HashMap<String, String> {
     map
 }
 
+#[cfg_attr(
+    feature = "tracing",
+    tracing::instrument(skip(root, manifest), fields(manifest_entries = manifest.len()))
+)]
 fn extract_cover_href(root: NodeRef<'_>, manifest: &[ManifestEntry]) -> Option<String> {
     let via_meta = root
         .find("metadata")
@@ -289,6 +298,7 @@ impl SeriesParts {
     }
 }
 
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(root)))]
 fn extract_series(root: NodeRef<'_>) -> Option<(String, String)> {
     let md = root.find("metadata")?;
     let mut parts = SeriesParts::default();
@@ -325,6 +335,7 @@ fn extract_series(root: NodeRef<'_>) -> Option<(String, String)> {
     parts.complete_pair()
 }
 
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(root)))]
 fn extract_categories(root: NodeRef<'_>) -> BTreeSet<String> {
     let mut result = BTreeSet::new();
     let Some(md) = root.find("metadata") else {
@@ -385,6 +396,10 @@ fn nav_is_toc(node: NodeRef<'_>) -> bool {
 /// `name` is the archive path of the TOC file (used to resolve relative links).
 /// `is_ncx` selects the NCX `navMap` vs EPUB 3 `nav` document, matching the OPF
 /// spine/manifest kind rather than the filename.
+#[cfg_attr(
+    feature = "tracing",
+    tracing::instrument(skip(text), fields(len = text.len(), name, is_ncx))
+)]
 pub fn parse_toc(text: &str, name: &str, is_ncx: bool) -> Option<Toc> {
     let tree = parse_xml(text);
     let toc_dir = Path::new(name).parent().unwrap_or_else(|| Path::new(""));
@@ -411,6 +426,10 @@ pub fn parse_toc(text: &str, name: &str, is_ncx: bool) -> Option<Toc> {
     Some(Toc { entries })
 }
 
+#[cfg_attr(
+    feature = "tracing",
+    tracing::instrument(skip(node, toc_dir, index), fields(index = *index))
+)]
 fn walk_ncx(node: NodeRef<'_>, toc_dir: &Path, index: &mut usize) -> Vec<TocEntry> {
     let mut entries = Vec::new();
 
@@ -493,6 +512,10 @@ fn nav_link<'a>(li: NodeRef<'a>) -> Option<(String, &'a str)> {
     Some((title, href))
 }
 
+#[cfg_attr(
+    feature = "tracing",
+    tracing::instrument(skip(node, toc_dir, index), fields(index = *index))
+)]
 fn walk_nav(node: NodeRef<'_>, toc_dir: &Path, index: &mut usize) -> Vec<TocEntry> {
     let mut entries = Vec::new();
 

@@ -32,6 +32,7 @@ const USER_STYLESHEET: &str = "css/epub-user.css";
 type UriCache = FxHashMap<String, usize>;
 
 /// Which table-of-contents document `toc_from_href` should parse.
+#[derive(Debug)]
 enum TocDocumentKind {
     /// EPUB 2 NCX, selected from the spine `toc` item rather than the filename.
     Ncx,
@@ -95,6 +96,17 @@ unsafe impl<R: Read + Seek> Sync for EpubDocument<R> {}
 /// Entries with no matching manifest item or with a non-UTF-8 path are silently
 /// skipped — those indicate a structurally malformed EPUB. Entries whose file
 /// is missing from the archive are logged at error level and skipped.
+#[cfg_attr(
+    feature = "tracing",
+    tracing::instrument(
+        skip_all,
+        fields(
+            manifest_entries = manifest.len(),
+            idrefs = idrefs.len(),
+            opf_parent = %opf_parent.display()
+        )
+    )
+)]
 fn build_spine<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
     manifest: &[ManifestEntry],
@@ -238,6 +250,10 @@ impl<R: Read + Seek> EpubDocument<R> {
         })
     }
 
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self, cache), fields(uri))
+    )]
     fn resolve_link(&mut self, uri: &str, cache: &mut UriCache) -> Option<usize> {
         let frag_index_opt = uri.find('#');
         let name = &uri[..frag_index_opt.unwrap_or_else(|| uri.len())];
@@ -265,6 +281,10 @@ impl<R: Read + Seek> EpubDocument<R> {
         }
     }
 
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self, node, cache), fields(name, start_offset))
+    )]
     fn cache_uris(&mut self, node: NodeRef, name: &str, start_offset: usize, cache: &mut UriCache) {
         if let Some(id) = node.attribute("id") {
             let location = start_offset + node.offset();
@@ -275,6 +295,10 @@ impl<R: Read + Seek> EpubDocument<R> {
         }
     }
 
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self), fields(index, start_offset))
+    )]
     fn build_display_list(&mut self, index: usize, start_offset: usize) -> Vec<Page> {
         let mut text = String::new();
         let mut spine_dir = PathBuf::default();
@@ -537,6 +561,7 @@ impl<R: Read + Seek> EpubDocument<R> {
             .map(|s| s.chars().take(4).collect())
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     fn nav_document_href(&self) -> Option<Href> {
         self.info
             .manifest()
@@ -545,6 +570,7 @@ impl<R: Read + Seek> EpubDocument<R> {
             .map(|e| Href::from(e.href.as_str()))
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     fn ncx_href(&self) -> Option<Href> {
         let toc_id = self.info.spine_toc_id()?;
         self.info
@@ -554,6 +580,10 @@ impl<R: Read + Seek> EpubDocument<R> {
             .map(|e| Href::from(e.href.as_str()))
     }
 
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self), fields(href = href.as_str(), kind = ?kind))
+    )]
     fn toc_from_href(&mut self, href: &Href, kind: TocDocumentKind) -> Option<Vec<TocEntry>> {
         let archive_path = self
             .parent
@@ -648,6 +678,7 @@ impl<R: Read + Seek> Document for EpubDocument<R> {
         self.spine.iter().map(|c| c.size).sum()
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     fn toc(&mut self) -> Option<Vec<TocEntry>> {
         if let Some(href) = self.nav_document_href()
             && let Some(entries) = self.toc_from_href(&href, TocDocumentKind::Nav)

@@ -155,6 +155,10 @@ impl HtmlBase {
     /// Recursively walks the tree rooted at `node` and inserts an entry into
     /// `cache` for every element that carries an `id` attribute, mapping
     /// `"name#id"` to the element's offset.
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self, node, cache), fields(name))
+    )]
     fn cache_uris(&mut self, node: NodeRef, name: &str, cache: &mut UriCache) {
         if let Some(id) = node.attribute("id") {
             cache.insert(format!("{}#{}", name, id), node.offset());

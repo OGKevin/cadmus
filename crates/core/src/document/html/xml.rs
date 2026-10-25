@@ -528,6 +528,10 @@ pub fn parse_xml_fragment(input: &str) -> XmlTree {
     parse_with_tree_builder(input, XmlTreeBuilderOpts { extra_roots: true })
 }
 
+#[cfg_attr(
+    feature = "tracing",
+    tracing::instrument(skip(input, tree_builder), fields(len = input.len()))
+)]
 fn parse_with_tree_builder(input: &str, tree_builder: XmlTreeBuilderOpts) -> XmlTree {
     use xml5ever::driver::{XmlParseOpts, parse_document};
 
