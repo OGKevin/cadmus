@@ -201,6 +201,16 @@ pub trait Document: Send + Sync {
     }
 }
 
+/// Size of the file at `path` in bytes, or `0` when it cannot be read.
+///
+/// Used for telemetry only, so a failed metadata call must not stop a document
+/// from opening.
+fn file_size(path: &Path) -> u64 {
+    std::fs::metadata(path)
+        .map(|meta| meta.len())
+        .unwrap_or_default()
+}
+
 pub fn file_kind<P: AsRef<Path>>(path: P) -> Option<FileExtension> {
     path.as_ref()
         .extension()
@@ -284,9 +294,21 @@ pub fn asciify(name: &str) -> String {
         .replace('’', "'")
 }
 
-#[cfg_attr(feature = "tracing", tracing::instrument(skip(path, install_dir), fields(path = %path.as_ref().display())))]
+#[cfg_attr(
+    feature = "tracing",
+    tracing::instrument(
+        skip(path, install_dir),
+        fields(path = %path.as_ref().display(), bytes = file_size(path.as_ref()))
+    )
+)]
 pub fn open<P: AsRef<Path>>(path: P, install_dir: &Path) -> Option<Box<dyn Document>> {
-    tracing::trace!(path = %path.as_ref().display() , install_dir = %install_dir.display(), "Opening document");
+    let bytes = file_size(path.as_ref());
+    tracing::debug!(
+        path = %path.as_ref().display(),
+        bytes,
+        install_dir = %install_dir.display(),
+        "Opening document"
+    );
 
     let kind = file_kind(path.as_ref());
     if kind.is_none() {

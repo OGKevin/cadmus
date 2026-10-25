@@ -370,7 +370,14 @@ fn set_rotation(rotation: i8, updating: &mut Vec<UpdateData>, context: &mut AppC
 
 #[allow(clippy::too_many_arguments)]
 // TODO(OGKevin): This shall be moved to the readerm module
-#[cfg_attr(feature = "tracing", tracing::instrument(skip(info, view, history, updating, tx, bus, rq, context), level = tracing::Level::TRACE))]
+#[cfg_attr(
+    feature = "tracing",
+    tracing::instrument(
+        skip(info, view, history, updating, tx, bus, rq, context),
+        fields(path = %info.file.path.display(), bytes = info.file.size),
+        level = tracing::Level::TRACE
+    )
+)]
 async fn open_document(
     info: Box<Info>,
     view: &mut Box<dyn View>,
