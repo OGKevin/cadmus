@@ -503,6 +503,22 @@ impl<'a> NodeRef<'a> {
         self.node.data.offset()
     }
 
+    /// Returns the byte length of this node's text without allocating.
+    ///
+    /// Text nodes report the length of their stored string. Other nodes sum
+    /// the text of their descendants, matching [`Self::text`]. Appending text
+    /// during parsing runs once per token, so it must not build a `String`
+    /// just to measure one.
+    pub fn text_len(&self) -> usize {
+        match self.node.data.text() {
+            Some(text) => text.len(),
+            None => self
+                .descendants()
+                .map(|n| n.node.data.text().map_or(0, str::len))
+                .sum(),
+        }
+    }
+
     pub fn text(&self) -> String {
         self.node.data.text().map(String::from).unwrap_or_else(|| {
             self.descendants()

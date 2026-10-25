@@ -291,26 +291,22 @@ impl XmlSink {
     }
 
     /// Appends text while preserving source offset gaps around entities.
+    ///
+    /// The preceding text node is merged only when the new segment starts
+    /// exactly where that node's text ends; an entity gap must stay visible as
+    /// a separate node.
     fn append_text_segment(&self, parent: &NodeId, text_str: &str, offset: usize) {
-        let last_child_id = self
+        let merge_target = self
             .tree
             .borrow()
             .get(*parent)
             .last_child()
-            .filter(|n| n.tag_name().is_none() && !n.text().is_empty())
-            .map(|n| n.id);
+            .filter(|n| n.tag_name().is_none() && n.text_len() > 0)
+            .map(|n| (n.id, n.offset() + n.text_len()));
 
-        if let Some(last_id) = last_child_id {
-            let expected_offset = {
-                let tree = self.tree.borrow();
-                let last = tree.get(last_id);
-                last.offset() + last.text().len()
-            };
-
-            if offset == expected_offset {
-                self.tree.borrow_mut().append_text_to(last_id, text_str);
-                return;
-            }
+        if let Some((last_id, _)) = merge_target.filter(|(_, expected)| *expected == offset) {
+            self.tree.borrow_mut().append_text_to(last_id, text_str);
+            return;
         }
 
         let node_id = self
@@ -506,8 +502,8 @@ impl TreeSink for XmlSink {
 
 /// Parses `input` as a single XML document and returns the resulting [`XmlTree`].
 ///
-/// Used for EPUB XHTML, OPF/NCX, ComicInfo, and standalone HTML. Content after
-/// the document element is dropped. Use [`parse_xml_fragment`] for fragments.
+/// Used for EPUB XHTML, OPF/NCX, and ComicInfo. Content after the document
+/// element is dropped. Use [`parse_xml_fragment`] for fragments.
 /// Self-closing tags such as `<title/>` are empty elements. Named and numeric
 /// entities are decoded. Unclosed tags at EOF are closed.
 ///
@@ -524,8 +520,9 @@ pub fn parse_xml(input: &str) -> XmlTree {
 
 /// Parses `input` as an XML fragment and returns the resulting [`XmlTree`].
 ///
-/// Same as [`parse_xml`], but sibling top-level elements after the first are
-/// kept as document children. Used for dictionary snippets.
+/// Same as [`parse_xml`], but sibling top-level elements after the first and
+/// loose top-level text are kept as document children. Used for dictionary
+/// snippets and standalone HTML files, which often have no single root.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(input), fields(len = input.len())))]
 pub fn parse_xml_fragment(input: &str) -> XmlTree {
     parse_with_tree_builder(input, XmlTreeBuilderOpts { extra_roots: true })
@@ -971,5 +968,57 @@ mod tests {
         let tree = parse_xml("<h1>Title</h1><p>Body</p>");
         assert!(tree.root().find("h1").is_some());
         assert!(tree.root().find("p").is_none());
+    }
+
+    /// Non-whitespace text nodes directly under the document root.
+    fn root_text_parts(tree: &XmlTree) -> Vec<String> {
+        tree.root()
+            .children()
+            .filter(|n| n.tag_name().is_none() && !n.text().trim().is_empty())
+            .map(|n| n.text())
+            .collect()
+    }
+
+    #[test]
+    fn fragment_keeps_text_between_and_around_elements() {
+        let tree = parse_xml_fragment("definition <b>word</b> explanation");
+
+        assert_eq!(
+            root_text_parts(&tree),
+            vec!["definition ".to_string(), " explanation".to_string()]
+        );
+        assert_eq!(
+            tree.root().find("b").map(|n| n.text()),
+            Some("word".to_string())
+        );
+    }
+
+    #[test]
+    fn document_parse_drops_text_outside_root() {
+        let tree = parse_xml("definition <b>word</b> explanation");
+
+        assert!(
+            root_text_parts(&tree).is_empty(),
+            "document parse should drop text outside the root element"
+        );
+        assert_eq!(
+            tree.root().find("b").map(|n| n.text()),
+            Some("word".to_string())
+        );
+    }
+
+    /// CDATA reaches the sink one character at a time, so a large section runs
+    /// the text-merge path once per character. That path must not rescan the
+    /// already-merged prefix, or parsing becomes quadratic.
+    #[test]
+    fn large_cdata_fragment_keeps_all_content() {
+        let content = "x".repeat(200_000);
+        let source = format!("<p><![CDATA[{content}]]></p>");
+
+        let tree = parse_xml_fragment(&source);
+
+        let p = tree.root().find("p").expect("p should exist");
+        assert_eq!(p.text().len(), 200_000);
+        assert!(p.text().chars().all(|c| c == 'x'));
     }
 }

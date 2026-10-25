@@ -1,7 +1,8 @@
 //! [`XhtmlDocument`] — an in-memory XHTML document backed by xml5ever.
 //!
-//! Wraps the shared [`HtmlBase`] rendering pipeline and uses [`parse_xml`] to
-//! build the document tree. Used for ephemeral rendering (dictionary view).
+//! Wraps the shared [`HtmlBase`] rendering pipeline and uses
+//! [`parse_xml_fragment`] to build the document tree, because dictionary
+//! snippets need not have a single root. Used for ephemeral rendering.
 
 use super::HtmlBase;
 use super::layout::TextAlign;

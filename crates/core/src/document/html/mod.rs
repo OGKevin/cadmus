@@ -32,7 +32,7 @@ use self::engine::{Engine, Page, ResourceFetcher};
 use self::layout::{DrawCommand, ImageCommand, TextAlign, TextCommand};
 use self::layout::{DrawState, LoopContext, RootData, StyleData};
 use self::style::StyleSheet;
-use self::xml::parse_xml;
+use self::xml::parse_xml_fragment;
 use crate::document::{BoundedText, Document, Location, TextLocation, TocEntry};
 use crate::framebuffer::Pixmap;
 use crate::geom::{Boundary, CycleDir, Edge};
@@ -474,13 +474,17 @@ unsafe impl Sync for HtmlDocument {}
 impl HtmlDocument {
     /// Opens the file at `path`, parses it with xml5ever, and returns a
     /// ready-to-render document.
+    ///
+    /// Parsed as a fragment: standalone HTML files are often not wrapped in a
+    /// single `<html>` root, so sibling top-level elements and loose top-level
+    /// text must all be kept.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(path), fields(path = %path.as_ref().display())))]
     pub fn new<P: AsRef<Path>>(path: P, install_dir: &Path) -> Result<HtmlDocument, Error> {
         let mut file = File::open(&path)?;
         let size = file.metadata()?.len() as usize;
         let mut text = String::new();
         file.read_to_string(&mut text)?;
-        let mut content = parse_xml(&text);
+        let mut content = parse_xml_fragment(&text);
         content.wrap_lost_inlines();
         let parent = path.as_ref().parent().unwrap_or_else(|| Path::new(""));
 
@@ -504,7 +508,7 @@ impl HtmlDocument {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(text), fields(len = text.len())))]
     pub fn new_from_memory(text: &str, install_dir: &Path) -> HtmlDocument {
         let size = text.len();
-        let mut content = parse_xml(text);
+        let mut content = parse_xml_fragment(text);
         content.wrap_lost_inlines();
 
         HtmlDocument {
@@ -525,7 +529,7 @@ impl HtmlDocument {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, text), fields(len = text.len())))]
     pub fn update(&mut self, text: &str) {
         self.base.size = text.len();
-        let mut content = parse_xml(text);
+        let mut content = parse_xml_fragment(text);
         content.wrap_lost_inlines();
         self.base.content = content;
         self.text = text.to_string();
@@ -740,6 +744,67 @@ mod tests {
         doc.base.engine.set_margin_width(margin_width);
         doc.base.engine.load_fonts_from(root_dir);
         doc
+    }
+
+    /// Non-whitespace text of every element with `tag_name`, in document order.
+    fn element_texts(doc: &HtmlDocument, tag_name: &str) -> Vec<String> {
+        doc.base
+            .content
+            .root()
+            .descendants()
+            .filter(|n| n.tag_name() == Some(tag_name))
+            .map(|n| n.text())
+            .collect()
+    }
+
+    #[test]
+    fn document_keeps_sibling_top_level_elements() {
+        let doc = HtmlDocument::new_from_memory("<h1>Title</h1><p>Body</p>", Path::new(""));
+
+        assert_eq!(element_texts(&doc, "h1"), vec!["Title".to_string()]);
+        assert_eq!(element_texts(&doc, "p"), vec!["Body".to_string()]);
+    }
+
+    #[test]
+    fn document_without_html_root_keeps_head_and_body() {
+        let html = concat!(
+            "<head><title>Cover</title></head>",
+            "<body><h1>Title</h1><p>Body</p></body>",
+        );
+        let doc = HtmlDocument::new_from_memory(html, Path::new(""));
+
+        assert_eq!(element_texts(&doc, "title"), vec!["Cover".to_string()]);
+        assert_eq!(element_texts(&doc, "h1"), vec!["Title".to_string()]);
+        assert_eq!(element_texts(&doc, "p"), vec!["Body".to_string()]);
+    }
+
+    #[test]
+    fn document_keeps_text_after_last_top_level_element() {
+        let doc = HtmlDocument::new_from_memory("<p>x</p> tail", Path::new(""));
+
+        assert_eq!(element_texts(&doc, "p"), vec!["x".to_string()]);
+        assert_eq!(doc.base.content.root().text(), "x tail");
+    }
+
+    #[test]
+    fn document_from_path_keeps_sibling_top_level_elements() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("book.html");
+        fs::write(&path, "<h1>Title</h1><p>Body</p>").expect("write html");
+
+        let doc = HtmlDocument::new(&path, Path::new("")).expect("parse html");
+
+        assert_eq!(element_texts(&doc, "h1"), vec!["Title".to_string()]);
+        assert_eq!(element_texts(&doc, "p"), vec!["Body".to_string()]);
+    }
+
+    #[test]
+    fn update_keeps_sibling_top_level_elements() {
+        let mut doc = HtmlDocument::new_from_memory("<p>old</p>", Path::new(""));
+        doc.update("<h1>Title</h1><p>Body</p>");
+
+        assert_eq!(element_texts(&doc, "h1"), vec!["Title".to_string()]);
+        assert_eq!(element_texts(&doc, "p"), vec!["Body".to_string()]);
     }
 
     #[test]
