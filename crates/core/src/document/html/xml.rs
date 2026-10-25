@@ -4,9 +4,10 @@
 //! Node offsets are byte-accurate source positions from xml5ever's
 //! `source-positions` feature.
 //!
-//! [`XmlParser`] is compiled only in test builds (`#[cfg(test)]`). It exists
-//! so parity tests can compare its offsets against [`parse_xml`]. Do not use
-//! it in production.
+//! [`XmlParser`] is the hand-rolled parser that [`parse_xml`] replaced. It is
+//! compiled only for tests and the `bench` feature, so parity tests and
+//! benchmarks can compare it against [`parse_xml`]. Do not use it in
+//! production.
 
 use super::dom::{Attributes, NodeId, XmlTree, element, text, whitespace};
 use rustc_hash::FxHashMap;
@@ -38,7 +39,7 @@ impl XmlExt for char {
 /// Produces an [`XmlTree`] where every node's `offset` field is the exact byte
 /// position of the opening `<` (elements) or first character (text nodes) in
 /// `input`.
-#[cfg(test)]
+#[cfg(any(test, feature = "bench"))]
 #[derive(Debug)]
 pub struct XmlParser<'a> {
     /// The full source string being parsed.
@@ -47,7 +48,7 @@ pub struct XmlParser<'a> {
     pub offset: usize,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "bench"))]
 impl<'a> XmlParser<'a> {
     /// Creates a new parser positioned at the start of `input`.
     pub fn new(input: &str) -> XmlParser<'_> {

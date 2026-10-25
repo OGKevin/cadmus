@@ -127,6 +127,11 @@ name = "fingerprint_bench"
 harness = false
 
 [[bench]]
+name = "parse"
+harness = false
+required-features = ["bench"]
+
+[[bench]]
 name = "dictionary_bench"
 harness = false
 
