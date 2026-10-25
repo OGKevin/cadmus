@@ -845,6 +845,31 @@ mod tests {
         );
     }
 
+    /// The narrow default layout forces the hyphenation pass. Punctuation split
+    /// off by it must be merged back, or selection text gains spurious spaces.
+    #[test]
+    fn hyphenation_reattaches_punctuation_to_words() {
+        let html =
+            "<p>“No, it can't be right — there must be a mistake somewhere,” he thought.</p>";
+        let mut doc = setup_doc(html);
+        let pages = doc.base.build_pages();
+        let texts: Vec<&str> = pages
+            .iter()
+            .flatten()
+            .filter_map(|cmd| match cmd {
+                DrawCommand::Text(tc) => Some(tc.text.as_str()),
+                _ => None,
+            })
+            .collect();
+
+        for expected in ["“No,", "can't", "somewhere,”", "thought."] {
+            assert!(
+                texts.contains(&expected),
+                "expected {expected:?} as one text box, got {texts:?}"
+            );
+        }
+    }
+
     /// Inline images that share a line can force a mid-line page break by
     /// draining `page[start_command_index..]` and replacing `page` with that
     /// suffix. `start_command_index` must then index the new vec, or a later
