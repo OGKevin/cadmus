@@ -13,7 +13,7 @@ use crate::document::Location;
 use crate::document::TocEntry;
 use crate::document::html::dom::NodeRef;
 use crate::document::html::xml::parse_xml;
-use crate::helpers::{Normalize, decode_entities};
+use crate::helpers::Normalize;
 use percent_encoding::percent_decode_str;
 use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
@@ -230,7 +230,7 @@ fn extract_dc_metadata(root: NodeRef<'_>) -> HashMap<String, String> {
                 );
             } else {
                 map.entry(child.tag_name().unwrap_or("").to_string())
-                    .or_insert_with(|| decode_entities(&text).into_owned());
+                    .or_insert(text);
             }
         }
     }
@@ -267,42 +267,62 @@ fn extract_cover_href(root: NodeRef<'_>, manifest: &[ManifestEntry]) -> Option<S
     })
 }
 
+/// Series title and position, kept apart per metadata vocabulary so a title
+/// is never paired with a position from the other source.
+#[derive(Default)]
+struct SeriesParts {
+    calibre_title: Option<String>,
+    calibre_index: Option<String>,
+    epub3_title: Option<String>,
+    epub3_index: Option<String>,
+}
+
+impl SeriesParts {
+    /// Returns the Calibre pair, else the EPUB 3 pair, else `None`.
+    ///
+    /// Calibre wins because it is the vocabulary Calibre itself writes, and the
+    /// two are usually equivalent when a book carries both.
+    fn complete_pair(self) -> Option<(String, String)> {
+        self.calibre_title
+            .zip(self.calibre_index)
+            .or_else(|| self.epub3_title.zip(self.epub3_index))
+    }
+}
+
 fn extract_series(root: NodeRef<'_>) -> Option<(String, String)> {
     let md = root.find("metadata")?;
-    let mut title = None;
-    let mut index = None;
+    let mut parts = SeriesParts::default();
 
     for child in md.children().filter(|n| n.tag_name() == Some("meta")) {
         match child.attribute("name") {
             Some("calibre:series") => {
-                title = child
-                    .attribute("content")
-                    .map(|s| decode_entities(s).into_owned());
+                parts.calibre_title = child.attribute("content").map(String::from);
             }
             Some("calibre:series_index") => {
-                index = child
-                    .attribute("content")
-                    .map(|s| decode_entities(s).into_owned());
+                parts.calibre_index = child.attribute("content").map(String::from);
             }
             Some(name) => tracing::debug!(
                 name,
                 content = child.attribute("content").unwrap_or_default(),
                 "Ignoring unrecognized series meta name"
             ),
-            None => tracing::debug!(
-                property = child.attribute("property").unwrap_or_default(),
-                content = child.attribute("content").unwrap_or_default(),
-                "Series meta without a name attribute"
-            ),
-        }
-        if child.attribute("property") == Some("belongs-to-collection") {
-            title = Some(decode_entities(&child.text()).into_owned());
-        } else if child.attribute("property") == Some("group-position") {
-            index = Some(decode_entities(&child.text()).into_owned());
+            None => match child.attribute("property") {
+                Some("belongs-to-collection") => parts.epub3_title = Some(child.text()),
+                Some("group-position") => parts.epub3_index = Some(child.text()),
+                Some(property) => tracing::debug!(
+                    property,
+                    content = child.attribute("content").unwrap_or_default(),
+                    "Ignoring series meta without a recognized property"
+                ),
+                None => tracing::debug!(
+                    content = child.attribute("content").unwrap_or_default(),
+                    "Series meta without a name or property attribute"
+                ),
+            },
         }
     }
 
-    title.zip(index)
+    parts.complete_pair()
 }
 
 fn extract_categories(root: NodeRef<'_>) -> BTreeSet<String> {
@@ -315,8 +335,7 @@ fn extract_categories(root: NodeRef<'_>) -> BTreeSet<String> {
         .children()
         .filter(|n| n.tag_name() == Some("subject") && is_dc(*n))
     {
-        let text = child.text();
-        let subject = decode_entities(&text);
+        let subject = child.text();
         if subject.contains(" / ") {
             for categ in subject.split('|') {
                 let start_index = categ.find(" - ").map(|i| i + 3).unwrap_or(0);
@@ -325,7 +344,7 @@ fn extract_categories(root: NodeRef<'_>) -> BTreeSet<String> {
         } else if subject.is_empty() {
             tracing::debug!("Ignoring Dublin Core subject with empty text");
         } else {
-            result.insert(subject.into_owned());
+            result.insert(subject);
         }
     }
 
@@ -400,10 +419,7 @@ fn walk_ncx(node: NodeRef<'_>, toc_dir: &Path, index: &mut usize) -> Vec<TocEntr
             continue;
         }
 
-        let title = child
-            .find("text")
-            .map(|n| decode_entities(&n.text()).into_owned())
-            .unwrap_or_default();
+        let title = child.find("text").map(|n| n.text()).unwrap_or_default();
         if title.is_empty() {
             tracing::debug!("NCX navPoint has no text title");
         }
@@ -411,11 +427,7 @@ fn walk_ncx(node: NodeRef<'_>, toc_dir: &Path, index: &mut usize) -> Vec<TocEntr
         let rel_uri = child
             .find("content")
             .and_then(|n| n.attribute("src"))
-            .map(|src| {
-                percent_decode_str(&decode_entities(src))
-                    .decode_utf8_lossy()
-                    .into_owned()
-            })
+            .map(percent_decode)
             .unwrap_or_default();
         if rel_uri.is_empty() {
             tracing::debug!(title, "NCX navPoint has no content src");
@@ -455,43 +467,36 @@ fn walk_ncx(node: NodeRef<'_>, toc_dir: &Path, index: &mut usize) -> Vec<TocEntr
     entries
 }
 
+/// Percent-decodes a link target that the XML parser already entity-decoded.
+fn percent_decode(target: &str) -> String {
+    percent_decode_str(target).decode_utf8_lossy().into_owned()
+}
+
+/// Returns the navigation entry title and link target for one `<li>`.
+///
+/// A group entry has no `<a>` of its own: its title is the direct `<span>`
+/// label and it navigates to the first link inside it, so the heading keeps
+/// both its name and a reachable target.
+fn nav_link<'a>(li: NodeRef<'a>) -> Option<(String, &'a str)> {
+    let direct_link = li.children().find(|n| n.tag_name() == Some("a"));
+    let anchor = direct_link.or_else(|| li.find("a"))?;
+    let href = anchor.attribute("href").filter(|href| !href.is_empty())?;
+    let title = match direct_link {
+        Some(link) => link.text(),
+        None => li
+            .children()
+            .find(|n| n.tag_name() == Some("span"))
+            .map(|span| span.text())
+            .unwrap_or_default(),
+    };
+
+    Some((title, href))
+}
+
 fn walk_nav(node: NodeRef<'_>, toc_dir: &Path, index: &mut usize) -> Vec<TocEntry> {
     let mut entries = Vec::new();
 
-    for child in node.children().filter(|n| n.is_element()) {
-        if child.tag_name() != Some("li") {
-            continue;
-        }
-
-        let link = child.children().find(|n| n.tag_name() == Some("a"));
-        if link.is_none() {
-            tracing::debug!("Navigation list item has no a element");
-        } else if link.is_some_and(|a| a.attribute("href").is_none()) {
-            tracing::debug!("Navigation link has no href attribute");
-        }
-
-        let title = link
-            .map(|a| decode_entities(&a.text()).into_owned())
-            .unwrap_or_default();
-        if title.is_empty() {
-            tracing::debug!("Navigation entry has no link text");
-        }
-
-        let rel_uri = link
-            .and_then(|a| a.attribute("href"))
-            .map(|href| {
-                percent_decode_str(&decode_entities(href))
-                    .decode_utf8_lossy()
-                    .into_owned()
-            })
-            .unwrap_or_default();
-
-        let loc = toc_dir
-            .join(&rel_uri)
-            .normalize()
-            .to_str()
-            .map(|uri| Location::Uri(uri.to_string()));
-
+    for child in node.children().filter(|n| n.tag_name() == Some("li")) {
         let current_index = *index;
         *index += 1;
 
@@ -500,6 +505,27 @@ fn walk_nav(node: NodeRef<'_>, toc_dir: &Path, index: &mut usize) -> Vec<TocEntr
             .find(|n| n.tag_name() == Some("ol"))
             .map(|ol| walk_nav(ol, toc_dir, index))
             .unwrap_or_default();
+
+        let Some((title, href)) = nav_link(child) else {
+            tracing::debug!(
+                index = current_index,
+                text = %child.text(),
+                "Skipping navigation list item without a link"
+            );
+            entries.extend(sub_entries);
+            continue;
+        };
+
+        if title.is_empty() {
+            tracing::debug!("Navigation entry has no link text");
+        }
+
+        let rel_uri = percent_decode(href);
+        let loc = toc_dir
+            .join(&rel_uri)
+            .normalize()
+            .to_str()
+            .map(|uri| Location::Uri(uri.to_string()));
 
         if let Some(location) = loc {
             entries.push(TocEntry {
@@ -787,5 +813,213 @@ mod tests {
     #[test]
     fn parse_toc_malformed_xml_returns_none() {
         assert!(parse_toc("<bad", "toc.ncx", true).is_none());
+    }
+
+    const OPF_SERIES_MIXED_SOURCES: &str = r##"<?xml version="1.0"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+  <metadata>
+    <meta name="calibre:series" content="Series A"/>
+    <meta name="calibre:series_index" content="2"/>
+    <meta property="belongs-to-collection" id="c01">Collection B</meta>
+    <meta property="group-position" refines="#c01">9</meta>
+  </metadata>
+  <manifest/>
+  <spine/>
+</package>"##;
+
+    const OPF_SERIES_EPUB3_ONLY: &str = r##"<?xml version="1.0"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+  <metadata>
+    <meta property="belongs-to-collection" id="c01">Collection B</meta>
+    <meta property="group-position" refines="#c01">9</meta>
+  </metadata>
+  <manifest/>
+  <spine/>
+</package>"##;
+
+    const OPF_SERIES_PARTIAL: &str = r#"<?xml version="1.0"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+  <metadata>
+    <meta name="calibre:series" content="Series A"/>
+    <meta property="group-position">9</meta>
+  </metadata>
+  <manifest/>
+  <spine/>
+</package>"#;
+
+    #[test]
+    fn opf_series_prefers_calibre_pair_over_epub3_pair() {
+        let d = OpfDocument::parse(OPF_SERIES_MIXED_SOURCES.to_string()).unwrap();
+        assert_eq!(
+            d.series,
+            Some(("Series A".to_string(), "2".to_string())),
+            "title and position must come from the same source"
+        );
+    }
+
+    #[test]
+    fn opf_series_uses_epub3_pair_when_calibre_pair_absent() {
+        let d = OpfDocument::parse(OPF_SERIES_EPUB3_ONLY.to_string()).unwrap();
+        assert_eq!(
+            d.series,
+            Some(("Collection B".to_string(), "9".to_string()))
+        );
+    }
+
+    #[test]
+    fn opf_series_none_when_no_pair_is_complete() {
+        let d = OpfDocument::parse(OPF_SERIES_PARTIAL.to_string()).unwrap();
+        assert_eq!(d.series, None, "a lone part of either pair is not a series");
+    }
+
+    const NAV_GROUP: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:epub="http://www.idpf.org/2007/ops">
+  <body>
+    <nav epub:type="toc">
+      <ol>
+        <li>
+          <span>Part One</span>
+          <ol>
+            <li><a href="chapter1.xhtml">Chapter One</a></li>
+            <li><a href="chapter2.xhtml">Chapter Two</a></li>
+          </ol>
+        </li>
+        <li><a href="chapter3.xhtml">Chapter Three</a></li>
+      </ol>
+    </nav>
+  </body>
+</html>"#;
+
+    const NAV_UNREACHABLE_GROUPS: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:epub="http://www.idpf.org/2007/ops">
+  <body>
+    <nav epub:type="toc">
+      <ol>
+        <li><span>Dedication</span></li>
+        <li>
+          <a>Broken Group</a>
+          <ol>
+            <li><a href="chapter1.xhtml">Chapter One</a></li>
+          </ol>
+        </li>
+      </ol>
+    </nav>
+  </body>
+</html>"#;
+
+    #[test]
+    fn parse_toc_nav_group_heading_uses_span_title_and_first_link() {
+        let entries = parse_toc(NAV_GROUP, "OEBPS/nav.xhtml", false)
+            .unwrap()
+            .into_entries();
+        assert_eq!(entries.len(), 2, "group heading must be kept");
+        assert_eq!(entries[0].title, "Part One");
+        assert!(
+            matches!(&entries[0].location, Location::Uri(u) if u == "OEBPS/chapter1.xhtml"),
+            "group heading must point at its first chapter, got {:?}",
+            entries[0].location
+        );
+        assert_eq!(entries[0].children.len(), 2);
+        assert_eq!(entries[0].children[0].title, "Chapter One");
+        assert_eq!(entries[1].title, "Chapter Three");
+    }
+
+    #[test]
+    fn parse_toc_nav_entry_without_href_keeps_nested_entries() {
+        let entries = parse_toc(NAV_UNREACHABLE_GROUPS, "OEBPS/nav.xhtml", false)
+            .unwrap()
+            .into_entries();
+        assert_eq!(
+            entries.len(),
+            1,
+            "entries without a usable link are skipped, but nested chapters survive: {entries:?}"
+        );
+        assert_eq!(entries[0].title, "Chapter One");
+        assert!(
+            matches!(&entries[0].location, Location::Uri(u) if u == "OEBPS/chapter1.xhtml"),
+            "nested chapter must keep its own location, got {:?}",
+            entries[0].location
+        );
+    }
+
+    const OPF_ENTITIES: &str = r#"<?xml version="1.0"?>
+<package xmlns="http://www.idpf.org/2007/opf"
+         xmlns:dc="http://purl.org/dc/elements/1.1/"
+         version="2.0">
+  <metadata>
+    <dc:title>Learning &amp;lt;XML&amp;gt;</dc:title>
+    <dc:subject>Saga &amp;#65;</dc:subject>
+    <meta name="calibre:series" content="Series &amp;#65;"/>
+    <meta name="calibre:series_index" content="1"/>
+  </metadata>
+  <manifest/>
+  <spine/>
+</package>"#;
+
+    #[test]
+    fn opf_entities_decoded_exactly_once() {
+        let d = OpfDocument::parse(OPF_ENTITIES.to_string()).unwrap();
+        assert_eq!(
+            d.metadata_value("title"),
+            Some("Learning &lt;XML&gt;".to_string()),
+            "character references must be decoded once, by the XML parser"
+        );
+        assert!(
+            d.categories.contains("Saga &#65;"),
+            "subject must keep literal entity text, got {:?}",
+            d.categories
+        );
+        assert_eq!(
+            d.series,
+            Some(("Series &#65;".to_string(), "1".to_string()))
+        );
+    }
+
+    const NAV_ESCAPED_HREF: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:epub="http://www.idpf.org/2007/ops">
+  <body>
+    <nav epub:type="toc">
+      <ol>
+        <li><a href="chapter%20one&amp;amp;two.xhtml">One</a></li>
+      </ol>
+    </nav>
+  </body>
+</html>"#;
+
+    const NCX_ESCAPED_SRC: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+  <navMap>
+    <navPoint id="np1" playOrder="1">
+      <navLabel><text>One</text></navLabel>
+      <content src="chapter%20one&amp;amp;two.xhtml"/>
+    </navPoint>
+  </navMap>
+</ncx>"#;
+
+    #[test]
+    fn parse_toc_nav_href_percent_decoded_but_entities_not_decoded_twice() {
+        let entries = parse_toc(NAV_ESCAPED_HREF, "OEBPS/nav.xhtml", false)
+            .unwrap()
+            .into_entries();
+        assert!(
+            matches!(&entries[0].location, Location::Uri(u) if u == "OEBPS/chapter one&amp;two.xhtml"),
+            "percent escapes decode, the source &amp;amp; stays one level of &, got {:?}",
+            entries[0].location
+        );
+    }
+
+    #[test]
+    fn parse_toc_ncx_src_percent_decoded_but_entities_not_decoded_twice() {
+        let entries = parse_toc(NCX_ESCAPED_SRC, "OEBPS/toc.ncx", true)
+            .unwrap()
+            .into_entries();
+        assert!(
+            matches!(&entries[0].location, Location::Uri(u) if u == "OEBPS/chapter one&amp;two.xhtml"),
+            "percent escapes decode, the source &amp;amp; stays one level of &, got {:?}",
+            entries[0].location
+        );
     }
 }

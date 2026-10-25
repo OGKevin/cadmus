@@ -10,7 +10,6 @@
 use super::file_extension::FileExtension;
 use super::html::dom::NodeRef;
 use super::html::xml::parse_xml;
-use crate::helpers::decode_entities;
 use crate::metadata::Info;
 use crate::runtime;
 use async_zip::base::read1::seek::ZipArchiveReader;
@@ -447,40 +446,40 @@ fn fields_from_comicinfo_node(comic_root: NodeRef<'_>) -> ComicInfoFields {
     for child in comic_root.children() {
         let tag = child.tag_name();
         let text = child.text();
-        let trimmed = decode_entities(text.trim());
+        let trimmed = text.trim();
         if trimmed.is_empty() {
             continue;
         }
         if tag_eq_ignore_case(tag, "Title") {
-            fields.title = trimmed.into_owned();
+            fields.title = trimmed.to_string();
         } else if tag_eq_ignore_case(tag, "Series") {
-            fields.series = trimmed.into_owned();
+            fields.series = trimmed.to_string();
         } else if tag_eq_ignore_case(tag, "Number") {
-            fields.number = trimmed.into_owned();
+            fields.number = trimmed.to_string();
         } else if tag_eq_ignore_case(tag, "Volume") {
-            fields.volume = trimmed.into_owned();
+            fields.volume = trimmed.to_string();
         } else if tag_eq_ignore_case(tag, "Year") {
-            fields.year = trimmed.into_owned();
+            fields.year = trimmed.to_string();
         } else if tag_eq_ignore_case(tag, "LanguageISO") {
-            fields.language = trimmed.into_owned();
+            fields.language = trimmed.to_string();
         } else if tag_eq_ignore_case(tag, "Publisher") {
-            fields.publisher = trimmed.into_owned();
+            fields.publisher = trimmed.to_string();
         } else if tag_eq_ignore_case(tag, "Writer") {
-            writer = trimmed.into_owned();
+            writer = trimmed.to_string();
         } else if tag_eq_ignore_case(tag, "Penciller") {
-            penciller = trimmed.into_owned();
+            penciller = trimmed.to_string();
         } else if tag_eq_ignore_case(tag, "Colorist") {
-            colorist = trimmed.into_owned();
+            colorist = trimmed.to_string();
         } else if tag_eq_ignore_case(tag, "Letterer") {
-            letterer = trimmed.into_owned();
+            letterer = trimmed.to_string();
         } else if tag_eq_ignore_case(tag, "Editor") {
-            editor = trimmed.into_owned();
+            editor = trimmed.to_string();
         } else if tag_eq_ignore_case(tag, "Genre") {
-            fields.categories.insert(trimmed.into_owned());
+            fields.categories.insert(trimmed.to_string());
         } else if tag_eq_ignore_case(tag, "Web") {
-            web = trimmed.into_owned();
+            web = trimmed.to_string();
         } else if tag_eq_ignore_case(tag, "ISBN") {
-            isbn = trimmed.into_owned();
+            isbn = trimmed.to_string();
         }
     }
 
@@ -570,6 +569,17 @@ mod tests {
         let fields = parse_comicinfo_xml(xml).expect("parse");
         assert_eq!(fields.title, "AB");
         assert_eq!(fields.series, "Éé");
+    }
+
+    /// XML parsing decodes character references once. Text that merely looks like a
+    /// reference after that pass must survive verbatim.
+    #[test]
+    fn parse_comicinfo_keeps_entity_looking_text_literal() {
+        let xml =
+            r#"<ComicInfo><Title>&amp;#65;</Title><Series>&amp;lt;b&amp;gt;</Series></ComicInfo>"#;
+        let fields = parse_comicinfo_xml(xml).expect("parse");
+        assert_eq!(fields.title, "&#65;");
+        assert_eq!(fields.series, "&lt;b&gt;");
     }
 
     #[test]

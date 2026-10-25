@@ -12,7 +12,7 @@ use crate::document::{
 };
 use crate::framebuffer::Pixmap;
 use crate::geom::{Boundary, CycleDir};
-use crate::helpers::{Normalize, decode_entities};
+use crate::helpers::Normalize;
 use crate::unit::pt_to_px;
 use anyhow::{Error, format_err};
 use opf::{ManifestEntry, OpfDocument, opf_path_from_container, parse_toc};
@@ -84,8 +84,10 @@ unsafe impl<R: Read + Seek> Sync for EpubDocument<R> {}
 ///
 /// For each `idref` the function:
 /// 1. Looks up the matching [`ManifestEntry`] to get the file's `href`.
-/// 2. Decodes the `href` (HTML entities + percent-encoding) and resolves it
-///    relative to `opf_parent` to obtain the archive-relative path.
+/// 2. Percent-decodes the `href` and resolves it relative to `opf_parent` to
+///    obtain the archive-relative path. The OPF parser already decoded XML
+///    character references in the attribute value; decoding them again would
+///    turn a literal `&amp;` in a file name into `&`.
 /// 3. Opens the entry in the archive to read its **uncompressed byte size**.
 ///    The size is stored on [`Chunk`] and used as the chapter's contribution
 ///    to the global byte-offset coordinate system (reading positions, bookmarks).
@@ -103,8 +105,7 @@ fn build_spine<R: Read + Seek>(
         .iter()
         .filter_map(|idref| {
             let entry = manifest.iter().find(|e| e.id == *idref)?;
-            let href = decode_entities(&entry.href);
-            let href = percent_decode_str(&href).decode_utf8_lossy();
+            let href = percent_decode_str(&entry.href).decode_utf8_lossy();
             let path = opf_parent.join::<&str>(href.as_ref()).normalize();
             let path = path.to_str()?.to_string();
 
@@ -1625,6 +1626,25 @@ mod tests {
 
         assert_eq!(spine.len(), 1, "missing archive entry should be skipped");
         assert_eq!(spine[0].path, "OEBPS/ch1.xhtml");
+    }
+
+    /// The OPF parser already decodes `&amp;amp;` to `&amp;`, which is also the archive
+    /// entry name. A second entity decode would look for `chapter&.xhtml` and drop the
+    /// chapter from the spine.
+    #[test]
+    fn build_spine_resolves_href_with_escaped_ampersand() {
+        let content = b"escaped ampersand chapter";
+        let mut archive = zip_with_entries(&[("OEBPS/chapter&amp;.xhtml", content)]);
+
+        let manifest = vec![manifest_entry("id1", "chapter&amp;.xhtml")];
+        let idrefs = vec!["id1".to_string()];
+        let parent = Path::new("OEBPS");
+
+        let spine = build_spine(&mut archive, &manifest, &idrefs, parent);
+
+        assert_eq!(spine.len(), 1, "escaped ampersand href must resolve");
+        assert_eq!(spine[0].path, "OEBPS/chapter&amp;.xhtml");
+        assert_eq!(spine[0].size, content.len());
     }
 
     #[test]
