@@ -16,11 +16,16 @@ import {
   INSTALL_DIR,
   cargoFeatures,
   hostSchema,
+  quoteForRsync,
+  resolveBin,
   rsyncArgs,
   run,
+  sshCommand,
 } from "../plugins/cadmus.kobo/common.ts";
 import { createDeployTool } from "../plugins/cadmus.kobo/deploy.ts";
 import { RESTART_SCRIPT } from "../plugins/cadmus.kobo/restart.ts";
+
+const FLAGS = ["-rc", "--no-owner", "--no-group", "-e"];
 
 type RegisteredTool = {
   name: string;
@@ -140,30 +145,90 @@ test("cargoFeatures always keeps test,kobo first", () => {
 
 test("rsync uses batch-mode ssh and the test install", () => {
   assert.deepEqual(rsyncArgs("192.168.1.128", ["dist/cadmus", "dist/libs"]), [
-    "-rc",
-    "-e",
-    "ssh -o BatchMode=yes -o ConnectTimeout=15",
+    ...FLAGS,
+    `${resolveBin("ssh")} -o BatchMode=yes -o ConnectTimeout=15`,
     "dist/cadmus",
     "dist/libs",
     `root@192.168.1.128:${INSTALL_DIR}`,
   ]);
 });
 
+test("rsync copies to the device and never deletes", () => {
+  const args = rsyncArgs("192.168.1.128", ["dist/cadmus"]);
+  assert.ok(
+    !args.some((arg) => arg === "--delete" || arg.startsWith("--delete-")),
+    "deploy must never remove files from the device",
+  );
+  assert.ok(
+    !args.some((arg) => arg.startsWith("--filter")),
+    "deletion filters are meaningless without --delete",
+  );
+  assert.ok(args.includes("--no-owner"), "chown fails on the FAT onboard volume");
+  assert.ok(args.includes("--no-group"), "chgrp fails on the FAT onboard volume");
+  assert.ok(!args.includes("--owner") && !args.includes("--group"));
+});
+
 test("rsync brackets an IPv6 host", () => {
+  const flags = FLAGS;
+  const ssh = `${resolveBin("ssh")} -o BatchMode=yes -o ConnectTimeout=15`;
   assert.deepEqual(rsyncArgs("fe80::1", ["dist/cadmus"]), [
-    "-rc",
-    "-e",
-    "ssh -o BatchMode=yes -o ConnectTimeout=15",
+    ...flags,
+    ssh,
     "dist/cadmus",
     `root@[fe80::1]:${INSTALL_DIR}`,
   ]);
   assert.deepEqual(rsyncArgs("fe80::1%wlan0", ["dist/cadmus"]), [
-    "-rc",
-    "-e",
-    "ssh -o BatchMode=yes -o ConnectTimeout=15",
+    ...flags,
+    ssh,
     "dist/cadmus",
     `root@[fe80::1%wlan0]:${INSTALL_DIR}`,
   ]);
+});
+
+test("rsync runs the ssh path resolved from PATH, not a bare name", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "cadmus-ssh-"));
+  const stub = writeStub(dir, "ssh", "exit 0");
+  await withPathAsync(dir, async () => {
+    assert.equal(sshCommand(), `${stub} -o BatchMode=yes -o ConnectTimeout=15`);
+  });
+});
+
+test("an ssh path with a space is quoted for rsync", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "cadmus ssh "));
+  const stub = writeStub(dir, "ssh", "exit 0");
+  await withPathAsync(dir, async () => {
+    assert.equal(
+      sshCommand(),
+      `'${stub}' -o BatchMode=yes -o ConnectTimeout=15`,
+    );
+    assert.equal(rsyncArgs("192.168.1.128", [])[4], sshCommand());
+  });
+});
+
+test("quoteForRsync quotes only when rsync would split", () => {
+  assert.equal(quoteForRsync("/usr/bin/ssh"), "/usr/bin/ssh");
+  assert.equal(quoteForRsync("/opt/my ssh/bin/ssh"), "'/opt/my ssh/bin/ssh'");
+  assert.equal(quoteForRsync("/opt/it's/ssh"), `"/opt/it's/ssh"`);
+  assert.throws(() => quoteForRsync(`/opt/a'b"c/ssh`), /cannot quote/);
+});
+
+test("child processes keep the fallback bin dirs on PATH", async () => {
+  const previous = process.env.PATH;
+  process.env.PATH = "";
+  try {
+    const result = await run(resolveBin("sh"), ["-c", 'printf %s "$PATH"']);
+    assert.equal(result.code, 0);
+    for (const dir of result.output.split(":")) {
+      assert.ok(dir.length > 0, "PATH has an empty entry");
+    }
+    assert.ok(
+      result.output.includes("/run/current-system/sw/bin") ||
+        result.output.includes("/usr/bin"),
+      `fallback dirs missing from PATH: ${result.output}`,
+    );
+  } finally {
+    process.env.PATH = previous;
+  }
 });
 
 test("the deploy tool refuses a host with shell metacharacters", async () => {
@@ -333,7 +398,8 @@ test("deploy runs cadmuscli then rsync with test,kobo", async () => {
     const argv = execFileSync("cat", [log], { encoding: "utf8" });
     assert.match(argv, /cadmuscli build-kobo --features test,kobo/);
     assert.match(argv, /cadmuscli dist/);
-    assert.match(argv, /rsync -rc -e /);
+    assert.match(argv, /rsync -rc --no-owner --no-group -e /);
+    assert.doesNotMatch(argv, /--delete/);
     assert.match(argv, /BatchMode=yes/);
     assert.doesNotMatch(argv, /tracing/);
   } finally {

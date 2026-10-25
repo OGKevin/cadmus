@@ -51,7 +51,7 @@ export function cargoFeatures(extra?: string): string {
   return features.join(",");
 }
 
-const SSH_BATCH = "ssh -o BatchMode=yes -o ConnectTimeout=15";
+const SSH_OPTIONS = "-o BatchMode=yes -o ConnectTimeout=15";
 
 const FALLBACK_BIN_DIRS = [
   "/run/current-system/sw/bin",
@@ -67,26 +67,63 @@ export type RunResult = { code: number; output: string };
 /**
  * Rsync arguments for the test install.
  *
+ * Files are only ever added or overwritten. Deploy never deletes from the
+ * device, so a reader's own fonts, dictionaries, or stylesheets stay put even
+ * when the distribution stops shipping a file that shares their directory.
+ *
+ * Owner and group are never transferred: `/mnt/onboard` is a FAT filesystem,
+ * where rsync's chown fails with `Operation not permitted`.
+ *
  * IPv6 hosts are bracketed because rsync splits host and path on a colon.
  */
 export function rsyncArgs(ip: string, files: string[]) {
   return [
     "-rc",
+    "--no-owner",
+    "--no-group",
     "-e",
-    SSH_BATCH,
+    sshCommand(),
     ...files,
     `root@${rsyncHost(ip)}:${INSTALL_DIR}`,
   ];
+}
+
+/**
+ * Remote shell rsync runs for the transfer.
+ *
+ * rsync resolves this with `execvp`, so a bare `ssh` needs ssh on the child
+ * PATH. Resolving it here keeps the transfer independent of the PATH the host
+ * hands the plugin.
+ */
+export function sshCommand() {
+  return `${quoteForRsync(resolveBin("ssh"))} ${SSH_OPTIONS}`;
+}
+
+/**
+ * Quotes a path for rsync's `-e` value.
+ *
+ * rsync splits that value on whitespace, honouring single or double quotes, so
+ * an executable under a directory with a space in it needs quoting. rsync does
+ * not honour backslash escapes, hence quotes.
+ */
+export function quoteForRsync(path: string) {
+  if (!/[\s'"]/.test(path)) return path;
+  if (!path.includes("'")) return `'${path}'`;
+  if (!path.includes('"')) return `"${path}"`;
+  throw new Error(`cannot quote an ssh path holding both quote kinds: ${path}`);
 }
 
 function rsyncHost(ip: string) {
   return ip.includes(":") ? `[${ip}]` : ip;
 }
 
+function pathDirs() {
+  const inherited = (process.env.PATH ?? "").split(":").filter(Boolean);
+  return [...new Set([...inherited, ...FALLBACK_BIN_DIRS])];
+}
+
 export function resolveBin(name: string) {
-  const dirs = (process.env.PATH ?? "").split(":").concat(FALLBACK_BIN_DIRS);
-  for (const dir of dirs) {
-    if (!dir) continue;
+  for (const dir of pathDirs()) {
     const candidate = join(dir, name);
     if (existsSync(candidate)) return candidate;
   }
@@ -108,6 +145,7 @@ export function run(
     }
     const child = spawn(command, args, {
       cwd: options.cwd,
+      env: { ...process.env, PATH: pathDirs().join(":") },
       signal: options.signal,
       stdio: ["ignore", "pipe", "pipe"],
     });
