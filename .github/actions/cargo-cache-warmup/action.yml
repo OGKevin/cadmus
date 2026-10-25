@@ -17,7 +17,7 @@ runs:
   steps:
     - uses: ./.github/actions/clone-needed-cargo-submodules
 
-    - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+    - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       id: rust-toolchain
       with:
         targets: arm-unknown-linux-gnueabihf
@@ -60,7 +60,7 @@ runs:
         mode: save
 
     - name: Install cargo-nextest
-      uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2.87.27
+      uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
       with:
         tool: nextest@${{ inputs.nextest-version }}
 

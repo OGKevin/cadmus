@@ -72,7 +72,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/clone-needed-cargo-submodules
-      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         id: rust-toolchain
       - name: Install cadmuscli
         uses: ./.github/actions/install-cadmuscli
@@ -99,7 +99,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/clone-needed-cargo-submodules
-      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         id: rust-toolchain
         with:
           components: rustfmt
@@ -151,7 +151,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/clone-needed-cargo-submodules
-      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         id: rust-toolchain
       - name: Install cadmuscli
         uses: ./.github/actions/install-cadmuscli
@@ -213,7 +213,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/clone-needed-cargo-submodules
-      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         id: rust-toolchain
         with:
           components: clippy
@@ -314,7 +314,7 @@ jobs:
           fetch-tags: true
           persist-credentials: false
       - uses: ./.github/actions/clone-needed-cargo-submodules
-      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         id: rust-toolchain
         with:
           components: llvm-tools
@@ -356,7 +356,7 @@ jobs:
           gh-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2.87.27
+        uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
         with:
           tool: nextest@${{ env.NEXTEST_VERSION }}
 
@@ -478,7 +478,7 @@ jobs:
 
       - *set-build-metadata
 
-      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         id: rust-toolchain
         with:
           targets: arm-unknown-linux-gnueabihf
@@ -573,7 +573,7 @@ jobs:
 
       - *set-build-metadata
 
-      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         id: rust-toolchain
         with:
           targets: arm-unknown-linux-gnueabihf
@@ -647,7 +647,7 @@ jobs:
 
       - *set-build-metadata
 
-      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         id: rust-toolchain
         with:
           targets: arm-unknown-linux-gnueabihf

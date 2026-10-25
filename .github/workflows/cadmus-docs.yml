@@ -77,7 +77,7 @@ jobs:
           fetch-tags: true
           persist-credentials: false
       - uses: ./.github/actions/clone-needed-cargo-submodules
-      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         id: rust-toolchain
 
       - name: Install cadmuscli
