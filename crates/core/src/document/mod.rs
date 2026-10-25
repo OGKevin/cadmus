@@ -16,7 +16,6 @@ use self::pdf::PdfOpener;
 use crate::document::file_extension::FileExtension;
 use crate::framebuffer::Pixmap;
 use crate::geom::{Boundary, CycleDir};
-use crate::helpers::decode_entities;
 use crate::metadata::{Annotation, TextAlign};
 use crate::settings::INTERNAL_CARD_ROOT;
 use crate::version::get_version;
@@ -50,11 +49,13 @@ impl Href {
         &self.0
     }
 
-    /// Percent-decodes the href after expanding XML entities.
+    /// Percent-decodes the href.
+    ///
+    /// An [`Href`] always comes from an attribute value the XML parser already
+    /// decoded, so expanding character references here would turn a literal
+    /// `&amp;` in a file name into `&` and point at the wrong archive entry.
     pub fn decoded(&self) -> String {
-        percent_decode_str(&decode_entities(&self.0))
-            .decode_utf8_lossy()
-            .into_owned()
+        percent_decode_str(&self.0).decode_utf8_lossy().into_owned()
     }
 }
 
@@ -796,9 +797,13 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
-    fn href_decoded_expands_percent_encoding_and_entities() {
+    fn href_decoded_expands_percent_encoding_only() {
         assert_eq!(Href::from("chap%20one.xhtml").decoded(), "chap one.xhtml");
-        assert_eq!(Href::from("a&amp;b.xhtml").decoded(), "a&b.xhtml");
+        assert_eq!(
+            Href::from("a&amp;b.xhtml").decoded(),
+            "a&amp;b.xhtml",
+            "entity-looking names must survive: the parser decoded them already"
+        );
     }
 
     #[test]

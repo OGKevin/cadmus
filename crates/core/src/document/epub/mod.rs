@@ -1692,4 +1692,53 @@ mod tests {
         assert_eq!(spine.len(), 1);
         assert_eq!(spine[0].path, "OEBPS/chapter one.xhtml");
     }
+
+    /// A nav document whose name contains an escaped ampersand must resolve to
+    /// the archive entry the OPF names. The parser already decoded the manifest
+    /// value to `nav&amp;.xhtml`, so expanding entities again would look for
+    /// `nav&.xhtml`, miss, and leave the book without a table of contents.
+    #[test]
+    fn toc_resolves_nav_entry_with_escaped_ampersand() {
+        let root_dir = PathBuf::from(
+            std::env::var("TEST_ROOT_DIR").expect("TEST_ROOT_DIR must be set for epub tests"),
+        );
+
+        let container: &[u8] = br#"<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>"#;
+        let opf: &[u8] = br#"<?xml version="1.0"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+  <metadata/>
+  <manifest>
+    <item id="nav" href="nav&amp;amp;.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="ch1" href="chapter.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine><itemref idref="ch1"/></spine>
+</package>"#;
+        let nav: &[u8] = br#"<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <body>
+    <nav epub:type="toc">
+      <ol><li><a href="chapter.xhtml">Only chapter</a></li></ol>
+    </nav>
+  </body>
+</html>"#;
+        let chapter: &[u8] = b"<html><body><p>Chapter text.</p></body></html>";
+
+        let archive = zip_with_entries(&[
+            ("META-INF/container.xml", container),
+            ("OEBPS/content.opf", opf),
+            ("OEBPS/nav&amp;.xhtml", nav),
+            ("OEBPS/chapter.xhtml", chapter),
+        ]);
+
+        let mut doc = EpubDocument::from_archive(archive, &root_dir).expect("epub should open");
+        let toc = doc.toc().expect("nav toc should resolve");
+
+        assert_eq!(toc.len(), 1, "expected the nav table of contents");
+        assert_eq!(toc[0].title, "Only chapter");
+    }
 }
