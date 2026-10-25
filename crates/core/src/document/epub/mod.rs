@@ -154,7 +154,7 @@ impl<R: Read + Seek> EpubDocument<R> {
             .ok_or_else(|| format_err!("failed to parse OPF document"))?;
 
         let (idrefs, _) = info.spine_idrefs();
-        let spine = build_spine(&mut archive, &info.manifest, idrefs, parent);
+        let spine = build_spine(&mut archive, info.manifest(), idrefs, parent);
 
         if spine.is_empty() {
             return Err(format_err!("the spine is empty"));
@@ -538,16 +538,16 @@ impl<R: Read + Seek> EpubDocument<R> {
 
     fn nav_document_href(&self) -> Option<Href> {
         self.info
-            .manifest
+            .manifest()
             .iter()
             .find(|e| e.properties.split_whitespace().any(|p| p == "nav"))
             .map(|e| Href::from(e.href.as_str()))
     }
 
     fn ncx_href(&self) -> Option<Href> {
-        let toc_id = self.info.spine_toc_id.as_deref()?;
+        let toc_id = self.info.spine_toc_id()?;
         self.info
-            .manifest
+            .manifest()
             .iter()
             .find(|e| e.id == toc_id)
             .map(|e| Href::from(e.href.as_str()))

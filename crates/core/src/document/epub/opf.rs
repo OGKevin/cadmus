@@ -34,16 +34,20 @@ pub fn opf_path_from_container(text: &str) -> Option<String> {
 /// Constructed once via [`OpfDocument::parse`]; all accessors are `O(1)`
 /// field reads or cheap iterator passes over already-owned `Vec`s.
 pub struct OpfDocument {
-    pub manifest: Vec<ManifestEntry>,
+    /// Non-empty `<item>` entries from `<manifest>` that carry `id` and `href`.
+    manifest: Vec<ManifestEntry>,
     /// `idref` values from `<spine><itemref>` in reading order.
-    pub spine_idrefs: Vec<String>,
+    spine_idrefs: Vec<String>,
     /// The `toc` attribute of `<spine>` — the manifest id of the NCX file.
-    pub spine_toc_id: Option<String>,
+    spine_toc_id: Option<String>,
     /// Dublin Core metadata keyed by local name, e.g. `"creator"` → value.
     dc_metadata: HashMap<String, String>,
-    pub cover_href: Option<String>,
-    pub series: Option<(String, String)>,
-    pub categories: BTreeSet<String>,
+    /// Resolved href of the cover image.
+    cover_href: Option<String>,
+    /// Series title and the book's position within it.
+    series: Option<(String, String)>,
+    /// BISAC subject categories.
+    categories: BTreeSet<String>,
 }
 
 impl OpfDocument {
@@ -90,10 +94,20 @@ impl OpfDocument {
         }
     }
 
+    /// Returns the manifest entries in document order.
+    pub fn manifest(&self) -> &[ManifestEntry] {
+        &self.manifest
+    }
+
     /// Returns the `idref` values of all `<itemref>` children of `<spine>`,
     /// together with the `<spine toc="...">` attribute value if present.
     pub fn spine_idrefs(&self) -> (&[String], Option<&str>) {
         (&self.spine_idrefs, self.spine_toc_id.as_deref())
+    }
+
+    /// Returns the `<spine toc="...">` manifest id, naming the NCX file.
+    pub fn spine_toc_id(&self) -> Option<&str> {
+        self.spine_toc_id.as_deref()
     }
 
     /// Returns the value of a Dublin Core metadata element by local name,
@@ -111,7 +125,10 @@ impl OpfDocument {
         self.cover_href.clone()
     }
 
-    /// Returns the Calibre / OPF3 series title and position.
+    /// Returns the Calibre / OPF3 series title and the book's position within
+    /// that series, e.g. `("Discworld", "3")`.
+    ///
+    /// Only present when the OPF supplies both the title and the position.
     pub fn series(&self) -> Option<(String, String)> {
         self.series.clone()
     }
@@ -131,7 +148,11 @@ pub struct ManifestEntry {
     pub properties: String,
 }
 
-// shortcut: DC elems matched by `dc:` prefix, not URI. Upgrade if an EPUB uses another prefix.
+/// Reports whether `node` is a Dublin Core element, matched by its `dc:`
+/// qualified name.
+///
+/// shortcut: matched by prefix, not by namespace URI; upgrade if an EPUB binds
+/// Dublin Core to another prefix.
 fn is_dc(node: NodeRef<'_>) -> bool {
     node.tag_qualified_name()
         .is_some_and(|name| name.starts_with("dc:"))
