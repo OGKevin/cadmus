@@ -295,6 +295,21 @@
       "versioningTemplate": "git"
     },
     {
+      "description": "Keep the protoc-gen-connect-openapi pin in devenv and CI in sync",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^devenv\\.nix$/",
+        "/^\\.github\\/actions\\/install-proto-tools\\/action\\.yml$/"
+      ],
+      "matchStrings": [
+        "protoc-gen-connect-openapi =\\s*\\n\\s*let\\s*\\n\\s*rev = \"(?<currentValue>v[^\"]+)\"",
+        "version:[\\s\\S]*?default: \"(?<currentValue>v[^\"]+)\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "sudorandom/protoc-gen-connect-openapi",
+      "versioningTemplate": "semver"
+    },
+    {
       "customType": "regex",
       "managerFilePatterns": [
         "/^\\.github\\/workflows\\/cadmus-docs\\.yml$/",

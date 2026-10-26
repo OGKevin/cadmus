@@ -104,6 +104,9 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      - name: Install protobuf tools
+        uses: ./.github/actions/install-proto-tools
+
       - name: Build documentation portal
         env:
           RUSTDOCFLAGS: -D warnings

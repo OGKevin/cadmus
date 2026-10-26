@@ -11,6 +11,7 @@ path = "src/main.rs"
 [dependencies]
 cadmus-core = { path = "../core", features = ["deviceless"] }
 signal-hook = "0.4.1"
+tokio = { version = "1.40", features = ["rt"] }
 
 [dependencies.reqwest]
 version = "0.13.1"

@@ -1,0 +1,141 @@
+syntax = "proto3";
+
+package cadmus.api.shared.v1;
+
+import "cadmus/api/shared/v1/category_id.proto";
+import "cadmus/api/shared/v1/setting_identity_kind.proto";
+import "cadmus/api/shared/v1/text_mode.proto";
+
+// Settings catalog shared by the public companion listener and the private
+// loopback API. Updates run on the main loop through the on-device handlers.
+service Settings {
+  // Categories and rows from the on-device editor, minus Dictionaries and
+  // Force Full Import.
+  rpc List(ListSettingsRequest) returns (SettingsCatalog);
+  // Apply one setting. Id is SettingId, e.g. SLEEP_COVER or LIBRARY_INFO plus index.
+  rpc Update(UpdateSettingRequest) returns (Setting);
+}
+
+// Empty. List has no query parameters.
+message ListSettingsRequest {}
+
+// Grouped settings as shown on the device.
+message SettingsCatalog {
+  repeated SettingsCategory categories = 1;
+}
+
+// One editor page, e.g. General or Reader.
+message SettingsCategory {
+  CategoryId id = 1;
+  // Translated label.
+  string label = 2;
+  repeated Setting settings = 3;
+}
+
+// One row in a category.
+message Setting {
+  SettingId id = 1;
+  // Translated label.
+  string label = 2;
+  SettingValue value = 3;
+}
+
+// SettingIdentity plus index/key for library, dictionary, and per-kind rows.
+message SettingId {
+  SettingIdentityKind kind = 1;
+  // LibraryInfo and related rows. Unset otherwise.
+  optional uint32 index = 2;
+  // DictionaryInfo language or RefreshRateByKind extension. Unset otherwise.
+  optional string key = 3;
+}
+
+// Current value. Exactly one kind is set.
+message SettingValue {
+  oneof kind {
+    bool toggle = 1;
+    TextValue text = 2;
+    ChoiceValue choice = 3;
+    RefreshRateValue refresh_rate = 4;
+    ChecksValue checks = 5;
+    PathValue path = 6;
+    LibraryValue library = 7;
+  }
+}
+
+// Pages between full refreshes. Zero never fully refreshes.
+message RefreshRateValue {
+  uint32 regular = 1;
+  uint32 inverted = 2;
+  repeated RefreshRateByKind by_kind = 3;
+  // File types that still use the global pair.
+  repeated string available = 4;
+}
+
+// Per-extension refresh pair.
+message RefreshRateByKind {
+  // FileExtension::as_str(), e.g. "pdf".
+  string extension = 1;
+  uint32 regular = 2;
+  uint32 inverted = 3;
+}
+
+// Free-text setting plus how the editor should constrain input.
+message TextValue {
+  string text = 1;
+  TextMode mode = 2;
+}
+
+// Single selection from a list of options.
+message ChoiceValue {
+  // Selected option id.
+  string selected = 1;
+  // Allowed options.
+  repeated ChoiceOption options = 2;
+}
+
+// One radio option. Id often equals the visible label.
+message ChoiceOption {
+  // Stable id, often the same as label.
+  string id = 1;
+  // Translated label.
+  string label = 2;
+}
+
+// Independent on/off items, used for file-type sets.
+message ChecksValue {
+  // One item per file type or similar.
+  repeated CheckOption items = 1;
+}
+
+message CheckOption {
+  // FileExtension::as_str(), e.g. "pdf".
+  string id = 1;
+  // "PDF"
+  string label = 2;
+  // True when this item is enabled.
+  bool on = 3;
+}
+
+// Filesystem path. Used for custom intermission images.
+message PathValue {
+  // Absolute or process-cwd-relative path.
+  string path = 1;
+}
+
+// One library in the Libraries category, or the AddLibrary payload.
+message LibraryValue {
+  // Display name.
+  string name = 1;
+  // Directory that holds books.
+  PathValue path = 2;
+  // Action when a book finishes.
+  ChoiceValue finished = 3;
+  // True on Update removes this library.
+  bool remove = 4;
+}
+
+message UpdateSettingRequest {
+  SettingId id = 1;
+  // New value. Kind must match the listed row.
+  SettingValue value = 2;
+}

@@ -31,7 +31,6 @@ use crate::settings::Settings;
 use crate::version::GitVersion;
 use anyhow::{Context, Error};
 use serde::{Deserialize, Serialize};
-use std::fs;
 use std::path::PathBuf;
 
 const SETTINGS_DIR: &str = "Settings";
@@ -140,15 +139,15 @@ impl SettingsManager {
     /// configured *after* settings are loaded, so using tracing macros here
     /// would result in messages being silently dropped or not properly routed.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level = tracing::Level::TRACE)))]
-    pub fn load(&self) -> Settings {
-        if let Err(e) = fs::create_dir_all(&self.settings_dir) {
+    pub async fn load(&self) -> Settings {
+        if let Err(e) = tokio::fs::create_dir_all(&self.settings_dir).await {
             eprintln!("failed to create settings directory: {}; using defaults", e);
             return Settings::default();
         }
 
-        self.migrate_legacy_settings();
+        self.migrate_legacy_settings().await;
 
-        let manifest = match self.read_manifest() {
+        let manifest = match self.read_manifest().await {
             Ok(m) => m,
             Err(e) => {
                 eprintln!("failed to read manifest: {}; using defaults", e);
@@ -171,7 +170,7 @@ impl SettingsManager {
                 entry.version, entry.file
             );
             let file_path = self.settings_dir.join(&entry.file);
-            match crate::helpers::load_toml::<Settings, _>(&file_path) {
+            match crate::helpers::load_toml::<Settings, _>(&file_path).await {
                 Ok(mut settings) => {
                     if settings.sanitize() {
                         eprintln!("some settings value were invalid, they have been cleaned up");
@@ -246,17 +245,24 @@ impl SettingsManager {
             ret(level = tracing::Level::TRACE)
         )
     )]
-    pub fn save(&self, settings: &Settings) -> Result<(), Error> {
+    pub async fn save(&self, settings: &Settings) -> Result<(), Error> {
         tracing::debug!(settings_dir = %self.settings_dir.display(), "creating settings directory");
-        fs::create_dir_all(&self.settings_dir).context("failed to create settings directory")?;
+        tokio::fs::create_dir_all(&self.settings_dir)
+            .await
+            .context("failed to create settings directory")?;
 
         let filename = format!("Settings-{}.toml", self.current_version);
         let file_path = self.settings_dir.join(&filename);
 
         tracing::debug!(file_path = %file_path.display(), "saving settings to file");
-        crate::helpers::save_toml(settings, &file_path).context("failed to save settings file")?;
+        crate::helpers::save_toml(settings, &file_path)
+            .await
+            .context("failed to save settings file")?;
 
-        let file_size = file_path.metadata().ok().map(|m| m.len());
+        let file_size = tokio::fs::metadata(&file_path)
+            .await
+            .ok()
+            .map(|meta| meta.len());
 
         tracing::info!(
             version = %self.current_version,
@@ -266,7 +272,8 @@ impl SettingsManager {
             "Saved versioned settings"
         );
 
-        self.update_manifest_and_cleanup(&filename, settings)?;
+        self.update_manifest_and_cleanup(&filename, settings)
+            .await?;
 
         Ok(())
     }
@@ -301,10 +308,10 @@ impl SettingsManager {
     /// Tracing is initialized *after* settings are fully loaded, so any
     /// tracing calls here would be silently discarded.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level = tracing::Level::TRACE)))]
-    fn migrate_legacy_settings(&self) {
+    async fn migrate_legacy_settings(&self) {
         let legacy_path = self.root_dir.join(LEGACY_SETTINGS_FILE);
 
-        if !legacy_path.exists() {
+        if !tokio::fs::try_exists(&legacy_path).await.unwrap_or(false) {
             return;
         }
 
@@ -313,7 +320,7 @@ impl SettingsManager {
             legacy_path.display()
         );
 
-        let settings = match crate::helpers::load_toml::<Settings, _>(&legacy_path) {
+        let settings = match crate::helpers::load_toml::<Settings, _>(&legacy_path).await {
             Ok(s) => s,
             Err(e) => {
                 eprintln!(
@@ -328,7 +335,7 @@ impl SettingsManager {
         let filename = format!("Settings-{}.toml", self.current_version);
         let file_path = self.settings_dir.join(&filename);
 
-        if let Err(e) = crate::helpers::save_toml(&settings, &file_path) {
+        if let Err(e) = crate::helpers::save_toml(&settings, &file_path).await {
             eprintln!(
                 "Failed to save migrated settings file {}: {}; continuing with legacy",
                 file_path.display(),
@@ -337,7 +344,7 @@ impl SettingsManager {
             return;
         }
 
-        let mut manifest = self.read_manifest().unwrap_or_default();
+        let mut manifest = self.read_manifest().await.unwrap_or_default();
 
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
 
@@ -354,14 +361,14 @@ impl SettingsManager {
 
         manifest.entries.push(new_entry);
 
-        if let Err(e) = self.write_manifest(&manifest) {
+        if let Err(e) = crate::helpers::save_toml(&manifest, &self.manifest_path).await {
             eprintln!(
                 "Failed to update manifest after migration: {}; continuing",
                 e
             );
         }
 
-        if let Err(e) = fs::remove_file(&legacy_path) {
+        if let Err(e) = tokio::fs::remove_file(&legacy_path).await {
             eprintln!(
                 "Failed to delete legacy {} after migration: {}; continuing",
                 legacy_path.display(),
@@ -390,13 +397,16 @@ impl SettingsManager {
     ///
     /// `Err` if the manifest file exists but cannot be read or parsed.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level = tracing::Level::TRACE)))]
-    fn read_manifest(&self) -> Result<SettingsManifest, Error> {
-        if self.manifest_path.exists() {
-            crate::helpers::load_toml::<SettingsManifest, _>(&self.manifest_path)
-                .context("failed to read settings manifest")
-        } else {
-            Ok(SettingsManifest::default())
+    async fn read_manifest(&self) -> Result<SettingsManifest, Error> {
+        if !tokio::fs::try_exists(&self.manifest_path)
+            .await
+            .unwrap_or(false)
+        {
+            return Ok(SettingsManifest::default());
         }
+        crate::helpers::load_toml::<SettingsManifest, _>(&self.manifest_path)
+            .await
+            .context("failed to read settings manifest")
     }
 
     /// Writes the settings manifest to disk.
@@ -415,8 +425,9 @@ impl SettingsManager {
     ///
     /// `Err` if the manifest file cannot be written or serialized.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, manifest), ret(level = tracing::Level::TRACE)))]
-    fn write_manifest(&self, manifest: &SettingsManifest) -> Result<(), Error> {
+    async fn write_manifest(&self, manifest: &SettingsManifest) -> Result<(), Error> {
         crate::helpers::save_toml(manifest, &self.manifest_path)
+            .await
             .context("failed to write settings manifest")
     }
 
@@ -452,12 +463,12 @@ impl SettingsManager {
     ///
     /// `Err` if reading, updating, or writing the manifest fails.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, settings), fields(filename = filename), ret(level = tracing::Level::TRACE)))]
-    fn update_manifest_and_cleanup(
+    async fn update_manifest_and_cleanup(
         &self,
         filename: &str,
         settings: &Settings,
     ) -> Result<(), Error> {
-        let mut manifest = self.read_manifest()?;
+        let mut manifest = self.read_manifest().await?;
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
 
         manifest
@@ -490,8 +501,8 @@ impl SettingsManager {
             for entry in candidates {
                 let file_path = self.settings_dir.join(&entry.file);
 
-                if file_path.exists() {
-                    if let Err(e) = fs::remove_file(&file_path) {
+                if tokio::fs::try_exists(&file_path).await.unwrap_or(false) {
+                    if let Err(e) = tokio::fs::remove_file(&file_path).await {
                         tracing::warn!(
                             version = %entry.version,
                             file = %entry.file,
@@ -513,7 +524,7 @@ impl SettingsManager {
             manifest.entries.extend(current);
         }
 
-        self.write_manifest(&manifest)
+        self.write_manifest(&manifest).await
     }
 }
 
@@ -553,60 +564,60 @@ mod tests {
         (manager.clone(), manager.root_dir.clone())
     }
 
-    #[test]
-    fn test_creates_settings_directory() {
+    #[tokio::test]
+    async fn test_creates_settings_directory() {
         let temp_dir = TempDir::new().unwrap();
         let manager = create_test_manager(&temp_dir);
 
-        let settings = manager.load();
+        let settings = manager.load().await;
         assert!(manager.settings_dir.exists());
         assert_eq!(settings.selected_library, 0);
     }
 
-    #[test]
-    fn test_manifest_is_created_on_save() {
+    #[tokio::test]
+    async fn test_manifest_is_created_on_save() {
         let temp_dir = TempDir::new().unwrap();
         let manager = create_test_manager(&temp_dir);
 
         let settings = Settings::default();
-        manager.save(&settings).unwrap();
+        manager.save(&settings).await.unwrap();
 
         assert!(manager.manifest_path.exists());
 
-        let manifest = manager.read_manifest().unwrap();
+        let manifest = manager.read_manifest().await.unwrap();
         assert_eq!(manifest.entries.len(), 1);
         assert_eq!(manifest.entries[0].version.to_string(), "v0.1.0");
     }
 
-    #[test]
-    fn test_settings_file_is_created() {
+    #[tokio::test]
+    async fn test_settings_file_is_created() {
         let temp_dir = TempDir::new().unwrap();
         let manager = create_test_manager(&temp_dir);
 
         let settings = Settings::default();
-        manager.save(&settings).unwrap();
+        manager.save(&settings).await.unwrap();
 
         let expected_file = manager.settings_dir.join("Settings-v0.1.0.toml");
         assert!(expected_file.exists());
     }
 
-    #[test]
-    fn test_load_existing_file_same_version() {
+    #[tokio::test]
+    async fn test_load_existing_file_same_version() {
         let temp_dir = TempDir::new().unwrap();
         let manager = create_test_manager(&temp_dir);
 
-        let settings = manager.load();
+        let settings = manager.load().await;
         assert_eq!(settings.selected_library, 0, "Should load defaults");
 
-        let manifest = manager.read_manifest().unwrap();
+        let manifest = manager.read_manifest().await.unwrap();
         assert!(
             manifest.entries.is_empty(),
             "Manifest should be empty with no legacy file"
         );
     }
 
-    #[test]
-    fn test_legacy_migration_preserves_manifest_history() {
+    #[tokio::test]
+    async fn test_legacy_migration_preserves_manifest_history() {
         let temp_dir = TempDir::new().unwrap();
         let (mut manager, root) = create_test_manager_with_root(&temp_dir);
 
@@ -615,22 +626,24 @@ mod tests {
             ..Settings::default()
         };
         let legacy_path = root.join(LEGACY_SETTINGS_FILE);
-        crate::helpers::save_toml(&legacy_settings, &legacy_path).unwrap();
+        crate::helpers::save_toml(&legacy_settings, &legacy_path)
+            .await
+            .unwrap();
 
-        let settings = manager.load();
+        let settings = manager.load().await;
 
         manager.current_version = "v0.1.1".parse::<GitVersion>().unwrap();
-        manager.save(&settings).unwrap();
+        manager.save(&settings).await.unwrap();
 
-        let loaded = manager.load();
+        let loaded = manager.load().await;
         assert_eq!(
             loaded.selected_library, 1,
             "Second load should still work correctly"
         );
     }
 
-    #[test]
-    fn test_same_version_multiple_saves_updates_entry() {
+    #[tokio::test]
+    async fn test_same_version_multiple_saves_updates_entry() {
         let temp_dir = TempDir::new().unwrap();
         let manager = create_test_manager(&temp_dir);
 
@@ -639,7 +652,7 @@ mod tests {
             ..Settings::default()
         };
 
-        manager.save(&settings).unwrap();
+        manager.save(&settings).await.unwrap();
 
         let file_path = manager
             .settings_dir
@@ -650,7 +663,7 @@ mod tests {
             "Settings file should exist after first save"
         );
 
-        let manifest = manager.read_manifest().unwrap();
+        let manifest = manager.read_manifest().await.unwrap();
         assert_eq!(
             manifest.entries.len(),
             1,
@@ -659,14 +672,14 @@ mod tests {
         assert_eq!(manifest.entries[0].version.to_string(), "v0.1.0");
 
         settings.selected_library = 2;
-        manager.save(&settings).unwrap();
+        manager.save(&settings).await.unwrap();
 
         assert!(
             file_path.exists(),
             "Settings file should still exist after second save with same version"
         );
 
-        let manifest = manager.read_manifest().unwrap();
+        let manifest = manager.read_manifest().await.unwrap();
         assert_eq!(
             manifest.entries.len(),
             1,
@@ -675,15 +688,15 @@ mod tests {
         assert_eq!(manifest.entries[0].version.to_string(), "v0.1.0");
 
         // Verify the settings were updated by loading
-        let loaded = manager.load();
+        let loaded = manager.load().await;
         assert_eq!(
             loaded.selected_library, 2,
             "Settings should reflect the second save"
         );
     }
 
-    #[test]
-    fn test_load_falls_back_to_most_recent_by_uuid() {
+    #[tokio::test]
+    async fn test_load_falls_back_to_most_recent_by_uuid() {
         let temp_dir = TempDir::new().unwrap();
         let root_dir = temp_dir.path().to_path_buf();
         let settings_dir = root_dir.join(SETTINGS_DIR);
@@ -702,7 +715,7 @@ mod tests {
             selected_library: 1,
             ..Settings::default()
         };
-        manager_v1.save(&settings_v1).unwrap();
+        manager_v1.save(&settings_v1).await.unwrap();
 
         // Create manager for v0.2.0 with a newer UUID (larger timestamp)
         let manager_v2 = SettingsManager {
@@ -717,7 +730,7 @@ mod tests {
             selected_library: 2,
             ..Settings::default()
         };
-        manager_v2.save(&settings_v2).unwrap();
+        manager_v2.save(&settings_v2).await.unwrap();
 
         // Create manager for v0.3.0 with a different UUID (no settings saved)
         // This should fall back to the most recent settings by UUID (v0.2.0)
@@ -729,7 +742,7 @@ mod tests {
             root_dir,
         };
 
-        let loaded = manager_v3.load();
+        let loaded = manager_v3.load().await;
 
         assert_eq!(
             loaded.selected_library, 2,
@@ -737,8 +750,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_load_falls_back_to_older_entry_when_current_file_is_corrupt() {
+    #[tokio::test]
+    async fn test_load_falls_back_to_older_entry_when_current_file_is_corrupt() {
         let temp_dir = TempDir::new().unwrap();
         let manager_v1 = create_test_manager(&temp_dir);
 
@@ -746,29 +759,29 @@ mod tests {
             selected_library: 1,
             ..Settings::default()
         };
-        manager_v1.save(&settings_v1).unwrap();
+        manager_v1.save(&settings_v1).await.unwrap();
 
         let manager_v2 = manager_v1.clone_with_version("v0.2.0".parse::<GitVersion>().unwrap());
         let settings_v2 = Settings {
             selected_library: 2,
             ..Settings::default()
         };
-        manager_v2.save(&settings_v2).unwrap();
+        manager_v2.save(&settings_v2).await.unwrap();
 
         let corrupt_path = manager_v2
             .settings_dir
             .join(format!("Settings-{}.toml", manager_v2.current_version));
         std::fs::write(&corrupt_path, "not valid toml {{{").unwrap();
 
-        let loaded = manager_v2.load();
+        let loaded = manager_v2.load().await;
         assert_eq!(
             loaded.selected_library, 1,
             "corrupt current-version file should fall back to the older manifest entry"
         );
     }
 
-    #[test]
-    fn test_load_uses_exact_version_match_when_available() {
+    #[tokio::test]
+    async fn test_load_uses_exact_version_match_when_available() {
         let temp_dir = TempDir::new().unwrap();
         let manager = create_test_manager(&temp_dir);
 
@@ -777,7 +790,7 @@ mod tests {
             selected_library: 1,
             ..Settings::default()
         };
-        manager.save(&settings_v1).unwrap();
+        manager.save(&settings_v1).await.unwrap();
 
         // Create a new manager simulating v0.2.0 with a newer UUID and different settings
         let manager_v2 = manager.clone_with_version("v0.2.0".parse::<GitVersion>().unwrap());
@@ -785,11 +798,11 @@ mod tests {
             selected_library: 2,
             ..Settings::default()
         };
-        manager_v2.save(&settings_v2).unwrap();
+        manager_v2.save(&settings_v2).await.unwrap();
 
         // Load as v0.1.0 - should find exact match and use v0.1.0 settings
         let manager_v1_reload = manager.clone_with_version("v0.1.0".parse::<GitVersion>().unwrap());
-        let loaded = manager_v1_reload.load();
+        let loaded = manager_v1_reload.load().await;
 
         assert_eq!(
             loaded.selected_library, 1,
@@ -797,8 +810,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_migration_succeeds_even_if_legacy_deletion_fails() {
+    #[tokio::test]
+    async fn test_migration_succeeds_even_if_legacy_deletion_fails() {
         let temp_dir = TempDir::new().unwrap();
         let (manager, root) = create_test_manager_with_root(&temp_dir);
 
@@ -807,11 +820,13 @@ mod tests {
             ..Settings::default()
         };
         let legacy_path = root.join(LEGACY_SETTINGS_FILE);
-        crate::helpers::save_toml(&legacy_settings, &legacy_path).unwrap();
+        crate::helpers::save_toml(&legacy_settings, &legacy_path)
+            .await
+            .unwrap();
 
         assert!(legacy_path.exists(), "Legacy settings file should exist");
 
-        let loaded = manager.load();
+        let loaded = manager.load().await;
 
         assert_eq!(
             loaded.selected_library, 5,
@@ -824,7 +839,7 @@ mod tests {
             "Versioned settings file should be created"
         );
 
-        let manifest = manager.read_manifest().unwrap();
+        let manifest = manager.read_manifest().await.unwrap();
         assert_eq!(
             manifest.entries.len(),
             1,
@@ -833,12 +848,12 @@ mod tests {
         assert_eq!(manifest.entries[0].version.to_string(), "v0.1.0");
     }
 
-    #[test]
-    fn test_load_returns_defaults_on_all_failures() {
+    #[tokio::test]
+    async fn test_load_returns_defaults_on_all_failures() {
         let temp_dir = TempDir::new().unwrap();
         let manager = create_test_manager(&temp_dir);
 
-        let loaded = manager.load();
+        let loaded = manager.load().await;
 
         assert_eq!(loaded.selected_library, 0, "Should return defaults");
         assert_eq!(
@@ -847,8 +862,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_migration_deduplicated_on_retry() {
+    #[tokio::test]
+    async fn test_migration_deduplicated_on_retry() {
         let temp_dir = TempDir::new().unwrap();
         let (manager, root) = create_test_manager_with_root(&temp_dir);
 
@@ -857,24 +872,26 @@ mod tests {
             ..Settings::default()
         };
         let legacy_path = root.join(LEGACY_SETTINGS_FILE);
-        crate::helpers::save_toml(&legacy_settings, &legacy_path).unwrap();
+        crate::helpers::save_toml(&legacy_settings, &legacy_path)
+            .await
+            .unwrap();
 
-        let loaded1 = manager.load();
+        let loaded1 = manager.load().await;
         assert_eq!(
             loaded1.selected_library, 3,
             "First load should get legacy settings"
         );
 
-        let manifest = manager.read_manifest().unwrap();
+        let manifest = manager.read_manifest().await.unwrap();
         let first_entry_count = manifest.entries.len();
 
-        let loaded2 = manager.load();
+        let loaded2 = manager.load().await;
         assert_eq!(
             loaded2.selected_library, 3,
             "Second load should still get correct settings"
         );
 
-        let manifest = manager.read_manifest().unwrap();
+        let manifest = manager.read_manifest().await.unwrap();
         assert_eq!(
             manifest.entries.len(),
             first_entry_count,
@@ -882,8 +899,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_save_and_load_roundtrip() {
+    #[tokio::test]
+    async fn test_save_and_load_roundtrip() {
         let temp_dir = TempDir::new().unwrap();
         let manager = create_test_manager(&temp_dir);
 
@@ -893,9 +910,9 @@ mod tests {
             ..Settings::default()
         };
 
-        manager.save(&settings).unwrap();
+        manager.save(&settings).await.unwrap();
 
-        let loaded = manager.load();
+        let loaded = manager.load().await;
         assert_eq!(
             loaded.selected_library, 5,
             "Should save and load selected_library"
@@ -903,8 +920,8 @@ mod tests {
         assert!(loaded.inverted, "Should save and load inverted");
     }
 
-    #[test]
-    fn test_load_sanitizes_unsupported_calendar_intermissions() {
+    #[tokio::test]
+    async fn test_load_sanitizes_unsupported_calendar_intermissions() {
         let temp_dir = TempDir::new().unwrap();
         let manager = create_test_manager(&temp_dir);
         let mut settings = Settings::default();
@@ -914,9 +931,9 @@ mod tests {
         settings.intermissions[crate::settings::IntermKind::Share] =
             crate::settings::IntermissionDisplay::Calendar;
 
-        manager.save(&settings).unwrap();
+        manager.save(&settings).await.unwrap();
 
-        let loaded = manager.load();
+        let loaded = manager.load().await;
 
         assert_eq!(
             loaded.intermissions[crate::settings::IntermKind::PowerOff],
@@ -928,8 +945,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_retention_cleanup_removes_oldest_by_uuid() {
+    #[tokio::test]
+    async fn test_retention_cleanup_removes_oldest_by_uuid() {
         let temp_dir = TempDir::new().unwrap();
         let (manager, root) = create_test_manager_with_root(&temp_dir);
 
@@ -953,7 +970,7 @@ mod tests {
                 root_dir: root.clone(),
             };
 
-            mgr.save(&settings).unwrap();
+            mgr.save(&settings).await.unwrap();
         }
 
         let manifest_path = manager.manifest_path.clone();
@@ -973,8 +990,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_retention_cleanup_protects_current_version_during_downgrade() {
+    #[tokio::test]
+    async fn test_retention_cleanup_protects_current_version_during_downgrade() {
         let temp_dir = TempDir::new().unwrap();
         let (manager, root) = create_test_manager_with_root(&temp_dir);
 
@@ -997,7 +1014,7 @@ mod tests {
                 root_dir: root.clone(),
             };
 
-            mgr.save(&settings).unwrap();
+            mgr.save(&settings).await.unwrap();
         }
 
         let downgrade_mgr = SettingsManager {
@@ -1008,9 +1025,9 @@ mod tests {
             root_dir: root.clone(),
         };
 
-        downgrade_mgr.save(&settings).unwrap();
+        downgrade_mgr.save(&settings).await.unwrap();
 
-        let manifest = downgrade_mgr.read_manifest().unwrap();
+        let manifest = downgrade_mgr.read_manifest().await.unwrap();
 
         assert_eq!(
             manifest.entries.len(),
@@ -1058,8 +1075,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_retention_cleanup_continues_on_file_removal_failure() {
+    #[tokio::test]
+    async fn test_retention_cleanup_continues_on_file_removal_failure() {
         let temp_dir = TempDir::new().unwrap();
         let (manager, root) = create_test_manager_with_root(&temp_dir);
 
@@ -1083,10 +1100,10 @@ mod tests {
                 root_dir: root.clone(),
             };
 
-            mgr.save(&settings).unwrap();
+            mgr.save(&settings).await.unwrap();
         }
 
-        let manifest = manager.read_manifest().unwrap();
+        let manifest = manager.read_manifest().await.unwrap();
 
         assert_eq!(
             manifest.entries.len(),
@@ -1114,8 +1131,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_save_succeeds_even_if_cleanup_cant_remove_files() {
+    #[tokio::test]
+    async fn test_save_succeeds_even_if_cleanup_cant_remove_files() {
         let temp_dir = TempDir::new().unwrap();
         let (manager, root) = create_test_manager_with_root(&temp_dir);
 
@@ -1132,7 +1149,7 @@ mod tests {
             root_dir: root.clone(),
         };
 
-        v1_mgr.save(&settings).unwrap();
+        v1_mgr.save(&settings).await.unwrap();
 
         let v2_mgr = SettingsManager {
             settings_dir: manager.settings_dir.clone(),
@@ -1142,9 +1159,9 @@ mod tests {
             root_dir: root.clone(),
         };
 
-        v2_mgr.save(&settings).unwrap();
+        v2_mgr.save(&settings).await.unwrap();
 
-        let manifest = v2_mgr.read_manifest().unwrap();
+        let manifest = v2_mgr.read_manifest().await.unwrap();
         assert_eq!(
             manifest.entries.len(),
             1,
@@ -1164,14 +1181,14 @@ mod tests {
             root_dir: root.clone(),
         };
 
-        let save_result = v3_mgr.save(&settings);
+        let save_result = v3_mgr.save(&settings).await;
 
         assert!(
             save_result.is_ok(),
             "save() should succeed even if file removal fails"
         );
 
-        let manifest_final = v3_mgr.read_manifest().unwrap();
+        let manifest_final = v3_mgr.read_manifest().await.unwrap();
         assert_eq!(
             manifest_final.entries.len(),
             1,

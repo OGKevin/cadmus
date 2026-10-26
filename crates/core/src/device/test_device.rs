@@ -9,9 +9,8 @@ use crate::device::rtc::TestRtc;
 use crate::device::types::FrontlightKind;
 use crate::device::{AppContext, Model};
 use crate::device::{
-    AppDevice, DeviceCapabilities, DeviceIdentity, DeviceInput, DeviceLifecycle, DevicePaths,
-    DeviceRotation, DeviceRuntime, DeviceTask, EventOutcome, ExitStatus, InputSource,
-    ShutdownContext,
+    DeviceCapabilities, DeviceIdentity, DeviceInput, DeviceLifecycle, DevicePaths, DeviceRotation,
+    DeviceRuntime, EventOutcome, InputSource,
 };
 use crate::framebuffer::Pixmap;
 use crate::frontlight::LightLevels;
@@ -536,14 +535,6 @@ impl DeviceInput for TestDevice {
 }
 
 impl DeviceLifecycle for TestDevice {
-    async fn on_shutdown(
-        _context: &mut ShutdownContext<'_, AppDevice>,
-        _status: ExitStatus,
-        _tasks: &[DeviceTask],
-    ) -> Result<(), anyhow::Error> {
-        Ok(())
-    }
-
     async fn handle_event(
         _event: &Event,
         _hub: &Hub,

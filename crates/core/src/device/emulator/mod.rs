@@ -17,9 +17,8 @@ use crate::device::reschedule_auto_suspend_alarm;
 use crate::device::types::FrontlightKind;
 use crate::device::{AppContext, Model};
 use crate::device::{
-    AppDevice, DeviceCapabilities, DeviceIdentity, DeviceInput, DeviceLifecycle, DevicePaths,
-    DeviceRotation, DeviceRuntime, DeviceTask, EventOutcome, ExitStatus, InputSource,
-    ShutdownContext,
+    DeviceCapabilities, DeviceIdentity, DeviceInput, DeviceLifecycle, DevicePaths, DeviceRotation,
+    DeviceRuntime, EventOutcome, ExitStatus, InputSource,
 };
 use crate::framebuffer::{Framebuffer, UpdateMode};
 use crate::frontlight::LightLevels;
@@ -666,15 +665,37 @@ async fn show_suspend_intermission(
     runtime.view.children_mut().push(Box::new(interm));
 }
 
-impl DeviceLifecycle for EmulatorDevice {
-    async fn on_shutdown(
-        _context: &mut ShutdownContext<'_, AppDevice>,
-        _status: ExitStatus,
-        _tasks: &[DeviceTask],
-    ) -> Result<(), anyhow::Error> {
-        Ok(())
+/// Forces Wi-Fi on and starts Companion for a debug emulator.
+///
+/// The emulator has no radio. Always On makes a later menu toggle match a live
+/// session. Companion listens without the QR code or the dialog. Quit still
+/// writes settings, so this mode is what a later launch loads.
+#[cfg(debug_assertions)]
+async fn start_debug_session(context: &mut AppContext, hub: &Hub) {
+    context.settings.wifi = crate::settings::WifiMode::AlwaysOn;
+    context
+        .wifi_session
+        .set_mode(crate::settings::WifiMode::AlwaysOn);
+    let connected = match context.wifi_session.enable_radio().await {
+        Ok(connected) => connected,
+        Err(error) => {
+            tracing::warn!(error = %error, "debug emulator wifi did not enable");
+            return;
+        }
+    };
+    if !connected {
+        tracing::warn!("debug emulator wifi enabled without an address");
+        return;
     }
+    context.online = true;
+    context.wifi_session.notify_online();
+    hub.send(Event::Device(DeviceEvent::NetUp).into()).ok();
+    if let Err(error) = crate::api::turn_on_default(hub, context).await {
+        tracing::warn!(error = %error, "debug emulator companion did not start");
+    }
+}
 
+impl DeviceLifecycle for EmulatorDevice {
     async fn on_startup(
         context: &mut AppContext,
         hub: &Hub,
@@ -696,6 +717,8 @@ impl DeviceLifecycle for EmulatorDevice {
                 },
             );
         }
+        #[cfg(all(debug_assertions, not(test)))]
+        start_debug_session(context, hub).await;
         Ok(())
     }
 
@@ -1031,5 +1054,60 @@ mod paths {
             "data_path(dictionaries) {:?} should end with .cadmus/dictionaries",
             dict_path
         );
+    }
+}
+
+#[cfg(all(test, debug_assertions))]
+mod debug_session {
+    use super::start_debug_session;
+    use crate::device::test_harness::DeviceRuntimeHarness;
+    use crate::device::wifi::{Essid, NetworkInfo};
+    use crate::input::DeviceEvent;
+    use crate::settings::WifiMode;
+    use crate::view::{EntryId, Event};
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn debug_start_forces_wifi_always_on_and_starts_companion() {
+        let mut harness = DeviceRuntimeHarness::new().await;
+        assert_eq!(harness.context.settings.wifi, WifiMode::Off);
+        harness
+            .context
+            .device
+            .wifi_manager_for_test()
+            .set_network_info(Ok(Some(NetworkInfo {
+                ip: "127.0.0.1".parse().unwrap(),
+                essid: Essid::new("noop"),
+            })));
+        crate::poll_parts!(harness, |hub, _bus, _rq, context, _runtime| {
+            start_debug_session(context, hub)
+        });
+        assert_eq!(harness.context.settings.wifi, WifiMode::AlwaysOn);
+        assert_eq!(harness.context.wifi_session.mode(), WifiMode::AlwaysOn);
+        assert!(harness.context.online);
+        assert!(harness.context.wifi_session.is_online());
+        let events = harness.drain_hub();
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, Event::Device(DeviceEvent::NetUp)))
+        );
+        assert!(
+            events
+                .iter()
+                .all(|event| !matches!(event, Event::Select(EntryId::ToggleCompanion)))
+        );
+        assert!(harness.context.api.is_on());
+        assert!(harness.context.api.local_addr().is_some());
+        assert!(
+            harness
+                .context
+                .wifi_session
+                .holders()
+                .iter()
+                .any(|name| name.as_str() == crate::api::LEASE_NAME)
+        );
+        assert!(harness.view.children().is_empty());
+        crate::api::shutdown(&mut harness.context).await;
+        assert!(!harness.context.api.is_on());
     }
 }

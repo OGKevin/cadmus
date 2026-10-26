@@ -28,7 +28,6 @@ const HOSTNAME: &str = "cadmus";
 /// Highest service-name length `mdns-sd` accepts. The crate default is 15,
 /// which rejects `cadmus-companion`. The measured name is `cadmus-<subsystem>`.
 const SERVICE_NAME_LEN_MAX: u8 = 30;
-#[cfg_attr(not(test), expect(dead_code, reason = "no TCP caller yet"))]
 const SUBSYSTEM_MAX_LEN: usize = SERVICE_NAME_LEN_MAX as usize - CADMUS_PREFIX.len();
 /// Long enough for the daemon thread to notice `Exit`. The signal socket wakes it.
 const SHUTDOWN_WAIT: Duration = Duration::from_millis(500);
@@ -39,7 +38,6 @@ pub(crate) struct Subsystem(String);
 
 /// Why [`Subsystem::parse`] rejected a name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(not(test), expect(dead_code, reason = "no TCP caller yet"))]
 pub(crate) struct InvalidSubsystem;
 
 impl fmt::Display for InvalidSubsystem {
@@ -51,7 +49,6 @@ impl fmt::Display for InvalidSubsystem {
 
 impl Subsystem {
     /// Parses a DNS-SD subsystem name: `a-z`, `0-9`, hyphen; at least one letter.
-    #[cfg_attr(not(test), expect(dead_code, reason = "no TCP caller yet"))]
     #[cfg_attr(feature = "tracing", tracing::instrument(level = tracing::Level::TRACE))]
     pub(crate) fn parse(name: &str) -> Result<Self, InvalidSubsystem> {
         if !valid_subsystem(name) {
@@ -66,7 +63,6 @@ impl Subsystem {
     }
 }
 
-#[cfg_attr(not(test), expect(dead_code, reason = "no TCP caller yet"))]
 #[cfg_attr(feature = "tracing", tracing::instrument(level = tracing::Level::TRACE))]
 fn valid_subsystem(name: &str) -> bool {
     if name.is_empty() || name.len() > SUBSYSTEM_MAX_LEN {
@@ -92,7 +88,6 @@ pub(crate) enum ServiceType {
     /// Existence only: `_cadmus._udp.local.` with no listener.
     Presence,
     /// `_cadmus-<subsystem>._tcp.local.`
-    #[cfg_attr(not(test), expect(dead_code, reason = "no TCP caller yet"))]
     Tcp(Subsystem),
     /// `_cadmus-<subsystem>._udp.local.`
     #[cfg_attr(not(test), expect(dead_code, reason = "no UDP subsystem yet"))]
@@ -101,7 +96,6 @@ pub(crate) enum ServiceType {
 
 impl ServiceType {
     /// TCP type for a validated subsystem.
-    #[cfg_attr(not(test), expect(dead_code, reason = "no TCP caller yet"))]
     #[cfg_attr(feature = "tracing", tracing::instrument(level = tracing::Level::TRACE))]
     pub(crate) fn tcp(subsystem: Subsystem) -> Self {
         Self::Tcp(subsystem)
