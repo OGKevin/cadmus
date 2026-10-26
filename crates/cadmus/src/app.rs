@@ -162,6 +162,27 @@ async fn stop_producers_and_drain(
     drained_exit
 }
 
+/// Give the API the first look at an event, then the device handler.
+///
+/// [`cadmus_core::api::handle_event`] answers
+/// [`EventOutcome::Continue`](cadmus_core::device::EventOutcome::Continue) when
+/// it did not consume the event, and its outcome wins otherwise.
+async fn dispatch_api_then_device(
+    event: &Event,
+    hub: &Hub,
+    bus: &mut Bus,
+    rq: &mut RenderQueue,
+    context: &mut AppContext,
+    runtime: &mut DeviceRuntime<'_>,
+) -> cadmus_core::device::EventOutcome {
+    match cadmus_core::api::handle_event(event, hub, bus, context, runtime).await {
+        cadmus_core::device::EventOutcome::Continue => {
+            AppDevice::handle_event(event, hub, bus, rq, context, runtime).await
+        }
+        outcome => outcome,
+    }
+}
+
 /// Whether a queued device event must still run during shutdown.
 ///
 /// [`Event::CheckBattery`] can return a low-battery [`ExitStatus::PowerOff`] and
@@ -495,7 +516,7 @@ pub async fn run() -> Result<(), Error> {
         .expect("failed to initialize device");
 
     let manager = SettingsManager::new(device.data_dir(), get_current_version());
-    let mut settings = manager.load();
+    let mut settings = manager.load().await;
 
     cadmus_core::crypto::init_crypto_provider();
 
@@ -562,7 +583,7 @@ pub async fn run() -> Result<(), Error> {
         return Err(e);
     }
 
-    if let Err(e) = manager.save(&settings) {
+    if let Err(e) = manager.save(&settings).await {
         error!(error = %e, "failed to save settings after migrations");
         return Err(e);
     }
@@ -665,6 +686,7 @@ pub async fn run() -> Result<(), Error> {
         },
     )
     .await?;
+    cadmus_core::api::start_private(&tx, &mut context).await;
 
     context.mdns.start();
 
@@ -755,13 +777,14 @@ pub async fn run() -> Result<(), Error> {
         #[cfg(feature = "tracing")]
         let device_outcome = {
             use tracing::Instrument as _;
-            AppDevice::handle_event(&evt, &tx, &mut bus, &mut rq, &mut context, &mut runtime)
+            dispatch_api_then_device(&evt, &tx, &mut bus, &mut rq, &mut context, &mut runtime)
                 .instrument(span.clone())
                 .await
         };
         #[cfg(not(feature = "tracing"))]
         let device_outcome =
-            AppDevice::handle_event(&evt, &tx, &mut bus, &mut rq, &mut context, &mut runtime).await;
+            dispatch_api_then_device(&evt, &tx, &mut bus, &mut rq, &mut context, &mut runtime)
+                .await;
 
         if exit_was_refused(&evt, &device_outcome) {
             unix_signals.reset();
@@ -1288,6 +1311,7 @@ pub async fn run() -> Result<(), Error> {
         _ => true,
     };
 
+    cadmus_core::api::shutdown(&mut context).await;
     context.mdns.shutdown_and_wait().await;
 
     if let Err(e) = AppDevice::on_shutdown(&mut context.shutdown(), exit_status, &tasks).await {
@@ -1295,7 +1319,7 @@ pub async fn run() -> Result<(), Error> {
     }
 
     if save_settings {
-        if let Err(e) = manager.save(&context.settings) {
+        if let Err(e) = manager.save(&context.settings).await {
             tracing::error!(error = ?e, "failed to save settings");
         }
     }

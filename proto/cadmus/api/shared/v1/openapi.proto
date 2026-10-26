@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package cadmus.api.shared.v1;
+
+import "openapiv3/annotations.proto";
+
+// Document-level OpenAPI metadata for the generated document. Declares only
+// options: the RPCs and messages live in the sibling proto files.
+option (openapi.v3.document) = {
+  info: {
+    title: "Cadmus API"
+    description: "Everything in cadmus.api.shared.v1 is served by both listeners: the public one only while Companion mode is on, on port 80, and the always-on private one on the internal port 8474 on loopback. The private listener also serves cadmus.api.internal.v1."
+  }
+  components: {
+    security_schemes: {
+      additional_properties: [
+        {
+          name: "bearerAuth"
+          value: {
+            security_scheme: {
+              type: "http"
+              scheme: "bearer"
+              description: "Bearer token from the device menu."
+            }
+          }
+        }
+      ]
+    }
+  }
+  security: [
+    {
+      additional_properties: [
+        { name: "bearerAuth" value: { value: [] } }
+      ]
+    }
+  ]
+};

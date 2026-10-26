@@ -19,7 +19,6 @@ use std::collections::BTreeSet;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use anyhow::{Context, Result, bail};
 use build_deps::build::kobo;
@@ -101,6 +100,7 @@ fn try_main() -> Result<()> {
 
     generate_migration_hash()?;
     generate_locales()?;
+    generate_api_mappings()?;
     generate_keyboard_layouts(&root)?;
     generate_bundled_assets()?;
 
@@ -196,6 +196,53 @@ fn emit_common_link_directives() {
     println!("cargo:rustc-link-lib=webp");
     println!("cargo:rustc-link-lib=sharpyuv");
     println!("cargo:rustc-link-lib=webpdemux");
+}
+
+fn generate_api_mappings() -> Result<()> {
+    use build_deps::api_codegen::{
+        category_id_impl_rust, extension_impls_rust, identity_id_impl_rust, text_mode_impl_rust,
+    };
+
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").context("CARGO_MANIFEST_DIR not set")?;
+    let src = Path::new(&manifest_dir).join("src");
+    let out_dir = env::var("OUT_DIR").context("OUT_DIR not set")?;
+    let out = Path::new(&out_dir);
+
+    let file_extension_rs = fs::read_to_string(src.join("document/file_extension.rs"))
+        .context("read file_extension.rs")?;
+    let identity_rs = fs::read_to_string(src.join("view/settings_editor/kinds/identity.rs"))
+        .context("read identity.rs")?;
+    let category_rs = fs::read_to_string(src.join("view/settings_editor/category.rs"))
+        .context("read category.rs")?;
+    let kinds_mod_rs = fs::read_to_string(src.join("view/settings_editor/kinds/mod.rs"))
+        .context("read kinds mod.rs")?;
+
+    println!("cargo:rerun-if-changed=src/document/file_extension.rs");
+    println!("cargo:rerun-if-changed=src/view/settings_editor/kinds/identity.rs");
+    println!("cargo:rerun-if-changed=src/view/settings_editor/category.rs");
+    println!("cargo:rerun-if-changed=src/view/settings_editor/kinds/mod.rs");
+
+    fs::write(
+        out.join("api_extension_impls.rs"),
+        extension_impls_rust(&file_extension_rs),
+    )
+    .context("write api_extension_impls.rs")?;
+    fs::write(
+        out.join("api_identity_id.rs"),
+        identity_id_impl_rust(&identity_rs),
+    )
+    .context("write api_identity_id.rs")?;
+    fs::write(
+        out.join("api_category_id.rs"),
+        category_id_impl_rust(&category_rs),
+    )
+    .context("write api_category_id.rs")?;
+    fs::write(
+        out.join("api_text_mode.rs"),
+        text_mode_impl_rust(&kinds_mod_rs),
+    )
+    .context("write api_text_mode.rs")?;
+    Ok(())
 }
 
 fn generate_locales() -> Result<()> {
@@ -594,17 +641,7 @@ fn generate_cargo_features(features: &[String]) -> Result<()> {
 
 /// Compute the Git version and PR info to embed in the build.
 fn get_version_info() -> Result<(String, Option<String>)> {
-    let git_version = Command::new("git")
-        .args(["describe", "--tags", "--always", "--dirty"])
-        .output()
-        .ok()
-        .and_then(|output| {
-            output
-                .status
-                .success()
-                .then(|| String::from_utf8_lossy(&output.stdout).trim().to_string())
-        })
-        .unwrap_or_else(|| "unknown".to_string());
+    let git_version = build_deps::git::git_version(&workspace_root()?);
 
     if env::var("CI").is_err() {
         return Ok((git_version, None));

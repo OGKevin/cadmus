@@ -285,26 +285,21 @@ impl DbBackupManager {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     async fn read_manifest(&self) -> Result<BackupManifest, Error> {
         let path = self.manifest_path();
-        tokio::task::spawn_blocking(move || {
-            if path.exists() {
-                crate::helpers::load_toml::<BackupManifest, _>(&path)
-                    .context("failed to read backup manifest")
-            } else {
-                Ok(BackupManifest::default())
-            }
-        })
-        .await
-        .map_err(|e| anyhow::anyhow!("backup manifest read task failed: {e}"))?
+        if tokio::fs::try_exists(&path).await.unwrap_or(false) {
+            crate::helpers::load_toml::<BackupManifest, _>(&path)
+                .await
+                .context("failed to read backup manifest")
+        } else {
+            Ok(BackupManifest::default())
+        }
     }
 
     /// Writes the backup manifest to disk.
     async fn write_manifest(&self, manifest: BackupManifest) -> Result<(), Error> {
         let path = self.manifest_path();
-        tokio::task::spawn_blocking(move || {
-            crate::helpers::save_toml(&manifest, &path).context("failed to write backup manifest")
-        })
-        .await
-        .map_err(|e| anyhow::anyhow!("backup manifest write task failed: {e}"))?
+        crate::helpers::save_toml(&manifest, &path)
+            .await
+            .context("failed to write backup manifest")
     }
 
     /// Updates the manifest with a new backup entry and removes old backups.

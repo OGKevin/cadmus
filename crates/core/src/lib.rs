@@ -12,6 +12,7 @@ compile_error!("The test feature requires a device feature flag");
 #[macro_use]
 pub mod geom;
 
+pub mod api;
 pub mod assets;
 pub mod color;
 pub mod context;
