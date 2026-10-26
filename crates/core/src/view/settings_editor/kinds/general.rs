@@ -1,8 +1,8 @@
 //! Setting kinds for the General category.
 
 use super::{
-    InputSettingKind, SettingData, SettingIdentity, SettingKind, SettingsFetchData, ToggleSettings,
-    WidgetKind,
+    InputSettingKind, SettingData, SettingIdentity, SettingKind, SettingsFetchData, TextMode,
+    ToggleSettings, WidgetKind,
 };
 use crate::device::AppContext;
 use crate::fl;
@@ -41,7 +41,7 @@ impl SettingKind for Locale {
                 EntryKind::RadioButton(
                     tag.to_string(),
                     EntryId::SetLocale(lang_id),
-                    current.as_deref() == Some(tag),
+                    display.as_str() == tag,
                 )
             })
             .collect::<Vec<_>>();
@@ -167,6 +167,10 @@ impl InputSettingKind for WifiIdleTimeout {
 
     fn input_max_chars(&self) -> usize {
         10
+    }
+
+    fn text_mode(&self) -> TextMode {
+        TextMode::Number
     }
 
     fn current_text(&self, settings: &Settings) -> String {
@@ -311,6 +315,10 @@ impl InputSettingKind for NtpServer {
         settings.ntp_server.to_string()
     }
 
+    fn text_mode(&self) -> TextMode {
+        TextMode::Hostname
+    }
+
     fn apply_text(&self, text: &str, settings: &mut Settings) -> String {
         let trimmed = text.trim();
         if trimmed.is_empty() {
@@ -319,6 +327,13 @@ impl InputSettingKind for NtpServer {
             settings.ntp_server = addr;
         }
         settings.ntp_server.to_string()
+    }
+
+    fn validate_text(&self, text: &str) -> Result<(), &'static str> {
+        if text.trim().is_empty() {
+            return Ok(());
+        }
+        super::validate_hostname(text)
     }
 }
 
@@ -487,6 +502,10 @@ impl InputSettingKind for AutoFrontlightBrightness {
         3
     }
 
+    fn text_mode(&self) -> TextMode {
+        TextMode::Number
+    }
+
     fn current_text(&self, settings: &Settings) -> String {
         settings
             .auto_frontlight_night_brightness
@@ -578,10 +597,14 @@ impl InputSettingKind for AutoFrontlightManualCoordinates {
         32
     }
 
+    fn text_mode(&self) -> TextMode {
+        TextMode::Coordinates
+    }
+
     fn current_text(&self, settings: &Settings) -> String {
         settings
             .auto_frontlight_manual_coordinates
-            .map(|coordinates| coordinates.to_string())
+            .map(|coordinates| format!("{}, {}", coordinates.latitude(), coordinates.longitude()))
             .unwrap_or_default()
     }
 
@@ -608,6 +631,32 @@ impl InputSettingKind for AutoFrontlightManualCoordinates {
         }
 
         self.display_value(settings)
+    }
+
+    fn validate_text(&self, text: &str) -> Result<(), &'static str> {
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            return Ok(());
+        }
+        let mut parts = trimmed.split(',').map(str::trim);
+        let Some(latitude) = parts.next() else {
+            return Err("expected latitude, longitude");
+        };
+        let Some(longitude) = parts.next() else {
+            return Err("expected latitude, longitude");
+        };
+        if parts.next().is_some() {
+            return Err("expected latitude, longitude");
+        }
+        let latitude = latitude
+            .parse::<f64>()
+            .map_err(|_| "expected latitude, longitude")?;
+        let longitude = longitude
+            .parse::<f64>()
+            .map_err(|_| "expected latitude, longitude")?;
+        Coordinates::new(latitude, longitude)
+            .map(|_| ())
+            .map_err(|_| "expected latitude, longitude")
     }
 }
 
@@ -650,6 +699,10 @@ impl InputSettingKind for SettingsRetention {
 
     fn input_max_chars(&self) -> usize {
         3
+    }
+
+    fn text_mode(&self) -> TextMode {
+        TextMode::Integer
     }
 
     fn current_text(&self, settings: &Settings) -> String {
@@ -703,6 +756,10 @@ impl InputSettingKind for DbBackupRetentionSetting {
 
     fn input_max_chars(&self) -> usize {
         3
+    }
+
+    fn text_mode(&self) -> TextMode {
+        TextMode::Integer
     }
 
     fn current_text(&self, settings: &Settings) -> String {
@@ -1132,6 +1189,52 @@ mod tests {
             };
 
             assert_eq!(setting.current_text(&settings), "pool.ntp.org");
+        }
+
+        #[test]
+        fn apply_text_ignores_garbage() {
+            let setting = NtpServer;
+            let mut settings = Settings {
+                ntp_server: "pool.ntp.org".parse().unwrap(),
+                ..Default::default()
+            };
+
+            let display = setting.apply_text("!!!", &mut settings);
+
+            assert_eq!(display, "pool.ntp.org");
+            assert_eq!(settings.ntp_server.as_str(), "pool.ntp.org");
+        }
+
+        #[test]
+        fn apply_text_stores_hostname_and_ipv4() {
+            let setting = NtpServer;
+            let mut settings = Settings::default();
+
+            assert_eq!(
+                setting.apply_text("time.cloudflare.com", &mut settings),
+                "time.cloudflare.com"
+            );
+            assert_eq!(settings.ntp_server.as_str(), "time.cloudflare.com");
+
+            assert_eq!(
+                setting.apply_text("192.168.1.1", &mut settings),
+                "192.168.1.1"
+            );
+            assert_eq!(settings.ntp_server.as_str(), "192.168.1.1");
+        }
+
+        #[test]
+        fn validate_text_rejects_garbage_and_accepts_empty_host_and_ip() {
+            let setting = NtpServer;
+
+            assert!(setting.validate_text("!!!").is_err());
+            assert!(setting.validate_text("not a host").is_err());
+            assert!(setting.validate_text("time..cloudflare.com").is_err());
+            assert!(setting.validate_text("").is_ok());
+            assert!(setting.validate_text("   ").is_ok());
+            assert!(setting.validate_text("time.cloudflare.com").is_ok());
+            assert!(setting.validate_text("192.168.1.1").is_ok());
+            assert!(setting.validate_text("pool.ntp.org").is_ok());
         }
     }
 

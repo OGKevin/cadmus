@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package cadmus.api.shared.v1;
+
+import "cadmus/api/shared/v1/extension.proto";
+
+// Device filesystem reads shared by the public companion listener and the
+// private loopback API.
+service FileOps {
+  // Immediate children of a directory. Empty path starts at the process cwd.
+  rpc ListDirectory(ListDirectoryRequest) returns (DirectoryListing);
+  // Bytes of a regular file, at most 32 MiB.
+  rpc GetFile(GetFileRequest) returns (FileContents);
+}
+
+message ListDirectoryRequest {
+  // Empty starts at the process current directory.
+  string path = 1;
+  // Known Cadmus file types. Empty lists directories only. Otherwise
+  // directories plus matching files.
+  repeated Extension extensions = 2;
+}
+
+message GetFileRequest {
+  // Absolute or cwd-relative path of a regular file.
+  string path = 1;
+}
+
+message FileContents {
+  // File bytes.
+  bytes content = 1;
+  // MIME type inferred from the suffix, e.g. "image/png".
+  string content_type = 2;
+}
+
+message DirectoryListing {
+  // Canonical path of the listed directory.
+  string path = 1;
+  // Parent directory path. Empty at the filesystem root.
+  string parent = 2;
+  // Immediate children, directories first by case-insensitive name.
+  repeated DirectoryEntry entries = 3;
+}
+
+message DirectoryEntry {
+  // File name, not the full path.
+  string name = 1;
+  // Full path of this entry.
+  string path = 2;
+  // True for a directory.
+  bool directory = 3;
+}

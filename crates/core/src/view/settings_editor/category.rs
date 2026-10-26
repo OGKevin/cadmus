@@ -26,26 +26,7 @@ use crate::dictionary::{DictionaryEntry, MonolingualDictionaryService, dictionar
 use crate::fl;
 use std::collections::{BTreeMap, BTreeSet};
 
-/// Categories of settings available in the settings editor.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Category {
-    /// General device settings (locale, keyboard layout, etc.)
-    General,
-    /// Power and sleep settings (auto-suspend, sleep cover, etc.)
-    Power,
-    /// Reader behavior settings (finished action, etc.)
-    Reader,
-    /// Library management settings
-    Libraries,
-    /// Intermission screen display settings
-    Intermissions,
-    /// Import behavior settings
-    Import,
-    /// Telemetry and logging settings
-    Telemetry,
-    /// Monolingual dictionary download and management
-    Dictionaries,
-}
+include!(concat!(env!("OUT_DIR"), "/api_category_enum.rs"));
 
 impl Category {
     /// Returns the display label for this category.

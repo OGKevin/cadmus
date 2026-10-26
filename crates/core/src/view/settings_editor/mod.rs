@@ -35,14 +35,16 @@
 //!
 //! ### 1. Add a variant to `SettingIdentity`
 //!
-//! Open `kinds/identity.rs` and add a variant for the new setting:
+//! Add a variant to the `SettingIdentityKind` entry in
+//! `crates/build-deps/src/api_enums.json`. The build generates the Rust
+//! [`SettingIdentity`] enum, the proto enum, and the mapping from that file:
 //!
-//! ```rust,no_run
-//! pub enum SettingIdentity {
-//!     // ... existing variants
-//!     MyNewSetting,
-//! }
+//! ```json
+//! { "rust": "MyNewSetting", "number": 48 }
 //! ```
+//!
+//! Numbers are append-only; take the next free one. `api_enums.schema.json`
+//! validates the entry.
 //!
 //! ### 2. Implement `SettingKind`
 //!

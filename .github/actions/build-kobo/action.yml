@@ -65,6 +65,9 @@ runs:
     - name: Install system packages
       uses: ./.github/actions/apt
 
+    - name: Install protobuf tools
+      uses: ./.github/actions/install-proto-tools
+
     - name: Setup Linaro toolchain
       shell: bash
       run: echo "$HOME/linaro-toolchain/bin" >> "$GITHUB_PATH"

@@ -1,9 +1,9 @@
 name: Clone needed Cargo submodules
-description: Clone only submodules needed for Cargo manifest resolution.
+description: Clone the submodules needed to build the workspace.
 
 runs:
   using: composite
   steps:
-    - name: Clone html5ever submodule
+    - name: Clone gnostic submodule
       shell: bash
-      run: git submodule update --init --depth 1 thirdparty/html5ever
+      run: git submodule update --init --depth 1 proto/gnostic

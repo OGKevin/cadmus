@@ -309,6 +309,7 @@ mod suspend_tests;
 #[cfg(all(test, feature = "kobo"))]
 mod tests {
     use super::*;
+    use crate::device::ExitStatus;
     use crate::device::rtc::{AlarmType, shutdown_rtc};
     use crate::device::test_harness::DeviceRuntimeHarness;
     use crate::device::wifi::{Essid, NetworkInfo};

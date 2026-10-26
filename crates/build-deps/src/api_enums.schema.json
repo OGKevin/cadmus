@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Cadmus API enum manifest",
+  "description": "Single definition of every API enum that has a Rust side. Build scripts generate the Rust enums, the protobuf enums, and the mapping code from this file. Locale is not listed here: it is generated from docs/po/*.po.",
+  "type": "object",
+  "required": ["enums"],
+  "additionalProperties": false,
+  "properties": {
+    "enums": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/enum" }
+    }
+  },
+  "$defs": {
+    "enum": {
+      "type": "object",
+      "required": ["name", "rust_name", "derives", "attrs", "variants"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "Protobuf enum name.",
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9]*$"
+        },
+        "rust_name": {
+          "description": "Rust enum name.",
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9]*$"
+        },
+        "doc": {
+          "type": "string"
+        },
+        "derives": {
+          "description": "Rust derive list for the generated enum.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "attrs": {
+          "description": "Rust attributes placed on the generated enum.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "all_doc": {
+          "description": "When present, the generated enum also gets `all() -> &'static [Self]` with this doc.",
+          "type": "string"
+        },
+        "variants": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/variant" }
+        }
+      }
+    },
+    "variant": {
+      "type": "object",
+      "required": ["rust", "number"],
+      "additionalProperties": false,
+      "properties": {
+        "rust": {
+          "description": "Rust variant name (or locale code for proto-only Locale).",
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$"
+        },
+        "number": {
+          "description": "Protobuf number. Append-only and strictly increasing.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "doc": { "type": "string" },
+        "type": {
+          "description": "Rust payload type for data-carrying variants.",
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_:]*$"
+        },
+        "cfg": {
+          "description": "Cargo cfg predicate guarding the variant.",
+          "type": "string"
+        },
+        "attrs": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

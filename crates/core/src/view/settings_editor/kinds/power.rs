@@ -1,8 +1,8 @@
 //! Setting kinds for the Power category.
 
 use super::{
-    InputSettingKind, SettingData, SettingIdentity, SettingKind, SettingsFetchData, ToggleSettings,
-    WidgetKind,
+    InputSettingKind, SettingData, SettingIdentity, SettingKind, SettingsFetchData, TextMode,
+    ToggleSettings, WidgetKind, parse_number,
 };
 use crate::device::AppContext;
 use crate::device::reschedule_auto_suspend_alarm;
@@ -76,6 +76,10 @@ impl InputSettingKind for AutoSuspend {
         10
     }
 
+    fn text_mode(&self) -> TextMode {
+        TextMode::Number
+    }
+
     fn current_text(&self, settings: &Settings) -> String {
         if settings.auto_suspend == 0.0 {
             "0".to_string()
@@ -141,6 +145,10 @@ impl InputSettingKind for AutoPowerOff {
 
     fn input_max_chars(&self) -> usize {
         10
+    }
+
+    fn text_mode(&self) -> TextMode {
+        TextMode::Number
     }
 
     fn current_text(&self, settings: &Settings) -> String {
@@ -376,12 +384,27 @@ impl InputSettingKind for AutosleepGrace {
         10
     }
 
+    fn text_mode(&self) -> TextMode {
+        TextMode::Number
+    }
+
     fn current_text(&self, settings: &Settings) -> String {
         format!("{:.1}", settings.autosleep_grace)
     }
 
+    /// `parse_number` admits values outside the `Duration` range, which would
+    /// panic on every boot once saved, so reject them here.
+    fn validate_text(&self, text: &str) -> Result<(), &'static str> {
+        let value = parse_number(text)?;
+        Duration::try_from_secs_f32(value.max(0.0))
+            .map(|_| ())
+            .map_err(|_| "value out of range")
+    }
+
     fn apply_text(&self, text: &str, settings: &mut Settings) -> String {
-        if let Ok(value) = text.parse::<f32>() {
+        if let Ok(value) = text.parse::<f32>()
+            && Duration::try_from_secs_f32(value.max(0.0)).is_ok()
+        {
             settings.autosleep_grace = value.max(0.0);
         }
         format!("{:.1}", settings.autosleep_grace)
@@ -935,6 +958,46 @@ mod tests {
 
             assert!(result.0.is_none());
             assert!(!result.1);
+        }
+
+        #[test]
+        fn validate_text_rejects_unrepresentable_durations() {
+            let setting = AutosleepGrace;
+            assert!(setting.validate_text("1e30").is_err());
+            assert!(setting.validate_text("NaN").is_err());
+            assert!(setting.validate_text("2.5").is_ok());
+        }
+
+        #[test]
+        fn apply_text_ignores_unrepresentable_values() {
+            let setting = AutosleepGrace;
+            let mut settings = Settings {
+                autosleep_grace: 30.0,
+                ..Default::default()
+            };
+
+            let display = setting.apply_text("1e30", &mut settings);
+
+            assert_eq!(settings.autosleep_grace, 30.0);
+            assert_eq!(display, "30.0");
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_submit_with_huge_value_keeps_setting() {
+            let setting = AutosleepGrace;
+            let mut context = create_test_context().await;
+            context.settings.autosleep_grace = 30.0;
+            let mut bus: Bus = VecDeque::new();
+
+            let (display, handled) = setting.handle(
+                &Event::Submit(ViewId::AutosleepGraceInput, "1e30".to_string()),
+                &mut context,
+                &mut bus,
+            );
+
+            assert!(handled);
+            assert_eq!(context.settings.autosleep_grace, 30.0);
+            assert_eq!(display.as_deref(), Some("30.0"));
         }
     }
 }
