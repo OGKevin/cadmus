@@ -303,6 +303,29 @@ let
   # a process stuck in `starting` holds the wait open; bound it by wall clock.
   waitForStack = "${pkgs.coreutils}/bin/timeout 120 devenv processes wait --timeout 120";
 
+  # protoc-gen-connect-openapi is not in nixpkgs. Built from source so the
+  # build.rs OpenAPI generation has a pinned plugin.
+  #
+  # Renovate bumps `rev` only. After a bump, refresh `hash` and `vendorHash`
+  # from the nix error; the build fails until both match.
+  protoc-gen-connect-openapi =
+    let
+      rev = "v0.28.0";
+    in
+    pkgs.buildGoModule {
+      pname = "protoc-gen-connect-openapi";
+      version = pkgs.lib.removePrefix "v" rev;
+      src = pkgs.fetchFromGitHub {
+        owner = "sudorandom";
+        repo = "protoc-gen-connect-openapi";
+        inherit rev;
+        hash = "sha256-luJl5628grBJMM9clWLmpDaV941HI8uOikMr8Wh8gDg=";
+      };
+      vendorHash = "sha256-6XgavJTtabAPm4IgaylzM6YhRLqo8TF6xeadIAhgLTo=";
+      proxyVendor = true;
+      subPackages = [ "." ];
+    };
+
   # Grafana datasource provisioning
   grafanaDatasources = pkgs.writeText "datasources.yaml" ''
     apiVersion: 1
@@ -366,6 +389,7 @@ in
     mdbook-epub-custom
     pkgs.mdbook-mermaid
     mdbook-i18n-helpers-custom
+    protoc-gen-connect-openapi
     pkgs.gettext
 
     cargo-diff-tools
@@ -374,6 +398,7 @@ in
     pkgs.cargo-expand
     pkgs.sccache
     pkgs.gnuplot
+    pkgs.protobuf
 
     # C/C++ build tools for compiling thirdparty libraries
     pkgs.gnumake

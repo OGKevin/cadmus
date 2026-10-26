@@ -140,6 +140,7 @@ fn create_bundle_cadmus_only(root: &Path, test: bool, xz: bool) -> Result<()> {
     std::fs::create_dir_all(&install_dir)?;
 
     fs::copy_dir_all(&root.join("dist"), &install_dir)?;
+    fs::copy_site(&root.join("website/out"), &install_dir.join("website"))?;
 
     let archive = bundle_dir.join(archive_name);
     let xz_archive = bundle_dir.join(xz_name);
@@ -179,6 +180,10 @@ fn create_bundle_with_nickel(root: &Path, nickel_archive: &Path, test: bool) -> 
     };
 
     fs::copy_dir_all(&root.join("dist"), &adds_dst.join(adds_subdir))?;
+    fs::copy_site(
+        &root.join("website/out"),
+        &adds_dst.join(adds_subdir).join("website"),
+    )?;
 
     std::fs::copy(
         root.join(format!("contrib/NickelMenu/{nm_config}")),

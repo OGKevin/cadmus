@@ -606,6 +606,10 @@ pub enum Event {
     CheckBattery,
     /// Sets the WiFi operating mode (Off / AlwaysOn / Auto).
     SetWifiMode(crate::settings::WifiMode),
+    /// Drain public API RPC commands on the main loop.
+    Api,
+    /// Bind the public API listener again after suspend, keeping the token.
+    ApiResume,
     /// Periodic check whether Auto-mode WiFi should power down after idle.
     MightDisableWifi,
     /// The last inhibitor guard of the given [`crate::device::inhibitor::Kind`] was released.
@@ -1004,6 +1008,7 @@ pub enum EntryId {
     ToggleFuzzy,
     ToggleInverted,
     ToggleDithered,
+    ToggleCompanion,
     SetWifiMode(crate::settings::WifiMode),
     EditWifiIdleTimeout,
     Rotate(i8),

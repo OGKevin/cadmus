@@ -54,6 +54,7 @@ globset = "0.4.18"
 xml5ever = { version = "0.41", features = ["source-positions"] }
 humanize-bytes = "1.0.6"
 humantime = "2"
+getrandom = { workspace = true }
 rand_core = "0.10.0"
 rand_xoshiro = "0.8.0"
 percent-encoding = "2.3.2"
@@ -68,9 +69,15 @@ chrono = { version = "0.4.42", features = [
 ], default-features = false }
 chrono-tz = "0.10"
 sunrise = "3.0"
+buffa-types = { workspace = true }
 bytes = { workspace = true }
+cadmus-api-proto = { path = "../api-proto" }
+connectrpc = { workspace = true, features = ["json", "server"] }
 http = { workspace = true }
+http-body = { workspace = true }
 http-body-util = { workspace = true }
+hyper = { workspace = true }
+hyper-util = { workspace = true }
 mdns-sd = { workspace = true }
 octocrab = { workspace = true }
 reqwest = { version = "0.13.1", default-features = false, features = [
@@ -123,6 +130,7 @@ procfs = { version = "0.18", optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.8", features = ["html_reports"] }
+h2 = { workspace = true }
 lzma-rust2 = { workspace = true, features = ["std", "xz", "encoder"] }
 tempfile = "3.14"
 

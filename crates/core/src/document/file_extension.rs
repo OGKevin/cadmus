@@ -1,7 +1,7 @@
 //! Known document file extensions used across import, settings, and the library.
 
 use rustc_hash::FxHashSet;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use sqlx::encode::IsNull;
 use sqlx::error::BoxDynError;
 use sqlx::sqlite::{Sqlite, SqliteArgumentsBuffer, SqliteTypeInfo, SqliteValueRef};
@@ -9,70 +9,19 @@ use std::collections::HashMap;
 use std::fmt;
 use std::marker::PhantomData;
 
-/// A known file extension for documents Cadmus can import and open.
-///
-/// The serialized string (e.g. `"epub"`, `"cbz"`) is used as the TOML key in
-/// refresh-rate-by-kind maps and as values in allowed/metadata/dithered kind sets.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum FileExtension {
-    /// Comic book RAR archive.
-    Cbr,
-    /// Comic book ZIP archive.
-    Cbz,
-    /// DjVu document.
-    #[serde(alias = "djv")]
-    Djvu,
-    /// EPUB ebook.
-    Epub,
-    /// FictionBook document.
-    Fb2,
-    /// HTML document.
-    #[serde(alias = "htm")]
-    Html,
-    /// JPEG image using the long extension.
-    Jpeg,
-    /// JPEG image using the short extension.
-    Jpg,
-    /// Mobipocket ebook.
-    Mobi,
-    /// OpenXPS document.
-    Oxps,
-    /// PDF document.
-    Pdf,
-    /// PNG image.
-    Png,
-    /// SVG image.
-    Svg,
-    /// Plain text document.
-    Txt,
-    /// WebP image.
-    Webp,
-    /// XPS document.
-    Xps,
-}
+include!(concat!(env!("OUT_DIR"), "/api_extension_enum.rs"));
 
 impl FileExtension {
-    /// Returns all known file extensions.
-    pub fn all() -> &'static [FileExtension] {
-        &[
-            FileExtension::Cbr,
-            FileExtension::Cbz,
-            FileExtension::Djvu,
-            FileExtension::Epub,
-            FileExtension::Fb2,
-            FileExtension::Html,
-            FileExtension::Jpeg,
-            FileExtension::Jpg,
-            FileExtension::Mobi,
-            FileExtension::Oxps,
-            FileExtension::Pdf,
-            FileExtension::Png,
-            FileExtension::Svg,
-            FileExtension::Txt,
-            FileExtension::Webp,
-            FileExtension::Xps,
-        ]
+    /// True for the still image formats the intermission screen can draw.
+    pub fn is_still_image(self) -> bool {
+        matches!(
+            self,
+            FileExtension::Png
+                | FileExtension::Jpeg
+                | FileExtension::Jpg
+                | FileExtension::Svg
+                | FileExtension::Webp
+        )
     }
 
     /// Returns the lowercase canonical string used for storage and TOML keys.

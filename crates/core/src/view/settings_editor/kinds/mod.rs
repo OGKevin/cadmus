@@ -9,15 +9,15 @@
 //! [`SettingsEvent::UpdateValue`](crate::view::settings_editor::SettingsEvent) to
 //! target the correct [`SettingValue`](crate::view::settings_editor::SettingValue) view.
 
-pub mod dictionary;
-pub mod general;
-pub mod identity;
-pub mod import;
-pub mod intermission;
-pub mod library;
-pub mod power;
-pub mod reader;
-pub mod telemetry;
+pub(super) mod dictionary;
+pub(super) mod general;
+pub(super) mod identity;
+pub(super) mod import;
+pub(super) mod intermission;
+pub(super) mod library;
+pub(super) mod power;
+pub(super) mod reader;
+pub(super) mod telemetry;
 
 pub use identity::SettingIdentity;
 
@@ -267,4 +267,51 @@ pub trait InputSettingKind: SettingKind {
 
     /// Parse `text` from the input, mutate `settings`, and return the display string.
     fn apply_text(&self, text: &str, settings: &mut Settings) -> String;
+
+    /// Which companion text mode edits this setting.
+    fn text_mode(&self) -> TextMode {
+        TextMode::Text
+    }
+
+    /// Reject a companion value that this setting cannot store.
+    ///
+    /// The on-screen editor ignores invalid text. Companion reports it instead.
+    fn validate_text(&self, text: &str) -> Result<(), &'static str> {
+        match self.text_mode() {
+            TextMode::Text => Ok(()),
+            TextMode::Integer => parse_integer(text).map(|_| ()),
+            TextMode::Number => parse_number(text).map(|_| ()),
+            TextMode::Hostname => validate_hostname(text),
+            TextMode::Coordinates => Err("expected latitude, longitude"),
+        }
+    }
+}
+
+include!(concat!(env!("OUT_DIR"), "/api_text_mode_enum.rs"));
+
+fn validate_hostname(text: &str) -> Result<(), &'static str> {
+    text.trim()
+        .parse::<crate::network_address::NetworkAddress>()
+        .map(|_| ())
+        .map_err(|_| "expected a hostname or IP address")
+}
+
+pub(crate) fn parse_integer(text: &str) -> Result<u64, &'static str> {
+    if text.is_empty() || !text.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err("expected an integer");
+    }
+    let value: u64 = text.parse().map_err(|_| "expected an integer")?;
+    usize::try_from(value).map_err(|_| "expected an integer")?;
+    Ok(value)
+}
+
+pub(crate) fn parse_number(text: &str) -> Result<f32, &'static str> {
+    if text.is_empty() {
+        return Err("expected a number");
+    }
+    let value = text.parse::<f32>().map_err(|_| "expected a number")?;
+    if !value.is_finite() {
+        return Err("expected a number");
+    }
+    Ok(value)
 }
