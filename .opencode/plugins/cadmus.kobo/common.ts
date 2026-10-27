@@ -21,8 +21,13 @@ export const deployInputSchema = z
 
 export const restartInputSchema = z.object({ ip: hostSchema }).strict();
 
+export const devicesInputSchema = z
+  .object({ timeout: z.number().int().positive().max(60).optional() })
+  .strict();
+
 export type DeployInput = z.infer<typeof deployInputSchema>;
 export type RestartInput = z.infer<typeof restartInputSchema>;
+export type DevicesInput = z.infer<typeof devicesInputSchema>;
 
 /**
  * Cargo features for a cadmus-tst binary.

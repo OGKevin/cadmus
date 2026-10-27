@@ -15,6 +15,7 @@ use crate::frontlight::Frontlight as _;
 use crate::geom::Rectangle;
 use crate::helpers::{Fingerprint, IsHidden, load_json};
 use crate::library::Library;
+use crate::mdns::MdnsSession;
 use crate::settings::Settings;
 use crate::view::ViewId;
 use crate::view::keyboard::Layout;
@@ -78,6 +79,8 @@ pub struct Context<D: Device> {
     #[cfg(any(feature = "kobo", docsrs))]
     pub(crate) deferred_suspend: Option<DeferredSuspend>,
     pub wifi_session: std::sync::Arc<crate::device::wifi::WifiSession>,
+    /// Process-wide mDNS responder.
+    pub mdns: MdnsSession,
     /// Top-level inhibitor: SoftSuspend settings, Full and Sleep holders, wake locks, LED.
     pub inhibitor: Arc<Inhibitor>,
     /// Test-only inject queue for deep-idle wait outcomes.
@@ -176,6 +179,7 @@ impl<D: Device> Context<D> {
             #[cfg(any(feature = "kobo", docsrs))]
             deferred_suspend: None,
             wifi_session,
+            mdns: MdnsSession::new(),
             inhibitor,
             #[cfg(all(test, feature = "kobo"))]
             deep_idle_poll_inject: std::collections::VecDeque::new(),
@@ -597,6 +601,18 @@ pub mod test_helpers {
         drop(_lease);
         assert!(context.inhibitor.is_empty());
         assert!(context.inhibitor.holders().is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn start_mdns_is_best_effort() {
+        let mut context = create_test_context().await;
+        assert!(!context.mdns.is_live());
+        context.mdns.start();
+        if context.mdns.is_live() {
+            assert!(context.mdns.presence_registered());
+        }
+        context.mdns.shutdown();
+        assert!(!context.mdns.is_live());
     }
 
     /// A wake lock must already be held when autosleep is enabled, otherwise

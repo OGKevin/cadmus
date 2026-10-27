@@ -1,5 +1,7 @@
 //! Linux-specific device implementations.
 
+#[cfg(any(feature = "kobo", docsrs))]
+pub(crate) mod loopback;
 mod rtc;
 pub mod soft_suspend;
 mod time;

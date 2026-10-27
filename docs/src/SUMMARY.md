@@ -46,6 +46,7 @@
 - [Code Style and Linting](contributing/code-style.md)
 - [Event System](contributing/event-system.md)
 - [WiFi Leases](contributing/wifi.md)
+- [mDNS](contributing/mdns.md)
 - [Device](contributing/device/index.md)
   - [Time and RTC](contributing/device/time.md)
   - [Suspend](contributing/device/suspend/index.md)
