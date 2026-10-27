@@ -22,7 +22,7 @@
     },
     "apiReference": {
       "label": "API Reference",
-      "description": "Rust crate documentation"
+      "description": "Try the device API in the browser"
     },
     "storybook": {
       "label": "Browser Component Library",
@@ -31,6 +31,10 @@
     "planning": {
       "label": "Planning",
       "description": "Roadmap, milestones, and active work"
+    },
+    "rustApi": {
+      "label": "Rust API",
+      "description": "Rust crate documentation"
     }
   },
   "footer": {
@@ -43,5 +47,53 @@
   "language": {
     "name": "English",
     "change": "Change language"
+  },
+  "companion": {
+    "instructions": "Turn Companion on, then open the address shown on your Kobo.",
+    "down": "No companion is running. Start the emulator with cargo xtask run-emulator, then turn Companion on.",
+    "loading": "Loading.",
+    "loadError": "Could not load settings.",
+    "browseError": "Could not list that folder.",
+    "saveError": "Could not save this setting.",
+    "retry": "Try again",
+    "tokenPrompt": "Enter the 6-digit code shown on your Kobo.",
+    "tokenSubmit": "Continue",
+    "tokenInvalid": "That code was not accepted. Try again.",
+    "saved": "Saved",
+    "empty": "No settings to change.",
+    "choose": "Choose",
+    "rgb": "RGB",
+    "home": "Home",
+    "menu": "Menu",
+    "settings": "Settings",
+    "deviceName": "Device name",
+    "deviceLanguage": "Device language",
+    "version": "Version",
+    "regular": "Regular",
+    "inverted": "Inverted",
+    "addFileType": "Add file type",
+    "addLibrary": "Add library",
+    "browse": "Browse",
+    "browseLibrary": "Browse for {name}",
+    "libraryName": "Name of {name}",
+    "libraryFinished": "Finished action for {name}",
+    "removeLibrary": "Remove {name}",
+    "browseFolder": "Choose a folder",
+    "browseImage": "Choose image",
+    "cancel": "Cancel",
+    "emptyFolder": "No folders here.",
+    "emptyImages": "No images here.",
+    "preview": "Preview",
+    "previewError": "Could not load this image.",
+    "selectImage": "Choose an image",
+    "remove": "Remove",
+    "refreshHint": "0 never fully refreshes.",
+    "selectFolder": "Select this folder"
+  },
+  "apiExplorer": {
+    "title": "API explorer",
+    "description": "Calls run against the device that served this page. The companion code is already filled in.",
+    "tokenHint": "Settings and file calls need the 6-digit code from the Companion menu. Open the companion page first, or paste the code into the bearer field.",
+    "loading": "Loading the API document."
   }
 }

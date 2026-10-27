@@ -23,6 +23,7 @@
 //! ├── hyphenation-patterns/
 //! ├── bin/
 //! ├── resources/
+//! ├── website/
 //! ├── Settings-sample.toml
 //! ├── LICENSE
 //! └── *.sh                    (contrib scripts)
@@ -73,6 +74,7 @@ pub fn run(args: DistArgs) -> Result<()> {
 
     copy_libraries(&root, &dist_dir)?;
     copy_assets(&root, &dist_dir)?;
+    copy_website(&root, &dist_dir, args.test)?;
     copy_binary(&root, &dist_dir)?;
     strip_and_patch(&root, &dist_dir)?;
     clean_user_files(&dist_dir)?;
@@ -155,6 +157,31 @@ fn copy_assets(root: &Path, dist_dir: &Path) -> Result<()> {
     std::fs::copy(root.join("LICENSE"), dist_dir.join("LICENSE"))?;
 
     Ok(())
+}
+
+/// Copies the exported documentation site into `dist/website`.
+///
+/// `cadmuscli kobo deploy` rsyncs `dist/`, so this copy is what makes the
+/// companion site reachable on the device. Release distributions require the
+/// site; test distributions skip it because CI test jobs do not build docs.
+fn copy_website(root: &Path, dist_dir: &Path, test: bool) -> Result<()> {
+    let src = root.join("website/out");
+    if !src.exists() {
+        if test {
+            eprintln!(
+                "warning: website/out not found; the documentation site is not\n\
+                 included in this test distribution. Run 'cadmuscli docs' first\n\
+                 to include it."
+            );
+            return Ok(());
+        }
+        bail!(
+            "Documentation site not found at {}.\n\
+             Run 'cadmuscli docs' first",
+            src.display()
+        );
+    }
+    fs::copy_site(&src, &dist_dir.join("website"))
 }
 
 /// Copies the compiled ARM binary into `dist/`.

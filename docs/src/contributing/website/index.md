@@ -70,11 +70,14 @@ wrangler dev              # Workers Static Assets, same as production
 # or: cadmus-docs-preview
 ```
 
-**Fast iteration** (without devenv supervision):
+**Supervised** (inside devenv): `devenv up` starts the website and Storybook on
+allocated ports. Read the resolved URLs from `$WEBSITE_URL` and `$STORYBOOK_URL`.
 
-- Website UI: `cd website && npm run dev` (port 3000)
-- Storybook: `cd website && npm run storybook` (port 6006)
-- mdBook user guide: `cd docs && mdbook serve` (port 3000)
+**Fast iteration** (without devenv supervision; each command prints the URL it binds):
+
+- Website UI: `cd website && npm run dev`
+- Storybook: `cd website && npm run storybook`
+- mdBook user guide: `cd docs && mdbook serve`
 
 Inside devenv, prefer `cadmus-docs-serve`, `cadmus-storybook`, and
 `cadmus-docs-mdbook`. The supervised processes wait for `website:install`,
@@ -84,6 +87,30 @@ its `predev` hook.
 
 Prerequisites: devenv provides `mdbook`, `mdbook-mermaid`, and `npm`; the `website:install`
 devenv task handles `npm install`.
+
+### Companion dev proxy
+
+`npm run dev` starts `scripts/companion-dev-proxy.mjs` on a random `127.0.0.1` port and
+passes its origin to the Next dev server as `COMPANION_PROXY_ORIGIN`; `next.config.ts`
+rewrites to that origin and refuses to start without it. Next itself binds `127.0.0.1`
+unless you pass `-H` or `--hostname`. Start the dev server through `npm run dev`, not a
+bare `next dev`, or the rewrites have no origin. The proxy forwards only the RPCs the Companion page uses and refuses anything
+else loudly: an unknown procedure logs the expected list and answers 404, and a request
+whose `content-type` does not match the procedure (JSON for unary calls, `application/connect+json`
+for `FileOps/GetFile`) logs the expected type and answers 415. A mismatch here means the
+website and the proto contract drifted apart, not a transient failure.
+
+The proxy finds Companion by probing `cadmus` process listeners on Linux, and by `lsof`
+listeners on macOS. A wildcard bind wins (the emulator with Companion opened from the
+menu), otherwise it probes each loopback listener with an unauthenticated
+`cadmus.api.internal.v1.Placeholder/Ping`. Only the internal listener registers that RPC,
+so the listener that does not answer it is Companion and is never the open internal API.
+Auth answers cannot do this job: debug builds accept any bearer, so both listeners would
+look identical. With no matching listener the proxy reports `{"companion":"down"}` instead
+of forwarding to the wrong surface.
+
+Set `COMPANION_API_PORT` to skip discovery and use that port directly. Other platforms
+fail at startup and name this variable.
 
 ## Editing website content
 

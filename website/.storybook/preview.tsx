@@ -16,7 +16,7 @@ const withPageChrome: Decorator = (Story, context) => {
 
   return (
     <div className="flex min-h-screen flex-col bg-kumo-base text-kumo-default antialiased">
-      <SiteHeader />
+      {context.parameters.siteHeader === false ? null : <SiteHeader />}
       <Story />
     </div>
   );

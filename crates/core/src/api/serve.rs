@@ -688,18 +688,18 @@ impl Service<Request<Incoming>> for Auth {
                 log_access(scope, &method, &path, response.status(), Duration::ZERO);
                 return Box::pin(async { Ok(leased_response(response, None)) });
             }
-            match presented_bearer(req.headers()) {
-                Some(presented) if bearer_matches(token.expose_secret(), presented) => {}
-                presented => {
-                    if presented.is_some() {
-                        self.failures.fetch_add(1, Ordering::Relaxed);
-                        report_auth_failure(&self.tx, &self.hub);
-                    }
-                    let response = ConnectError::unauthenticated("unauthorized")
-                        .into_http_response(req.headers());
-                    log_access(scope, &method, &path, response.status(), Duration::ZERO);
-                    return Box::pin(async { Ok(leased_response(response, None)) });
+            let presented = presented_bearer(req.headers());
+            if bearer_ok(token, presented) {
+                self.failures.store(0, Ordering::Relaxed);
+            } else {
+                if presented.is_some() {
+                    self.failures.fetch_add(1, Ordering::Relaxed);
+                    report_auth_failure(&self.tx, &self.hub);
                 }
+                let response =
+                    ConnectError::unauthenticated("unauthorized").into_http_response(req.headers());
+                log_access(scope, &method, &path, response.status(), Duration::ZERO);
+                return Box::pin(async { Ok(leased_response(response, None)) });
             }
         }
         let lease = match self
@@ -760,8 +760,10 @@ fn open_status(path: &str) -> bool {
 
 /// Tells the main loop that a request presented a bad credential.
 ///
-/// The loop shuts the listener down once the shared count reaches
-/// [`super::MAX_AUTH_FAILURES`], while [`Auth`] already rejects requests.
+/// The loop shuts the listener down once the shared count of consecutive
+/// bad credentials reaches [`super::MAX_AUTH_FAILURES`], while [`Auth`]
+/// already rejects requests. A matching credential clears the count, so a
+/// client that proves it knows the token starts over.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
 fn report_auth_failure(tx: &mpsc::UnboundedSender<Command>, hub: &Hub) {
     if tx.send(Command::AuthFailed).is_ok() {
@@ -782,7 +784,22 @@ fn presented_bearer(headers: &HeaderMap) -> Option<&str> {
         .filter(|token| !token.is_empty())
 }
 
-/// Constant-time Bearer compare. Every build authenticates.
+/// Whether the presented credential authorizes the request.
+///
+/// Debug builds accept anything, including a missing header, so a browser
+/// replaying a stale token keeps working across emulator relaunches. Tests
+/// and release builds require a matching Bearer.
+#[cfg(all(debug_assertions, not(test)))]
+fn bearer_ok(_token: &SecretString, _presented: Option<&str>) -> bool {
+    true
+}
+
+#[cfg(any(not(debug_assertions), test))]
+fn bearer_ok(token: &SecretString, presented: Option<&str>) -> bool {
+    matches!(presented, Some(presented) if bearer_matches(token.expose_secret(), presented))
+}
+
+/// Constant-time Bearer compare.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
 fn bearer_matches(expected: &str, presented: &str) -> bool {
     let expected = expected.as_bytes();

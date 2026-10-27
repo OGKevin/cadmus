@@ -12,3 +12,4 @@ public/guide
 public/storybook
 public/*/
 !public/_redirects
+*.tsbuildinfo

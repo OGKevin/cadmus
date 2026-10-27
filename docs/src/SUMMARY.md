@@ -23,6 +23,7 @@
   - [Reflowable books](reader/reflowable.md)
   - [Paged books](reader/paged.md)
 - [WiFi](wifi.md)
+- [Companion](companion.md)
 - [Automatic Time Syncing](time-sync.md)
 - [Automatic Frontlight](auto-frontlight.md)
 - [Soft Suspend](soft-suspend.md)

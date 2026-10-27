@@ -16,17 +16,22 @@ The public listener accepts IPv4 and IPv6 on one socket and falls back to IPv4
 where the host has no IPv6. The private listener is loopback-only and is not
 advertised over mDNS, which cannot scope a record to loopback.
 
-Every build authenticates. The token is the six-digit code the user reads off
-the device and types into the companion client; it comes from the OS CSPRNG,
-lives in memory only, and survives suspend so a resume keeps the same token.
-Three rejected credentials on one token shut the public listener down; the
-switch has to be turned on again. The count is enforced in the listener
-synchronously and survives suspend/resume, and a request without a `Bearer`
-credential is answered `401` without counting as a strike.
+Release builds and tests authenticate. The token is the six-digit code the
+user reads off the device and types into the companion client; it comes from
+the OS CSPRNG, lives in memory only, and survives suspend so a resume keeps
+the same token. Debug builds skip the bearer check entirely, so any token —
+or none — works against the emulator.
 
-The debug emulator never binds the LAN: its startup companion session binds
-`127.0.0.1:0`, which also skips mDNS. Opening Companion from the emulator menu
-still binds `0.0.0.0:0` and requires the token from the logs.
+Three consecutive rejected credentials on one token shut the public listener
+down; the switch has to be turned on again. A matching credential clears the
+count, so re-entering the code starts over. The count is enforced in the
+listener synchronously and survives suspend/resume, and a request without a
+`Bearer` credential is answered `401` without counting as a strike.
+
+The debug emulator's startup companion session binds `127.0.0.1:0`, which also
+skips mDNS. Opening Companion from the emulator menu binds `0.0.0.0:0` instead,
+and debug builds skip the bearer check, so its RPCs are reachable on the LAN
+without a token.
 
 `GetStatus` and static `GET`s are open on the public listener. There is no
 `Access-Control-Allow-Origin` header.

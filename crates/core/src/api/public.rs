@@ -72,7 +72,6 @@ pub(super) struct Running {
     pub(super) job: Job<()>,
     pub(super) lease: WifiLease,
     pub(super) mdns: Option<crate::mdns::Registration>,
-    #[cfg(test)]
     pub(super) local_addr: SocketAddr,
     pub(super) locale: cadmus_api_proto::cadmus::api::shared::v1::Locale,
 }
@@ -180,7 +179,12 @@ pub(super) async fn finish_start(
         Err(error) => {
             context.api.token = None;
             context.api.auth_failures.store(0, Ordering::Relaxed);
+            if matches!(error, StartError::WifiOff) {
+                notify_not_online(hub);
+            }
             tracing::warn!(error = %error, "public api did not start");
+            hub.send((Event::Close(ViewId::CompanionDialog)).into())
+                .ok();
             return;
         }
     };
@@ -188,7 +192,26 @@ pub(super) async fn finish_start(
         context.api.token = None;
         context.api.auth_failures.store(0, Ordering::Relaxed);
         tracing::warn!(error = %error, "public api did not start");
+        hub.send((Event::Close(ViewId::CompanionDialog)).into())
+            .ok();
     }
+}
+
+/// URL the on-device QR panel encodes: the companion page the listener serves.
+///
+/// `None` until the listener has bound, because the URL names the bound port.
+/// Uses the locale resolved when the listener started, so the panel always
+/// advertises a page the listener serves.
+#[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
+pub(super) fn companion_url(context: &AppContext) -> Option<String> {
+    let running = context.api.public.as_ref()?;
+    let port = running.local_addr.port();
+    let locale = running.locale;
+    Some(crate::view::companion::companion_url(
+        &context.mdns.hostname(),
+        port,
+        locale,
+    ))
 }
 
 /// Register mDNS, serve the site, and store the running listener.
@@ -259,7 +282,6 @@ async fn complete_start(
         job,
         lease,
         mdns,
-        #[cfg(test)]
         local_addr,
         locale,
     });

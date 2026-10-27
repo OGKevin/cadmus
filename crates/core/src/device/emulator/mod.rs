@@ -1062,7 +1062,7 @@ mod debug_session {
     use crate::device::wifi::{Essid, NetworkInfo};
     use crate::input::DeviceEvent;
     use crate::settings::WifiMode;
-    use crate::view::{EntryId, Event};
+    use crate::view::{EntryId, Event, ViewId};
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn debug_start_forces_wifi_always_on_and_starts_companion() {
@@ -1096,8 +1096,8 @@ mod debug_session {
         );
         assert!(harness.context.api.is_on());
         for _ in 0..100 {
-            crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-                crate::api::handle_event(&Event::Api, hub, bus, context, runtime)
+            crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+                crate::api::handle_event(&Event::Api, hub, bus, rq, context, runtime)
             });
             if harness.context.api.local_addr().is_some() {
                 break;
@@ -1114,6 +1114,10 @@ mod debug_session {
                 .any(|name| name.as_str() == crate::api::LEASE_NAME)
         );
         assert!(harness.view.children().is_empty());
+        assert!(
+            crate::view::common::locate_by_id(harness.view.as_ref(), ViewId::CompanionDialog)
+                .is_none()
+        );
         crate::api::shutdown(&mut harness.context).await;
         assert!(!harness.context.api.is_on());
     }
