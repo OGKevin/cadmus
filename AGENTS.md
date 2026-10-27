@@ -54,8 +54,10 @@ to the diff via reviewdog).
 - OTA updates delete only Cadmus-owned bundled files before reboot. Do not
   assume a whole asset directory can be removed because users may add their own
   fonts, icons, or other files.
-- `libs/` is special: all Cadmus-shipped shared libraries may be cleaned before
-  reboot because the next `KoboRoot.tgz` repopulates that directory.
+- `libs/` and `website/` are special: they are entirely Cadmus-owned and may be
+  cleaned wholesale before reboot because the next `KoboRoot.tgz` repopulates
+  them. `website/` is shipped by `cadmuscli dist` (build it with
+  `cadmuscli docs` first).
 - If code generates compile-time metadata from bundled asset directories, make
   sure `bin/`, `resources/`, and `hyphenation-patterns/` are present before the
   Kobo build starts. In CI, `cadmuscli download-assets` must run before

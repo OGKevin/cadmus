@@ -5,7 +5,7 @@ use crate::device::wifi::{WifiLease, WifiSession, WifiSessionError};
 use crate::device::{AppContext, EventOutcome};
 use crate::runtime::Job;
 use crate::settings::WifiMode;
-use crate::view::{Event, Hub};
+use crate::view::{Event, Hub, ViewId};
 use secrecy::SecretString;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::atomic::Ordering;
@@ -171,6 +171,8 @@ pub(super) async fn finish_start(
             context.api.token = None;
             context.api.auth_failures.store(0, Ordering::Relaxed);
             tracing::warn!(error = %error, "public api did not start");
+            hub.send((Event::Close(ViewId::CompanionDialog)).into())
+                .ok();
             return;
         }
     };
@@ -178,7 +180,23 @@ pub(super) async fn finish_start(
         context.api.token = None;
         context.api.auth_failures.store(0, Ordering::Relaxed);
         tracing::warn!(error = %error, "public api did not start");
+        hub.send((Event::Close(ViewId::CompanionDialog)).into())
+            .ok();
     }
+}
+
+/// URL the on-device QR panel encodes: the companion page the listener serves.
+///
+/// Mirrors [`complete_start`]: the site locale is resolved against the site
+/// root, so the panel never advertises a page the listener cannot serve.
+#[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
+pub(super) async fn companion_url(context: &AppContext) -> Option<String> {
+    let root = site_root(context);
+    let locale = serve::site_locale(&root, context.settings.locale.as_ref()).await;
+    Some(crate::view::companion::companion_url(
+        &context.mdns.hostname(),
+        locale,
+    ))
 }
 
 /// Register mDNS, serve the site, and store the running listener.

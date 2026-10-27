@@ -60,8 +60,8 @@ async fn start(harness: &mut DeviceRuntimeHarness, addr: SocketAddr) -> Result<(
 /// Drain until the deferred lease-and-bind start has reported back.
 async fn drive_listener_start(harness: &mut DeviceRuntimeHarness) {
     for _ in 0..100 {
-        crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-            handle_event(&Event::Api, hub, bus, context, runtime)
+        crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            handle_event(&Event::Api, hub, bus, rq, context, runtime)
         });
         if harness.context.api.pending_start.is_none() {
             return;
@@ -84,8 +84,8 @@ where
         if request.is_finished() {
             break;
         }
-        crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-            handle_event(&Event::Api, hub, bus, context, runtime)
+        crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            handle_event(&Event::Api, hub, bus, rq, context, runtime)
         });
         if request.is_finished() {
             break;
@@ -114,11 +114,12 @@ fn wrong_token(token: &str) -> String {
 async fn menu_switch_binds_an_ephemeral_port() {
     let mut harness = DeviceRuntimeHarness::new().await;
     arm_wifi(&mut harness, WifiMode::Auto);
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
         handle_event(
             &Event::Select(EntryId::ToggleCompanion),
             hub,
             bus,
+            rq,
             context,
             runtime,
         )
@@ -213,8 +214,8 @@ async fn suspend_and_resume_keep_the_token() {
     assert!(!holds_public_api_lease(&harness));
     assert!(harness.context.api.local_addr().is_none());
     assert!(tokio::net::TcpStream::connect(addr).await.is_err());
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::ApiResume, hub, bus, context, runtime)
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::ApiResume, hub, bus, rq, context, runtime)
     });
     drive_listener_start(&mut harness).await;
     assert_eq!(exposed_token(&harness), token);
@@ -238,8 +239,8 @@ async fn settings_update_applies_on_the_main_loop_and_leaves_wifi_alone() {
         .tx
         .send(Command::Settings(settings::Command::List { reply: tx }))
         .unwrap();
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::Api, hub, bus, context, runtime)
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, rq, context, runtime)
     });
     let catalog = rx.await.unwrap().expect("list");
     assert!(catalog.categories.iter().all(|category| {
@@ -256,8 +257,8 @@ async fn settings_update_applies_on_the_main_loop_and_leaves_wifi_alone() {
             reply: tx,
         }))
         .unwrap();
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::Api, hub, bus, context, runtime)
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, rq, context, runtime)
     });
     rx.await.unwrap().expect("update applied");
     assert!(!harness.context.settings.sleep_cover);
@@ -354,8 +355,8 @@ async fn text_update_rejects_values_the_setting_cannot_store() {
         .tx
         .send(Command::Settings(settings::Command::List { reply: tx }))
         .unwrap();
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::Api, hub, bus, context, runtime)
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, rq, context, runtime)
     });
     let catalog = rx.await.unwrap().expect("list");
     assert_eq!(
@@ -889,8 +890,8 @@ async fn send_add_library(
             reply: tx,
         }))
         .unwrap();
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::Api, hub, bus, context, runtime)
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, rq, context, runtime)
     });
     rx.await.unwrap()
 }
@@ -909,8 +910,8 @@ async fn send_remove_library(
             reply: tx,
         }))
         .unwrap();
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::Api, hub, bus, context, runtime)
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, rq, context, runtime)
     });
     rx.await.unwrap()
 }
@@ -923,8 +924,8 @@ async fn send_list(harness: &mut DeviceRuntimeHarness) -> proto::SettingsCatalog
         .tx
         .send(Command::Settings(settings::Command::List { reply: tx }))
         .unwrap();
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::Api, hub, bus, context, runtime)
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, rq, context, runtime)
     });
     rx.await.unwrap().expect("list")
 }
@@ -960,8 +961,8 @@ async fn send_update(
             reply: tx,
         }))
         .unwrap();
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::Api, hub, bus, context, runtime)
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, rq, context, runtime)
     });
     rx.await.unwrap()
 }
@@ -1055,8 +1056,8 @@ async fn refresh_rate_update_sets_global_and_per_file_type() {
         .tx
         .send(Command::Settings(settings::Command::List { reply: tx }))
         .unwrap();
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::Api, hub, bus, context, runtime)
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, rq, context, runtime)
     });
     let catalog = rx.await.unwrap().expect("list");
     let listed = catalog
@@ -1095,8 +1096,8 @@ async fn refresh_rate_update_sets_global_and_per_file_type() {
             reply: tx,
         }))
         .unwrap();
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::Api, hub, bus, context, runtime)
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, rq, context, runtime)
     });
     let updated = rx.await.unwrap().expect("update applied");
     assert_eq!(
@@ -1143,8 +1144,8 @@ async fn refresh_rate_update_sets_global_and_per_file_type() {
             reply: tx,
         }))
         .unwrap();
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::Api, hub, bus, context, runtime)
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, rq, context, runtime)
     });
     assert!(rx.await.unwrap().is_err());
     assert!(
@@ -1168,8 +1169,8 @@ async fn refresh_rate_update_sets_global_and_per_file_type() {
             reply: tx,
         }))
         .unwrap();
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::Api, hub, bus, context, runtime)
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, rq, context, runtime)
     });
     assert!(rx.await.unwrap().is_err());
     assert_eq!(
@@ -1188,8 +1189,8 @@ async fn refresh_rate_update_sets_global_and_per_file_type() {
             reply: tx,
         }))
         .unwrap();
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::Api, hub, bus, context, runtime)
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, rq, context, runtime)
     });
     rx.await.unwrap().expect("cleared file types");
     assert!(
@@ -1272,12 +1273,44 @@ async fn three_bad_bearer_credentials_shut_the_public_listener_down() {
         "a locked listener rejects even the valid token before the main loop drains: {locked}"
     );
     assert!(harness.context.api.is_on());
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::Api, hub, bus, context, runtime)
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, rq, context, runtime)
     });
     assert!(!harness.context.api.is_on());
     assert!(!holds_public_api_lease(&harness));
     assert!(tokio::net::TcpStream::connect(addr).await.is_err());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_successful_request_clears_bad_token_strikes() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    arm_wifi(&mut harness, WifiMode::Auto);
+    start(&mut harness, "127.0.0.1:0".parse().unwrap())
+        .await
+        .unwrap();
+    let token = exposed_token(&harness).expect("token");
+    let addr = harness.context.api.local_addr().unwrap();
+    for _ in 0..(MAX_AUTH_FAILURES - 1) {
+        let wrong = wrong_token(&token);
+        let status = http_status(addr, Some(&wrong)).await;
+        assert!(status.contains("401"), "wrong token status: {status}");
+    }
+    let valid = format!("Bearer {token}");
+    let ok = drive_request(&mut harness, async move {
+        http_status(addr, Some(&valid)).await
+    })
+    .await;
+    assert!(ok.contains("200"), "valid token status: {ok}");
+    for _ in 0..(MAX_AUTH_FAILURES - 1) {
+        let wrong = wrong_token(&token);
+        let status = http_status(addr, Some(&wrong)).await;
+        assert!(status.contains("401"), "wrong token status: {status}");
+    }
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, rq, context, runtime)
+    });
+    assert!(harness.context.api.is_on());
+    assert!(holds_public_api_lease(&harness));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -1293,8 +1326,8 @@ async fn headerless_requests_do_not_trip_the_lockout() {
             drive_request(&mut harness, async move { http_status(addr, None).await }).await;
         assert!(missing.contains("401"), "missing token status: {missing}");
     }
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::Api, hub, bus, context, runtime)
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, rq, context, runtime)
     });
     assert!(harness.context.api.is_on());
     assert!(holds_public_api_lease(&harness));
@@ -1321,8 +1354,8 @@ async fn bad_token_strikes_survive_suspend_and_resume() {
         suspend(context)
     });
     assert!(!holds_public_api_lease(&harness));
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::ApiResume, hub, bus, context, runtime)
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::ApiResume, hub, bus, rq, context, runtime)
     });
     drive_listener_start(&mut harness).await;
     assert_eq!(exposed_token(&harness), Some(token.clone()));
@@ -1330,8 +1363,8 @@ async fn bad_token_strikes_survive_suspend_and_resume() {
     let wrong = wrong_token(&token);
     let status = http_status(addr, Some(&wrong)).await;
     assert!(status.contains("401"), "wrong token status: {status}");
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::Api, hub, bus, context, runtime)
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, rq, context, runtime)
     });
     assert!(
         !harness.context.api.is_on(),

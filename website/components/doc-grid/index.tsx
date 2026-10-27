@@ -6,7 +6,12 @@ import { Browsers } from "@phosphor-icons/react/dist/ssr/Browsers";
 import { Code } from "@phosphor-icons/react/dist/ssr/Code";
 import { Kanban } from "@phosphor-icons/react/dist/ssr/Kanban";
 import { DocCard, type DocCardProps } from "../doc-card/index";
-import { apiHref, guideHref, storybookHref } from "@/lib/doc-hrefs";
+import {
+  apiHref,
+  guideHref,
+  rustApiHref,
+  storybookHref,
+} from "@/lib/doc-hrefs";
 
 export function DocGrid() {
   const locale = useLocale();
@@ -29,6 +34,12 @@ export function DocGrid() {
       label: t("apiReference.label"),
       description: t("apiReference.description"),
       href: apiHref(locale),
+      icon: Code,
+    },
+    {
+      label: t("rustApi.label"),
+      description: t("rustApi.description"),
+      href: rustApiHref(locale),
       icon: Code,
     },
     {

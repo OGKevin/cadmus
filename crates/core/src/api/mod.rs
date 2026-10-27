@@ -19,9 +19,10 @@ mod status;
 mod tests;
 
 use crate::device::{AppContext, DeviceRuntime, EventOutcome};
+use crate::framebuffer::UpdateMode;
 use crate::runtime::Job;
-use crate::view::{Bus, Event, Hub};
-use secrecy::SecretString;
+use crate::view::{Bus, Event, Hub, RenderData, RenderQueue, View, ViewId};
+use secrecy::{ExposeSecret, SecretString};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
@@ -41,8 +42,12 @@ pub(crate) const LEASE_NAME: &str = "public-api";
 
 /// Bad-token requests the public listener tolerates before it shuts down.
 ///
-/// Three strikes are enough to cover a mistyped six-digit token, and few
-/// enough that guessing the whole space is hopeless.
+/// Three consecutive bad credentials are enough to cover a mistyped
+/// six-digit token, and few enough that guessing the whole space is
+/// hopeless. A matching credential clears the count, so re-entering the
+/// code starts over instead of compounding earlier mistakes. Debug builds
+/// skip the bearer check entirely, so this only guards devices an attacker
+/// can reach.
 const MAX_AUTH_FAILURES: u32 = 3;
 
 /// Work a listener asks the main loop to do.
@@ -110,6 +115,13 @@ impl ApiSession {
         self.token.is_some()
     }
 
+    /// The bearer token, shown once in the on-device QR panel. Never log it.
+    pub(crate) fn token(&self) -> Option<String> {
+        self.token
+            .as_ref()
+            .map(|token| token.expose_secret().to_string())
+    }
+
     #[cfg(test)]
     pub(crate) fn local_addr(&self) -> Option<SocketAddr> {
         self.public.as_ref().map(|running| running.local_addr)
@@ -142,7 +154,7 @@ impl ApiSession {
 #[cfg_attr(
     feature = "tracing",
     tracing::instrument(
-        skip(hub, bus, context, runtime),
+        skip(hub, bus, rq, context, runtime),
         fields(event = ?event),
         ret(level = tracing::Level::TRACE)
     )
@@ -151,11 +163,18 @@ pub async fn handle_event(
     event: &Event,
     hub: &Hub,
     bus: &mut Bus,
+    rq: &mut RenderQueue,
     context: &mut AppContext,
     runtime: &mut DeviceRuntime<'_>,
 ) -> EventOutcome {
     match event {
-        Event::Select(crate::view::EntryId::ToggleCompanion) => public::toggle(hub, context).await,
+        Event::Select(crate::view::EntryId::ToggleCompanion) => {
+            let outcome = public::toggle(hub, context).await;
+            if context.api.is_on() {
+                push_companion_panel(rq, context, runtime.view).await;
+            }
+            outcome
+        }
         Event::Api => {
             drain(hub, bus, context, runtime).await;
             EventOutcome::Handled
@@ -171,6 +190,41 @@ pub async fn handle_event(
         }
         _ => EventOutcome::Continue,
     }
+}
+
+/// Shows the full-screen Companion QR panel after the menu switch turned the
+/// listener on.
+///
+/// The dialog is pushed at the root view level, like `AboutDialog`, so
+/// `Event::Close` reaches it: `locate_by_id` only searches direct children.
+/// The debug emulator's automatic startup session and suspend/resume must not
+/// open the panel; only this menu path does.
+#[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
+async fn push_companion_panel(
+    rq: &mut RenderQueue,
+    context: &mut AppContext,
+    view: &mut Box<dyn View>,
+) {
+    let Some(pin) = context.api.token() else {
+        return;
+    };
+    if crate::view::common::locate_by_id(view.as_ref(), ViewId::CompanionDialog).is_some() {
+        return;
+    }
+    let Some(url) = public::companion_url(context).await else {
+        tracing::warn!("companion panel url could not be resolved");
+        return;
+    };
+    let Some(dialog) = crate::view::companion::CompanionDialog::new(context, &url, &pin) else {
+        tracing::warn!("companion panel could not be built");
+        return;
+    };
+    rq.add(RenderData::new(
+        dialog.id(),
+        *dialog.rect(),
+        UpdateMode::Full,
+    ));
+    view.children_mut().push(Box::new(dialog) as Box<dyn View>);
 }
 
 /// Start the public listener on loopback with a fresh token.

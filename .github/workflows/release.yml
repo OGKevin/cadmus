@@ -142,6 +142,9 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      - name: Build documentation site
+        run: cadmuscli docs
+
       - name: Build Kobo artifacts
         uses: ./.github/actions/build-kobo
         with:
