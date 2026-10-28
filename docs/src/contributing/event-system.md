@@ -290,14 +290,14 @@ entire parent:
 flowchart TD
     Root["Root View"]
     Home["Home"]
-    OtaView["OtaView (top-level)"]
+    Parent["Parent view (top-level)"]
     Dialog["Dialog (nested)"]
 
     Root --> Home
-    Root --> OtaView
-    OtaView --> Dialog
+    Root --> Parent
+    Parent --> Dialog
 
-    Note["hub.send((Event::Close(ViewId::Ota(Main))).into())<br/>→ Removes OtaView + Dialog"]
+    Note["hub.send((Event::Close(parent_id)).into())<br/>→ Removes the parent and its dialog"]
 ```
 
 To close just the nested view without affecting siblings, use the **bus** instead (see below).

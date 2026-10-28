@@ -14,7 +14,7 @@ use reqwest_retry::{
     Jitter, RetryDecision, RetryError, RetryPolicy, Retryable, RetryableStrategy,
     default_on_request_failure, default_on_request_success,
 };
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use super::RETRY_BACKOFFS;
 use super::cancel::RequestCancel;
@@ -158,7 +158,9 @@ where
                 ))
             })?;
 
+            let started = Instant::now();
             let result = next.clone().run(duplicate_request, extensions).await;
+            let attempt_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
 
             if let Some(Retryable::Transient) = self.strategy.handle(&result) {
                 let idempotent = matches!(req.method(), &Method::GET | &Method::HEAD);
@@ -187,10 +189,18 @@ where
                         Some(after) => policy_delay.max(after),
                         None => policy_delay,
                     };
+                    let status = result
+                        .as_ref()
+                        .ok()
+                        .map(|response| response.status().as_u16());
                     tracing::debug!(
                         n_past_retries,
                         ?duration,
                         ?retry_after,
+                        method = %req.method(),
+                        url = %req.url(),
+                        status,
+                        attempt_ms,
                         "Retrying transient HTTP failure"
                     );
                     sleep_unless_cancelled(duration, extensions).await?;

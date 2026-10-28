@@ -89,27 +89,13 @@ impl From<reqwest_middleware::Error> for VerifyScopesError {
 // ── GitHub REST API response types ───────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
-pub(crate) struct PullRequest {
-    pub head: PrHead,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct PrHead {
-    pub sha: String,
-}
-
-#[derive(Debug, Deserialize)]
 pub(crate) struct WorkflowRunsResponse {
     pub workflow_runs: Vec<WorkflowRun>,
 }
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct WorkflowRun {
-    pub name: String,
     pub id: u64,
-    pub status: String,
-    #[serde(default)]
-    pub conclusion: Option<String>,
     #[serde(default)]
     pub head_sha: Option<String>,
 }
@@ -191,8 +177,6 @@ pub(crate) struct AccessTokenResponse {
 /// Progress states during an OTA download operation.
 #[derive(Debug, Clone)]
 pub enum OtaProgress {
-    /// Verifying the pull request exists and fetching its metadata.
-    CheckingPr,
     /// Searching for the latest successful build on the default branch.
     FindingLatestBuild,
     /// Searching for the associated GitHub Actions workflow run.
