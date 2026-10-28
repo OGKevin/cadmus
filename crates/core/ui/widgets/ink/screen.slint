@@ -1,0 +1,9 @@
+// Logical framebuffer size shared by every Slint screen and overlay.
+// Rust writes these from the device, in logical pixels
+// (`physical * 300 / dpi`). They are not dp: a dp would not match the
+// framebuffer.
+
+export global InkScreen {
+    in property <length> window-width: 1072px;
+    in property <length> window-height: 1448px;
+}

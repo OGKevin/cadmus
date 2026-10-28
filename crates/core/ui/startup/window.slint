@@ -1,0 +1,26 @@
+import { InkMetrics } from "../widgets/ink/metrics.slint";
+import { MaterialPalette } from "../widgets/ink/palette.slint";
+import { InkWindow } from "../widgets/ink/window.slint";
+
+// The startup frame is one message on the paper. It has no app bar.
+export component StartupWindow inherits InkWindow {
+    out property <string> message: @tr("Cadmus starting up…");
+    // Cormorant, the face for the startup sentence. The shared window hands
+    // out the family; this frame picks its own.
+    font-family: "Cormorant";
+
+    background: MaterialPalette.surface;
+
+    Text {
+        text: root.message;
+        color: MaterialPalette.on-surface;
+        font-family: root.font-family;
+        font-size: 38px * InkMetrics.dp;
+        wrap: word-wrap;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        width: 90%;
+        height: 100%;
+        x: (parent.width - self.width) / 2;
+    }
+}

@@ -173,7 +173,7 @@ impl SettingKind for FinishedActionSetting {
     }
 }
 
-/// Shows global refresh rate and opens the RefreshRateByKindEditor on tap.
+/// Shows the global refresh rate and opens the refresh-rate screen on tap.
 pub struct RefreshRateInfo;
 
 impl SettingKind for RefreshRateInfo {

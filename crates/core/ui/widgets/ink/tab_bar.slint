@@ -1,0 +1,79 @@
+import { MaterialPalette } from "palette.slint";
+import { InkMetrics } from "metrics.slint";
+
+component InkTab inherits Rectangle {
+    in property <string> text;
+    in property <bool> selected;
+    callback clicked();
+
+    min-height: InkMetrics.tab-row;
+    horizontal-stretch: 0;
+    background: MaterialPalette.surface;
+
+    VerticalLayout {
+        padding-top: InkMetrics.tab-pad-top;
+        padding-bottom: InkMetrics.tab-pad-bottom;
+        alignment: center;
+
+        Rectangle {
+            horizontal-stretch: 0;
+            background: root.selected ? MaterialPalette.primary : transparent;
+            border-radius: InkMetrics.tab-radius;
+
+            VerticalLayout {
+                padding-left: InkMetrics.tab-box-pad-x;
+                padding-right: self.padding-left;
+                padding-top: InkMetrics.tab-box-pad-y;
+                padding-bottom: self.padding-top;
+
+                Text {
+                    text: root.text;
+                    font-size: InkMetrics.tab-label;
+                    font-weight: 400;
+                    color: root.selected ? MaterialPalette.on-primary : MaterialPalette.on-surface;
+                    horizontal-alignment: center;
+                }
+            }
+        }
+    }
+
+    TouchArea {
+        width: 100%;
+        height: 100%;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+// Primary tabs. Labels wrap onto the next row. The selected label is a
+// filled box with white text. A color panel fills that box orange; a gray
+// panel fills it black. Nothing moves, and a press does not paint a second state.
+
+export component InkTabBar inherits Rectangle {
+    in property <[string]> labels;
+    in-out property <int> current-index: 0;
+    callback index-changed(index: int);
+
+    min-height: max(InkMetrics.tab-row, layout.min-height);
+    background: MaterialPalette.surface;
+
+    layout := FlexboxLayout {
+        width: 100%;
+        padding-left: InkMetrics.tab-bar-pad;
+        padding-right: self.padding-left;
+        spacing: InkMetrics.tab-gap;
+        flex-wrap: wrap;
+        flex-direction: row;
+        alignment: start;
+
+        for label[index] in root.labels: InkTab {
+            text: label;
+            selected: index == root.current-index;
+            clicked => {
+                root.current-index = index;
+                root.index-changed(index);
+            }
+        }
+    }
+}

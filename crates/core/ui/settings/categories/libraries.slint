@@ -1,0 +1,8 @@
+import { PagedLine } from "../../widgets/paged_list.slint";
+
+// Library rows. `row-pressed` and `row-held` pass the model index, starting at 0.
+export global LibraryPageIo {
+    in property <[PagedLine]> rows;
+    callback row-pressed(int);
+    callback row-held(int);
+}

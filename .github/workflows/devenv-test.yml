@@ -7,6 +7,7 @@ on:
       - main
     paths:
       - "devenv.nix"
+      - "devenv.yaml"
       - "devenv.lock"
       - ".github/workflows/devenv-test.yml"
 
@@ -28,6 +29,7 @@ jobs:
           filters: |
             devenv:
               - 'devenv.nix'
+              - 'devenv.yaml'
               - 'devenv.lock'
               - '.github/workflows/devenv-test.yml'
 

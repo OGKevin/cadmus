@@ -1,0 +1,8 @@
+import { PagedLine } from "../../widgets/paged_list.slint";
+
+// Rows and the row callback for every static category. Rust publishes the
+// visible category's rows; a hidden category is not synced.
+export global StaticPageIo {
+    in property <[PagedLine]> rows;
+    callback row-pressed(int);
+}

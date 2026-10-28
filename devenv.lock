@@ -96,6 +96,7 @@
         "git-hooks": "git-hooks",
         "nixpkgs": "nixpkgs",
         "rust-overlay": "rust-overlay",
+        "slint": "slint",
         "treefmt-nix": "treefmt-nix"
       }
     },
@@ -116,6 +117,23 @@
       "original": {
         "owner": "oxalica",
         "repo": "rust-overlay",
+        "type": "github"
+      }
+    },
+    "slint": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1789976270,
+        "narHash": "sha256-lopHTWO3LdX6j/YAZE1f6YsKdpaYhKveCBxNnTpasrs=",
+        "owner": "slint-ui",
+        "repo": "slint",
+        "rev": "372cf0ee5577c3dfec309a45e7b778ba4e81b734",
+        "type": "github"
+      },
+      "original": {
+        "owner": "slint-ui",
+        "ref": "v1.18.1",
+        "repo": "slint",
         "type": "github"
       }
     },

@@ -20,7 +20,7 @@ use crate::gesture::GestureEvent;
 use crate::input::{ButtonCode, ButtonStatus, DeviceEvent};
 use crate::library::Library;
 use crate::metadata::{BookQuery, Info, SimpleStatus, SortMethod};
-use crate::settings::{FirstColumn, Hook, SecondColumn};
+use crate::settings::{FirstColumn, Hook, LibrarySettings, SecondColumn};
 use crate::unit::scale_by_dpi;
 use crate::view::common::{locate, locate_by_id, rlocate};
 use crate::view::common::{toggle_battery_menu, toggle_clock_menu, toggle_main_menu};
@@ -70,6 +70,8 @@ pub struct Home {
 struct Fetcher {
     path: PathBuf,
     full_path: PathBuf,
+    /// Library the hook started in.
+    library_path: PathBuf,
     process: Child,
     sort_method: Option<SortMethod>,
     first_column: Option<FirstColumn>,
@@ -1733,7 +1735,12 @@ impl Home {
         context: &mut AppContext,
     ) {
         if index == context.settings.selected_library {
-            return;
+            let Some(library) = context.settings.libraries.get(index) else {
+                return;
+            };
+            if library.path == context.library.home {
+                return;
+            }
         }
 
         let library_settings = context.settings.libraries[index].clone();
@@ -1846,16 +1853,13 @@ impl Home {
                         .ok();
                 }
             } else {
-                let selected_library = context.settings.selected_library;
-                if let Some(sort_method) = fetcher.sort_method {
-                    context.settings.libraries[selected_library].sort_method = sort_method;
-                }
-                if let Some(first_column) = fetcher.first_column {
-                    context.settings.libraries[selected_library].first_column = first_column;
-                }
-                if let Some(second_column) = fetcher.second_column {
-                    context.settings.libraries[selected_library].second_column = second_column;
-                }
+                Self::restore_fetcher_settings(
+                    &fetcher.library_path,
+                    fetcher.sort_method,
+                    fetcher.first_column,
+                    fetcher.second_column,
+                    &mut context.settings.libraries,
+                );
             }
         }
         const TERMINATE_GRACE: std::time::Duration = std::time::Duration::from_secs(2);
@@ -1872,6 +1876,34 @@ impl Home {
                     }
                 }
             }
+        }
+    }
+
+    /// Writes a hook's saved sort and columns back onto the library it started in.
+    ///
+    /// A removed library is left alone: the saved values are discarded. A path
+    /// edit is treated as a different library and the saved values are dropped.
+    fn restore_fetcher_settings(
+        library_path: &Path,
+        sort_method: Option<SortMethod>,
+        first_column: Option<FirstColumn>,
+        second_column: Option<SecondColumn>,
+        libraries: &mut [LibrarySettings],
+    ) {
+        let Some(library) = libraries
+            .iter_mut()
+            .find(|library| library.path == library_path)
+        else {
+            return;
+        };
+        if let Some(sort_method) = sort_method {
+            library.sort_method = sort_method;
+        }
+        if let Some(first_column) = first_column {
+            library.first_column = first_column;
+        }
+        if let Some(second_column) = second_column {
+            library.second_column = second_column;
         }
     }
 
@@ -1913,6 +1945,7 @@ impl Home {
                     Fetcher {
                         path: hook.path.clone(),
                         full_path: save_path,
+                        library_path: context.library.home.clone(),
                         process,
                         sort_method,
                         first_column,
@@ -2547,6 +2580,15 @@ impl View for Home {
                 true
             }
             Event::Reseed => {
+                let selected_library = context.settings.selected_library;
+                if context
+                    .settings
+                    .libraries
+                    .get(selected_library)
+                    .is_some_and(|library| library.path != context.library.home)
+                {
+                    self.load_library(selected_library, hub, rq, context).await;
+                }
                 self.reseed(rq, context).await;
                 true
             }
@@ -2905,5 +2947,96 @@ mod tests {
             shelf.rect().min.y,
             "separator must sit directly above the shelf after a resize"
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn reseed_loads_the_library_that_replaced_the_open_one() {
+        let mut context = create_test_context().await;
+        let (hub, _rx) = crate::view::hub_channel();
+        let mut rq = RenderQueue::new();
+        let remaining = tempfile::tempdir().expect("remaining library");
+
+        context.settings.selected_library = 0;
+        context.settings.libraries = vec![
+            LibrarySettings {
+                name: "Open".into(),
+                path: context.library.home.clone(),
+                ..LibrarySettings::default()
+            },
+            LibrarySettings {
+                name: "Remaining".into(),
+                path: remaining.path().to_path_buf(),
+                ..LibrarySettings::default()
+            },
+        ];
+
+        let rect = rect![0, 0, 600, 800];
+        let mut home = Home::new(rect, &mut rq, &mut context).await.unwrap();
+
+        context.settings.libraries.remove(0);
+
+        home.handle_event(&Event::Reseed, &hub, &mut Bus::new(), &mut rq, &mut context)
+            .await;
+
+        assert_eq!(context.library.home, remaining.path());
+    }
+
+    #[test]
+    fn restore_fetcher_settings_writes_the_origin_library() {
+        let origin = PathBuf::from("/libraries/a");
+        let mut libraries = vec![
+            LibrarySettings {
+                name: "A".into(),
+                path: origin.clone(),
+                sort_method: SortMethod::Opened,
+                ..LibrarySettings::default()
+            },
+            LibrarySettings {
+                name: "B".into(),
+                path: PathBuf::from("/libraries/b"),
+                sort_method: SortMethod::Title,
+                first_column: FirstColumn::FileName,
+                second_column: SecondColumn::Year,
+                ..LibrarySettings::default()
+            },
+        ];
+
+        Home::restore_fetcher_settings(
+            &origin,
+            Some(SortMethod::Author),
+            Some(FirstColumn::TitleAndAuthor),
+            Some(SecondColumn::Progress),
+            &mut libraries,
+        );
+
+        assert_eq!(libraries[0].sort_method, SortMethod::Author);
+        assert_eq!(libraries[0].first_column, FirstColumn::TitleAndAuthor);
+        assert_eq!(libraries[0].second_column, SecondColumn::Progress);
+        assert_eq!(libraries[1].sort_method, SortMethod::Title);
+        assert_eq!(libraries[1].first_column, FirstColumn::FileName);
+        assert_eq!(libraries[1].second_column, SecondColumn::Year);
+    }
+
+    #[test]
+    fn restore_fetcher_settings_drops_a_removed_library() {
+        let mut libraries = vec![LibrarySettings {
+            name: "B".into(),
+            path: PathBuf::from("/libraries/b"),
+            sort_method: SortMethod::Title,
+            ..LibrarySettings::default()
+        }];
+
+        Home::restore_fetcher_settings(
+            Path::new("/libraries/a"),
+            Some(SortMethod::Author),
+            Some(FirstColumn::FileName),
+            Some(SecondColumn::Year),
+            &mut libraries,
+        );
+
+        let defaults = LibrarySettings::default();
+        assert_eq!(libraries[0].sort_method, SortMethod::Title);
+        assert_eq!(libraries[0].first_column, defaults.first_column);
+        assert_eq!(libraries[0].second_column, defaults.second_column);
     }
 }

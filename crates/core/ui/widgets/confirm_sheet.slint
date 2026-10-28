@@ -1,0 +1,92 @@
+import { TouchLabel } from "touch_label.slint";
+import { InkMetrics } from "ink/metrics.slint";
+import { MaterialPalette } from "ink/palette.slint";
+
+// A question in a centered card. The page underneath stays. A tap
+// outside the card dismisses; Cancel does the same; the filled button
+// accepts.
+export component ConfirmSheet inherits Rectangle {
+    in property <string> message;
+    in property <string> cancel-label;
+    in property <string> accept-label;
+    callback dismissed();
+    callback accepted();
+
+    width: 100%;
+    height: 100%;
+
+    property <length> margin: 17px * InkMetrics.dp;
+    property <length> inset: 15px * InkMetrics.dp;
+    property <length> gap: 13px * InkMetrics.dp;
+    property <length> frame: InkMetrics.frame;
+    property <length> card-width: Math.min(448px * InkMetrics.dp, Math.max(149px * InkMetrics.dp, root.width - 2 * root.margin));
+
+    TouchArea {
+        width: 100%;
+        height: 100%;
+        clicked => {
+            root.dismissed();
+        }
+    }
+
+    Rectangle {
+        x: Math.max(0px, (root.width - self.width) / 2);
+        y: Math.max(0px, (root.height - self.height) / 2);
+        width: root.card-width;
+        // The message is measured at the card's width. A layout's
+        // minimum height wraps at the longest word and makes the card
+        // much taller than the text.
+        height: root.inset + message.height + root.gap + buttons.height + root.inset;
+        background: MaterialPalette.surface;
+        border-width: root.frame;
+        border-radius: InkMetrics.radius;
+        border-color: MaterialPalette.on-surface;
+        clip: true;
+
+        // The card itself swallows taps, so only the backdrop closes it.
+        TouchArea {
+            width: 100%;
+            height: 100%;
+        }
+
+        message := Text {
+            x: root.inset;
+            y: root.inset;
+            width: parent.width - 2 * root.inset;
+            text: root.message;
+            font-size: 20px * InkMetrics.dp;
+            wrap: word-wrap;
+            color: MaterialPalette.on-surface;
+        }
+
+        buttons := HorizontalLayout {
+            x: root.inset;
+            y: message.y + message.height + root.gap;
+            width: parent.width - 2 * root.inset;
+            height: 45px * InkMetrics.dp;
+            spacing: 9px * InkMetrics.dp;
+
+            TouchLabel {
+                horizontal-stretch: 1;
+                height: 45px * InkMetrics.dp;
+                border-width: InkMetrics.hairline;
+                border-color: MaterialPalette.on-surface;
+                label: root.cancel-label;
+                clicked => {
+                    root.dismissed();
+                }
+            }
+
+            TouchLabel {
+                horizontal-stretch: 1;
+                height: 45px * InkMetrics.dp;
+                background: MaterialPalette.primary;
+                label: root.accept-label;
+                label-color: MaterialPalette.on-primary;
+                clicked => {
+                    root.accepted();
+                }
+            }
+        }
+    }
+}

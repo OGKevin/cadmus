@@ -1,13 +1,11 @@
 //! Trait and supporting types for defining individual settings.
 //!
 //! Each setting is a small struct that implements [`SettingKind`]. The trait
-//! encapsulates everything a [`SettingRow`](crate::view::settings_editor::SettingRow)
-//! needs to know: the row label, the current display value, which widget to
-//! render (`ActionLabel`, `Toggle`, or `SubMenu`), and which event to fire on tap.
+//! describes the current value, which interaction to offer (`ActionLabel`,
+//! `Toggle`, or `SubMenu`), and how a tap changes [`Settings`].
+//! The row label is [`SettingKind::label`], drawn from the page model.
 //!
-//! [`SettingIdentity`] is the single, deduplicated identity enum used by
-//! [`SettingsEvent::UpdateValue`](crate::view::settings_editor::SettingsEvent) to
-//! target the correct [`SettingValue`](crate::view::settings_editor::SettingValue) view.
+//! [`SettingIdentity`] identifies a setting in [`SettingsEvent::UpdateValue`].
 
 pub mod dictionary;
 pub mod general;
@@ -21,6 +19,19 @@ pub mod telemetry;
 
 pub use identity::SettingIdentity;
 
+/// Carried by [`crate::view::Event::Settings`]. The Slint settings screen does
+/// not route through this; callers outside the editor still match on it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SettingsEvent {
+    /// A setting's displayed value changed.
+    UpdateValue {
+        /// Which setting changed.
+        kind: SettingIdentity,
+        /// The new display string.
+        value: String,
+    },
+}
+
 use crate::device::AppContext;
 use crate::geom::Rectangle;
 use crate::settings::Settings;
@@ -29,9 +40,8 @@ use std::path::Path;
 
 /// Identifies which boolean setting a toggle widget controls.
 ///
-/// Used in [`ToggleEvent::Setting`](crate::view::ToggleEvent) so that
-/// [`CategoryEditor`](crate::view::settings_editor::CategoryEditor) can dispatch
-/// to the correct toggle handler without coupling to UI view IDs.
+/// Used in [`ToggleEvent::Setting`](crate::view::ToggleEvent) so a toggle
+/// handler can be selected without a UI view id.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ToggleSettings {
     /// Sleep cover enable/disable setting
@@ -105,8 +115,7 @@ pub struct SettingsFetchData<'a> {
 ///
 /// Implementing this trait is sufficient to add a new setting to the editor.
 pub trait SettingKind {
-    /// Unique identity used to route [`SettingsEvent::UpdateValue`](crate::view::settings_editor::SettingsEvent::UpdateValue) to the
-    /// correct [`SettingValue`](crate::view::settings_editor::SettingValue) view.
+    /// Unique identity for this setting.
     fn identity(&self) -> SettingIdentity;
 
     /// Human-readable label shown on the left side of the setting row.

@@ -1,0 +1,56 @@
+// Press, tap, and hold for one touch target.
+//
+// The timer starts stopped. A Slint timer runs by default, and one left
+// running calls `held` on the next pump. `restart` does nothing while the
+// timer is stopped. One hold per press: a timer repeats until stopped.
+//
+// `holdable` is false unless the row has a hold action. Starting the timer
+// on every press turns a slow tap into a hold and drops the click.
+export component HoldTouch inherits TouchArea {
+    in property <bool> holdable: false;
+    out property <bool> down: false;
+    callback tapped();
+    callback held();
+
+    // A hold already called `held`, so the following `clicked` must not also
+    // call `tapped`. The timer sets this. Pointer down and `clicked` clear it.
+    property <bool> suppress-click: false;
+
+    hold-timer := Timer {
+        interval: 600ms;
+        running: false;
+        triggered => {
+            hold-timer.stop();
+            if (root.holdable) {
+                root.suppress-click = true;
+                root.held();
+            }
+        }
+    }
+
+    pointer-event(event) => {
+        if (event.kind == PointerEventKind.down) {
+            root.down = true;
+            root.suppress-click = false;
+            if (!root.holdable) {
+                return;
+            }
+            if (hold-timer.running) {
+                hold-timer.restart();
+            } else {
+                hold-timer.running = true;
+            }
+        }
+        if (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) {
+            root.down = false;
+            hold-timer.stop();
+        }
+    }
+
+    clicked => {
+        if (!root.suppress-click) {
+            root.tapped();
+        }
+        root.suppress-click = false;
+    }
+}

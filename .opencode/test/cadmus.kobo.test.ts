@@ -163,8 +163,14 @@ test("rsync copies to the device and never deletes", () => {
     !args.some((arg) => arg.startsWith("--filter")),
     "deletion filters are meaningless without --delete",
   );
-  assert.ok(args.includes("--no-owner"), "chown fails on the FAT onboard volume");
-  assert.ok(args.includes("--no-group"), "chgrp fails on the FAT onboard volume");
+  assert.ok(
+    args.includes("--no-owner"),
+    "chown fails on the FAT onboard volume",
+  );
+  assert.ok(
+    args.includes("--no-group"),
+    "chgrp fails on the FAT onboard volume",
+  );
   assert.ok(!args.includes("--owner") && !args.includes("--group"));
 });
 
