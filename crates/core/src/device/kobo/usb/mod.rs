@@ -11,12 +11,12 @@
 //! ```ignore
 //! use cadmus_core::device::metadata::DeviceMetadata;
 //!
-//! # fn example() -> Result<(), cadmus_core::device::usb::UsbError> {
+//! # async fn example() -> Result<(), cadmus_core::device::usb::UsbError> {
 //! let device = DeviceMetadata::detect();
 //! let usb_manager = device.usb_manager()?;
-//! usb_manager.enable()?;
+//! usb_manager.enable().await?;
 //! // ... USB sharing active ...
-//! usb_manager.disable()?;
+//! usb_manager.disable().await?;
 //! # Ok(())
 //! # }
 //! ```
@@ -53,27 +53,27 @@ impl KoboUsbManager {
     /// - the `PLATFORM` environment variable is not set, or
     /// - the MTK UDC cannot be discovered.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(metadata)))]
-    pub fn new(metadata: DeviceMetadata) -> Result<Self, UsbError> {
+    pub async fn new(metadata: DeviceMetadata) -> Result<Self, UsbError> {
         let platform = detect_platform().map_err(|e| UsbError::DeviceInfo(e.to_string()))?;
         match platform {
-            Platform::MT8113TNTX => Ok(Self::Mtk(MtkUsbManager::new(metadata)?)),
+            Platform::MT8113TNTX => Ok(Self::Mtk(MtkUsbManager::new(metadata).await?)),
             _ => Ok(Self::Legacy(LegacyUsbManager::new(metadata, platform))),
         }
     }
 }
 
 impl UsbManager for KoboUsbManager {
-    fn enable(&self) -> Result<(), UsbError> {
+    async fn enable(&self) -> Result<(), UsbError> {
         match self {
-            Self::Mtk(m) => m.enable(),
-            Self::Legacy(m) => m.enable(),
+            Self::Mtk(m) => m.enable().await,
+            Self::Legacy(m) => m.enable().await,
         }
     }
 
-    fn disable(&self) -> Result<(), UsbError> {
+    async fn disable(&self) -> Result<(), UsbError> {
         match self {
-            Self::Mtk(m) => m.disable(),
-            Self::Legacy(m) => m.disable(),
+            Self::Mtk(m) => m.disable().await,
+            Self::Legacy(m) => m.disable().await,
         }
     }
 }

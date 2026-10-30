@@ -3,11 +3,11 @@ use crate::device::usb::{UsbError, UsbManager};
 pub struct EmulatorUsbManager;
 
 impl UsbManager for EmulatorUsbManager {
-    fn enable(&self) -> Result<(), UsbError> {
+    async fn enable(&self) -> Result<(), UsbError> {
         unimplemented!("USB not available in emulator")
     }
 
-    fn disable(&self) -> Result<(), UsbError> {
+    async fn disable(&self) -> Result<(), UsbError> {
         unimplemented!("USB not available in emulator")
     }
 }
