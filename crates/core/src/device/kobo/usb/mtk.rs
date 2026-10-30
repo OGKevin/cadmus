@@ -15,7 +15,6 @@
 use crate::device::kobo::usb::operations::KoboUsbOperations;
 use crate::device::metadata::DeviceMetadata;
 use crate::device::usb::{UsbError, UsbManager};
-use std::fs;
 use std::path::Path;
 use tracing::{debug, error, info, warn};
 
@@ -34,23 +33,24 @@ const UDC_DIR: &str = "/sys/class/udc";
 ///
 /// Returns [`UsbError::Udc`] if no UDC is available or the directory cannot
 /// be read.
-fn discover_udc() -> Result<String, UsbError> {
+async fn discover_udc() -> Result<String, UsbError> {
     let udc_path = Path::new(UDC_DIR);
 
-    if !udc_path.exists() {
+    if !tokio::fs::try_exists(udc_path).await.unwrap_or(false) {
         warn!(path = UDC_DIR, "UDC directory does not exist");
         return Err(UsbError::Udc("UDC directory not found".to_string()));
     }
 
-    let mut entries = fs::read_dir(udc_path).map_err(|e| {
+    let mut entries = tokio::fs::read_dir(udc_path).await.map_err(|e| {
         error!(path = UDC_DIR, error = %e, "Failed to read UDC directory");
         UsbError::Udc(format!("Cannot read UDC directory: {}", e))
     })?;
 
     let entry = entries
-        .next()
+        .next_entry()
+        .await
+        .map_err(|e| UsbError::Udc(format!("Cannot read UDC entry: {}", e)))?
         .ok_or_else(|| UsbError::Udc("No UDC available".to_string()))?;
-    let entry = entry.map_err(|e| UsbError::Udc(format!("Cannot read UDC entry: {}", e)))?;
     let name = entry
         .file_name()
         .into_string()
@@ -81,8 +81,8 @@ impl MtkUsbManager {
     /// Returns [`UsbError::Udc`] if no UDC is available or the UDC
     /// directory cannot be read.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(metadata)))]
-    pub fn new(metadata: DeviceMetadata) -> Result<Self, UsbError> {
-        let udc = discover_udc()?;
+    pub async fn new(metadata: DeviceMetadata) -> Result<Self, UsbError> {
+        let udc = discover_udc().await?;
         info!(
             vendor_id = metadata.vendor_id,
             product_id = metadata.product_id,
@@ -95,7 +95,7 @@ impl MtkUsbManager {
     }
 
     /// Creates the ConfigFS gadget directory structure.
-    fn create_gadget_dirs(&self) -> Result<(), UsbError> {
+    async fn create_gadget_dirs(&self) -> Result<(), UsbError> {
         debug!("Creating ConfigFS gadget directories");
 
         let dirs = [
@@ -105,7 +105,7 @@ impl MtkUsbManager {
         ];
 
         for dir in &dirs {
-            fs::create_dir_all(dir).map_err(|e| {
+            tokio::fs::create_dir_all(dir).await.map_err(|e| {
                 error!(directory = %dir, error = %e, "Failed to create ConfigFS directory");
                 UsbError::GadgetConfig(format!("Cannot create directory {}: {}", dir, e))
             })?;
@@ -118,48 +118,55 @@ impl MtkUsbManager {
     ///
     /// All values are written with a trailing `\n` to match `echo` behaviour from
     /// the kernel documentation examples.
-    fn write_gadget_config(&self) -> Result<(), UsbError> {
+    async fn write_gadget_config(&self) -> Result<(), UsbError> {
         debug!("Writing gadget configuration to ConfigFS");
 
         let base = Path::new(CONFIGFS_GADGET_DIR);
 
-        fs::write(
+        tokio::fs::write(
             base.join("idVendor"),
             format!("0x{:04X}\n", self.metadata.vendor_id),
         )
+        .await
         .map_err(|e| UsbError::GadgetConfig(format!("Cannot write idVendor: {}", e)))?;
 
-        fs::write(
+        tokio::fs::write(
             base.join("idProduct"),
             format!("0x{:04X}\n", self.metadata.product_id),
         )
+        .await
         .map_err(|e| UsbError::GadgetConfig(format!("Cannot write idProduct: {}", e)))?;
 
         let strings = base.join("strings/0x409");
-        fs::write(
+        tokio::fs::write(
             strings.join("serialnumber"),
             format!("{}\n", self.metadata.serial_number),
         )
+        .await
         .map_err(|e| UsbError::GadgetConfig(format!("Cannot write serialnumber: {}", e)))?;
 
-        fs::write(
+        tokio::fs::write(
             strings.join("manufacturer"),
             format!("{}\n", self.metadata.manufacturer),
         )
+        .await
         .map_err(|e| UsbError::GadgetConfig(format!("Cannot write manufacturer: {}", e)))?;
 
-        fs::write(
+        tokio::fs::write(
             strings.join("product"),
             format!("{}\n", self.metadata.product),
         )
+        .await
         .map_err(|e| UsbError::GadgetConfig(format!("Cannot write product: {}", e)))?;
 
         let config_strings = base.join("configs/c.1/strings/0x409");
-        fs::write(config_strings.join("configuration"), "KOBOeReader\n")
+        tokio::fs::write(config_strings.join("configuration"), "KOBOeReader\n")
+            .await
             .map_err(|e| UsbError::GadgetConfig(format!("Cannot write configuration: {}", e)))?;
 
         let lun = base.join("functions/mass_storage.0/lun.0");
-        fs::write(lun.join("file"), format!("{}\n", self.metadata.partition))
+        tokio::fs::write(lun.join("file"), format!("{}\n", self.metadata.partition))
+            .await
             .map_err(|e| UsbError::GadgetConfig(format!("Cannot write LUN file: {}", e)))?;
 
         info!(
@@ -173,7 +180,7 @@ impl MtkUsbManager {
     }
 
     /// Creates symlinks to activate the mass storage function.
-    fn activate_function(&self) -> Result<(), UsbError> {
+    async fn activate_function(&self) -> Result<(), UsbError> {
         debug!("Activating mass storage function");
 
         let src = format!("{}/functions/mass_storage.0", CONFIGFS_GADGET_DIR);
@@ -191,14 +198,16 @@ impl MtkUsbManager {
     ///
     /// The UDC name is written with a trailing `\n` to match `echo` behaviour from
     /// the kernel documentation examples.
-    fn bind_udc(&self) -> Result<(), UsbError> {
+    async fn bind_udc(&self) -> Result<(), UsbError> {
         debug!(udc = %self.udc, "Binding to UDC");
 
         let udc_path = format!("{}/UDC", CONFIGFS_GADGET_DIR);
-        fs::write(&udc_path, format!("{}\n", self.udc)).map_err(|e| {
-            error!(udc = %self.udc, error = %e, "Failed to bind UDC");
-            UsbError::Udc(format!("Cannot bind UDC: {}", e))
-        })?;
+        tokio::fs::write(&udc_path, format!("{}\n", self.udc))
+            .await
+            .map_err(|e| {
+                error!(udc = %self.udc, error = %e, "Failed to bind UDC");
+                UsbError::Udc(format!("Cannot bind UDC: {}", e))
+            })?;
 
         info!(udc = %self.udc, "USB gadget enabled");
         Ok(())
@@ -208,11 +217,11 @@ impl MtkUsbManager {
     ///
     /// Writes a bare newline to the UDC attribute, which the kernel interprets
     /// as clearing the binding.
-    fn unbind_udc(&self) -> Result<(), UsbError> {
+    async fn unbind_udc(&self) -> Result<(), UsbError> {
         debug!("Unbinding UDC");
 
         let udc_path = format!("{}/UDC", CONFIGFS_GADGET_DIR);
-        fs::write(&udc_path, "\n").map_err(|e| {
+        tokio::fs::write(&udc_path, "\n").await.map_err(|e| {
             error!(error = %e, "Failed to unbind UDC");
             UsbError::Udc(format!("Cannot unbind UDC: {}", e))
         })?;
@@ -222,12 +231,12 @@ impl MtkUsbManager {
     }
 
     /// Removes the function symlink.
-    fn deactivate_function(&self) -> Result<(), UsbError> {
+    async fn deactivate_function(&self) -> Result<(), UsbError> {
         debug!("Deactivating mass storage function");
 
         let link = format!("{}/configs/c.1/mass_storage.0", CONFIGFS_GADGET_DIR);
-        if Path::new(&link).exists() {
-            fs::remove_file(&link).map_err(|e| {
+        if tokio::fs::try_exists(&link).await.unwrap_or(false) {
+            tokio::fs::remove_file(&link).await.map_err(|e| {
                 error!(path = %link, error = %e, "Failed to remove function symlink");
                 UsbError::GadgetConfig(format!("Cannot deactivate function: {}", e))
             })?;
@@ -237,7 +246,7 @@ impl MtkUsbManager {
     }
 
     /// Removes the gadget directory structure.
-    fn remove_gadget_dirs(&self) -> Result<(), UsbError> {
+    async fn remove_gadget_dirs(&self) -> Result<(), UsbError> {
         debug!("Removing ConfigFS gadget directories");
 
         let dirs = [
@@ -250,10 +259,10 @@ impl MtkUsbManager {
         ];
 
         for dir in &dirs {
-            if Path::new(dir).exists() {
-                if let Err(e) = fs::remove_dir(dir) {
-                    debug!(directory = %dir, error = %e, "Failed to remove directory (may be non-empty)");
-                }
+            if tokio::fs::try_exists(dir).await.unwrap_or(false)
+                && let Err(e) = tokio::fs::remove_dir(dir).await
+            {
+                debug!(directory = %dir, error = %e, "Failed to remove directory (may be non-empty)");
             }
         }
 
@@ -269,28 +278,28 @@ impl KoboUsbOperations for MtkUsbManager {
 
 impl UsbManager for MtkUsbManager {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
-    fn enable(&self) -> Result<(), UsbError> {
+    async fn enable(&self) -> Result<(), UsbError> {
         info!("Enabling MTK USB mass storage");
 
-        self.prepare_for_usb_share()?;
-        self.create_gadget_dirs()?;
-        self.write_gadget_config()?;
-        self.activate_function()?;
-        self.bind_udc()?;
+        self.prepare_for_usb_share().await?;
+        self.create_gadget_dirs().await?;
+        self.write_gadget_config().await?;
+        self.activate_function().await?;
+        self.bind_udc().await?;
 
         info!("MTK USB mass storage enabled successfully");
         Ok(())
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
-    fn disable(&self) -> Result<(), UsbError> {
+    async fn disable(&self) -> Result<(), UsbError> {
         info!("Disabling MTK USB mass storage");
 
-        self.unbind_udc()?;
-        self.deactivate_function()?;
-        self.remove_gadget_dirs()?;
-        self.check_filesystem()?;
-        self.remount_partitions()?;
+        self.unbind_udc().await?;
+        self.deactivate_function().await?;
+        self.remove_gadget_dirs().await?;
+        self.check_filesystem().await?;
+        self.remount_partitions().await?;
 
         info!("MTK USB mass storage disabled successfully");
         Ok(())

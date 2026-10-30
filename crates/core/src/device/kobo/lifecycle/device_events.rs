@@ -46,7 +46,7 @@ pub(super) async fn handle_event(
         DeviceEvent::CoverOff => handle_cover_off(hub, rq, context, runtime),
         DeviceEvent::UserActivity => handle_user_activity(context, runtime),
         DeviceEvent::Plug(source) => handle_plug(*source, hub, rq, context, runtime),
-        DeviceEvent::Unplug(..) => handle_unplug(hub, rq, context, runtime),
+        DeviceEvent::Unplug(..) => handle_unplug(hub, rq, context, runtime).await,
         _ => EventOutcome::Unhandled,
     }
 }
@@ -300,7 +300,7 @@ fn handle_plug_host(
 ///
 /// Disables USB share when active, otherwise reschedules battery checks and
 /// may cancel suspend on wall-power removal.
-fn handle_unplug(
+async fn handle_unplug(
     hub: &Hub,
     rq: &mut RenderQueue,
     context: &mut AppContext,
@@ -316,7 +316,8 @@ fn handle_unplug(
             runtime.startup_cwd.and_then(|cwd| cwd.as_deref()),
             &context.settings.logging,
             hub,
-        );
+        )
+        .await;
     } else {
         context.plugged = false;
         schedule_device_task(
@@ -580,8 +581,9 @@ mod tests {
     async fn handle_unplug_reschedules_battery_check() {
         let mut harness = DeviceRuntimeHarness::new().await;
         harness.context.plugged = true;
-        let outcome = harness
-            .with_parts(|hub, _bus, rq, context, runtime| handle_unplug(hub, rq, context, runtime));
+        let outcome = crate::poll_parts!(harness, |hub, _bus, rq, context, runtime| {
+            handle_unplug(hub, rq, context, runtime)
+        });
         assert_eq!(outcome, EventOutcome::Handled);
         assert!(has_task(&harness.tasks, DeviceTaskId::CheckBattery));
     }
@@ -591,8 +593,9 @@ mod tests {
         let mut harness = DeviceRuntimeHarness::new().await;
         harness.context.plugged = true;
         harness.context.shared = true;
-        let outcome = harness
-            .with_parts(|hub, _bus, rq, context, runtime| handle_unplug(hub, rq, context, runtime));
+        let outcome = crate::poll_parts!(harness, |hub, _bus, rq, context, runtime| {
+            handle_unplug(hub, rq, context, runtime)
+        });
         assert_eq!(outcome, EventOutcome::Handled);
         let usb = harness.context.device.usb_manager_for_test();
         assert_eq!(usb.disable_call_count(), 1);

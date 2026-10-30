@@ -2,18 +2,14 @@
 
 use crate::device::metadata::DeviceMetadata;
 use crate::device::usb::UsbError;
-use std::fs;
-use std::process::Command;
+use std::path::Path;
+use tokio::process::Command;
 use tracing::{debug, error, info, warn};
 
 use nix::unistd::sync;
 
 #[cfg(target_os = "linux")]
 use nix::mount::{MntFlags, MsFlags, mount, umount2};
-#[cfg(target_os = "linux")]
-use procfs;
-#[cfg(target_os = "linux")]
-use std::path::Path;
 
 /// Trait providing common USB operations for Kobo devices.
 ///
@@ -37,8 +33,8 @@ use std::path::Path;
 ///     }
 /// }
 ///
-/// # fn example(manager: &MyUsbManager) -> Result<(), cadmus_core::device::usb::UsbError> {
-/// manager.prepare_for_usb_share()?;
+/// # async fn example(manager: &MyUsbManager) -> Result<(), cadmus_core::device::usb::UsbError> {
+/// manager.prepare_for_usb_share().await?;
 /// # Ok(())
 /// # }
 /// ```
@@ -57,45 +53,21 @@ pub trait KoboUsbOperations {
     /// # Errors
     ///
     /// Returns [`UsbError::Io`] if the sync command or cache drop fails.
-    fn sync_and_drop_caches(&self) -> Result<(), UsbError> {
+    async fn sync_and_drop_caches(&self) -> Result<(), UsbError> {
         debug!("Syncing filesystem buffers");
 
-        sync();
+        crate::runtime::spawn_blocking(sync)
+            .await
+            .map_err(|error| UsbError::Io(std::io::Error::other(error)))?;
 
-        fs::write("/proc/sys/vm/drop_caches", "3").map_err(|e| {
-            error!(error = %e, "Failed to drop caches");
-            UsbError::Io(e)
-        })?;
+        tokio::fs::write("/proc/sys/vm/drop_caches", "3")
+            .await
+            .map_err(|e| {
+                error!(error = %e, "Failed to drop caches");
+                UsbError::Io(e)
+            })?;
 
         Ok(())
-    }
-
-    /// Checks if a mount point is currently mounted.
-    ///
-    /// Uses procfs to read mount information and checks if the
-    /// mount_point appears in the list.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`UsbError::Io`] if mount information cannot be read.
-    /// Callers should treat a read failure as an error rather than assuming
-    /// the filesystem is unmounted.
-    #[cfg(target_os = "linux")]
-    fn is_mounted(&self, mount_point: &str) -> Result<bool, UsbError> {
-        procfs::mounts()
-            .map(|mounts| mounts.iter().any(|m| m.fs_file == mount_point))
-            .map_err(|e| {
-                warn!(error = %e, mount_point = %mount_point, "Failed to read mounts");
-                UsbError::Io(std::io::Error::other(format!(
-                    "Failed to read mount info: {}",
-                    e
-                )))
-            })
-    }
-
-    #[cfg(not(target_os = "linux"))]
-    fn is_mounted(&self, _mount_point: &str) -> Result<bool, UsbError> {
-        Ok(false)
     }
 
     /// Unmounts a partition lazily.
@@ -106,7 +78,7 @@ pub trait KoboUsbOperations {
     ///
     /// Returns [`UsbError::Partition`] if the unmount operation fails.
     #[cfg(target_os = "linux")]
-    fn unmount_partition(&self, mount_point: &str) -> Result<(), UsbError> {
+    async fn unmount_partition(&self, mount_point: &str) -> Result<(), UsbError> {
         debug!(mount_point = %mount_point, "Unmounting partition");
 
         umount2(mount_point, MntFlags::MNT_DETACH).map_err(|e| {
@@ -119,7 +91,7 @@ pub trait KoboUsbOperations {
     }
 
     #[cfg(not(target_os = "linux"))]
-    fn unmount_partition(&self, _mount_point: &str) -> Result<(), UsbError> {
+    async fn unmount_partition(&self, _mount_point: &str) -> Result<(), UsbError> {
         Err(UsbError::Partition(
             "Unmount not supported on this platform".to_string(),
         ))
@@ -135,13 +107,16 @@ pub trait KoboUsbOperations {
     /// # Errors
     ///
     /// Returns [`UsbError::Partition`] if unmounting fails critically.
-    fn prepare_for_usb_share(&self) -> Result<(), UsbError> {
-        self.sync_and_drop_caches()?;
+    async fn prepare_for_usb_share(&self) -> Result<(), UsbError> {
+        self.sync_and_drop_caches().await?;
 
         for name in ["onboard", "sd"] {
             let mount_point = format!("/mnt/{}", name);
-            if self.is_mounted(&mount_point)? {
-                self.unmount_partition(&mount_point)?;
+            if crate::device::linux::mounts::is_mount_point(Path::new(&mount_point))
+                .await
+                .map_err(UsbError::Io)?
+            {
+                self.unmount_partition(&mount_point).await?;
             }
         }
 
@@ -157,7 +132,7 @@ pub trait KoboUsbOperations {
     ///
     /// Returns [`UsbError::Partition`] if mounting the onboard partition fails.
     #[cfg(target_os = "linux")]
-    fn remount_partitions(&self) -> Result<(), UsbError> {
+    async fn remount_partitions(&self) -> Result<(), UsbError> {
         let onboard_partition = &self.metadata().partition;
 
         info!("Remounting onboard partition");
@@ -177,7 +152,7 @@ pub trait KoboUsbOperations {
         info!("Onboard partition remounted successfully");
 
         let sd_partition = "/dev/mmcblk1p1";
-        if Path::new(sd_partition).exists() {
+        if tokio::fs::try_exists(sd_partition).await.unwrap_or(false) {
             debug!("Attempting to remount SD card");
             let _ = mount(
                 Some(sd_partition),
@@ -192,7 +167,7 @@ pub trait KoboUsbOperations {
     }
 
     #[cfg(not(target_os = "linux"))]
-    fn remount_partitions(&self) -> Result<(), UsbError> {
+    async fn remount_partitions(&self) -> Result<(), UsbError> {
         Err(UsbError::Partition(
             "Mount not supported on this platform".to_string(),
         ))
@@ -225,8 +200,11 @@ pub trait KoboUsbOperations {
     /// Returns [`UsbError::Filesystem`] if filesystem corruption is detected
     /// and cannot be repaired. Returns [`UsbError::Io`] if the command fails
     /// to execute.
-    fn check_filesystem(&self) -> Result<(), UsbError> {
-        if self.is_mounted("/mnt/onboard")? {
+    async fn check_filesystem(&self) -> Result<(), UsbError> {
+        if crate::device::linux::mounts::is_mount_point(Path::new("/mnt/onboard"))
+            .await
+            .map_err(UsbError::Io)?
+        {
             error!("Refusing to run filesystem check: /mnt/onboard is still mounted");
             return Err(UsbError::Partition(
                 "/mnt/onboard is still mounted; filesystem check aborted".to_string(),
@@ -237,41 +215,36 @@ pub trait KoboUsbOperations {
 
         info!(partition = %partition, "Running filesystem check");
 
-        let result = Command::new("dosfsck")
+        let output = Command::new("dosfsck")
             .args(["-a", "-w", partition])
-            .output();
+            .output()
+            .await
+            .map_err(UsbError::Io)?;
 
-        match result {
-            Ok(output) => {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                let stderr = String::from_utf8_lossy(&output.stderr);
-
-                if output.status.success() {
-                    info!("Filesystem check passed");
-                    return Ok(());
-                }
-
-                warn!(stdout = %stdout, stderr = %stderr, "First filesystem check failed, retrying");
-
-                let retry = Command::new("dosfsck")
-                    .args(["-a", "-w", partition])
-                    .output();
-
-                match retry {
-                    Ok(retry_output) if retry_output.status.success() => {
-                        info!("Filesystem check passed on retry");
-                        Ok(())
-                    }
-                    Ok(_) => {
-                        error!("Filesystem corruption detected and cannot be repaired");
-                        Err(UsbError::Filesystem(
-                            "Filesystem corruption detected, reboot required".to_string(),
-                        ))
-                    }
-                    Err(e) => Err(UsbError::Io(e)),
-                }
-            }
-            Err(e) => Err(UsbError::Io(e)),
+        if output.status.success() {
+            info!("Filesystem check passed");
+            return Ok(());
         }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        warn!(stdout = %stdout, stderr = %stderr, "First filesystem check failed, retrying");
+
+        let retry = Command::new("dosfsck")
+            .args(["-a", "-w", partition])
+            .output()
+            .await
+            .map_err(UsbError::Io)?;
+
+        if retry.status.success() {
+            info!("Filesystem check passed on retry");
+            return Ok(());
+        }
+
+        error!("Filesystem corruption detected and cannot be repaired");
+        Err(UsbError::Filesystem(
+            "Filesystem corruption detected, reboot required".to_string(),
+        ))
     }
 }
