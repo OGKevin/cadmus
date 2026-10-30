@@ -155,7 +155,7 @@ emulator = ["sdl3", "device"]
 deviceless = ["device"]
 kobo = ["procfs", "zbus", "futures-util", "device"]
 # device-list-end
-test = []
+test = ["terminal"]
 bench = []
 tracing = [
     "tracing-opentelemetry",
