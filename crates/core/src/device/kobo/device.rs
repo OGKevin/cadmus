@@ -60,7 +60,7 @@ impl Device {
         clippy::too_many_arguments,
         reason = "device bundles all hardware subsystems"
     )]
-    pub(super) fn new(
+    pub(super) async fn new(
         model: Model,
         metadata: DeviceMetadata,
         framebuffer: Box<dyn crate::framebuffer::Framebuffer + Send>,

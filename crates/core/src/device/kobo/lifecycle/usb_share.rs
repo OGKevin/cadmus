@@ -98,7 +98,11 @@ async fn prepare_usb_share(
 ///
 /// On failure, shows a notification and schedules a restart or reboot.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(hub, tasks, context)))]
-fn enable_usb_share(context: &mut AppContext, hub: &crate::view::Hub, tasks: &mut Vec<DeviceTask>) {
+async fn enable_usb_share(
+    context: &mut AppContext,
+    hub: &crate::view::Hub,
+    tasks: &mut Vec<DeviceTask>,
+) {
     if let Err(error) = crate::logging::redirect_log_to_dir(
         Path::new("/tmp/cadmus-logs"),
         &context.settings.logging,
@@ -124,7 +128,7 @@ fn enable_usb_share(context: &mut AppContext, hub: &crate::view::Hub, tasks: &mu
     }
 
     match context.device.usb_manager() {
-        Ok(usb_manager) => match usb_manager.enable() {
+        Ok(usb_manager) => match usb_manager.enable().await {
             Ok(()) => {
                 context.shared = true;
                 if let Err(error) = env::set_current_dir("/tmp") {
@@ -174,7 +178,7 @@ fn enable_usb_share(context: &mut AppContext, hub: &crate::view::Hub, tasks: &mu
 /// Restores logging and the original working directory, then triggers a
 /// reboot if `KoboRoot.tgz` is present on onboard storage or an app restart
 /// otherwise.
-pub(super) fn disable_usb_share(
+pub(super) async fn disable_usb_share(
     context: &AppContext,
     startup_cwd: Option<&Path>,
     logging_settings: &crate::settings::LoggingSettings,
@@ -183,7 +187,7 @@ pub(super) fn disable_usb_share(
     tracing::info!("USB unplugged after sharing; disabling USB mass storage");
 
     match context.device.usb_manager() {
-        Ok(usb_manager) => match usb_manager.disable() {
+        Ok(usb_manager) => match usb_manager.disable().await {
             Ok(()) => {
                 tracing::info!("USB mass storage disabled successfully");
                 if startup_cwd.is_some() {
@@ -214,7 +218,9 @@ pub(super) fn disable_usb_share(
         tracing::error!(error = %error, original_cwd = %cwd.display(), "failed to restore working directory after USB share");
     }
 
-    let update_bundle_exists = Path::new(KOBO_UPDATE_BUNDLE).exists();
+    let update_bundle_exists = tokio::fs::try_exists(KOBO_UPDATE_BUNDLE)
+        .await
+        .unwrap_or(false);
     tracing::info!(update_bundle_exists, "filesystem state after USB disable");
 
     if update_bundle_exists {
@@ -261,7 +267,7 @@ async fn handle_prepare_share(
 }
 
 /// Handles [`Event::Share`] by enabling USB mass-storage mode.
-fn handle_share(
+async fn handle_share(
     hub: &Hub,
     context: &mut AppContext,
     runtime: &mut DeviceRuntime<'_>,
@@ -270,7 +276,7 @@ fn handle_share(
         return EventOutcome::Handled;
     }
 
-    enable_usb_share(context, hub, runtime.tasks);
+    enable_usb_share(context, hub, runtime.tasks).await;
 
     EventOutcome::Handled
 }
@@ -286,7 +292,7 @@ pub(super) async fn handle_event(
 ) -> EventOutcome {
     match event {
         Event::PrepareShare => handle_prepare_share(hub, bus, rq, context, runtime).await,
-        Event::Share => handle_share(hub, context, runtime),
+        Event::Share => handle_share(hub, context, runtime).await,
         _ => EventOutcome::Unhandled,
     }
 }
@@ -334,8 +340,9 @@ mod tests {
     async fn handle_share_enables_usb_mass_storage() {
         let mut harness = DeviceRuntimeHarness::new().await;
         let hub = harness.hub_tx.clone();
-        let outcome =
-            harness.with_runtime_only(|context, runtime| handle_share(&hub, context, runtime));
+        let outcome = crate::poll_runtime_only!(harness, |context, runtime| {
+            handle_share(&hub, context, runtime)
+        });
         assert_eq!(outcome, EventOutcome::Handled);
         assert!(harness.context.shared);
         assert_eq!(
@@ -360,7 +367,8 @@ mod tests {
             None,
             &harness.context.settings.logging,
             &harness.hub_tx,
-        );
+        )
+        .await;
         let usb = harness.context.device.usb_manager_for_test();
         assert_eq!(usb.disable_call_count(), 1);
         assert_eq!(usb.enabled(), Some(false));
