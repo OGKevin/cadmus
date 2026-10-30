@@ -257,6 +257,11 @@ cadmuscli run-emulator --features terminal
 cadmuscli build-kobo --features terminal
 ```
 
+A build without the feature still loads a settings file that contains
+`[terminal]`: the table is ignored, a warning is printed at startup, and the
+table is omitted the next time settings are saved. Every other setting is
+preserved.
+
 CI uploads require a `CODECOV_TOKEN` repository secret (one-time setup on codecov.io).
 
 ## Platform Support
