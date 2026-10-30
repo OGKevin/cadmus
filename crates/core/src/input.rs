@@ -926,12 +926,22 @@ struct InputAbsInfo {
     resolution: i32,
 }
 
-fn evdev_abs_info(path: &str, axis: u16) -> Option<InputAbsInfo> {
-    let file = File::open(path).ok()?;
+/// If the ioctl fails, `None` is returned; `absinfo` must be a pointer to
+/// an uninitialized [`InputAbsInfo`] that the kernel fills in on success.
+async fn evdev_abs_info(path: &str, axis: u16) -> Option<InputAbsInfo> {
+    let file = tokio::fs::File::open(path).await.ok()?;
     let fd = file.as_raw_fd();
-    let mut absinfo = MaybeUninit::<InputAbsInfo>::uninit();
     let request = evdev_abs_ioctl(axis);
-    let ret = unsafe { libc::ioctl(fd, request as libc::c_ulong, absinfo.as_mut_ptr()) };
+    // The ioctl writes into `absinfo` and returns 0 on success; on failure
+    // (-1) the buffer is left untouched.
+    let ret = tokio::task::spawn_blocking(move || unsafe {
+        let mut absinfo = MaybeUninit::<InputAbsInfo>::uninit();
+        let ret = libc::ioctl(fd, request as libc::c_ulong, absinfo.as_mut_ptr());
+        (ret, absinfo)
+    })
+    .await
+    .ok()?;
+    let (ret, absinfo) = ret;
     if ret < 0 {
         return None;
     }
@@ -955,7 +965,7 @@ pub fn gsensor_rotation_from_raw(value: i32, transform: GyroRotationTransform) -
         .map(|i| transform.transform(i as i8))
 }
 
-pub fn trace_touch_device_geometry(path: &str, proto: TouchProto, screen: Display) {
+pub async fn trace_touch_device_geometry(path: &str, proto: TouchProto, screen: Display) {
     let Display { dims, rotation } = screen;
     let (x_axis, y_axis) = match proto {
         TouchProto::Single => (ABS_X, ABS_Y),
@@ -963,8 +973,8 @@ pub fn trace_touch_device_geometry(path: &str, proto: TouchProto, screen: Displa
             (ABS_MT_POSITION_X, ABS_MT_POSITION_Y)
         }
     };
-    let abs_x = evdev_abs_info(path, x_axis);
-    let abs_y = evdev_abs_info(path, y_axis);
+    let abs_x = evdev_abs_info(path, x_axis).await;
+    let abs_y = evdev_abs_info(path, y_axis).await;
     tracing::trace!(
         path,
         proto = ?proto,
@@ -1469,8 +1479,8 @@ impl DeviceFeatures {
 ///
 /// Opens the device once and issues all introspection ioctls on the resulting
 /// file descriptor. Returns `None` only if the device cannot be opened.
-fn probe_device(path: &str) -> Option<DeviceFeatures> {
-    let file = File::open(path).ok()?;
+async fn probe_device(path: &str) -> Option<DeviceFeatures> {
+    let file = tokio::fs::File::open(path).await.ok()?;
     let fd = file.as_raw_fd();
     let mut id = InputId {
         bustype: 0,
@@ -1478,6 +1488,8 @@ fn probe_device(path: &str) -> Option<DeviceFeatures> {
         product: 0,
         version: 0,
     };
+    // The ioctls write into pre-zeroed buffers and their results are checked,
+    // so partial failures leave defaults in place.
     let _ = unsafe { eviocgid(fd, &mut id) };
 
     let mut name_buf = [0u8; 256];
@@ -1551,18 +1563,18 @@ fn classify_device(features: &DeviceFeatures) -> DeviceProfile {
 /// Unlike the previous keyboard-only scan, this opens any device that emits
 /// `EV_KEY` or `EV_ABS`, so the touch digitizer and built-in buttons are
 /// discovered at startup alongside hotplugged keyboards.
-fn scan_input_devices(
+async fn scan_input_devices(
     tracked_paths: &[String],
     known_identities: &mut FxHashSet<String>,
     blacklisted_paths: &mut FxHashSet<String>,
 ) -> Vec<(String, DeviceFeatures)> {
     let mut found = Vec::new();
-    let entries = match std::fs::read_dir("/dev/input") {
+    let mut entries = match tokio::fs::read_dir("/dev/input").await {
         Ok(e) => e,
         Err(_) => return found,
     };
 
-    for entry in entries.flatten() {
+    while let Some(entry) = entries.next_entry().await.ok().flatten() {
         let path = entry.path();
         let Some(path_str) = path.to_str() else {
             continue;
@@ -1573,7 +1585,7 @@ fn scan_input_devices(
         if tracked_paths.iter().any(|p| p == path_str) || blacklisted_paths.contains(path_str) {
             continue;
         }
-        let Some(features) = probe_device(path_str) else {
+        let Some(features) = probe_device(path_str).await else {
             continue;
         };
         if !features.emits_key && !features.emits_abs {
@@ -1632,7 +1644,7 @@ async fn parse_raw_events(
         tx,
     };
 
-    device.open(&[], false);
+    device.open(&[], false).await;
 
     let mut last_scan = Instant::now();
     loop {
@@ -1649,7 +1661,7 @@ async fn parse_raw_events(
 
         if last_scan.elapsed() >= SCAN_INTERVAL {
             last_scan = Instant::now();
-            device.open(&device.tracked(), true);
+            device.open(&device.tracked(), true).await;
         }
     }
 }
@@ -1683,18 +1695,21 @@ impl OpenInputDevices<'_> {
     /// device-event pipeline can route the device's scancodes through the right
     /// table. `hotplugged` only distinguishes the log line between the startup
     /// set and devices that appeared later.
-    fn open(&mut self, tracked: &[String], hotplugged: bool) {
+    async fn open(&mut self, tracked: &[String], hotplugged: bool) {
         for (path, features) in scan_input_devices(
             tracked,
             &mut self.known_identities,
             &mut self.blacklisted_paths,
-        ) {
-            let file = match std::fs::OpenOptions::new()
+        )
+        .await
+        {
+            let file = match tokio::fs::OpenOptions::new()
                 .read(true)
                 .custom_flags(libc::O_NONBLOCK)
                 .open(&path)
+                .await
             {
-                Ok(file) => file,
+                Ok(file) => file.into_std().await,
                 Err(error) => {
                     tracing::warn!(
                         device = %path,
@@ -1705,7 +1720,7 @@ impl OpenInputDevices<'_> {
                 }
             };
             if features.emits_abs {
-                trace_touch_device_geometry(&path, self.proto, self.display);
+                trace_touch_device_geometry(&path, self.proto, self.display).await;
             }
             let fd = match AsyncFd::with_interest(file, Interest::READABLE) {
                 Ok(fd) => fd,
