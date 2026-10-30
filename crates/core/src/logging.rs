@@ -148,6 +148,14 @@ pub fn get_run_id() -> &'static str {
     RUN_ID.get_or_init(|| Uuid::now_v7().to_string()).as_str()
 }
 
+/// Returns the file name of the current run's log file.
+///
+/// Shared by the appender configuration and the startup/redirect notices so the
+/// reported path always names the file that is actually written.
+fn log_file_name() -> String {
+    format!("{}{}.{}", LOG_FILE_PREFIX, get_run_id(), LOG_FILE_SUFFIX)
+}
+
 /// Removes old log files to maintain the configured retention limit.
 ///
 /// This function scans the log directory for files matching the pattern
@@ -372,6 +380,7 @@ pub async fn init_logging(
         get_run_id(),
         get_current_version()
     );
+    eprintln!("Cadmus logs: {}", log_dir.join(log_file_name()).display());
 
     #[cfg(feature = "test")]
     if settings.enable_kern_log
@@ -494,6 +503,11 @@ pub fn redirect_log_to_dir(dir: &Path, settings: &LoggingSettings) -> Result<(),
     };
 
     drop(old_guard);
+
+    eprintln!(
+        "Cadmus logs redirected to: {}",
+        dir.join(log_file_name()).display()
+    );
 
     Ok(())
 }
@@ -681,7 +695,7 @@ mod tests {
         // event so the file is flushed to disk before we inspect the directory.
         tracing::info!("test redirect log event");
 
-        let expected_file_name = format!("{}{}.{}", LOG_FILE_PREFIX, get_run_id(), LOG_FILE_SUFFIX);
+        let expected_file_name = log_file_name();
 
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         #[allow(unused_assignments)]
