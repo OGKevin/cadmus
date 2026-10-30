@@ -34,6 +34,14 @@ const CALENDAR_SPECIAL_PATH: &str = "calendar:";
 const BLANK_SPECIAL_PATH: &str = "blank:";
 const BLANK_INVERTED_SPECIAL_PATH: &str = "blank-inverted:";
 
+/// Settings tables this build does not compile support for.
+///
+/// Values under these keys are dropped on load and omitted from the next save.
+pub(crate) const UNSUPPORTED_SETTINGS_TABLES: &[&str] = &[
+    #[cfg(not(feature = "terminal"))]
+    "terminal",
+];
+
 /// How to display intermission screens.
 /// Logo, Cover, Calendar, Blank and BlankInverted are special values that map
 /// to built-in displays.
@@ -485,6 +493,7 @@ pub struct Settings {
     pub dictionary: DictionarySettings,
     pub sketch: SketchSettings,
     pub calculator: CalculatorSettings,
+    #[cfg(feature = "terminal")]
     pub terminal: TerminalSettings,
     pub battery: BatterySettings,
     pub frontlight_levels: LightLevels,
@@ -598,6 +607,7 @@ pub struct CalculatorSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case")]
+#[cfg(feature = "terminal")]
 pub struct TerminalSettings {
     pub font_size: f32,
 }
@@ -646,6 +656,7 @@ impl Default for CalculatorSettings {
     }
 }
 
+#[cfg(feature = "terminal")]
 impl Default for TerminalSettings {
     fn default() -> Self {
         TerminalSettings { font_size: 12.0 }
@@ -1081,6 +1092,7 @@ impl Default for Settings {
             dictionary: DictionarySettings::default(),
             sketch: SketchSettings::default(),
             calculator: CalculatorSettings::default(),
+            #[cfg(feature = "terminal")]
             terminal: TerminalSettings::default(),
             battery: BatterySettings::default(),
             frontlight_levels: LightLevels::default(),
