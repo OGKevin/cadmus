@@ -476,8 +476,8 @@ mod tests {
         );
         assert_eq!(
             entries.len(),
-            20,
-            "3 device features × 2³ ancillary combos − 4 invalid deviceless+test × 1 OS = 20 entries"
+            40,
+            "3 device features × 2⁴ ancillary combos − 8 invalid deviceless+test × 1 OS = 40 entries"
         );
     }
 }

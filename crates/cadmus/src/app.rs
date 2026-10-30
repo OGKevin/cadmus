@@ -50,6 +50,7 @@ use cadmus_core::view::rotation_values::RotationValues;
 use cadmus_core::view::settings_editor::SettingsEditor;
 use cadmus_core::view::sketch::Sketch;
 use cadmus_core::view::startup::StartupScreen;
+#[cfg(feature = "terminal")]
 use cadmus_core::view::terminal::Terminal;
 use cadmus_core::view::touch_events::TouchEvents;
 use cadmus_core::view::{
@@ -996,6 +997,7 @@ pub async fn run() -> Result<(), Error> {
                         )
                         .await,
                     ),
+                    #[cfg(feature = "terminal")]
                     AppCmd::Terminal => match Terminal::new(
                         context.device.framebuffer().rect(),
                         context.settings.terminal.font_size,

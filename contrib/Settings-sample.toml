@@ -271,6 +271,7 @@ margin-width = 2
 history-size = 4_096
 
 [terminal]
+# Settings for the Terminal application, when the build includes it.
 # The font size for the Terminal application.
 font-size = 12.0
 
