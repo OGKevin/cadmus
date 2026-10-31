@@ -20,18 +20,10 @@ on:
       - wrangler.toml
       - package.json
       - package-lock.json
+  # No paths filter: required-docs must report on every PR. The build job is
+  # gated by the changes job below.
   pull_request:
     types: [opened, synchronize, reopened]
-    paths:
-      - docs/**
-      - docs-portal/**
-      - website/**
-      - crates/**/*.rs
-      - .github/actions/install-doc-tools/**
-      - .github/actions/clone-needed-cargo-submodules/**
-      - .github/workflows/cadmus-docs.yml
-      - package.json
-      - package-lock.json
   workflow_dispatch:
 
 permissions:
