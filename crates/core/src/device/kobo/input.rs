@@ -51,6 +51,17 @@ impl Drop for InputSource {
 }
 
 impl crate::device::InputSource for InputSource {
+    /// Starts the Kobo input pipeline and returns its event hub channel.
+    ///
+    /// Cancels any previously started pipeline (hotplug restart), then spawns:
+    /// - `raw_events`: a feature scan over `/dev/input` that classifies every
+    ///   evdev device (touch digitizer, gpio-keys, power key, and any
+    ///   hotplugged keyboards/remotes) into a `DeviceProfile` that maps its
+    ///   scancodes to semantic functions — no hard-coded device paths,
+    /// - the gesture pipeline, which turns raw touch events into semantic
+    ///   input events, and
+    /// - `usb_events`, which watches for USB device (dis)connections that
+    ///   trigger a pipeline restart.
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(
@@ -76,11 +87,6 @@ impl crate::device::InputSource for InputSource {
         let pipeline_cancel = CancellationToken::new();
         self.pipeline_cancel = Some(pipeline_cancel.clone());
 
-        // All evdev input devices (touch digitizer, gpio-keys, power key, and
-        // any hotplugged keyboards/remotes) are discovered by a feature scan
-        // inside `raw_events` — no hard-coded device paths. Each device is
-        // probed (name, bustype, event-type bits) and classified into a
-        // `DeviceProfile` that maps its scancodes to semantic functions.
         let (raw_sender, raw_receiver) =
             raw_events(screen, self.info.proto, pipeline_cancel.clone());
         self.raw_sender = Some(raw_sender.clone());
