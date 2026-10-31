@@ -182,7 +182,7 @@ impl Default for TestUsbManager {
 }
 
 impl crate::device::usb::UsbManager for TestUsbManager {
-    fn enable(&self) -> Result<(), crate::device::usb::UsbError> {
+    async fn enable(&self) -> Result<(), crate::device::usb::UsbError> {
         if let Ok(mut state) = self.state.lock() {
             state.enabled = Some(true);
             state.enable_calls += 1;
@@ -190,7 +190,7 @@ impl crate::device::usb::UsbManager for TestUsbManager {
         Ok(())
     }
 
-    fn disable(&self) -> Result<(), crate::device::usb::UsbError> {
+    async fn disable(&self) -> Result<(), crate::device::usb::UsbError> {
         if let Ok(mut state) = self.state.lock() {
             state.enabled = Some(false);
             state.disable_calls += 1;
