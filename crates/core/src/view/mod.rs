@@ -15,7 +15,6 @@ pub mod button;
 pub mod calculator;
 pub mod clock;
 pub mod common;
-pub mod device_auth;
 pub mod dialog;
 pub mod dictionary;
 pub mod file_chooser;
@@ -78,7 +77,6 @@ use crate::metadata::{
 use crate::settings::{
     self, ButtonScheme, FinishedAction, FirstColumn, RotationLock, SecondColumn, StartupMode,
 };
-use crate::view::ota::OtaEntryId;
 use downcast_rs::{Downcast, impl_downcast};
 use rustc_hash::FxHashMap;
 use std::collections::VecDeque;
@@ -475,6 +473,26 @@ pub fn wait_for_all(updating: &mut Vec<UpdateData>, context: &mut AppContext) {
     }
 }
 
+/// Identifies one attempt at a background job.
+///
+/// A screen bumps the generation when it starts a job. The job carries the
+/// generation in every event it sends, so an event from an attempt the reader
+/// has already left can be told apart from the current one.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Generation(u64);
+
+impl Generation {
+    /// The generation with this number.
+    pub fn new(value: u64) -> Self {
+        Self(value)
+    }
+
+    /// The generation that follows this one.
+    pub fn next(self) -> Self {
+        Self(self.0.wrapping_add(1))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ToggleEvent {
     View(ViewId),
@@ -539,12 +557,11 @@ pub enum Event {
     ///
     /// ```no_run
     /// use cadmus_core::view::{Event, Hub, ViewId};
-    /// use cadmus_core::view::ota::OtaViewId;
     ///
-    /// // Focus the PR input field (e.g. after building the PR input screen).
+    /// // Focus the home search field.
     /// // Note: `hub` is provided by the application's event loop.
     /// # let (hub, _) = cadmus_core::view::hub_channel();
-    /// hub.send(Event::Focus(Some(ViewId::Ota(OtaViewId::PrInput))).into()).ok();
+    /// hub.send(Event::Focus(Some(ViewId::HomeSearchInput)).into()).ok();
     ///
     /// // Clear focus from all views.
     /// hub.send(Event::Focus(None).into()).ok();
@@ -674,21 +691,21 @@ pub enum Event {
         /// Current value pre-populated into the input field.
         initial_text: String,
     },
-    /// Progress update from a background OTA download thread.
+    /// Progress update from a background OTA download.
     ///
-    /// `OtaView` handles this by updating the status label text and the
-    /// progress bar fill to reflect the current download state.
+    /// The OTA screen updates its label and bar from this. `cancelable: false`
+    /// means the install is committed and the reader can no longer cancel.
     OtaDownloadProgress {
+        /// The install attempt the update belongs to.
+        generation: Generation,
         label: String,
         percent: u8,
         /// When false, the update is committed and cancel must be hidden.
         cancelable: bool,
     },
-    /// Signal to start downloading the stable release after version check.
-    ///
-    /// This event is sent from the version check thread when the remote version
-    /// is newer than the current version, triggering the actual download to begin.
-    StartStableReleaseDownload,
+    /// A result from an OTA background job: a pull-request page, or the end of
+    /// a download that did not reboot.
+    Ota(ota::OtaEvent),
     /// Result of a background dictionary install spawned by the settings screen.
     ///
     /// Sent from the download thread when the install completes (success or
@@ -763,8 +780,13 @@ pub enum Event {
 pub enum AppCmd {
     Sketch,
     Calculator,
-    Dictionary { query: String, language: String },
+    Dictionary {
+        query: String,
+        language: String,
+    },
     SettingsEditor,
+    /// Check for updates and install one.
+    OtaUpdates,
     TouchEvents,
     RotationValues,
 }
@@ -856,7 +878,6 @@ pub enum ViewId {
     TableOfContents,
     MessageNotif(Id),
     SubMenu(u8),
-    Ota(ota::OtaViewId),
     FileChooser,
 }
 
@@ -1042,9 +1063,7 @@ pub enum EntryId {
     PowerOff,
     /// Switch to the peer Cadmus install (main ↔ test).
     SwitchInstall,
-    CheckForUpdates,
     FileEntry(PathBuf),
-    Ota(OtaEntryId),
     /// Open the per-kind refresh rate editor for the given file extension.
     EditRefreshRateByKind(FileExtension),
     /// Delete the per-kind refresh rate override for the given file extension.

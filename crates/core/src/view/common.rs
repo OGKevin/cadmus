@@ -161,7 +161,10 @@ pub fn toggle_main_menu(
                 "Settings".to_string(),
                 EntryId::Launch(AppCmd::SettingsEditor),
             ),
-            EntryKind::Command("Check for Updates".to_string(), EntryId::CheckForUpdates),
+            EntryKind::Command(
+                "Check for Updates".to_string(),
+                EntryId::Launch(AppCmd::OtaUpdates),
+            ),
             EntryKind::Separator,
         ];
 

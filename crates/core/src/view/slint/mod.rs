@@ -18,6 +18,7 @@ mod queue;
 mod renderer;
 #[cfg(test)]
 pub(crate) mod testing;
+mod waveform;
 
 pub(in crate::view) use component::Component;
 pub use component::Env;
@@ -32,6 +33,7 @@ pub(in crate::view) use queue::{CallbackQueue, connect};
 pub use renderer::Session;
 #[cfg(test)]
 pub(crate) use renderer::advance_test_clock;
+pub(in crate::view) use waveform::FastInk;
 
 /// What the view loop should do with the framebuffer after Slint callbacks.
 ///

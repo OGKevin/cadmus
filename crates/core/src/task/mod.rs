@@ -1308,9 +1308,7 @@ mod tests {
     }
 
     async fn pump(manager: &mut TaskManager, hub: &crate::view::Hub, context: &AppContext) {
-        manager
-            .handle_event(&Event::StartStableReleaseDownload, hub, context)
-            .await;
+        manager.handle_event(&Event::ClockTick, hub, context).await;
     }
 
     async fn thumbnail_was_scheduled(

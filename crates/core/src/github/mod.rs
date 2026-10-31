@@ -17,7 +17,10 @@ pub use crate::http::CLIENT_TIMEOUT_SECS;
 pub(crate) use client::ApiStatusError;
 pub use client::GithubClient;
 pub use client::GithubRequestError;
+pub(crate) use client::ListedArtifact;
+pub(crate) use client::ListedPull;
 pub use client::REQUIRED_SCOPES;
+pub(crate) use client::install_artifact_runs;
 pub use types::{
     DeviceCodeResponse, GithubError, OtaProgress, ScopeError, TokenPollResult, VerifyScopesError,
 };

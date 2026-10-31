@@ -1,9 +1,13 @@
 use crate::github::types::{
-    Artifact, ArtifactsResponse, Release, ReleaseAsset, Repository, WorkflowRun,
-    WorkflowRunsResponse,
+    Artifact, ArtifactsResponse, Release, ReleaseAsset, Repository, WorkflowRunsResponse,
 };
 use crate::github::{GithubClient, OtaProgress};
 use crate::http::{CancelFlag, CancelFunc, ChunkedDownloadError};
+use crate::ota::pr_status::{
+    ArtifactSnapshot, OpenPull, RunSnapshot, artifact_name_matches_any_pr, pending_pulls,
+    project_pulls, unknown_unless_ready,
+};
+use crate::ota::{CheckedPull, PrBuild};
 use crate::version::GitVersion;
 use async_zip::base::read1::ZipFileReader;
 use async_zip::base::read1::seek::ZipArchiveReader;
@@ -11,6 +15,7 @@ use async_zip::error::ZipError;
 use async_zip::spec::constructs::CDR;
 use futures_lite::io::{AsyncBufRead, AsyncRead, AsyncReadExt, AsyncSeek, Cursor};
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
+use std::collections::HashSet;
 use std::io::Error;
 use std::path::{Path, PathBuf};
 use tokio_util::compat::TokioAsyncReadCompatExt;
@@ -34,8 +39,6 @@ pub struct OtaClient {
 /// Indicates where artifacts were expected but not found.
 #[derive(Debug, Clone)]
 pub enum ArtifactSource {
-    /// No artifacts found for a specific pull request
-    PullRequest(u32),
     /// No artifacts found for the default branch
     DefaultBranch,
     /// No artifact matching the expected name pattern in a workflow run
@@ -47,7 +50,6 @@ pub enum ArtifactSource {
 impl std::fmt::Display for ArtifactSource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ArtifactSource::PullRequest(pr) => write!(f, "No build artifacts found for PR #{}", pr),
             ArtifactSource::DefaultBranch => {
                 write!(f, "No build artifacts found for default branch")
             }
@@ -73,10 +75,6 @@ pub enum OtaError {
     /// HTTP request failed during communication with GitHub
     #[error("HTTP request error: {0}")]
     Request(#[from] reqwest::Error),
-
-    /// The specified pull request number was not found in the repository
-    #[error("PR #{0} not found")]
-    PrNotFound(u32),
 
     /// No build artifacts found for the specified source
     #[error("{0}")]
@@ -215,6 +213,7 @@ impl From<crate::github::GithubRequestError> for OtaError {
     fn from(error: crate::github::GithubRequestError) -> Self {
         match error {
             crate::github::GithubRequestError::Middleware(error) => Self::from(error),
+            crate::github::GithubRequestError::Unauthorized => Self::Unauthorized,
             crate::github::GithubRequestError::Message(message) => Self::Api(message),
         }
     }
@@ -236,38 +235,120 @@ impl OtaClient {
         Self { github, tmp_dir }
     }
 
-    /// Downloads the build artifact from a GitHub pull request.
+    /// Fills in which of `pulls` can be installed.
     ///
-    /// This performs the complete download workflow:
-    /// 1. Verifies sufficient disk space (100MB required)
-    /// 2. Fetches PR metadata to get the commit SHA
-    /// 3. Finds the associated "Cargo" workflow run
-    /// 4. Locates artifacts matching "cadmus-kobo-pr*" pattern
-    /// 5. Downloads the artifact ZIP file to `tmp_dir/cadmus-ota-{pr_number}.zip`
-    ///
-    /// GitHub authentication is required for this operation.
-    ///
-    /// # Arguments
-    ///
-    /// * `pr_number` - The pull request number from ogkevin/cadmus repository
-    /// * `progress_callback` - Function called with progress updates during download
-    ///
-    /// # Returns
-    ///
-    /// The downloaded artifact, buffered in memory when it fits.
-    ///
-    /// # Errors
-    ///
-    /// * `OtaError::InsufficientSpace` - Less than 100MB available in the configured temp directory
-    /// * `OtaError::NoToken` - GitHub token not configured
-    /// * `OtaError::PrNotFound` - PR number doesn't exist in repository
-    /// * `OtaError::ArtifactsNotFound` - No matching build artifacts found for the PR
-    /// * `OtaError::Api` - GitHub API request failed
-    /// * `OtaError::Request` - Network communication failed
-    /// * `OtaError::Io` - Failed to write the streaming-fallback file to disk
-    pub async fn download_pr_artifact<F>(
+    /// `emit` runs once a live package is found, and again when the check
+    /// finishes or stops early. `failed` is true only on that early stop.
+    /// A row stays pending until then, unless it is already ready.
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self, pulls, emit), fields(pulls = pulls.len()))
+    )]
+    pub async fn resolve_install_status(
         &self,
-        pr_number: u32,
+        pulls: &[OpenPull],
+        mut emit: impl FnMut(Vec<CheckedPull>, bool),
+    ) -> Result<(), OtaError> {
+        let runs = match self.github.list_cargo_pull_request_runs().await {
+            Ok(runs) => runs,
+            Err(error) => {
+                emit(unknown_unless_ready(pending_pulls(pulls)), true);
+                return Err(error.into());
+            }
+        };
+        let run_snapshots: Vec<RunSnapshot<'_>> = runs
+            .iter()
+            .map(|run| RunSnapshot {
+                head_sha: run.head_sha.as_str(),
+                name: run.name.as_str(),
+                status: run.status.as_str(),
+                conclusion: run.conclusion.as_deref(),
+            })
+            .collect();
+        let heads: Vec<&str> = pulls.iter().map(|pull| pull.head_sha.as_str()).collect();
+        let queries = crate::github::install_artifact_runs(&runs, &heads);
+        let mut artifacts = Vec::new();
+        let mut announced = 0;
+        let mut failed_heads = Vec::new();
+        let mut failure = None;
+        for run in &queries {
+            let listed = match self.github.list_run_artifacts(run.id).await {
+                Ok(listed) => listed,
+                Err(error) => {
+                    failed_heads.push(run.head_sha.as_str());
+                    failure = Some(error);
+                    continue;
+                }
+            };
+            artifacts.extend(
+                listed
+                    .into_iter()
+                    .filter(|artifact| artifact_name_matches_any_pr(&artifact.name)),
+            );
+            let rows = project_pulls(
+                pulls,
+                &run_snapshots,
+                &artifact_snapshots(&artifacts),
+                false,
+            );
+            let ready = rows
+                .iter()
+                .filter(|pull| pull.build == PrBuild::Ready && pull.artifact.is_some())
+                .count();
+            if ready > announced {
+                announced = ready;
+                emit(rows, false);
+            }
+        }
+        let mut rows = project_pulls(pulls, &run_snapshots, &artifact_snapshots(&artifacts), true);
+        if !failed_heads.is_empty() {
+            let failed: HashSet<&str> = failed_heads.iter().copied().collect();
+            rows = rows
+                .into_iter()
+                .zip(pulls)
+                .map(|(mut row, pull)| {
+                    if row.build != PrBuild::Ready && failed.contains(pull.head_sha.as_str()) {
+                        row.build = PrBuild::Unknown;
+                        row.artifact = None;
+                    }
+                    row
+                })
+                .collect();
+        }
+        let all_failed = !queries.is_empty() && failed_heads.len() == queries.len();
+        emit(rows, all_failed);
+        tracing::debug!(
+            pulls = pulls.len(),
+            runs = run_snapshots.len(),
+            artifacts = artifacts.len(),
+            ready = announced,
+            failed = failed_heads.len(),
+            "install check finished"
+        );
+        match failure {
+            Some(error) if all_failed => return Err(error.into()),
+            Some(error) => {
+                tracing::warn!(
+                    error = %error,
+                    pulls = ?failed_pull_numbers(pulls, &failed_heads),
+                    runs = queries.len(),
+                    "some install checks failed"
+                );
+            }
+            None => {}
+        }
+        Ok(())
+    }
+
+    /// Downloads a pull-request artifact that the picker already resolved.
+    ///
+    /// Skips the run lookup. Scope checks, disk space, and cancellation match
+    /// the other downloads.
+    pub async fn download_pr_artifact_from<F>(
+        &self,
+        pr_number: u64,
+        artifact_id: u64,
+        size_in_bytes: u64,
         mut progress_callback: F,
         should_cancel: Option<&CancelFlag>,
     ) -> Result<DownloadedArtifact, OtaError>
@@ -281,139 +362,18 @@ impl OtaClient {
         check_disk_space(&self.tmp_dir)?;
         verify_scopes(&self.github).await?;
 
-        progress_callback(OtaProgress::CheckingPr);
-        tracing::info!(pr_number, "Starting PR build download");
-        tracing::debug!(pr_number, "Checking PR");
-
-        let pr_url = format!(
-            "https://api.github.com/repos/ogkevin/cadmus/pulls/{}",
-            pr_number
-        );
-        tracing::debug!(url = %pr_url, "Fetching PR");
-
-        let response = self
-            .github
-            .api_get(&pr_url)
-            .send()
-            .await?
-            .error_for_status()
-            .map_err(|e| {
-                tracing::error!(pr_number, status = ?e.status_code(), error = %e, "PR fetch failed");
-                if e.status_code() == reqwest::StatusCode::UNAUTHORIZED {
-                    OtaError::Unauthorized
-                } else {
-                    OtaError::PrNotFound(pr_number)
-                }
-            })?;
-
-        let pr: crate::github::types::PullRequest = response.json()?;
-        tracing::debug!("Successfully parsed PR response");
-        let head_sha = pr.head.sha;
-        tracing::debug!(pr_number, head_sha = %head_sha, "Retrieved PR head SHA");
-
-        progress_callback(OtaProgress::FindingWorkflow);
-        tracing::debug!(head_sha = %head_sha, "Finding workflow runs");
-
-        let runs_url = format!(
-            "https://api.github.com/repos/ogkevin/cadmus/actions/runs?head_sha={}&event=pull_request",
-            head_sha
-        );
-        tracing::debug!(url = %runs_url, "Fetching workflow runs");
-
-        let runs: WorkflowRunsResponse = self
-            .github
-            .api_get(&runs_url)
-            .send().await?
-            .error_for_status()
-            .map_err(|e| {
-                tracing::error!(head_sha = %head_sha, status = ?e.status_code(), error = %e, "Workflow runs fetch failed");
-                api_error(e)
-            })?
-            .json()?;
-
-        tracing::debug!(count = runs.workflow_runs.len(), "Found workflow runs");
-
-        #[cfg(feature = "tracing")]
-        if tracing::enabled!(tracing::Level::DEBUG) {
-            for (idx, run) in runs.workflow_runs.iter().enumerate() {
-                tracing::debug!(
-                    index = idx,
-                    name = %run.name,
-                    id = run.id,
-                    status = %run.status,
-                    conclusion = ?run.conclusion,
-                    "Workflow run"
-                );
-            }
-        }
-
-        let artifact_name_pattern = cfg_select! {
-            feature = "test" => { format!("cadmus-kobo-test-pr{}", pr_number) }
-            _ => { format!("cadmus-kobo-pr{}", pr_number) }
-        };
-
-        let mut artifact = None;
-        for run in runs
-            .workflow_runs
-            .iter()
-            .filter(|r| is_ota_candidate_run(r))
-        {
-            tracing::debug!(
-                run_id = run.id,
-                status = %run.status,
-                conclusion = ?run.conclusion,
-                "Checking Cargo workflow run for artifacts"
-            );
-            match self
-                .find_artifact_in_run(run.id, &artifact_name_pattern)
-                .await
-            {
-                Ok(found) => {
-                    tracing::debug!(run_id = run.id, "Selected Cargo workflow run");
-                    artifact = Some(found);
-                    break;
-                }
-                Err(OtaError::ArtifactsNotFound(_)) => {
-                    tracing::debug!(
-                        run_id = run.id,
-                        conclusion = ?run.conclusion,
-                        "No matching artifact in run; trying next"
-                    );
-                }
-                Err(e) => return Err(e),
-            }
-        }
-
-        let artifact = artifact.ok_or_else(|| {
-            tracing::error!(
-                pr_number,
-                "No Cargo workflow run with matching artifacts found"
-            );
-            OtaError::ArtifactsNotFound(ArtifactSource::PullRequest(pr_number))
-        })?;
-
-        tracing::debug!(
-            name = %artifact.name,
-            id = artifact.id,
-            size_bytes = artifact.size_in_bytes,
-            "Found artifact"
-        );
-
-        let download_path = self.tmp_dir.join(format!("cadmus-ota-{}.zip", pr_number));
-
-        let artifact = self
+        let download_path = self.tmp_dir.join(format!("cadmus-ota-{pr_number}.zip"));
+        let downloaded = self
             .download_artifact(
-                &artifact,
+                artifact_id,
+                size_in_bytes,
                 &download_path,
                 &mut progress_callback,
                 should_cancel,
             )
             .await?;
-
         progress_callback(OtaProgress::Complete);
-
-        tracing::info!(pr_number, "PR build download completed");
-        Ok(artifact)
+        Ok(downloaded)
     }
 
     /// Downloads the latest build artifact from the default branch.
@@ -507,8 +467,7 @@ impl OtaClient {
             .find_artifact_in_run(cargo_run.id, &artifact_name_prefix)
             .await
             .map_err(|e| match e {
-                OtaError::ArtifactsNotFound(ArtifactSource::WorkflowRun(pattern)) => {
-                    tracing::error!(pattern = %pattern, "No matching artifact found on default branch");
+                OtaError::ArtifactsNotFound(ArtifactSource::WorkflowRun(_)) => {
                     OtaError::ArtifactsNotFound(ArtifactSource::DefaultBranch)
                 }
                 other => other,
@@ -525,7 +484,8 @@ impl OtaClient {
 
         let artifact = self
             .download_artifact(
-                &artifact,
+                artifact.id,
+                artifact.size_in_bytes,
                 &download_path,
                 &mut progress_callback,
                 should_cancel,
@@ -1110,10 +1070,7 @@ impl OtaClient {
             .send()
             .await?
             .error_for_status()
-            .map_err(|e| {
-                tracing::error!(run_id, status = ?e.status_code(), error = %e, "Artifacts fetch failed");
-                api_error(e)
-            })?
+            .map_err(api_error)?
             .json()?;
 
         tracing::debug!(count = artifacts.artifacts.len(), "Found artifacts");
@@ -1137,10 +1094,9 @@ impl OtaClient {
             .artifacts
             .into_iter()
             .find(|a| !a.expired && a.name.starts_with(name_prefix))
-            .ok_or_else(|| {
-                tracing::error!(run_id, pattern = %name_prefix, "No matching artifact found");
-                OtaError::ArtifactsNotFound(ArtifactSource::WorkflowRun(name_prefix.to_owned()))
-            })
+            .ok_or(OtaError::ArtifactsNotFound(ArtifactSource::WorkflowRun(
+                name_prefix.to_owned(),
+            )))
     }
 
     /// Downloads an artifact ZIP, buffering it in memory when it fits.
@@ -1152,7 +1108,8 @@ impl OtaClient {
     /// GitHub authentication is required for this operation.
     async fn download_artifact<F>(
         &self,
-        artifact: &Artifact,
+        artifact_id: u64,
+        size_in_bytes: u64,
         download_path: &PathBuf,
         progress_callback: &mut F,
         should_cancel: Option<&CancelFlag>,
@@ -1161,24 +1118,23 @@ impl OtaClient {
         F: FnMut(OtaProgress),
     {
         let download_url = format!(
-            "https://api.github.com/repos/ogkevin/cadmus/actions/artifacts/{}/zip",
-            artifact.id
+            "https://api.github.com/repos/ogkevin/cadmus/actions/artifacts/{artifact_id}/zip",
         );
         let mut progress = |downloaded, total| {
             progress_callback(OtaProgress::DownloadingArtifact { downloaded, total })
         };
 
-        if artifact_fits_in_memory(artifact.size_in_bytes) {
+        if artifact_fits_in_memory(size_in_bytes) {
             tracing::debug!(
-                artifact_id = artifact.id,
-                size_bytes = artifact.size_in_bytes,
+                artifact_id,
+                size_bytes = size_in_bytes,
                 "Buffering artifact in memory"
             );
             let bytes = self
                 .github
                 .download_to_vec(
                     &download_url,
-                    Some(artifact.size_in_bytes),
+                    Some(size_in_bytes),
                     |url| self.github.get(url),
                     &mut progress,
                     should_cancel,
@@ -1190,7 +1146,7 @@ impl OtaClient {
         self.github
             .download(
                 &download_url,
-                Some(artifact.size_in_bytes),
+                Some(size_in_bytes),
                 download_path,
                 |url| self.github.get(url),
                 &mut progress,
@@ -1261,13 +1217,25 @@ async fn copy_file_to_file(
     Ok(())
 }
 
-fn is_ota_candidate_run(run: &WorkflowRun) -> bool {
-    run.name == "Cargo"
-        && matches!(run.status.as_str(), "completed" | "in_progress")
-        && !matches!(
-            run.conclusion.as_deref(),
-            Some("cancelled") | Some("skipped")
-        )
+/// Pull requests whose Cargo run could not be read during the install check.
+fn failed_pull_numbers(pulls: &[OpenPull], failed_heads: &[&str]) -> Vec<u64> {
+    pulls
+        .iter()
+        .filter(|pull| failed_heads.contains(&pull.head_sha.as_str()))
+        .map(|pull| pull.number)
+        .collect()
+}
+
+fn artifact_snapshots(artifacts: &[crate::github::ListedArtifact]) -> Vec<ArtifactSnapshot<'_>> {
+    artifacts
+        .iter()
+        .map(|artifact| ArtifactSnapshot {
+            name: artifact.name.as_str(),
+            id: artifact.id,
+            size_in_bytes: artifact.size_in_bytes,
+            expired: artifact.expired,
+        })
+        .collect()
 }
 
 /// Verifies that the GitHub token has all scopes required for OTA operations.
@@ -2162,62 +2130,6 @@ mod tests {
             result.is_ok(),
             "Should have sufficient disk space in temp directory"
         );
-    }
-
-    fn cargo_run(id: u64, status: &str, conclusion: Option<&str>) -> WorkflowRun {
-        WorkflowRun {
-            name: "Cargo".to_owned(),
-            id,
-            status: status.to_owned(),
-            conclusion: conclusion.map(str::to_owned),
-            head_sha: None,
-        }
-    }
-
-    #[test]
-    fn test_ota_candidate_run_keeps_completed_success_and_failure() {
-        assert!(is_ota_candidate_run(&cargo_run(
-            1,
-            "completed",
-            Some("success")
-        )));
-        assert!(is_ota_candidate_run(&cargo_run(
-            2,
-            "completed",
-            Some("failure")
-        )));
-    }
-
-    #[test]
-    fn test_ota_candidate_run_keeps_in_progress() {
-        assert!(is_ota_candidate_run(&cargo_run(3, "in_progress", None)));
-    }
-
-    #[test]
-    fn test_ota_candidate_run_drops_cancelled_skipped_and_queued() {
-        assert!(!is_ota_candidate_run(&cargo_run(
-            4,
-            "completed",
-            Some("cancelled")
-        )));
-        assert!(!is_ota_candidate_run(&cargo_run(
-            5,
-            "completed",
-            Some("skipped")
-        )));
-        assert!(!is_ota_candidate_run(&cargo_run(6, "queued", None)));
-    }
-
-    #[test]
-    fn test_ota_candidate_run_requires_cargo_name() {
-        let run = WorkflowRun {
-            name: "Docs".to_owned(),
-            id: 7,
-            status: "completed".to_owned(),
-            conclusion: Some("success".to_owned()),
-            head_sha: None,
-        };
-        assert!(!is_ota_candidate_run(&run));
     }
 
     fn create_external_client(tmp_dir: PathBuf) -> OtaClient {
