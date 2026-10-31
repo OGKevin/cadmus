@@ -878,11 +878,12 @@ in
       cadmuscli dist
     '';
 
-    # Typecheck and test the OpenCode plugins
+    # Typecheck, test, and format-check the OpenCode plugins
     cadmus-opencode-check.exec = ''
       cd ${config.devenv.root}/.opencode
       npm run typecheck
       npm test
+      npm run format
     '';
 
     # Run clippy filtered to lines changed relative to master
