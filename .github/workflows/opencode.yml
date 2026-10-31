@@ -14,10 +14,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  checks:
+  changes:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      opencode: ${{ steps.filter.outputs.opencode }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -29,10 +31,23 @@ jobs:
           filters: |
             opencode:
               - '.opencode/**'
+              - '.prettierignore'
+              - '.prettierrc.json'
               - '.github/workflows/opencode.yml'
+              - '.github/workflows/opencode-report.yml'
+
+  checks:
+    needs: changes
+    if: needs.changes.outputs.opencode == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
-        if: steps.filter.outputs.opencode == 'true'
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -40,24 +55,68 @@ jobs:
           cache-dependency-path: .opencode/package-lock.json
 
       - name: Install dependencies
-        if: steps.filter.outputs.opencode == 'true'
         run: npm ci
         working-directory: .opencode
 
       - name: Typecheck
-        if: steps.filter.outputs.opencode == 'true'
         run: npm run typecheck
         working-directory: .opencode
 
       - name: Test
-        if: steps.filter.outputs.opencode == 'true'
         run: npm test
         working-directory: .opencode
+
+  prettier:
+    needs: changes
+    if: needs.changes.outputs.opencode == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: .opencode/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: .opencode
+
+      - name: Collect prettier diagnostics
+        id: collect
+        working-directory: .opencode
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/prettier-opencode-reviewdog-input"
+          npm run format:fix
+          if ! git -C "$GITHUB_WORKSPACE" diff --quiet; then
+            git -C "$GITHUB_WORKSPACE" diff > "$GITHUB_WORKSPACE/prettier-opencode-reviewdog-input/diagnostics.diff"
+            echo "upload=true" >> "$GITHUB_OUTPUT"
+            echo "::error::Prettier found formatting issues"
+            exit 1
+          fi
+          : > "$GITHUB_WORKSPACE/prettier-opencode-reviewdog-input/diagnostics.diff"
+          echo "upload=true" >> "$GITHUB_OUTPUT"
+
+      - name: Upload reviewdog input artifact
+        if: ${{ !cancelled() && steps.collect.outputs.upload == 'true' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: prettier-opencode-reviewdog-input
+          path: prettier-opencode-reviewdog-input/
+          if-no-files-found: error
+          retention-days: 1
 
   required-opencode:
     name: required-opencode
     permissions: {}
-    needs: [checks]
+    needs: [changes, checks, prettier]
     if: >-
       always() && (cancelled() || contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
     runs-on: ubuntu-latest

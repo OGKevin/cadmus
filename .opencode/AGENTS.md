@@ -19,6 +19,7 @@ directory:
 npm ci
 npm run typecheck
 npm test
+npm run format
 ```
 
 `devenv` runs the same checks as `cadmus-opencode-check`.

@@ -45,6 +45,11 @@ pass/fail-only jobs should revoke token access:
 
 Without this, they inherit the workflow `contents: read` grant unnecessarily.
 
+A rollup that the ruleset requires (e.g. `required-docs`) must be able to
+report on every pull request. Do not path-filter the workflow's
+`pull_request` trigger for such a workflow — filter inside a `changes` job
+instead, or GitHub waits forever for a check that never starts.
+
 ### Read-only checkouts
 
 Path-filter and validate jobs only need a read-only checkout. Prefer:
@@ -105,6 +110,7 @@ collection from posting for every reviewdog consumer:
 | Actions lint             | Actions lint report     | actionlint, prettier        |
 | Shell                    | Shell report            | shellcheck, shfmt           |
 | Website                  | Website report          | prettier, eslint, stylelint |
+| OpenCode                 | OpenCode report         | prettier                    |
 | Docs lint                | Docs lint report        | rumdl                       |
 
 New reviewdog jobs must follow the same collect/report pair. Keep
