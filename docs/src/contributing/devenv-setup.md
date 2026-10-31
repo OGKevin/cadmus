@@ -223,6 +223,27 @@ compile `cadmus-core` — plain `cargo test` and `--features default` fail with
 `compile_error!("A device feature must be enabled")`. Use `emulator` on the
 host; use `kobo` only via the `build-kobo` skill (cross-compiles for ARM).
 
+## Optional Application Features
+
+Some applications are compiled only when their feature is enabled. They are
+**off by default**, so shipped builds do not include them unless the build
+passes the feature:
+
+- `terminal` — the Terminal application and its `[terminal]` settings. Pulls in
+  the `portable-pty` and `vt100` dependencies.
+
+Enable one alongside a device feature:
+
+```bash
+cadmuscli run-emulator --features terminal
+cadmuscli build-kobo --features terminal
+```
+
+A build without the feature still loads a settings file that contains
+`[terminal]`: the table is ignored, a warning is printed at startup, and the
+table is omitted the next time settings are saved. Every other setting is
+preserved.
+
 CI uploads require a `CODECOV_TOKEN` repository secret (one-time setup on codecov.io).
 
 ## Platform Support

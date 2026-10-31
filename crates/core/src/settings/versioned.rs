@@ -28,11 +28,12 @@
 //! 2. Update manifest metadata
 //! 3. Remove old files exceeding retention limit
 use crate::settings::Settings;
+use crate::settings::UNSUPPORTED_SETTINGS_TABLES;
 use crate::version::GitVersion;
 use anyhow::{Context, Error};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const SETTINGS_DIR: &str = "Settings";
 const MANIFEST_FILE: &str = ".cadmus-index.toml";
@@ -174,6 +175,7 @@ impl SettingsManager {
                     if settings.sanitize() {
                         eprintln!("some settings value were invalid, they have been cleaned up");
                     }
+                    report_unsupported_tables(&file_path);
                     return settings;
                 }
                 Err(e) => {
@@ -312,7 +314,10 @@ impl SettingsManager {
         );
 
         let settings = match crate::helpers::load_toml::<Settings, _>(&legacy_path) {
-            Ok(s) => s,
+            Ok(s) => {
+                report_unsupported_tables(&legacy_path);
+                s
+            }
             Err(e) => {
                 eprintln!(
                     "failed to load legacy settings file {}: {}; skipping migration",
@@ -513,6 +518,37 @@ impl SettingsManager {
 
         self.write_manifest(&manifest)
     }
+}
+
+/// Reports settings tables present on disk that this build cannot represent.
+///
+/// A build without an application's feature drops that application's settings
+/// table on the next save. Saying so at load time keeps the loss visible
+/// instead of silent.
+fn report_unsupported_tables(path: &Path) {
+    let Ok(contents) = fs::read_to_string(path) else {
+        return;
+    };
+
+    for table in unsupported_tables(&contents) {
+        eprintln!(
+            "ignoring [{table}] settings in {}: this build does not support them",
+            path.display()
+        );
+    }
+}
+
+/// Tables in `contents` that [`UNSUPPORTED_SETTINGS_TABLES`] lists.
+fn unsupported_tables(contents: &str) -> Vec<&'static str> {
+    let Ok(document) = toml::from_str::<toml::Table>(contents) else {
+        return Vec::new();
+    };
+
+    UNSUPPORTED_SETTINGS_TABLES
+        .iter()
+        .copied()
+        .filter(|table| document.contains_key(*table))
+        .collect()
 }
 
 #[cfg(test)]
@@ -1180,5 +1216,71 @@ mod tests {
             "v0.1.2",
             "Current version should be in manifest"
         );
+    }
+
+    fn save_raw_settings(manager: &SettingsManager, content: &str) {
+        fs::create_dir_all(&manager.settings_dir).unwrap();
+        let file = manager
+            .settings_dir
+            .join(format!("Settings-{}.toml", manager.current_version));
+        fs::write(&file, content).unwrap();
+        let manifest = SettingsManifest {
+            entries: vec![SettingsEntry {
+                version: manager.current_version.clone(),
+                uuid: manager.build_uuid.clone(),
+                file: file.file_name().unwrap().to_string_lossy().into_owned(),
+                saved_at: None,
+            }],
+        };
+        manager.write_manifest(&manifest).unwrap();
+    }
+
+    #[test]
+    fn load_drops_terminal_settings_when_the_app_is_not_built() {
+        let temp_dir = TempDir::new().unwrap();
+        let manager = create_test_manager(&temp_dir);
+        save_raw_settings(
+            &manager,
+            "selected-library = 3\n\n[terminal]\nfont-size = 18.0\n",
+        );
+
+        let settings = manager.load();
+
+        assert_eq!(settings.selected_library, 3, "other values must still load");
+        let saved = manager.save(&settings).and_then(|()| {
+            fs::read_to_string(
+                manager
+                    .settings_dir
+                    .join(format!("Settings-{}.toml", manager.current_version)),
+            )
+            .map_err(Into::into)
+        });
+
+        let saved = saved.unwrap();
+        assert!(
+            saved.contains("selected-library = 3"),
+            "unrelated settings must survive the round trip: {saved}"
+        );
+        assert_eq!(
+            saved.contains("[terminal]"),
+            cfg!(feature = "terminal"),
+            "terminal settings survive only in builds that support them: {saved}"
+        );
+    }
+
+    #[test]
+    fn unsupported_tables_reports_only_tables_this_build_lacks() {
+        let contents = "selected-library = 3\n\n[terminal]\nfont-size = 18.0\n";
+
+        assert_eq!(
+            unsupported_tables(contents),
+            if cfg!(feature = "terminal") {
+                Vec::new()
+            } else {
+                vec!["terminal"]
+            }
+        );
+        assert!(unsupported_tables("selected-library = 3\n").is_empty());
+        assert!(unsupported_tables("not = valid = toml").is_empty());
     }
 }

@@ -52,6 +52,8 @@ pub mod settings_editor;
 pub mod sketch;
 pub mod slider;
 pub mod startup;
+#[cfg(feature = "terminal")]
+pub mod terminal;
 pub mod toggle;
 pub mod toggleable_keyboard;
 pub mod top_bar;
@@ -741,8 +743,13 @@ pub enum Event {
 pub enum AppCmd {
     Sketch,
     Calculator,
-    Dictionary { query: String, language: String },
+    Dictionary {
+        query: String,
+        language: String,
+    },
     SettingsEditor,
+    #[cfg(feature = "terminal")]
+    Terminal,
     TouchEvents,
     RotationValues,
 }
@@ -821,6 +828,8 @@ pub enum ViewId {
     ReaderSearchInput,
     DictionarySearchInput,
     CalculatorInput,
+    #[cfg(feature = "terminal")]
+    Terminal,
     SearchBar,
     AddressBar,
     AddressBarInput,
@@ -1021,6 +1030,7 @@ pub enum EntryId {
     /// Switch to the peer Cadmus install (main ↔ test).
     SwitchInstall,
     CheckForUpdates,
+    ToggleKeyboard,
     FileEntry(PathBuf),
     Ota(OtaEntryId),
     /// Open the per-kind refresh rate editor for the given file extension.

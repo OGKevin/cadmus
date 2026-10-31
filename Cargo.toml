@@ -55,6 +55,7 @@ await_holding_refcell_ref = "deny"
 [patch.crates-io]
 markup5ever = { path = "thirdparty/html5ever/markup5ever" }
 xml5ever = { path = "thirdparty/html5ever/xml5ever" }
+vt100 = { git = "https://github.com/KacperLa/vt100-rust.git", rev = "6a45351ac049a6c87f893aa6896451c5b3720ee7" }
 
 [profile.release-minsized]
 inherits = "release"
