@@ -5,6 +5,7 @@
 //! PTY, emulator, and renderer on the same character and pixel geometry.
 
 mod emulator;
+mod keymap;
 mod pty;
 mod render;
 mod session;
