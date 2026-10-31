@@ -498,6 +498,19 @@ in
 
     RUSTC_WRAPPER = "${pkgs.sccache}/bin/sccache";
     SCCACHE_CACHE_SIZE = "50G";
+
+    # sccache does not cache incremental compiles, and cargo enables incremental
+    # compilation for the dev profile by default.
+    CARGO_INCREMENTAL = "0";
+
+    # Keep the daemon private to this devenv: clients without this variable look
+    # for a TCP server on 127.0.0.1:4226 instead of this socket, so nothing
+    # outside the shell can reach it and other projects cannot collide with it.
+    SCCACHE_SERVER_UDS = "${config.devenv.state}/sccache.sock";
+
+    # sccache does not create parent directories, and an unopenable log path
+    # makes server startup fail, which fails the build.
+    SCCACHE_ERROR_LOG = "${config.devenv.state}/sccache-server.log";
   };
 
   services.opentelemetry-collector = {
@@ -885,6 +898,27 @@ in
       npm test
     '';
 
+    # Inspect and recover the sccache daemon. `restart` clears a server left
+    # behind by an sccache upgrade ("Mismatch of client/server versions?") and
+    # applies changed server-side settings such as SCCACHE_CACHE_SIZE.
+    cadmus-sccache.exec = ''
+      set -e
+
+      case "''${1:-stats}" in
+        stats) exec sccache --show-adv-stats ;;
+        reset) exec sccache --zero-stats ;;
+        restart)
+          sccache --stop-server || true
+          exec sccache --start-server
+          ;;
+        log) exec tail -n "''${2:-50}" -f "$SCCACHE_ERROR_LOG" ;;
+        *)
+          echo "usage: cadmus-sccache [stats|reset|restart|log [lines]]" >&2
+          exit 2
+          ;;
+      esac
+    '';
+
     # Run clippy filtered to lines changed relative to master
     cadmus-clippy.exec = ''
       cadmuscli clippy --github-report --diff-branch master "$@"
@@ -1036,6 +1070,9 @@ in
     echo ""
     echo "  After 'devenv up', visit http://localhost:3000 for Grafana"
     echo "  Pyroscope profiling UI: http://localhost:4040"
+    echo ""
+    echo "Build cache (sccache, incremental compilation disabled):"
+    echo "  cadmus-sccache        - stats|reset|restart|log"
     echo ""
 
      echo "Linking rust source for stable access"

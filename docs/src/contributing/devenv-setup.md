@@ -97,6 +97,7 @@ Once inside the devenv shell, these commands are available:
 | `cadmus-coverage-show`      | Open project-wide HTML coverage report                      |
 | `cadmus-coverage-diff`      | Open patch coverage HTML vs `origin/$CADMUS_DEFAULT_BRANCH` |
 | `cadmus-opencode-check`     | Typecheck and test the OpenCode plugins                     |
+| `cadmus-sccache`            | Inspect or restart the sccache build cache daemon           |
 
 Run `cadmuscli --help` to see all available subcommands, or `cadmuscli <cmd> --help` for
 options on a specific command. `cargo xtask` still works as a debug `cargo run` alias.
@@ -148,6 +149,22 @@ devenv tasks run build:kobo
 `docs:build` uses `execIfModified` so it only rebuilds when documentation files
 have changed. `website:install` uses `execIfModified` on `website/package.json`
 and `website/package-lock.json`.
+
+## Build Caching (sccache)
+
+devenv sets `RUSTC_WRAPPER` to [sccache](https://github.com/mozilla/sccache), so
+rustc output is cached in `~/.cache/sccache` (capped at 50 GiB) and reused across
+builds, branches, and workspaces.
+
+Incremental compilation is disabled (`CARGO_INCREMENTAL=0`). sccache cannot cache
+incremental compiles, so leaving them on turns every dev build into a cache miss.
+
+| Command                  | Purpose                                 |
+| ------------------------ | --------------------------------------- |
+| `cadmus-sccache stats`   | Advanced cache statistics               |
+| `cadmus-sccache reset`   | Zero the counters                       |
+| `cadmus-sccache restart` | Stop and start the daemon               |
+| `cadmus-sccache log`     | Tail `.devenv/state/sccache-server.log` |
 
 ## Kobo Build Notes
 
