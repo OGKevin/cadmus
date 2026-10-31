@@ -1,5 +1,6 @@
 use super::{
     emulator::Emulator,
+    keymap,
     pty::{Pty, TerminalPty, TerminalSize},
     render::{TerminalGeometry, TerminalRenderer},
 };
@@ -11,7 +12,7 @@ use crate::fl;
 use crate::framebuffer::{Framebuffer as _, Pixmap, UpdateMode};
 use crate::geom::{Dir, Point, Rectangle, halves};
 use crate::gesture::GestureEvent;
-use crate::input::FingerStatus;
+use crate::input::{ButtonCode, DeviceEvent, FingerStatus};
 use crate::runtime::Job;
 use crate::unit::scale_by_dpi;
 use crate::view::common::{
@@ -39,19 +40,6 @@ const MAX_FONT_SIZE: f32 = 24.0;
 const TERMINAL_BAR_CHILD_COUNT: usize = 5;
 const PAGE_UP: &[u8] = b"\x1b[5~";
 const PAGE_DOWN: &[u8] = b"\x1b[6~";
-
-fn cursor_key_sequence(dir: Dir, application_cursor: bool) -> &'static [u8] {
-    match (dir, application_cursor) {
-        (Dir::North, false) => b"\x1b[A",
-        (Dir::South, false) => b"\x1b[B",
-        (Dir::East, false) => b"\x1b[C",
-        (Dir::West, false) => b"\x1b[D",
-        (Dir::North, true) => b"\x1bOA",
-        (Dir::South, true) => b"\x1bOB",
-        (Dir::East, true) => b"\x1bOC",
-        (Dir::West, true) => b"\x1bOD",
-    }
-}
 
 #[inline]
 fn scale_font_size(font_size: f32) -> u32 {
@@ -814,6 +802,25 @@ impl View for Terminal {
         context: &mut AppContext,
     ) -> bool {
         match *evt {
+            Event::Device(DeviceEvent::Button {
+                code: ButtonCode::Keyboard(key),
+                status,
+                ..
+            }) => {
+                self.return_to_live_output(rq);
+                let application_cursor = match self.emulator.lock() {
+                    Ok(emulator) => emulator.application_cursor(),
+                    Err(error) => {
+                        tracing::warn!(error = %error, "Failed to read terminal cursor mode");
+                        return true;
+                    }
+                };
+                // Releases, modifiers, and unsupported keys produce no input.
+                if let Some(seq) = keymap::bytes(&key, status, application_cursor) {
+                    let _ = self.pty.write(&seq);
+                }
+                true
+            }
             Event::Keyboard(ke) => {
                 self.return_to_live_output(rq);
                 let bytes: &[u8] = match ke {
@@ -832,7 +839,7 @@ impl View for Terminal {
                                 return true;
                             }
                         };
-                        cursor_key_sequence(dir, application_cursor)
+                        keymap::cursor_key_sequence(dir, application_cursor)
                     }
                     KeyboardEvent::Tab => b"\t",
                     KeyboardEvent::Escape => b"\x1b",
@@ -1047,7 +1054,7 @@ impl Drop for Terminal {
 mod tests {
     use super::{
         PAGE_DOWN, PAGE_UP, RendererConfiguration, Terminal, TerminalLayout,
-        application_scroll_sequence, cursor_key_sequence, mouse_tap_sequence, normalized_font_size,
+        application_scroll_sequence, mouse_tap_sequence, normalized_font_size,
         requests_terminal_hard_refresh, scrollback_target, should_dismiss_terminal_bar,
         spawn_reader_job, terminal_bar_rects, terminal_pixel_dimensions, toggles_terminal_bar,
     };
@@ -1595,18 +1602,6 @@ mod tests {
         assert_eq!(application_scroll_sequence(Dir::North), Some(PAGE_DOWN));
         assert_eq!(application_scroll_sequence(Dir::West), None);
         assert_eq!(application_scroll_sequence(Dir::East), None);
-    }
-
-    #[test]
-    fn cursor_keys_follow_the_terminal_application_mode() {
-        assert_eq!(cursor_key_sequence(Dir::North, false), b"\x1b[A");
-        assert_eq!(cursor_key_sequence(Dir::South, false), b"\x1b[B");
-        assert_eq!(cursor_key_sequence(Dir::East, false), b"\x1b[C");
-        assert_eq!(cursor_key_sequence(Dir::West, false), b"\x1b[D");
-        assert_eq!(cursor_key_sequence(Dir::North, true), b"\x1bOA");
-        assert_eq!(cursor_key_sequence(Dir::South, true), b"\x1bOB");
-        assert_eq!(cursor_key_sequence(Dir::East, true), b"\x1bOC");
-        assert_eq!(cursor_key_sequence(Dir::West, true), b"\x1bOD");
     }
 
     #[test]
