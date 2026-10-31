@@ -1,9 +1,8 @@
 use crate::device::inhibitor::Inhibitor;
 use crate::framebuffer::Display;
-use crate::input::{InputEvent, device_events, raw_events, usb_events};
+use crate::input::{TaggedInputEvent, device_events, raw_events, usb_events};
 use crate::settings::ButtonScheme;
 use crate::view::Event;
-use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedSender;
@@ -12,21 +11,6 @@ use tokio_util::sync::CancellationToken;
 pub(crate) const CLOCK_REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 pub(crate) const BATTERY_REFRESH_INTERVAL: Duration = Duration::from_secs(299);
 
-fn touch_input_path() -> Option<String> {
-    for path in [
-        "/dev/input/by-path/platform-2-0010-event",
-        "/dev/input/by-path/platform-1-0038-event",
-        "/dev/input/by-path/platform-1-0010-event",
-        "/dev/input/by-path/platform-0-0010-event",
-        "/dev/input/event1",
-    ] {
-        if Path::new(path).exists() {
-            return Some(path.to_string());
-        }
-    }
-    None
-}
-
 /// Stub input source for Kobo devices.
 ///
 /// The real implementation will wrap the evdev/USB input pipeline.
@@ -34,7 +18,7 @@ fn touch_input_path() -> Option<String> {
 pub struct InputSource {
     pub(super) info: crate::input::DeviceInputInfo,
     pub(super) dpi: u16,
-    pub(super) raw_sender: Option<UnboundedSender<InputEvent>>,
+    pub(super) raw_sender: Option<UnboundedSender<TaggedInputEvent>>,
     pub(super) pipeline_cancel: Option<CancellationToken>,
     pub(super) gesture_job: Option<crate::runtime::Job<()>>,
 }
@@ -67,6 +51,17 @@ impl Drop for InputSource {
 }
 
 impl crate::device::InputSource for InputSource {
+    /// Starts the Kobo input pipeline and returns its event hub channel.
+    ///
+    /// Cancels any previously started pipeline (hotplug restart), then spawns:
+    /// - `raw_events`: a feature scan over `/dev/input` that classifies every
+    ///   evdev device (touch digitizer, gpio-keys, power key, and any
+    ///   hotplugged keyboards/remotes) into a `DeviceProfile` that maps its
+    ///   scancodes to semantic functions — no hard-coded device paths,
+    /// - the gesture pipeline, which turns raw touch events into semantic
+    ///   input events, and
+    /// - `usb_events`, which watches for USB device (dis)connections that
+    ///   trigger a pipeline restart.
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(
@@ -86,50 +81,14 @@ impl crate::device::InputSource for InputSource {
         button_scheme: ButtonScheme,
         inhibitor: Arc<Inhibitor>,
     ) -> (crate::view::Hub, crate::view::HubReceiver) {
-        let mut paths = Vec::new();
-        let touch_path = touch_input_path();
-        if let Some(path) = touch_path.as_ref() {
-            paths.push(path.clone());
+        if let Some(cancel) = &self.pipeline_cancel {
+            cancel.cancel();
         }
-        for bi in [
-            "/dev/input/by-path/platform-gpio-keys-event",
-            "/dev/input/by-path/platform-ntx_event0-event",
-            "/dev/input/by-path/platform-mxckpd-event",
-            "/dev/input/event0",
-        ] {
-            if Path::new(bi).exists() {
-                paths.push(bi.to_string());
-                break;
-            }
-        }
-        for pi in [
-            "/dev/input/by-path/platform-bd71828-pwrkey.6.auto-event",
-            "/dev/input/by-path/platform-bd71828-pwrkey.4.auto-event",
-            "/dev/input/by-path/platform-bd71828-pwrkey-event",
-        ] {
-            if Path::new(pi).exists() {
-                paths.push(pi.to_string());
-                break;
-            }
-        }
+        let pipeline_cancel = CancellationToken::new();
+        self.pipeline_cancel = Some(pipeline_cancel.clone());
 
-        if let Some(path) = touch_path.as_deref() {
-            crate::input::trace_touch_device_geometry(path, self.info.proto, screen);
-        }
-
-        tracing::debug!(
-            touch_path = touch_path.as_deref(),
-            input_paths = ?paths,
-            rotation = screen.rotation,
-            dims = ?screen.dims,
-            mirroring_scheme = ?self.info.mirroring_scheme,
-            swapping_scheme = self.info.swapping_scheme,
-            startup_rotation = self.info.startup_rotation,
-            mark = self.info.mark,
-            "starting kobo input pipeline"
-        );
-
-        let (raw_sender, raw_receiver) = raw_events(paths);
+        let (raw_sender, raw_receiver) =
+            raw_events(screen, self.info.proto, pipeline_cancel.clone());
         self.raw_sender = Some(raw_sender.clone());
         if let Some(job) = self.gesture_job.take() {
             job.cancel();
@@ -142,12 +101,6 @@ impl crate::device::InputSource for InputSource {
         self.gesture_job = Some(gesture_job);
         let usb_port = usb_events();
         let (tx, rx) = crate::view::hub_channel();
-
-        if let Some(cancel) = &self.pipeline_cancel {
-            cancel.cancel();
-        }
-        let pipeline_cancel = CancellationToken::new();
-        self.pipeline_cancel = Some(pipeline_cancel.clone());
 
         let tx2 = tx.clone();
         let inhibitor2 = Arc::clone(&inhibitor);
@@ -225,15 +178,17 @@ impl crate::device::InputSource for InputSource {
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(skip(self), level = tracing::Level::TRACE, fields(
-            kind = event.kind,
-            code = event.code,
-            value = event.value,
+            kind = event.event.kind,
+            code = event.event.code,
+            value = event.event.value,
         ))
     )]
-    fn send_raw(&self, event: InputEvent) {
-        if event.kind == crate::input::EV_KEY && event.code == crate::input::KEY_ROTATE_DISPLAY {
+    fn send_raw(&self, event: TaggedInputEvent) {
+        if event.event.kind == crate::input::EV_KEY
+            && event.event.code == crate::input::KEY_ROTATE_DISPLAY
+        {
             tracing::debug!(
-                rotation = event.value,
+                rotation = event.event.value,
                 channel_ready = self.raw_sender.is_some(),
                 "injecting display_rotate_event"
             );

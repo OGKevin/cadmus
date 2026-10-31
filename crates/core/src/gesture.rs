@@ -511,6 +511,11 @@ async fn parse_gesture_events(
                 code,
                 time,
             } => {
+                // Keyboard and raw codes carry no hold semantics; no consumer
+                // acts on HoldButton* for them.
+                if matches!(code, ButtonCode::Keyboard(..) | ButtonCode::Raw(..)) {
+                    continue;
+                }
                 let mut bt = buttons.lock().unwrap();
                 bt.insert(code, time);
                 tracing::debug!(
@@ -794,7 +799,7 @@ fn interpret_segment(sp: &[Point], tap_jitter: f32) -> GestureEvent {
 mod tests {
     use super::*;
     use crate::geom::Point;
-    use crate::input::{DeviceEvent, FingerStatus};
+    use crate::input::{DeviceEvent, FingerStatus, KeyEvent, Modifiers};
     use std::time::Duration;
     use tokio::sync::mpsc;
 
@@ -910,6 +915,32 @@ mod tests {
             gesture,
             Some(GestureEvent::HoldFingerShort(pt, 3)) if pt == position
         ));
+
+        drop(device_tx);
+        let _ = pipeline.job.join(Duration::from_secs(1)).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn keyboard_press_does_not_arm_button_hold() {
+        let (device_tx, device_rx) = mpsc::unbounded_channel();
+        let pipeline = GesturePipeline::start(device_rx, 300);
+        let mut events = pipeline.events;
+
+        device_tx
+            .send(DeviceEvent::Button {
+                code: ButtonCode::Keyboard(KeyEvent {
+                    keycode: 30,
+                    modifiers: Modifiers::default(),
+                }),
+                status: ButtonStatus::Pressed,
+                time: 1.0,
+            })
+            .unwrap();
+
+        let gesture =
+            next_gesture(&mut events, HOLD_DELAY_SHORT + Duration::from_millis(250)).await;
+
+        assert!(!matches!(gesture, Some(GestureEvent::HoldButtonShort(_))));
 
         drop(device_tx);
         let _ = pipeline.job.join(Duration::from_secs(1)).await;
