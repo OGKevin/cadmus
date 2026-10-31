@@ -214,8 +214,13 @@ fn is_ignored(entry: &walkdir::DirEntry) -> bool {
 ///   need its own power-set of CI jobs.
 /// - `telemetry` only aliases `tracing + profiling`, so adding it to the
 ///   powerset would duplicate combinations that already compile the same code.
+/// - `terminal` is implied by `test`, so every `test` combination already
+///   compiles the `terminal` code paths.
 fn is_excluded_feature(name: &str) -> bool {
-    matches!(name, "default" | "bench" | "docs" | "telemetry")
+    matches!(
+        name,
+        "default" | "bench" | "docs" | "telemetry" | "terminal"
+    )
 }
 
 fn device_features_from_core_manifest(root: &Path) -> Result<Vec<String>> {
@@ -476,8 +481,8 @@ mod tests {
         );
         assert_eq!(
             entries.len(),
-            40,
-            "3 device features × 2⁴ ancillary combos − 8 invalid deviceless+test × 1 OS = 40 entries"
+            20,
+            "3 device features × 2³ ancillary combos − 4 invalid deviceless+test × 1 OS = 20 entries"
         );
     }
 }
