@@ -297,6 +297,74 @@ let
         isDefault: false
         editable: true
   '';
+
+  # The viewer tarball is the same release as the skill input and the
+  # workspace crate. Renovate bumps those two together; this equality fails
+  # the shell if the viewer would otherwise stay on an older release. The
+  # hashes are for that release and have to be updated with it. Following
+  # the input's Cargo.toml for the URL is what makes the versions match;
+  # the hash still cannot be derived from it.
+  slintRelease =
+    let
+      inputVersion = (builtins.fromTOML (builtins.readFile "${inputs.slint}/Cargo.toml")).workspace.package.version;
+      cratePin = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).workspace.dependencies.slint.version;
+      crateVersion = builtins.replaceStrings [ "=" ] [ "" ] cratePin;
+    in
+    assert pkgs.lib.assertMsg (inputVersion == crateVersion) ''
+      Slint input ${inputVersion} does not match the workspace pin ${cratePin}.
+      Run `devenv update slint` and update the viewer hashes in devenv.nix.
+    '';
+    inputVersion;
+
+  # nixpkgs' slint-viewer is built without the MCP server. This is the
+  # official release binary, which serves it. The `slint` input is the git
+  # tree (the skill); it does not contain that binary.
+  slintViewer = pkgs.stdenv.mkDerivation {
+    pname = "slint-viewer";
+    version = slintRelease;
+
+    src =
+      if isLinux then
+        pkgs.fetchurl {
+          url = "https://github.com/slint-ui/slint/releases/download/v${slintRelease}/slint-viewer-linux.tar.gz";
+          sha256 = "86b260e661cdc24dcadaf63266b034f3281cbec542afc26545a72a986fe42a13";
+        }
+      else
+        pkgs.fetchurl {
+          url = "https://github.com/slint-ui/slint/releases/download/v${slintRelease}/slint-viewer-macos.tar.gz";
+          sha256 = "e6ced86250e052122b65b593c77c2042a54798428a0f9ae5840f8769f1488571";
+        };
+
+    sourceRoot = "slint-viewer";
+    nativeBuildInputs = pkgs.lib.optionals isLinux [ pkgs.autoPatchelfHook ];
+    buildInputs = pkgs.lib.optionals isLinux [
+      pkgs.fontconfig
+      pkgs.freetype
+      pkgs.mesa
+      pkgs.libinput
+      pkgs.udev
+      pkgs.wayland
+      pkgs.libxkbcommon
+      pkgs.stdenv.cc.cc.lib
+    ];
+
+    installPhase = ''
+      mkdir -p $out/bin
+      cp slint-viewer $out/bin/slint-viewer
+      chmod +x $out/bin/slint-viewer
+    '';
+
+    # `dontFixup` already skips ELF patching and stripping. Darwin has no ELF
+    # to patch, and the binary is already linked for that platform.
+    dontFixup = isDarwin;
+  };
+
+  # Cursor's MCP file and OpenCode's `mcp` key use different schemas.
+  slintMcpUrl = {
+    docs = "https://docs.slint.dev/mcp";
+    viewer = "http://127.0.0.1:9315/mcp";
+  };
+
 in
 {
   # Overlays for platform-specific fixes
@@ -357,6 +425,9 @@ in
     # Emulator dependency
     pkgs.sdl3
 
+    # Extract @tr() strings into cadmus-core.pot (cadmus-translate)
+    pkgs.slint-tr-extractor
+
     # Native build dependencies (development headers)
     pkgs.zlib
     pkgs.bzip2
@@ -414,6 +485,11 @@ in
   ++ pkgs.lib.optionals isDarwin [
     # macOS uses Apple's clang from Xcode Command Line Tools
     # Frameworks are provided by the system SDK, no need to add them explicitly
+  ]
+  # Linux release tarball is x86_64. Other Linux hosts must not fetch it.
+  ++ pkgs.lib.optionals (isDarwin || (isLinux && pkgs.stdenv.hostPlatform.isx86_64)) [
+    # Preview the Slint UI files and serve the viewer MCP endpoint.
+    slintViewer
   ];
 
   # Enable Rust with cross-compilation support
@@ -779,6 +855,19 @@ in
 
   # Tasks for building components with proper dependencies
   tasks = {
+    # Symlink mode reports a real directory and continues, which would leave
+    # the previously copied skill in place. Stop before that install.
+    "devenv:files:slint-skill" = {
+      before = [ "devenv:files" ];
+      exec = ''
+        dest="${config.devenv.root}/.agents/skills/slint"
+        if [ -e "$dest" ] && [ ! -L "$dest" ]; then
+          echo "error: $dest is a directory. Remove it so devenv can link the Slint skill." >&2
+          exit 1
+        fi
+      '';
+    };
+
     # Build documentation EPUB (required for embedded assets)
     # Only rebuilds when docs files have changed (tracked via content hash)
     "docs:build" = {
@@ -850,6 +939,22 @@ in
 
   # Scripts are simple aliases that invoke cadmuscli commands
   scripts = {
+    # Preview the Slint settings UI. Pass any slint-viewer flags through.
+    # SLINT_MCP_PORT exposes the viewer on the endpoint in the generated MCP
+    # config (Cursor and OpenCode).
+    cadmus-slint-view.exec = ''
+      if ! command -v slint-viewer >/dev/null 2>&1; then
+        echo "The official slint-viewer binary is only provided on x86_64 Linux and macOS." >&2
+        exit 1
+      fi
+      export SLINT_MCP_PORT="''${SLINT_MCP_PORT:-9315}"
+      slint-viewer \
+        --auto-reload \
+        --component SettingsWindow \
+        ${config.devenv.root}/crates/core/ui/settings/window.slint \
+        "$@"
+    '';
+
     # Build complete documentation website (mdBook + Cargo docs + Next.js)
     cadmus-docs-build.exec = ''
       cadmuscli docs
@@ -919,12 +1024,20 @@ in
       cadmuscli run-emulator --features telemetry,test
     '';
 
-    # Extract translatable strings from documentation
+    # Regenerate docs/po/messages.pot and the Slint ui/lang catalog.
     cadmus-translate.exec = ''
       echo "Extracting translatable strings from documentation..."
       MDBOOK_OUTPUT='{"xgettext": {}}' mdbook build -d $DEVENV_ROOT/docs/po $DEVENV_ROOT/docs
       echo ""
-      echo "Updated docs/po/messages.pot"
+      echo "Extracting translatable strings from Slint screens..."
+      cd "$DEVENV_ROOT"
+      find crates/core/ui -name '*.slint' | sort | xargs \
+        slint-tr-extractor \
+          --no-default-translation-context \
+          -d cadmus-core \
+          -o crates/core/ui/lang/cadmus-core.pot
+      echo ""
+      echo "Updated docs/po/messages.pot and crates/core/ui/lang/cadmus-core.pot"
       echo "Translate on Crowdin: https://crowdin.com/project/cadmus"
     '';
 
@@ -971,6 +1084,51 @@ in
     '';
   };
 
+  # OpenCode reads `opencode.jsonc`. Cursor has no module, so its MCP file is
+  # written only when missing. The skill is a symlink. treefmt excludes that
+  # directory and these generated files; a tree walk also skips the symlink.
+  opencode = {
+    enable = true;
+    mcp = {
+      "slint-docs" = {
+        type = "remote";
+        url = slintMcpUrl.docs;
+      };
+      # Nothing listens until `cadmus-slint-view` is running, so leave this
+      # off. OpenCode would otherwise connect at startup and fail.
+      "slint-viewer" = {
+        type = "remote";
+        url = slintMcpUrl.viewer;
+        enabled = false;
+      };
+    };
+  };
+
+  files = {
+    ".agents/skills/slint" = {
+      source = inputs.slint + "/ai-plugins/skills/slint";
+      copyMode = "symlink";
+    };
+    ".cursor/mcp.json" = {
+      json = {
+        mcpServers = {
+          "slint-docs".url = slintMcpUrl.docs;
+          # Same reason as the OpenCode server: the viewer is not running yet.
+          "slint-viewer" = {
+            url = slintMcpUrl.viewer;
+            disabled = true;
+          };
+        };
+      };
+      # Write the file once, only if it is missing, and leave later edits.
+      # `copy` would replace it on every shell entry. `symlink` is read-only.
+      copyMode = "seed";
+    };
+    # The opencode module rewrites this file, so it stays a writable copy
+    # that is replaced on shell entry. treefmt excludes it.
+    "opencode.jsonc".copyMode = "copy";
+  };
+
   enterShell = ''
     echo "Cadmus development environment"
     echo ""
@@ -978,7 +1136,7 @@ in
     echo "  cadmus-docs-build     - Build complete documentation portal"
     echo "  cadmus-docs-preview   - wrangler dev for website/out (Workers, matches CI)"
     echo "  cadmus-docs-serve     - Serve website locally (http://localhost:3000)"
-    echo "  cadmus-translate      - Regenerate docs/po/messages.pot (translations on Crowdin)"
+    echo "  cadmus-translate      - Regenerate translation templates (docs and Slint)"
     echo "  cadmuscli run-emulator - Run the emulator (after setup)"
     echo "  cargo test            - Run tests (after setup)"
     echo ""
@@ -1031,6 +1189,11 @@ in
     echo ""
   ''
   + ''
+    echo "Slint UI:"
+    echo "  cadmus-slint-view     - Preview the settings Slint UI (MCP on :9315)"
+    echo ""
+  ''
+  + ''
     echo "Observability (OTEL):"
     echo "  devenv up            - Start all services (inc. observability stack)"
     echo "  cadmus-dev-otel      - Build & run emulator with OTEL enabled"
@@ -1057,6 +1220,8 @@ in
   treefmt = {
     enable = true;
     config = {
+      # nixpkgs treefmt, so the binary matches the nixpkgs formatters in `programs`.
+      package = pkgs.treefmt;
       programs = {
         prettier.enable = true;
         rustfmt.enable = true;
@@ -1080,6 +1245,13 @@ in
         excludes = [
           ".sqlx/**"
           "doc/**"
+          # Upstream Slint skill, linked by `files`, and the generated MCP
+          # files. A tree walk skips the symlink, and these globs drop the
+          # two generated files. Passing the symlink path itself still fails:
+          # treefmt resolves it before excludes, and has no setting for that.
+          ".agents/skills/slint/**"
+          ".cursor/mcp.json"
+          "opencode.jsonc"
         ];
         formatter = {
           # treefmt-nix already supplies -w, -i (via programs.shfmt.indent_size),

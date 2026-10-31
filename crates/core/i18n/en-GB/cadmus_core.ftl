@@ -20,12 +20,18 @@ keyboard-key-arrow-right = ▶
 keyboard-key-arrow-up = ▲
 keyboard-key-combine = CMB
 keyboard-key-control = CTRL
+keyboard-key-delete = delete
+keyboard-key-delete-forward = fwd
+keyboard-key-delete-short = del
 keyboard-key-escape = ESC
+keyboard-key-move-back = <
+keyboard-key-move-forward = >
 keyboard-key-return = RETURN
+keyboard-key-return-short = RET
 keyboard-key-shift = SHIFT
+keyboard-key-shift-short = SFT
+keyboard-key-space = space
 keyboard-key-tab = TAB
-
-startup-loading = Cadmus starting up…
 
 # Notifications
 
@@ -35,6 +41,8 @@ notification-downloading-dictionary = Downloading dictionary for "{ $lang }"
 notification-downloading-dictionary-completed = Downloading dictionary for "{ $lang }" completed
 notification-downloading-dictionary-progress = Downloading { $lang } ({ $downloaded }/{ $total })
 notification-dictionary-indexing = Indexing "{ $name }"
+notification-library-name-empty = Library name cannot be empty
+notification-library-path-missing = Path does not exist
 notification-network-up = Network is up ({ $ip }, { $essid }).
 notification-not-online = WiFi must be connected for this action.
 notification-refresh-rate-invalid = Refresh rate must be a number between 0 and 255.
@@ -45,6 +53,7 @@ notification-timezone-detection-failed = Timezone detection failed
 # Common
 cancel = Cancel
 delete = Delete
+ok = OK
 
 # GitHub device authorization
 device-auth-connecting = Connecting to GitHub…
@@ -98,16 +107,6 @@ settings-wifi-mode-auto = Auto
 settings-finished-action-notify = Notify
 settings-finished-action-close = Close
 settings-finished-action-goto-next = Go to Next
-
-# Settings - Categories
-settings-category-dictionaries = Dictionaries
-settings-category-general = General
-settings-category-import = Import
-settings-category-intermissions = Intermission Screens
-settings-category-libraries = Libraries
-settings-category-power = Power
-settings-category-reader = Reader
-settings-category-telemetry = Telemetry
 
 # Settings - General
 settings-general-auto-frontlight = Automatic Frontlight
@@ -192,7 +191,6 @@ settings-library-inherit = Inherit
 # Settings - Import
 settings-import-allowed-kinds = Indexed File Types
 settings-import-force-full-import = Force Full Import
-settings-import-force-full-import-cancel = {cancel}
 settings-import-force-full-import-confirm = Re-import all the files from all your libraries.
                                             This could take time and consume battery, it's
                                             advisable to keep your device plugged in while this runs.
@@ -221,7 +219,6 @@ settings-telemetry-enable-dbus-log = Enable D-Bus Log
 
 # Settings - Dictionaries
 settings-dictionaries-confirm-download = Download dictionary for "{ $lang }"?
-settings-dictionaries-confirm-download-cancel = Cancel
 settings-dictionaries-confirm-download-confirm = Download
 settings-dictionaries-delete = {delete}
 settings-dictionaries-download = Download

@@ -1,0 +1,77 @@
+import { ActionBar } from "../../widgets/action_bar.slint";
+import { InkListRow } from "../../widgets/paged_list.slint";
+import { InkScaffold } from "../../widgets/ink/scaffold.slint";
+import { MaterialPalette } from "../../widgets/ink/palette.slint";
+
+// Library editor fields and callbacks. Rust sets these; the window does not.
+export global LibraryEditorIo {
+    in property <bool> open: false;
+    in property <string> heading;
+    in property <string> name-label;
+    in property <string> path-label;
+    in property <string> finished-label;
+    in property <string> accept-label;
+    in property <string> library-name;
+    in property <string> path;
+    in property <string> finished;
+    callback dismissed();
+    callback accepted();
+    callback name-pressed();
+    callback path-pressed();
+    callback finished-pressed();
+}
+
+export component LibraryEditor inherits Rectangle {
+    width: 100%;
+    height: 100%;
+    background: MaterialPalette.surface;
+
+    TouchArea {
+        width: 100%;
+        height: 100%;
+    }
+
+    InkScaffold {
+        width: 100%;
+        height: 100%;
+        title: LibraryEditorIo.heading;
+        back-pressed => {
+            LibraryEditorIo.dismissed();
+        }
+
+        InkListRow {
+            label: LibraryEditorIo.name-label;
+            value: LibraryEditorIo.library-name;
+            pressed => {
+                LibraryEditorIo.name-pressed();
+            }
+        }
+
+        InkListRow {
+            label: LibraryEditorIo.path-label;
+            value: LibraryEditorIo.path;
+            pressed => {
+                LibraryEditorIo.path-pressed();
+            }
+        }
+
+        InkListRow {
+            label: LibraryEditorIo.finished-label;
+            value: LibraryEditorIo.finished;
+            pressed => {
+                LibraryEditorIo.finished-pressed();
+            }
+        }
+
+        Rectangle {
+            vertical-stretch: 1;
+        }
+
+        ActionBar {
+            label: LibraryEditorIo.accept-label;
+            clicked => {
+                LibraryEditorIo.accepted();
+            }
+        }
+    }
+}

@@ -1,0 +1,63 @@
+import { EinkBar } from "eink_bar.slint";
+import { InkBar } from "ink/bar.slint";
+import { InkMetrics } from "ink/metrics.slint";
+import { MaterialPalette } from "ink/palette.slint";
+import { TouchLabel } from "touch_label.slint";
+
+// Centered status copy, optional code, optional bar, optional cancel.
+// Sign-in and download progress share this. The bar rectangle is published
+// when `geom-token` changes, because the first read of the laid-out bar
+// does not run a change handler.
+export component StatusPanel inherits VerticalLayout {
+    in property <string> message;
+    in property <string> code;
+    in property <bool> show-bar: false;
+    in property <float> progress: 0;
+    in property <bool> progress-indeterminate: false;
+    in property <bool> show-cancel: true;
+    in property <int> geom-token: 0;
+    callback cancel();
+
+    alignment: center;
+    padding: 24px * InkMetrics.dp;
+    spacing: 16px * InkMetrics.dp;
+
+    Text {
+        text: root.message;
+        font-size: InkMetrics.body;
+        color: MaterialPalette.on-surface;
+        horizontal-alignment: center;
+        wrap: word-wrap;
+    }
+
+    if root.code != "": Text {
+        text: root.code;
+        font-size: InkMetrics.title;
+        font-weight: InkMetrics.label-weight;
+        color: MaterialPalette.on-surface;
+        horizontal-alignment: center;
+    }
+
+    if root.show-bar: VerticalLayout {
+        bar := EinkBar {
+            progress: root.progress;
+            indeterminate: root.progress-indeterminate;
+        }
+
+        property <int> geom-seen: root.geom-token;
+        changed geom-seen => {
+            InkBar.x = bar.origin-x;
+            InkBar.y = bar.origin-y;
+            InkBar.width = bar.span-width;
+            InkBar.height = bar.span-height;
+        }
+    }
+
+    if root.show-cancel: TouchLabel {
+        height: InkMetrics.row;
+        label: @tr("Cancel");
+        clicked => {
+            root.cancel();
+        }
+    }
+}

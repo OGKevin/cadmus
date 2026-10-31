@@ -36,6 +36,7 @@ jobs:
           filters: |
             cargo:
               - '**/*.rs'
+              - '**/*.slint'
               - 'crates/core/i18n/**'
               - 'Cargo.*'
               - '**/Cargo.*'

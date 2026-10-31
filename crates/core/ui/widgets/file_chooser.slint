@@ -1,0 +1,64 @@
+import { ActionBar } from "action_bar.slint";
+import { InkListRow, PagedLine, PagedList } from "paged_list.slint";
+import { InkMetrics } from "ink/metrics.slint";
+import { InkScreen } from "ink/screen.slint";
+import { InkScaffold } from "ink/scaffold.slint";
+import { MaterialPalette } from "ink/palette.slint";
+
+export component FileChooser inherits Rectangle {
+    in property <string> path;
+    in property <[PagedLine]> entries;
+    in property <bool> can-select-folder;
+    in-out property <int> page: 0;
+    callback dismissed();
+    callback up-pressed();
+    callback entry-pressed(int);
+    callback select-folder();
+
+    width: 100%;
+    height: 100%;
+    background: MaterialPalette.surface;
+    property <length> row-height: InkMetrics.row;
+    // The header, the Up row, and the optional action row.
+    property <length> chrome:
+        scaffold.chrome-height + root.row-height + (root.can-select-folder ? root.row-height : 0px);
+    property <length> available-height: InkScreen.window-height - root.chrome;
+
+    TouchArea {
+        width: 100%;
+        height: 100%;
+    }
+
+    scaffold := InkScaffold {
+        width: 100%;
+        height: 100%;
+        title: root.path;
+        back-pressed => {
+            root.dismissed();
+        }
+
+        InkListRow {
+            label: @tr("Up");
+            pressed => {
+                root.up-pressed();
+            }
+        }
+
+        PagedList {
+            lines: root.entries;
+            available-height: root.available-height;
+            row-height: root.row-height;
+            page <=> root.page;
+            line-pressed(index) => {
+                root.entry-pressed(index);
+            }
+        }
+
+        if root.can-select-folder: ActionBar {
+            label: @tr("Select this folder");
+            clicked => {
+                root.select-folder();
+            }
+        }
+    }
+}

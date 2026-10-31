@@ -1,0 +1,7 @@
+import { PagedLine } from "../../widgets/paged_list.slint";
+
+// Dictionary rows. `row-pressed` passes the model index, starting at 0.
+export global DictionaryPageIo {
+    in property <[PagedLine]> rows;
+    callback row-pressed(int);
+}

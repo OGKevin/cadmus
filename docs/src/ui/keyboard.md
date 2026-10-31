@@ -1,9 +1,11 @@
 # Keyboard
 
-The on-screen keyboard lets you type text for searches, dictionary lookups, and
-other input fields.
+Both keyboards stay while Cadmus moves to the new Settings screen.
 
-## Basics
+The reader and search keyboard has a combine key (_CMB_). The Settings
+keyboard is the text dialog in Settings. It has no combine key.
+
+## Reader and search
 
 - **Lock modifier keys** — Tap _ALT_ or _SHIFT_ twice to lock them on.
 - **Combine key (CMB)** — Press _CMB_ followed by two keys to type accented or
@@ -13,12 +15,7 @@ other input fields.
   individual characters.
 - **Keyboard layouts** — Tap and hold the space bar to switch layouts.
 
-## Inputting Accented Characters
-
-Cadmus supports these through **combination sequences** using the
-_CMB_ key. See [Combination Sequences](#combination-sequences).
-
-### How to type an accented character
+### Accented characters
 
 1. Press the **CMB** key.
 2. Press the **base letter** (e.g. `e`).
@@ -26,10 +23,16 @@ _CMB_ key. See [Combination Sequences](#combination-sequences).
 
 Example: `CMB e '` produces **é**.
 
+## Settings keyboard
+
+Hold a letter key on the Settings keyboard. Cadmus shows that letter's accented
+forms. Tap the one you want. There is no _CMB_ key on this keyboard, so a
+combination sequence cannot be entered there.
+
 ## Combination Sequences
 
-Press _CMB_ followed by the two keys listed below to produce the corresponding
-character.
+On the reader and search keyboard, press _CMB_ followed by the two keys listed
+below.
 
 <!-- i18n:skip-start -->
 
@@ -76,7 +79,8 @@ character.
 
 ## Custom Keyboard Layouts
 
-Keyboard layouts are defined as JSON files with the following structure:
+A custom layout JSON file supplies the keys for both the reader and search
+keyboard and the Settings keyboard. The file has this structure:
 
 - **name** — Display name shown in the keyboard layouts menu.
 - **outputs** — List of output keys for each modifier combination (_none_,

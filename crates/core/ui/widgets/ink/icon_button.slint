@@ -1,0 +1,33 @@
+import { MaterialPalette } from "palette.slint";
+import { InkMetrics } from "metrics.slint";
+
+// A Material icon button without a state layer or a ripple. A press
+// that paints and then clears is a second panel refresh.
+
+export component InkIconButton inherits Rectangle {
+    in property <image> icon;
+    in property <color> icon-color: MaterialPalette.on-surface;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    width: InkMetrics.icon-button;
+    height: self.width;
+
+    Image {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: InkMetrics.icon;
+        height: self.width;
+        source: root.icon;
+        colorize: root.enabled ? root.icon-color : MaterialPalette.disabled;
+    }
+
+    TouchArea {
+        width: 100%;
+        height: 100%;
+        enabled: root.enabled;
+        clicked => {
+            root.clicked();
+        }
+    }
+}

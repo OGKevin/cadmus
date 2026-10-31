@@ -1,0 +1,57 @@
+import { InkMetrics } from "ink/metrics.slint";
+
+// Black on white, so an A2 update can move it. A gray or orange fill stays
+// on the color filter and then stops. `progress` is 0..1. While
+// `indeterminate` is set, a black thumb walks along the track.
+export component EinkBar inherits Rectangle {
+    in property <float> progress: 0;
+    in property <bool> indeterminate: false;
+    // Window coordinates, so a bar update can be kept off the label.
+    out property <length> origin-x: self.absolute-position.x;
+    out property <length> origin-y: self.absolute-position.y;
+    out property <length> span-width: self.width;
+    out property <length> span-height: self.height;
+
+    property <int> step: 0;
+    // 1 walks toward the right end, -1 walks back. The thumb reverses at
+    // either end instead of jumping back to the start.
+    property <int> direction: 1;
+    property <length> border: 1px * InkMetrics.dp;
+
+    horizontal-stretch: 1;
+    height: 16px * InkMetrics.dp;
+    background: #000000;
+
+    Timer {
+        interval: 200ms;
+        running: root.indeterminate;
+        triggered => {
+            if (root.step + root.direction > 16 || root.step + root.direction < 0) {
+                root.direction = -root.direction;
+            }
+            root.step = root.step + root.direction;
+        }
+    }
+
+    Rectangle {
+        x: root.border;
+        y: root.border;
+        width: parent.width - 2 * root.border;
+        height: parent.height - 2 * root.border;
+        background: #ffffff;
+
+        if !root.indeterminate: Rectangle {
+            width: parent.width * max(0, min(1, root.progress));
+            height: 100%;
+            background: #000000;
+        }
+
+        if root.indeterminate: Rectangle {
+            property <length> thumb: parent.width * 0.2;
+            x: (parent.width - self.thumb) * (root.step * 1.0 / 16);
+            width: self.thumb;
+            height: 100%;
+            background: #000000;
+        }
+    }
+}

@@ -6,6 +6,7 @@
 - [Device handlers and the test harness](src/device/AGENTS.md)
 - [WiFi leases](src/device/wifi/AGENTS.md)
 - [UI string translations](i18n/AGENTS.md)
+- [Views and Slint screens](src/view/AGENTS.md)
 
 ## Async runtime and Jobs
 
@@ -168,6 +169,9 @@ comment explaining why the typed macro cannot be used.
 
 All user-visible strings must use the `fl!` macro (`use crate::fl;`). Never
 hardcode string literals for labels, buttons, placeholders, or notifications.
+Static copy drawn by a Slint screen is the exception: write it as `@tr` in
+the `.slint` file and put existing translations in `ui/lang`. See
+[`i18n/AGENTS.md`](i18n/AGENTS.md).
 
 When the message ID is only known at runtime (config, plugin payload, table of
 keys), use `fl_or!(id, "English fallback")` or `fl_or!(id, "fallback", var =
