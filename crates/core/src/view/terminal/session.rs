@@ -923,7 +923,14 @@ impl View for Terminal {
             Event::WakeUp => {
                 // Reader job owns only the emulator; render its pending output
                 // here, but let the event keep bubbling up the view chain.
-                if let Ok(emu) = self.emulator.lock() {
+                if let Ok(mut emu) = self.emulator.lock() {
+                    // Answer queued device queries first so the program sees
+                    // the cursor state the rest of this block renders from.
+                    for response in emu.take_device_responses() {
+                        if let Err(error) = self.pty.write(&response.escape_sequence()) {
+                            tracing::warn!(error = %error, "Failed to answer terminal query");
+                        }
+                    }
                     let dirty = self.renderer.render_screen(
                         emu.screen(),
                         &mut self.pixmap,
@@ -1049,7 +1056,7 @@ mod tests {
     use crate::framebuffer::UpdateMode;
     use crate::geom::{Dir, Point, Rectangle};
     use crate::gesture::GestureEvent;
-    use crate::view::terminal::emulator::Emulator;
+    use crate::view::terminal::emulator::{DeviceResponse, Emulator};
     use crate::view::terminal::pty::{TerminalPty, TerminalSize};
     use crate::view::{Bus, Event, Hub, HubReceiver, KeyboardEvent, RenderQueue, View};
     use anyhow::{Result, bail};
@@ -1418,6 +1425,45 @@ mod tests {
         assert_eq!(updates[0].0, Some(terminal.id));
         // The fake PTY never produced output, so nothing else wakes the loop.
         assert!(receiver.try_recv().is_err());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn wake_up_answers_queued_device_queries_on_the_pty() {
+        let (mut terminal, state, mut context, hub, _receiver, mut render_queue) =
+            fake_terminal().await;
+        // fish's startup query batch: DA1 is the reply it blocks on.
+        terminal
+            .emulator
+            .lock()
+            .expect("terminal emulator poisoned")
+            .feed(b"\x1b[0c");
+        render_queue.clear();
+
+        assert!(
+            !handle_terminal_event(
+                &mut terminal,
+                Event::WakeUp,
+                &hub,
+                &mut render_queue,
+                &mut context,
+            )
+            .await
+        );
+
+        let state = state.lock().expect("fake PTY state poisoned");
+        assert_eq!(
+            state.writes,
+            [DeviceResponse::PrimaryAttributes.escape_sequence()]
+        );
+        // Answering the query must not double the ordinary output update.
+        drop(state);
+        assert_eq!(
+            render_queue
+                .get(&(UpdateMode::FastMono, false))
+                .expect("terminal output update was not scheduled")
+                .len(),
+            1
+        );
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
