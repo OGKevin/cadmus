@@ -1585,45 +1585,54 @@ impl DeviceFeatures {
 ///
 /// Opens the device once and issues all introspection ioctls on the resulting
 /// file descriptor. Returns `None` only if the device cannot be opened.
+/// # Safety of ioctls
+///
+/// The ioctls write into pre-zeroed buffers and their results are checked, so
+/// partial failures leave defaults in place.
+///
+/// The ioctls are issued inside `spawn_blocking`: they have no async
+/// equivalent and must not block the Tokio worker pool.
 async fn probe_device(path: &str) -> Option<DeviceFeatures> {
     let file = tokio::fs::File::open(path).await.ok()?;
-    let fd = file.as_raw_fd();
-    let mut id = InputId {
-        bustype: 0,
-        vendor: 0,
-        product: 0,
-        version: 0,
-    };
-    // The ioctls write into pre-zeroed buffers and their results are checked,
-    // so partial failures leave defaults in place.
-    let _ = unsafe { eviocgid(fd, &mut id) };
+    tokio::task::spawn_blocking(move || {
+        let fd = file.as_raw_fd();
+        let mut id = InputId {
+            bustype: 0,
+            vendor: 0,
+            product: 0,
+            version: 0,
+        };
+        let _ = unsafe { eviocgid(fd, &mut id) };
 
-    let mut name_buf = [0u8; 256];
-    let name = unsafe { eviocgname(fd, &mut name_buf) }.ok().and_then(|n| {
-        std::str::from_utf8(&name_buf[..n as usize])
-            .ok()
-            .map(|s| s.trim_end_matches('\0').to_string())
-    });
+        let mut name_buf = [0u8; 256];
+        let name = unsafe { eviocgname(fd, &mut name_buf) }.ok().and_then(|n| {
+            std::str::from_utf8(&name_buf[..n as usize])
+                .ok()
+                .map(|s| s.trim_end_matches('\0').to_string())
+        });
 
-    let (emits_key, emits_abs) = {
-        let mut evbits = [0u8; 4];
-        if unsafe { eviocgbit_ev(fd, &mut evbits) }.is_err() {
-            (false, false)
-        } else {
-            // EV_KEY is event type 1; EV_ABS is event type 3.
-            ((evbits[0] & (1 << 1)) != 0, (evbits[0] & (1 << 3)) != 0)
+        let (emits_key, emits_abs) = {
+            let mut evbits = [0u8; 4];
+            if unsafe { eviocgbit_ev(fd, &mut evbits) }.is_err() {
+                (false, false)
+            } else {
+                // EV_KEY is event type 1; EV_ABS is event type 3.
+                ((evbits[0] & (1 << 1)) != 0, (evbits[0] & (1 << 3)) != 0)
+            }
+        };
+
+        DeviceFeatures {
+            name,
+            bustype: id.bustype,
+            vendor: id.vendor,
+            product: id.product,
+            version: id.version,
+            emits_key,
+            emits_abs,
         }
-    };
-
-    Some(DeviceFeatures {
-        name,
-        bustype: id.bustype,
-        vendor: id.vendor,
-        product: id.product,
-        version: id.version,
-        emits_key,
-        emits_abs,
     })
+    .await
+    .ok()
 }
 
 /// Classifies a device into a [`DeviceProfile`] from its probed features.
