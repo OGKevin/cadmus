@@ -1497,6 +1497,10 @@ struct InputId {
 }
 
 ioctl_read_buf!(eviocgbit_ev, b'E', 0x20, u8);
+// `EVIOCGBIT(EV_ABS, ...)` — the bitmap of ABS axes a device supports, used to
+// distinguish touch digitizers (position axes) from keyboards whose HID
+// descriptor happens to declare a stray axis (e.g. `ABS_MISC`).
+ioctl_read_buf!(eviocgbit_abs, b'E', 0x20 + EV_ABS, u8);
 
 // `EVIOCGNAME` — returns the kernel device name string, used to identify
 // specific hardware such as the Kobo Remote Bluetooth keyboard by name.
@@ -1555,6 +1559,11 @@ struct DeviceFeatures {
     version: u16,
     emits_key: bool,
     emits_abs: bool,
+    /// The device emits `EV_ABS` events with position axes (`ABS_X`/`ABS_Y` or
+    /// `ABS_MT_POSITION_X`/`ABS_MT_POSITION_Y`), i.e. it is a touch or pen
+    /// digitizer. Keyboards whose HID descriptor declares a stray axis (e.g.
+    /// `ABS_MISC`) do not qualify.
+    has_position_axes: bool,
 }
 
 impl DeviceFeatures {
@@ -1579,6 +1588,12 @@ impl DeviceFeatures {
             name, self.bustype, self.vendor, self.product, self.version
         ))
     }
+}
+
+/// Returns `true` if the ABS-axes bitmap (`EVIOCGBIT(EV_ABS, ...)`) declares
+/// support for `axis`.
+fn has_abs_axis(absbits: &[u8; 8], axis: u16) -> bool {
+    (absbits[axis as usize / 8] & (1 << (axis % 8))) != 0
 }
 
 /// Probes the device at `path` and returns its [`DeviceFeatures`].
@@ -1621,6 +1636,16 @@ async fn probe_device(path: &str) -> Option<DeviceFeatures> {
             }
         };
 
+        // ABS axes bitmap: only digitizer position axes mark a device as a
+        // touch screen for classification. Keyboards created through uhid can
+        // declare a stray vendor axis (e.g. ABS_MISC), which must not turn
+        // them into built-in hardware.
+        let has_position_axes = emits_abs && {
+            let mut absbits = [0u8; 8];
+            unsafe { eviocgbit_abs(fd, &mut absbits) }.is_ok()
+                && (has_abs_axis(&absbits, ABS_X) || has_abs_axis(&absbits, ABS_MT_POSITION_X))
+        };
+
         DeviceFeatures {
             name,
             bustype: id.bustype,
@@ -1629,6 +1654,7 @@ async fn probe_device(path: &str) -> Option<DeviceFeatures> {
             version: id.version,
             emits_key,
             emits_abs,
+            has_position_axes,
         }
     })
     .await
@@ -1647,9 +1673,12 @@ async fn probe_device(path: &str) -> Option<DeviceFeatures> {
 /// - Hard-coded built-in device name (see [`BUILT_IN_DEVICE_NAMES`]) →
 ///   built-in profile: power, home, light, scheme-aware page-turn, sleep
 ///   cover, and pen buttons.
-/// - Any device emitting `EV_ABS`, or reporting `BUS_HOST` / `BUS_I2C` →
-///   built-in profile. Catches touch digitizers and other built-in buttons
-///   on Kobo models whose names are not listed above.
+/// - A digitizer (position axes), or a device reporting `BUS_HOST` /
+///   `BUS_I2C` → built-in profile. Catches touch digitizers and other
+///   built-in buttons on Kobo models whose names are not listed above.
+///   Position axes are required for the `EV_ABS` signal because keyboards
+///   created through uhid can declare stray vendor axes (e.g. `ABS_MISC`)
+///   without being built-in hardware.
 /// - Anything else → generic keyboard profile: forward as
 ///   [`ButtonCode::Keyboard`].
 fn classify_device(features: &DeviceFeatures) -> DeviceProfile {
@@ -1660,7 +1689,7 @@ fn classify_device(features: &DeviceFeatures) -> DeviceProfile {
     if is_built_in_name(name) {
         return DeviceProfile::built_in();
     }
-    if features.emits_abs || features.bustype == BUS_HOST || features.bustype == BUS_I2C {
+    if features.has_position_axes || features.bustype == BUS_HOST || features.bustype == BUS_I2C {
         return DeviceProfile::built_in();
     }
     DeviceProfile::keyboard()
@@ -2626,6 +2655,9 @@ mod tests {
         emits_key: bool,
         emits_abs: bool,
     ) -> DeviceFeatures {
+        // In the probe, `emits_abs` without position axes is possible (stray
+        // vendor axis), but every existing test feature set models either a
+        // digitizer (abs + position axes) or a pure key device.
         DeviceFeatures {
             name: name.map(String::from),
             bustype,
@@ -2634,6 +2666,7 @@ mod tests {
             version: 0,
             emits_key,
             emits_abs,
+            has_position_axes: emits_abs,
         }
     }
 
@@ -2813,6 +2846,83 @@ mod tests {
         assert_eq!(classify_device(&f), DeviceProfile::keyboard());
     }
 
+    /// Reproduces the bug where a hotplugged Bluetooth keyboard whose HID
+    /// descriptor declares a stray `ABS_MISC` axis was classified as built-in
+    /// hardware: its keys went out as `ButtonCode::Raw` (ignored by views)
+    /// and its 'h' key (evdev 35, `SLEEP_COVER[1]`) opened the sleep cover,
+    /// locking the screen.
+    #[test]
+    fn classify_device_keeps_keyboard_with_stray_abs_axis_generic() {
+        // Probed from a real uhid Bluetooth keyboard ("Targus Folding
+        // Ergonomic Bluetooth Keyboard"): BUS_BLUETOOTH, EV_KEY + EV_ABS
+        // declared, but the ABS bitmap holds only bit 40 (ABS_MISC) — no
+        // position axes. Samsung vendor/product from EVIOCGID.
+        let f = DeviceFeatures {
+            name: Some("Targus Folding Ergonomic Bluetooth Keyboard".to_string()),
+            bustype: BUS_BLUETOOTH,
+            vendor: 0x04e8,
+            product: 0x7021,
+            version: 0x011b,
+            emits_key: true,
+            emits_abs: true,
+            has_position_axes: false,
+        };
+        assert_eq!(classify_device(&f), DeviceProfile::keyboard());
+
+        // A USB consumer-control node can also declare stray ABS axes (e.g.
+        // volume/scan codes) without being a digitizer.
+        let f = DeviceFeatures {
+            name: Some("Framework Laptop 16 Keyboard Module - ANSI System Control".to_string()),
+            bustype: 0x03,
+            vendor: 0x32ac,
+            product: 0x0012,
+            version: 0x0111,
+            emits_key: true,
+            emits_abs: true,
+            has_position_axes: false,
+        };
+        assert_eq!(classify_device(&f), DeviceProfile::keyboard());
+    }
+
+    /// The 'h' key must never act as a sleep cover on keyboard-profile
+    /// devices: evdev 35 is both `KEY_H` and `SLEEP_COVER[1]`, and the
+    /// built-in-only mapping leaked into hotplugged keyboards before the
+    /// classifier was fixed.
+    #[test]
+    fn keyboard_profile_does_not_map_the_h_key_to_a_sleep_cover() {
+        assert_eq!(DeviceProfile::keyboard().lookup(SLEEP_COVER[0]), None);
+        assert_eq!(DeviceProfile::keyboard().lookup(SLEEP_COVER[1]), None);
+        // The built-in profile keeps its cover mapping.
+        assert_eq!(
+            DeviceProfile::built_in().lookup(SLEEP_COVER[1]),
+            Some(KeyAction::SleepCover)
+        );
+    }
+
+    /// `has_abs_axis` must decode the ABS bitmap exactly as the kernel
+    /// reports it: bit 40 (ABS_MISC) in byte 5 for the uhid keyboard, and
+    /// position axes in byte 0 (single-touch) or byte 6 (multi-touch) for
+    /// digitizers.
+    #[test]
+    fn has_abs_axis_decodes_real_device_bitmaps() {
+        // Targus BT keyboard: ABS_MISC only.
+        let targus = [0u8, 0, 0, 0, 0, 0x01, 0, 0];
+        assert!(!has_abs_axis(&targus, ABS_X));
+        assert!(!has_abs_axis(&targus, ABS_MT_POSITION_X));
+        assert!(has_abs_axis(&targus, 40));
+
+        // Single-touch digitizer (e.g. ft5x06_ts): ABS_X/ABS_Y.
+        let single_touch = [0x03u8, 0, 0, 0, 0, 0, 0, 0];
+        assert!(has_abs_axis(&single_touch, ABS_X));
+        assert!(has_abs_axis(&single_touch, ABS_Y));
+
+        // Multi-touch protocol A/B digitizer: ABS_MT_POSITION_X (53) and
+        // ABS_MT_POSITION_Y (54) in byte 6.
+        let multi_touch = [0u8, 0, 0, 0, 0, 0, 0x60, 0];
+        assert!(has_abs_axis(&multi_touch, ABS_MT_POSITION_X));
+        assert!(has_abs_axis(&multi_touch, 54));
+    }
+
     #[test]
     fn is_built_in_name_matches_known_devices() {
         assert!(is_built_in_name("Elan Touchscreen"));
@@ -2843,6 +2953,7 @@ mod tests {
             version: shared_id.3,
             emits_key: true,
             emits_abs: false,
+            has_position_axes: false,
         };
         let gpio_keys = DeviceFeatures {
             name: Some("gpio-keys".to_string()),
@@ -2852,6 +2963,7 @@ mod tests {
             version: shared_id.3,
             emits_key: true,
             emits_abs: false,
+            has_position_axes: false,
         };
         assert_ne!(pwrkey.identity(), gpio_keys.identity());
     }
@@ -2866,6 +2978,7 @@ mod tests {
             version: 0,
             emits_key: true,
             emits_abs: false,
+            has_position_axes: false,
         };
         assert_eq!(f.identity(), None);
     }
@@ -2880,6 +2993,7 @@ mod tests {
             version: 0x100,
             emits_key: true,
             emits_abs: false,
+            has_position_axes: false,
         };
         let id = f.identity().expect("named device has an identity");
         assert!(id.contains("gpio-keys"), "identity must include name: {id}");
