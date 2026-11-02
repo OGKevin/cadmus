@@ -1666,6 +1666,12 @@ fn classify_device(features: &DeviceFeatures) -> DeviceProfile {
 /// under multiple event nodes is only opened once; duplicates are added to
 /// `blacklisted_paths` to avoid re-querying them on every scan.
 ///
+/// Blacklisted paths whose node no longer exists are dropped during the scan:
+/// the kernel reuses `eventN` numbers, so a stale entry would otherwise cause
+/// a different device later assigned the same node to be skipped forever. The
+/// current path set comes from the same directory listing the scan walks, so
+/// the cleanup adds no extra filesystem access.
+///
 /// Unlike the previous keyboard-only scan, this opens any device that emits
 /// `EV_KEY` or `EV_ABS`, so the touch digitizer and built-in buttons are
 /// discovered at startup alongside hotplugged keyboards.
@@ -1680,11 +1686,13 @@ async fn scan_input_devices(
         Err(_) => return found,
     };
 
+    let mut current_paths = FxHashSet::default();
     while let Some(entry) = entries.next_entry().await.ok().flatten() {
         let path = entry.path();
         let Some(path_str) = path.to_str() else {
             continue;
         };
+        current_paths.insert(path_str.to_string());
         if !path_str.starts_with("/dev/input/event") {
             continue;
         }
@@ -1718,7 +1726,25 @@ async fn scan_input_devices(
         }
     }
 
+    forget_missing_blacklisted_paths(blacklisted_paths, &current_paths);
+
     found
+}
+
+/// Drops blacklisted paths that no longer exist under `/dev/input`, so a
+/// future device reusing a recycled `eventN` node is probed again instead of
+/// being skipped forever.
+fn forget_missing_blacklisted_paths(
+    blacklisted_paths: &mut FxHashSet<String>,
+    current_paths: &FxHashSet<String>,
+) {
+    blacklisted_paths.retain(|path| {
+        let exists = current_paths.contains(path);
+        if !exists {
+            tracing::debug!(device = path, "forgetting blacklisted path: node is gone");
+        }
+        exists
+    });
 }
 
 /// Reads raw evdev events from all input devices and forwards them as
@@ -1890,6 +1916,22 @@ mod tests {
     use std::ffi::CString;
     use std::io::Write;
     use std::time::Duration;
+
+    #[test]
+    fn forget_missing_blacklisted_paths_drops_gone_nodes_and_keeps_existing() {
+        let mut blacklisted = FxHashSet::default();
+        blacklisted.insert("/dev/input/event3".to_string());
+        blacklisted.insert("/dev/input/event7".to_string());
+
+        let mut current = FxHashSet::default();
+        current.insert("/dev/input/event3".to_string());
+        current.insert("/dev/input/event9".to_string());
+
+        forget_missing_blacklisted_paths(&mut blacklisted, &current);
+
+        assert!(blacklisted.contains("/dev/input/event3"));
+        assert_eq!(blacklisted.len(), 1);
+    }
 
     // Bus type for Bluetooth devices, used only in tests to verify that
     // classification is by name (not bus type) for the Kobo Remote. The
