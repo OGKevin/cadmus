@@ -489,8 +489,7 @@ async fn parse_gesture_events(
                                 },
                                 GestureEvent::Tap(c),
                             ) => {
-                                // Angle are positive in the counter clockwise direction.
-                                let angle = ((e - c).angle() - (s - c).angle()).to_degrees();
+                                let angle = rotation_angle(s, e, c);
                                 let quarter_turns = (angle / 90.0).round() as i8;
                                 ty.send(Event::Gesture(GestureEvent::Rotate {
                                     angle,
@@ -511,9 +510,7 @@ async fn parse_gesture_events(
                 code,
                 time,
             } => {
-                // Keyboard and raw codes carry no hold semantics; no consumer
-                // acts on HoldButton* for them.
-                if matches!(code, ButtonCode::Keyboard(..) | ButtonCode::Raw(..)) {
+                if !is_hold_candidate(&code) {
                     continue;
                 }
                 let mut bt = buttons.lock().unwrap();
@@ -554,6 +551,21 @@ fn disarm_hold<K: std::hash::Hash + Eq>(holds: &mut FxHashMap<K, CancellationTok
     if let Some(token) = holds.remove(&key) {
         token.cancel();
     }
+}
+
+/// Signed rotation, in degrees, from `start` to `end` around `center`.
+///
+/// Angles are positive in the counter-clockwise direction.
+fn rotation_angle(start: Point, end: Point, center: Point) -> f32 {
+    ((end - center).angle() - (start - center).angle()).to_degrees()
+}
+
+/// Whether a pressed [`ButtonCode`] can become a `HoldButton*` event.
+///
+/// Keyboard and raw codes carry no hold semantics; no consumer acts on
+/// `HoldButton*` for them.
+fn is_hold_candidate(code: &ButtonCode) -> bool {
+    !matches!(code, ButtonCode::Keyboard(..) | ButtonCode::Raw(..))
 }
 
 fn disarm_all_holds<K: std::hash::Hash + Eq>(holds: &mut FxHashMap<K, CancellationToken>) {
