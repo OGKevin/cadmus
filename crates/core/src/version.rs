@@ -735,7 +735,8 @@ pub fn get_version() -> Version {
 /// Returns compile-time build provenance attributes.
 ///
 /// The timestamp is parsed from `BUILD_TIMESTAMP`, which is emitted by
-/// `build.rs` as Unix epoch seconds.
+/// `build.rs` as Unix epoch seconds. Release builds embed the real build time;
+/// every other profile embeds the commit time so rebuilds stay cacheable.
 pub fn get_build_attributes() -> BuildAttributes {
     BuildAttributes {
         user: env!("BUILD_USER"),

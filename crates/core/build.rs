@@ -20,12 +20,11 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
-use uuid::Uuid;
 
 use anyhow::{Context, Result, bail};
 use build_deps::build::kobo;
 use build_deps::build::{mupdf_wrapper, native};
+use build_deps::build_metadata;
 use build_deps::cargo_features::{cargo_feature_env_key, collect_enabled_feature_names};
 use build_deps::thirdparty_versions::{collect_thirdparty_versions, submodule_git_dir};
 use build_deps::versions::LIBRARY_NAMES;
@@ -72,31 +71,33 @@ fn try_main() -> Result<()> {
     println!("cargo:rerun-if-env-changed={SKIP_THIRDPARTY_DEPS_ENV}");
     println!("cargo:rerun-if-env-changed=TARGET");
 
+    let root = workspace_root()?;
+
     let (git_version, pr_info) = get_version_info()?;
     println!("cargo:rustc-env=GIT_VERSION={git_version}");
     if let Some(pr) = pr_info {
         println!("cargo:rustc-env=PR_INFO={pr}");
     }
 
-    let build_uuid = Uuid::now_v7().to_string();
-    println!("cargo:rustc-env=BUILD_UUID={build_uuid}");
+    let features = enabled_features();
+    let provenance = build_metadata::commit_provenance(&root);
+    let timestamp = build_metadata::build_timestamp(&provenance, is_release());
+    println!(
+        "cargo:rustc-env=BUILD_UUID={}",
+        build_metadata::build_uuid(&provenance, &features, timestamp)
+    );
 
     let build_attributes = get_build_attributes()?;
     println!("cargo:rustc-env=BUILD_USER={}", build_attributes.user);
     println!("cargo:rustc-env=BUILD_HOST={}", build_attributes.host);
-    println!(
-        "cargo:rustc-env=BUILD_TIMESTAMP={}",
-        build_attributes.timestamp
-    );
+    println!("cargo:rustc-env=BUILD_TIMESTAMP={timestamp}");
 
-    generate_cargo_features()?;
+    generate_cargo_features(&features)?;
 
     println!("cargo:rerun-if-env-changed=GH_OAUTH_CLIENT_ID");
     let client_id =
         env::var("GH_OAUTH_CLIENT_ID").unwrap_or_else(|_| "GH_OAUTH_CLIENT_ID_NOT_SET".to_string());
     println!("cargo:rustc-env=GH_OAUTH_CLIENT_ID={client_id}");
-
-    let root = workspace_root()?;
 
     generate_migration_hash()?;
     generate_locales()?;
@@ -492,7 +493,6 @@ fn collect_asset_files(
 struct BuildAttributes {
     user: String,
     host: String,
-    timestamp: String,
 }
 
 /// Captures build provenance values passed to rustc as compile-time env vars.
@@ -500,7 +500,6 @@ fn get_build_attributes() -> Result<BuildAttributes> {
     Ok(BuildAttributes {
         user: build_user(),
         host: or_unknown(&gethostname::gethostname().to_string_lossy()),
-        timestamp: build_timestamp()?,
     })
 }
 
@@ -520,14 +519,6 @@ fn or_unknown(value: &str) -> String {
     } else {
         value.to_string()
     }
-}
-
-/// Returns the current Unix epoch timestamp for this build script run.
-fn build_timestamp() -> Result<String> {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs().to_string())
-        .or_else(|_| Ok("unknown".to_string()))
 }
 
 /// Writes `OUT_DIR/thirdparty_versions.rs` from the current submodule checkouts.
@@ -570,10 +561,18 @@ fn generate_thirdparty_versions(root: &Path) -> Result<()> {
     Ok(())
 }
 
-fn generate_cargo_features() -> Result<()> {
-    let features =
-        collect_enabled_feature_names(env::var("CARGO_CFG_FEATURE").ok().as_deref(), env::vars());
-    for feature in &features {
+/// Collects the enabled Cargo feature names for this build.
+fn enabled_features() -> Vec<String> {
+    collect_enabled_feature_names(env::var("CARGO_CFG_FEATURE").ok().as_deref(), env::vars())
+}
+
+/// Returns `true` when the build script runs for a release profile.
+fn is_release() -> bool {
+    env::var("PROFILE").unwrap_or_default() == "release"
+}
+
+fn generate_cargo_features(features: &[String]) -> Result<()> {
+    for feature in features {
         println!(
             "cargo:rerun-if-env-changed={}",
             cargo_feature_env_key(feature)

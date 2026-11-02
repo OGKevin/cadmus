@@ -110,7 +110,7 @@ pyroscope = { version = "2.0", default-features = false, features = ["backend-je
 tikv-jemallocator = { version = "0.7", features = ["profiling"], optional = true }
 
 log = "0.4.29"
-uuid = { version = "1.20.0", features = ["v7"] }
+uuid = { workspace = true }
 gethostname = { workspace = true, optional = true }
 zbus = { version = "5", default-features = false, features = ["tokio"], optional = true }
 futures-util = { version = "0.3", optional = true }
@@ -143,7 +143,7 @@ cc = { workspace = true }
 gethostname = { workspace = true }
 nix = { version = "0.31.0", default-features = false, features = ["user"] }
 serde_json = { workspace = true }
-uuid = { version = "1.20.0", features = ["v7"] }
+uuid = { workspace = true }
 
 [features]
 default = []
