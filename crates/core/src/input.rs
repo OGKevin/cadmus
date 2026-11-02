@@ -257,6 +257,38 @@ const REMOTE_KEY_MAP: &[(u16, KeyAction)] = &[
     (KEY_DOWN, KeyAction::PageTurnRaw(LinearDir::Forward)),
 ];
 
+/// Identifies one opened evdev device, assigned when its reader is spawned.
+///
+/// Distinct from [`EventSource::Synthetic`] so state keyed by device (touch
+/// pipeline, modifier tracking) cannot be driven by injected events.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub(crate) struct SourceId(u32);
+
+impl SourceId {
+    /// First id handed out for a fresh device set.
+    const START: Self = Self(0);
+
+    /// Returns the next id. Wraparound after four billion devices is
+    /// irrelevant in practice and only risks aliasing with long-gone devices.
+    fn next(&mut self) -> Self {
+        let id = *self;
+        self.0 = self.0.wrapping_add(1);
+        id
+    }
+}
+
+/// The origin of a [`TaggedInputEvent`].
+///
+/// Real devices are identified by the [`SourceId`] of the reader that read the
+/// event; in-process injections (`display_rotate_event`,
+/// `button_scheme_event`) carry [`EventSource::Synthetic`] instead of a magic
+/// id so they can never be confused with a device.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub(crate) enum EventSource {
+    Device(SourceId),
+    Synthetic,
+}
+
 /// An [`InputEvent`] tagged with the [`DeviceProfile`] of the device that
 /// produced it.
 ///
@@ -266,10 +298,15 @@ const REMOTE_KEY_MAP: &[(u16, KeyAction)] = &[
 /// removed when they disappear. Both classes are classified into a
 /// [`DeviceProfile`] by their kernel features so the device-event pipeline
 /// routes their `EV_KEY` events through a uniform scancode table.
+///
+/// `source` additionally identifies *which* device produced the event, because
+/// several devices share the pipeline and some state (touch reports, held
+/// modifiers) must not leak between them.
 #[derive(Debug, Clone)]
 pub struct TaggedInputEvent {
     pub event: InputEvent,
     pub(crate) profile: DeviceProfile,
+    pub(crate) source: EventSource,
 }
 
 // Handle different touch protocols
@@ -542,6 +579,7 @@ pub fn display_rotate_event(n: i8) -> TaggedInputEvent {
             value: n as i32,
         },
         profile: DeviceProfile::built_in(),
+        source: EventSource::Synthetic,
     }
 }
 
@@ -561,6 +599,7 @@ pub fn button_scheme_event(v: i32) -> TaggedInputEvent {
             value: v,
         },
         profile: DeviceProfile::built_in(),
+        source: EventSource::Synthetic,
     }
 }
 
@@ -633,7 +672,8 @@ pub fn raw_events(
 /// Forwards evdev events from one nonblocking device until it closes or `tx` drops.
 ///
 /// Each forwarded event is tagged with `profile`, the scancode classification of
-/// the device it was read from.
+/// the device it was read from, and `source`, the identity of this reader's
+/// device among all open devices.
 ///
 /// `AsyncFd` only says the fd is readable. A single `read` may still return
 /// fewer bytes than `size_of::<InputEvent>()`. Treating
@@ -643,6 +683,7 @@ pub fn raw_events(
 async fn read_input_events(
     fd: AsyncFd<File>,
     profile: DeviceProfile,
+    source: SourceId,
     tx: &UnboundedSender<TaggedInputEvent>,
 ) -> Result<(), Error> {
     let mut pending = [0_u8; mem::size_of::<InputEvent>()];
@@ -653,7 +694,14 @@ async fn read_input_events(
             match guard.try_io(|inner| read_input_event(inner.get_ref(), &mut pending, &mut filled))
             {
                 Ok(Ok(event)) => {
-                    if tx.send(TaggedInputEvent { event, profile }).is_err() {
+                    if tx
+                        .send(TaggedInputEvent {
+                            event,
+                            profile,
+                            source: EventSource::Device(source),
+                        })
+                        .is_err()
+                    {
                         return Ok(());
                     }
                 }
@@ -1001,6 +1049,40 @@ impl Default for TouchState {
     }
 }
 
+/// Touch report state for a single digitizer.
+///
+/// Kept per device: several evdev devices share the event pipeline and each
+/// ends its reports with `EV_SYN` / `SYN_REPORT`, so a shared pipeline would let
+/// an unrelated device's report lift in-contact fingers mid-gesture.
+#[derive(Debug, Default)]
+struct TouchPipeline {
+    /// Tracking id of the slot currently being filled, or `0` for single-touch.
+    id: i32,
+    /// Partial reports keyed by tracking id, cleared per `SYN_REPORT` for
+    /// multi-touch protocols.
+    packets: FxHashMap<i32, TouchState>,
+    /// Fingers currently in contact, keyed by tracking id.
+    fingers: FxHashMap<i32, Point>,
+}
+
+/// Returns the touch pipeline for `source`, creating it on first sight.
+///
+/// Synthetic events never reach here, so an injected control event can neither
+/// read nor reset touch state. Entries for devices whose readers exited are
+/// left in place; their ids are never reused, so they are inert.
+fn touch_pipeline(
+    touch: &mut FxHashMap<SourceId, TouchPipeline>,
+    source: SourceId,
+    proto: TouchProto,
+) -> &mut TouchPipeline {
+    let pipeline = touch.entry(source).or_default();
+    // Single-touch has no tracking ids, so one implicit slot is pre-created.
+    if proto == TouchProto::Single && pipeline.packets.is_empty() {
+        pipeline.packets.insert(pipeline.id, TouchState::default());
+    }
+    pipeline
+}
+
 #[cfg_attr(
     feature = "tracing",
     tracing::instrument(
@@ -1033,14 +1115,18 @@ async fn parse_device_events(
         gyro_rotation_transform,
     } = info;
     let (_, dir) = mirroring_scheme;
-    let mut id = 0;
     let mut last_activity = -60;
     let Display {
         mut dims,
         mut rotation,
     } = screen;
-    let mut fingers: FxHashMap<i32, Point> = FxHashMap::default();
-    let mut packets: FxHashMap<i32, TouchState> = FxHashMap::default();
+
+    // Touch report state, scoped per digitizer: several devices share this
+    // pipeline and every evdev device ends each report with EV_SYN /
+    // SYN_REPORT, so shared state would let an unrelated button press lift
+    // in-contact fingers mid-gesture. Scoping by device also makes a digitizer
+    // replug (new source id, fresh state) work without special cases.
+    let mut touch: FxHashMap<SourceId, TouchPipeline> = FxHashMap::default();
 
     let mut tc = match proto {
         TouchProto::Single => SINGLE_TOUCH_CODES,
@@ -1048,10 +1134,6 @@ async fn parse_device_events(
         TouchProto::MultiB => MULTI_TOUCH_CODES_B,
         TouchProto::MultiC => MULTI_TOUCH_CODES_B,
     };
-
-    if proto == TouchProto::Single {
-        packets.insert(id, TouchState::default());
-    }
 
     let (mut mirror_x, mut mirror_y) = compute_mirror_axes(rotation, mirroring_scheme);
     if rotation % 2 == swapping_scheme {
@@ -1077,23 +1159,36 @@ async fn parse_device_events(
 
     let mut button_scheme = button_scheme;
 
-    // Modifier state for hotplugged keyboards, tracked as a Wayland-compatible
+    // Modifier state for keyboards, tracked per source as a Wayland-compatible
     // `Modifiers` value so it can be forwarded directly to a `wl_keyboard`
-    // interface in a future Wayland server.
-    let mut modifiers = Modifiers::default();
+    // interface in a future Wayland server. Per source because a keyboard that
+    // disconnects with a modifier held never sends the release, and that stale
+    // bit must not latch into later events from other keyboards.
+    let mut modifiers: FxHashMap<SourceId, Modifiers> = FxHashMap::default();
 
     while let Some(tagged) = rx.recv().await {
         let evt = tagged.event;
         let _span = tracing::trace_span!("processing input event", event = ?evt).entered();
 
+        // `None` for synthetic events: they are EV_KEY controls and must not
+        // touch per-device state.
+        let device = match tagged.source {
+            EventSource::Device(source) => Some(source),
+            EventSource::Synthetic => None,
+        };
+
         if evt.kind == EV_ABS {
+            let Some(source) = device else {
+                continue;
+            };
+            let pipeline = touch_pipeline(&mut touch, source, proto);
             if evt.code == ABS_MT_TRACKING_ID {
                 if evt.value >= 0 {
-                    id = evt.value;
-                    packets.insert(id, TouchState::default());
+                    pipeline.id = evt.value;
+                    pipeline.packets.insert(pipeline.id, TouchState::default());
                 }
             } else if evt.code == tc.x {
-                if let Some(state) = packets.get_mut(&id) {
+                if let Some(state) = pipeline.packets.get_mut(&pipeline.id) {
                     state.position.x = if mirror_x {
                         dims.0 as i32 - 1 - evt.value
                     } else {
@@ -1113,7 +1208,7 @@ async fn parse_device_events(
                     );
                 }
             } else if evt.code == tc.y {
-                if let Some(state) = packets.get_mut(&id) {
+                if let Some(state) = pipeline.packets.get_mut(&pipeline.id) {
                     state.position.y = if mirror_y {
                         dims.1 as i32 - 1 - evt.value
                     } else {
@@ -1132,13 +1227,13 @@ async fn parse_device_events(
                         "touch axis raw"
                     );
                 }
-            } else if evt.code == tc.pressure {
-                if let Some(state) = packets.get_mut(&id) {
-                    state.pressure = evt.value;
-                    if proto == TouchProto::Single && mark == 3 && state.pressure == 0 {
-                        state.position.x = dims.0 as i32 - 1 - state.position.x;
-                        mem::swap(&mut state.position.x, &mut state.position.y);
-                    }
+            } else if evt.code == tc.pressure
+                && let Some(state) = pipeline.packets.get_mut(&pipeline.id)
+            {
+                state.pressure = evt.value;
+                if proto == TouchProto::Single && mark == 3 && state.pressure == 0 {
+                    state.position.x = dims.0 as i32 - 1 - state.position.x;
+                    mem::swap(&mut state.position.x, &mut state.position.y);
                 }
             }
         } else if evt.kind == EV_SYN && evt.code == SYN_REPORT {
@@ -1149,9 +1244,13 @@ async fn parse_device_events(
                 ty.send(DeviceEvent::UserActivity).ok();
             }
 
+            let Some(source) = device else {
+                continue;
+            };
+            let pipeline = touch_pipeline(&mut touch, source, proto);
             if proto == TouchProto::MultiB {
-                fingers.retain(|other_id, other_position| {
-                    packets.contains_key(&other_id)
+                pipeline.fingers.retain(|other_id, other_position| {
+                    pipeline.packets.contains_key(other_id)
                         || ty
                             .send(DeviceEvent::Finger {
                                 id: *other_id,
@@ -1163,7 +1262,7 @@ async fn parse_device_events(
                 });
             }
 
-            for (&id, state) in &packets {
+            for (&id, state) in &pipeline.packets {
                 if state.pressure > 0 {
                     tracing::debug!(
                         id,
@@ -1179,7 +1278,7 @@ async fn parse_device_events(
                         "touch packet"
                     );
                 }
-                if let Some(&pos) = fingers.get(&id) {
+                if let Some(&pos) = pipeline.fingers.get(&id) {
                     if state.pressure > 0 {
                         if state.position != pos {
                             ty.send(DeviceEvent::Finger {
@@ -1189,7 +1288,7 @@ async fn parse_device_events(
                                 position: state.position,
                             })
                             .unwrap();
-                            fingers.insert(id, state.position);
+                            pipeline.fingers.insert(id, state.position);
                         }
                     } else {
                         ty.send(DeviceEvent::Finger {
@@ -1199,7 +1298,7 @@ async fn parse_device_events(
                             position: state.position,
                         })
                         .unwrap();
-                        fingers.remove(&id);
+                        pipeline.fingers.remove(&id);
                     }
                 } else if state.pressure > 0 {
                     tracing::debug!(
@@ -1219,12 +1318,12 @@ async fn parse_device_events(
                         position: state.position,
                     })
                     .unwrap();
-                    fingers.insert(id, state.position);
+                    pipeline.fingers.insert(id, state.position);
                 }
             }
 
             if proto != TouchProto::Single {
-                packets.clear();
+                pipeline.packets.clear();
             }
         } else if evt.kind == EV_KEY {
             if evt.code == BTN_TOUCH {
@@ -1313,7 +1412,14 @@ async fn parse_device_events(
                         }
                     }
                     None => {
-                        if tagged.profile.tracks_modifiers {
+                        if tagged.profile.tracks_modifiers
+                            && let Some(source) = device
+                        {
+                            // Per-source state: a keyboard that disconnects
+                            // with a modifier held never sends the release, so
+                            // its bit must not poison other keyboards. Unseen
+                            // sources start from a default `Modifiers`.
+                            let modifiers = modifiers.entry(source).or_default();
                             if let Some(modifier) = Modifier::from_evdev_code(evt.code) {
                                 modifiers.set_depressed(modifier, evt.value != 0);
                                 tracing::trace!(
@@ -1330,7 +1436,7 @@ async fn parse_device_events(
                                     time: seconds(evt.time),
                                     code: ButtonCode::Keyboard(KeyEvent {
                                         keycode: evt.code as u32,
-                                        modifiers,
+                                        modifiers: *modifiers,
                                     }),
                                     status: button_status,
                                 })
@@ -1642,6 +1748,7 @@ async fn parse_raw_events(
         proto,
         display,
         tx,
+        next_source: SourceId::START,
     };
 
     device.open(&[], false).await;
@@ -1680,6 +1787,10 @@ struct OpenInputDevices<'a> {
     proto: TouchProto,
     display: Display,
     tx: &'a UnboundedSender<TaggedInputEvent>,
+    /// Monotonic counter so each opened device gets a unique [`SourceId`].
+    /// Ids of devices whose readers exited are never reused, so stale entries
+    /// in per-source state can never be confused with a new device.
+    next_source: SourceId,
 }
 
 impl OpenInputDevices<'_> {
@@ -1744,10 +1855,11 @@ impl OpenInputDevices<'_> {
             );
             let identity = features.identity();
             let tx = self.tx.clone();
+            let source = self.next_source.next();
             let path_for_reader = path.clone();
             let identity_for_reader = identity.clone();
             self.readers.spawn(async move {
-                let outcome = read_input_events(fd, profile, &tx).await;
+                let outcome = read_input_events(fd, profile, source, &tx).await;
                 tracing::debug!(
                     device = %path_for_reader,
                     error = ?outcome.as_ref().err(),
@@ -1873,6 +1985,7 @@ mod tests {
         let tagged = |kind, code, value| TaggedInputEvent {
             event: event(kind, code, value),
             profile: DeviceProfile::built_in(),
+            source: EventSource::Device(SourceId(0)),
         };
         for evt in [
             tagged(EV_KEY, KEY_ROTATE_DISPLAY, 2),
@@ -1901,6 +2014,194 @@ mod tests {
         .expect("timed out waiting for touch position");
 
         assert_eq!(finger, Point { x: 1620, y: 85 });
+    }
+
+    /// Receives the next device event, skipping the `UserActivity` heartbeat
+    /// triggered by the first `SYN_REPORT` after a 60 s idle window.
+    async fn next_input_event(
+        ry: &mut tokio::sync::mpsc::UnboundedReceiver<DeviceEvent>,
+    ) -> DeviceEvent {
+        loop {
+            match ry.recv().await {
+                Some(DeviceEvent::UserActivity) => continue,
+                Some(event) => return event,
+                None => panic!("input event channel closed"),
+            }
+        }
+    }
+
+    /// Regression: a `SYN_REPORT` from a non-touch device (e.g. a hardware
+    /// button) must not lift fingers still in contact on the digitizer.
+    #[tokio::test]
+    async fn syn_report_from_other_source_does_not_lift_fingers() {
+        let (raw_tx, raw_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (ty, mut ry) = tokio::sync::mpsc::unbounded_channel();
+        let info = DeviceInputInfo {
+            proto: TouchProto::MultiB,
+            mark: 13,
+            mirroring_scheme: (0, 0),
+            swapping_scheme: 0,
+            startup_rotation: 0,
+            gyro_rotation_transform: GyroRotationTransform::default(),
+        };
+        tokio::spawn(async move {
+            let mut rx = raw_rx;
+            parse_device_events(
+                &mut rx,
+                &ty,
+                Display {
+                    dims: (100, 100),
+                    rotation: 0,
+                },
+                ButtonScheme::Natural,
+                info,
+            )
+            .await;
+        });
+
+        let event = |kind, code, value| InputEvent {
+            time: libc::timeval {
+                tv_sec: 1,
+                tv_usec: 0,
+            },
+            kind,
+            code,
+            value,
+        };
+        let tagged = |source, kind, code, value| TaggedInputEvent {
+            event: event(kind, code, value),
+            profile: DeviceProfile::built_in(),
+            source: EventSource::Device(source),
+        };
+        let touch = SourceId(0);
+        let power_button = SourceId(1);
+        for evt in [
+            tagged(touch, EV_ABS, ABS_MT_TRACKING_ID, 0),
+            tagged(touch, EV_ABS, ABS_MT_POSITION_X, 10),
+            tagged(touch, EV_ABS, ABS_MT_POSITION_Y, 20),
+            tagged(touch, EV_ABS, ABS_MT_PRESSURE, 200),
+            tagged(touch, EV_SYN, SYN_REPORT, 0),
+        ] {
+            raw_tx.send(evt).expect("send raw event");
+        }
+        assert!(
+            matches!(
+                next_input_event(&mut ry).await,
+                DeviceEvent::Finger {
+                    status: FingerStatus::Down,
+                    ..
+                }
+            ),
+            "finger must be down after the digitizer's report"
+        );
+
+        // Power button press: its EV_KEY report ends with its own SYN_REPORT.
+        for evt in [
+            tagged(power_button, EV_KEY, KEY_POWER, VAL_PRESS),
+            tagged(power_button, EV_SYN, SYN_REPORT, 0),
+        ] {
+            raw_tx.send(evt).expect("send raw event");
+        }
+        assert!(
+            matches!(next_input_event(&mut ry).await, DeviceEvent::Button { .. }),
+            "the power press must arrive as a button event"
+        );
+        assert!(
+            ry.try_recv().is_err(),
+            "a foreign SYN_REPORT must not emit Finger Up events"
+        );
+
+        // The finger is still tracked: moving it produces Motion, not Down.
+        for evt in [
+            tagged(touch, EV_ABS, ABS_MT_TRACKING_ID, 0),
+            tagged(touch, EV_ABS, ABS_MT_POSITION_X, 11),
+            tagged(touch, EV_ABS, ABS_MT_POSITION_Y, 20),
+            tagged(touch, EV_ABS, ABS_MT_PRESSURE, 200),
+            tagged(touch, EV_SYN, SYN_REPORT, 0),
+        ] {
+            raw_tx.send(evt).expect("send raw event");
+        }
+        assert!(
+            matches!(
+                next_input_event(&mut ry).await,
+                DeviceEvent::Finger {
+                    status: FingerStatus::Motion,
+                    ..
+                }
+            ),
+            "the finger must survive the foreign SYN_REPORT and report Motion"
+        );
+    }
+
+    /// Regression: a modifier held on one keyboard when it disconnects must not
+    /// latch into keyboard events from another keyboard.
+    #[tokio::test]
+    async fn modifiers_do_not_leak_between_sources() {
+        let (raw_tx, raw_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (ty, mut ry) = tokio::sync::mpsc::unbounded_channel();
+        let info = DeviceInputInfo {
+            proto: TouchProto::MultiB,
+            mark: 13,
+            mirroring_scheme: (0, 0),
+            swapping_scheme: 0,
+            startup_rotation: 0,
+            gyro_rotation_transform: GyroRotationTransform::default(),
+        };
+        tokio::spawn(async move {
+            let mut rx = raw_rx;
+            parse_device_events(
+                &mut rx,
+                &ty,
+                Display {
+                    dims: (100, 100),
+                    rotation: 0,
+                },
+                ButtonScheme::Natural,
+                info,
+            )
+            .await;
+        });
+
+        let event = |kind, code, value| InputEvent {
+            time: libc::timeval {
+                tv_sec: 1,
+                tv_usec: 0,
+            },
+            kind,
+            code,
+            value,
+        };
+        let keyboard = |source, code, value| TaggedInputEvent {
+            event: event(EV_KEY, code, value),
+            profile: DeviceProfile::keyboard(),
+            source: EventSource::Device(source),
+        };
+
+        // Keyboard A presses Shift and never releases it (disconnects).
+        let a = SourceId(0);
+        raw_tx
+            .send(keyboard(a, KEY_LEFTSHIFT, VAL_PRESS))
+            .expect("send shift press");
+        // Keyboard B types a plain key.
+        let b = SourceId(1);
+        raw_tx
+            .send(keyboard(b, KEY_SPACE, VAL_PRESS))
+            .expect("send space press");
+
+        match ry.recv().await {
+            Some(DeviceEvent::Button {
+                code: ButtonCode::Keyboard(key),
+                ..
+            }) => {
+                assert_eq!(key.keycode, KEY_SPACE as u32);
+                assert_eq!(
+                    key.modifiers,
+                    Modifiers::default(),
+                    "B must not see A's stale Shift"
+                );
+            }
+            other => panic!("expected a keyboard button event, got {other:?}"),
+        }
     }
 
     #[test]
@@ -2064,10 +2365,9 @@ mod tests {
             .open(&path_str)
             .expect("open fifo");
         let fd = AsyncFd::with_interest(file, Interest::READABLE).expect("watch fifo");
-        let reader =
-            tokio::spawn(
-                async move { read_input_events(fd, DeviceProfile::built_in(), &tx).await },
-            );
+        let reader = tokio::spawn(async move {
+            read_input_events(fd, DeviceProfile::built_in(), SourceId(0), &tx).await
+        });
 
         let writer_path = path.clone();
         let writer = tokio::task::spawn_blocking(move || {
@@ -2135,8 +2435,9 @@ mod tests {
             .open(&path_str)
             .expect("open fifo");
         let fd = AsyncFd::with_interest(file, Interest::READABLE).expect("watch fifo");
-        let reader =
-            tokio::spawn(async move { read_input_events(fd, DeviceProfile::remote(), &tx).await });
+        let reader = tokio::spawn(async move {
+            read_input_events(fd, DeviceProfile::remote(), SourceId(0), &tx).await
+        });
 
         let writer_path = path.clone();
         let mut writer = tokio::task::spawn_blocking(move || {
@@ -2198,10 +2499,9 @@ mod tests {
             .open(&path_str)
             .expect("open fifo");
         let fd = AsyncFd::with_interest(file, Interest::READABLE).expect("watch fifo");
-        let reader =
-            tokio::spawn(
-                async move { read_input_events(fd, DeviceProfile::built_in(), &tx).await },
-            );
+        let reader = tokio::spawn(async move {
+            read_input_events(fd, DeviceProfile::built_in(), SourceId(0), &tx).await
+        });
 
         let writer_path = path.clone();
         let mut writer = tokio::task::spawn_blocking(move || {
