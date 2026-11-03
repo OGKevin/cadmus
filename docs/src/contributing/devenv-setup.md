@@ -153,8 +153,9 @@ and `website/package-lock.json`.
 ## Build Caching (sccache)
 
 devenv sets `RUSTC_WRAPPER` to [sccache](https://github.com/mozilla/sccache), so
-rustc output is cached in `~/.cache/sccache` (capped at 50 GiB) and reused across
-builds, branches, and workspaces.
+rustc output is cached in sccache's default local directory — `~/.cache/sccache`
+on Linux, `~/Library/Caches/Mozilla.sccache` on macOS — capped at 50 GiB and
+reused across builds, branches, and workspaces.
 
 Incremental compilation is disabled (`CARGO_INCREMENTAL=0`). sccache cannot cache
 incremental compiles, so leaving them on turns every dev build into a cache miss.
