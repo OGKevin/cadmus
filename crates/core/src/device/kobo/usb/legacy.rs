@@ -8,9 +8,7 @@
 use crate::device::kobo::usb::operations::KoboUsbOperations;
 use crate::device::metadata::{DeviceMetadata, Platform};
 use crate::device::usb::{UsbError, UsbManager};
-use std::fs;
-use std::path::Path;
-use std::process::Command;
+use tokio::process::Command;
 use tracing::{debug, error, info, warn};
 
 /// Base path for platform-specific kernel modules.
@@ -47,15 +45,18 @@ impl LegacyUsbManager {
         format!("{}/{}", DRIVERS_DIR, self.platform)
     }
 
-    fn has_g_mass_storage(&self) -> bool {
+    async fn has_g_mass_storage(&self) -> bool {
         let path = format!("{}/g_mass_storage.ko", self.drivers_path());
-        Path::new(&path).exists()
+        tokio::fs::try_exists(&path).await.unwrap_or(false)
     }
 
     /// Builds the `file=` parameter value for `insmod`, including the SD card
     /// partition when one is present (matching the original `usb-enable.sh` behavior).
-    fn build_file_param(&self) -> String {
-        if Path::new(SD_CARD_PARTITION).exists() {
+    async fn build_file_param(&self) -> String {
+        if tokio::fs::try_exists(SD_CARD_PARTITION)
+            .await
+            .unwrap_or(false)
+        {
             debug!(
                 sd_partition = SD_CARD_PARTITION,
                 "SD card detected, including in USB export"
@@ -66,22 +67,22 @@ impl LegacyUsbManager {
         }
     }
 
-    fn build_mass_storage_params(&self) -> Vec<String> {
+    async fn build_mass_storage_params(&self) -> Vec<String> {
         vec![
             format!("idVendor=0x{:04X}", self.metadata.vendor_id),
             format!("idProduct=0x{:04X}", self.metadata.product_id),
             "iManufacturer=Kobo".to_string(),
             format!("iProduct=eReader-{}", self.metadata.firmware_version),
             format!("iSerialNumber={}", self.metadata.serial_number),
-            format!("file={}", self.build_file_param()),
+            format!("file={}", self.build_file_param().await),
             "stall=1".to_string(),
             "removable=1".to_string(),
         ]
     }
 
-    fn build_file_storage_params(&self) -> Vec<String> {
+    async fn build_file_storage_params(&self) -> Vec<String> {
         match self.platform {
-            Platform::MX6SLLNTX | Platform::MX6ULLNTX => self.build_mass_storage_params(),
+            Platform::MX6SLLNTX | Platform::MX6ULLNTX => self.build_mass_storage_params().await,
             _ => {
                 vec![
                     format!("vendor=0x{:04X}", self.metadata.vendor_id),
@@ -89,7 +90,7 @@ impl LegacyUsbManager {
                     "vendor_id=Kobo".to_string(),
                     format!("product_id=eReader-{}", self.metadata.firmware_version),
                     format!("SN={}", self.metadata.serial_number),
-                    format!("file={}", self.build_file_param()),
+                    format!("file={}", self.build_file_param().await),
                     "stall=1".to_string(),
                     "removable=1".to_string(),
                 ]
@@ -97,11 +98,11 @@ impl LegacyUsbManager {
         }
     }
 
-    fn load_g_mass_storage(&self) -> Result<(), UsbError> {
+    async fn load_g_mass_storage(&self) -> Result<(), UsbError> {
         info!("Loading g_mass_storage module");
 
         let module_path = format!("{}/g_mass_storage.ko", self.drivers_path());
-        let params = self.build_mass_storage_params();
+        let params = self.build_mass_storage_params().await;
 
         let mut cmd = Command::new("insmod");
         cmd.arg(&module_path);
@@ -109,7 +110,7 @@ impl LegacyUsbManager {
             cmd.arg(param);
         }
 
-        let output = cmd.output().map_err(|e| {
+        let output = cmd.output().await.map_err(|e| {
             error!(error = %e, "Failed to execute insmod");
             UsbError::KernelModule(format!("insmod execution failed: {}", e))
         })?;
@@ -127,7 +128,7 @@ impl LegacyUsbManager {
         Ok(())
     }
 
-    fn load_g_file_storage(&self) -> Result<(), UsbError> {
+    async fn load_g_file_storage(&self) -> Result<(), UsbError> {
         info!("Loading g_file_storage module with dependencies");
 
         let gadgets_path = format!("{}/{}/usb/gadget", DRIVERS_DIR, self.platform);
@@ -136,25 +137,25 @@ impl LegacyUsbManager {
             Platform::MX6SLLNTX | Platform::MX6ULLNTX => {
                 for module in ["configfs.ko", "libcomposite.ko", "usb_f_mass_storage.ko"] {
                     let path = format!("{}/{}", gadgets_path, module);
-                    if Path::new(&path).exists() {
+                    if tokio::fs::try_exists(&path).await.unwrap_or(false) {
                         debug!(module = %module, "Loading dependency module");
-                        let _ = Command::new("insmod").arg(&path).output();
+                        let _ = Command::new("insmod").arg(&path).output().await;
                     }
                 }
             }
             Platform::MX6SLNTX => {}
             _ => {
                 let arcotg_path = format!("{}/arcotg_udc.ko", gadgets_path);
-                if Path::new(&arcotg_path).exists() {
+                if tokio::fs::try_exists(&arcotg_path).await.unwrap_or(false) {
                     debug!("Loading arcotg_udc module");
-                    let _ = Command::new("insmod").arg(&arcotg_path).output();
-                    std::thread::sleep(std::time::Duration::from_secs(2));
+                    let _ = Command::new("insmod").arg(&arcotg_path).output().await;
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                 }
             }
         }
 
         let module_path = format!("{}/g_file_storage.ko", gadgets_path);
-        let params = self.build_file_storage_params();
+        let params = self.build_file_storage_params().await;
 
         let mut cmd = Command::new("insmod");
         cmd.arg(&module_path);
@@ -162,7 +163,7 @@ impl LegacyUsbManager {
             cmd.arg(param);
         }
 
-        let output = cmd.output().map_err(|e| {
+        let output = cmd.output().await.map_err(|e| {
             error!(error = %e, "Failed to execute insmod");
             UsbError::KernelModule(format!("insmod execution failed: {}", e))
         })?;
@@ -180,16 +181,16 @@ impl LegacyUsbManager {
         Ok(())
     }
 
-    fn load_usb_module(&self) -> Result<(), UsbError> {
-        if self.has_g_mass_storage() {
-            self.load_g_mass_storage()
+    async fn load_usb_module(&self) -> Result<(), UsbError> {
+        if self.has_g_mass_storage().await {
+            self.load_g_mass_storage().await
         } else {
-            self.load_g_file_storage()
+            self.load_g_file_storage().await
         }
     }
 
-    fn get_loaded_module(&self) -> Option<String> {
-        let content = fs::read_to_string("/proc/modules").ok()?;
+    async fn get_loaded_module(&self) -> Option<String> {
+        let content = tokio::fs::read_to_string("/proc/modules").await.ok()?;
 
         for line in content.lines() {
             if line.starts_with("g_mass_storage ") {
@@ -203,8 +204,8 @@ impl LegacyUsbManager {
         None
     }
 
-    fn unload_usb_modules(&self) -> Result<(), UsbError> {
-        let module = match self.get_loaded_module() {
+    async fn unload_usb_modules(&self) -> Result<(), UsbError> {
+        let module = match self.get_loaded_module().await {
             Some(m) => m,
             None => {
                 warn!("No USB module found in /proc/modules");
@@ -214,10 +215,14 @@ impl LegacyUsbManager {
 
         info!(module = %module, "Unloading USB module");
 
-        let output = Command::new("rmmod").arg(&module).output().map_err(|e| {
-            error!(error = %e, "Failed to execute rmmod");
-            UsbError::KernelModule(format!("rmmod execution failed: {}", e))
-        })?;
+        let output = Command::new("rmmod")
+            .arg(&module)
+            .output()
+            .await
+            .map_err(|e| {
+                error!(error = %e, "Failed to execute rmmod");
+                UsbError::KernelModule(format!("rmmod execution failed: {}", e))
+            })?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -232,12 +237,12 @@ impl LegacyUsbManager {
             match self.platform {
                 Platform::MX6SLLNTX | Platform::MX6ULLNTX => {
                     for mod_name in ["usb_f_mass_storage", "libcomposite", "configfs"] {
-                        let _ = Command::new("rmmod").arg(mod_name).output();
+                        let _ = Command::new("rmmod").arg(mod_name).output().await;
                     }
                 }
                 Platform::MX6SLNTX => {}
                 _ => {
-                    let _ = Command::new("rmmod").arg("arcotg_udc").output();
+                    let _ = Command::new("rmmod").arg("arcotg_udc").output().await;
                 }
             }
         }
@@ -255,28 +260,28 @@ impl KoboUsbOperations for LegacyUsbManager {
 
 impl UsbManager for LegacyUsbManager {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
-    fn enable(&self) -> Result<(), UsbError> {
+    async fn enable(&self) -> Result<(), UsbError> {
         info!(platform = %self.platform, "Enabling legacy USB mass storage");
 
-        self.prepare_for_usb_share()?;
-        self.load_usb_module()?;
+        self.prepare_for_usb_share().await?;
+        self.load_usb_module().await?;
 
-        std::thread::sleep(std::time::Duration::from_secs(1));
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
         info!("Legacy USB mass storage enabled successfully");
         Ok(())
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
-    fn disable(&self) -> Result<(), UsbError> {
+    async fn disable(&self) -> Result<(), UsbError> {
         info!(platform = %self.platform, "Disabling legacy USB mass storage");
 
-        self.unload_usb_modules()?;
+        self.unload_usb_modules().await?;
 
-        std::thread::sleep(std::time::Duration::from_secs(1));
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
-        self.check_filesystem()?;
-        self.remount_partitions()?;
+        self.check_filesystem().await?;
+        self.remount_partitions().await?;
 
         info!("Legacy USB mass storage disabled successfully");
         Ok(())

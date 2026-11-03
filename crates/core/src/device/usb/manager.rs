@@ -1,6 +1,7 @@
 //! USB Manager trait definition.
 
 use crate::device::usb::error::UsbError;
+use std::future::Future;
 
 /// Trait for USB mass storage gadget management.
 ///
@@ -22,14 +23,14 @@ use crate::device::usb::error::UsbError;
 /// ```ignore
 /// use cadmus_core::device::usb::{UsbManager, UsbError};
 ///
-/// # fn example(usb_manager: &dyn UsbManager) -> Result<(), UsbError> {
+/// # async fn example<M: UsbManager>(usb_manager: &M) -> Result<(), UsbError> {
 /// // Enable USB sharing
-/// usb_manager.enable()?;
+/// usb_manager.enable().await?;
 ///
 /// // ... device is now in USB mass storage mode ...
 ///
 /// // Disable USB sharing
-/// usb_manager.disable()?;
+/// usb_manager.disable().await?;
 /// # Ok(())
 /// # }
 /// ```
@@ -57,12 +58,12 @@ pub trait UsbManager: Send + Sync {
     /// ```ignore
     /// use cadmus_core::device::usb::UsbManager;
     ///
-    /// # fn example(usb_manager: &dyn UsbManager) -> Result<(), cadmus_core::device::usb::UsbError> {
-    /// usb_manager.enable()?;
+    /// # async fn example<M: UsbManager>(usb_manager: &M) -> Result<(), cadmus_core::device::usb::UsbError> {
+    /// usb_manager.enable().await?;
     /// # Ok(())
     /// # }
     /// ```
-    fn enable(&self) -> Result<(), UsbError>;
+    fn enable(&self) -> impl Future<Output = Result<(), UsbError>> + Send;
 
     /// Disables USB mass storage mode.
     ///
@@ -88,19 +89,20 @@ pub trait UsbManager: Send + Sync {
     /// ```ignore
     /// use cadmus_core::device::usb::UsbManager;
     ///
-    /// # fn example(usb_manager: &dyn UsbManager) -> Result<(), cadmus_core::device::usb::UsbError> {
-    /// usb_manager.disable()?;
+    /// # async fn example<M: UsbManager>(usb_manager: &M) -> Result<(), cadmus_core::device::usb::UsbError> {
+    /// usb_manager.disable().await?;
     /// # Ok(())
     /// # }
     /// ```
-    fn disable(&self) -> Result<(), UsbError>;
+    fn disable(&self) -> impl Future<Output = Result<(), UsbError>> + Send;
 }
 
 impl<T: UsbManager + ?Sized> UsbManager for Box<T> {
-    fn enable(&self) -> Result<(), UsbError> {
+    fn enable(&self) -> impl Future<Output = Result<(), UsbError>> + Send {
         (**self).enable()
     }
-    fn disable(&self) -> Result<(), UsbError> {
+
+    fn disable(&self) -> impl Future<Output = Result<(), UsbError>> + Send {
         (**self).disable()
     }
 }

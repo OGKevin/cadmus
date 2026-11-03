@@ -1,8 +1,8 @@
 use super::input::InputSource;
 use super::model::{DeviceTreeCompatible, Model, parse_device_tree_compatible_bytes};
-use crate::device::DeviceIdentity;
 use crate::device::linux::LinuxRtc;
 use crate::device::metadata::DeviceMetadata;
+use crate::device::{DeviceIdentity, DevicePaths};
 use std::env;
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
@@ -42,6 +42,69 @@ pub struct Device {
     time_manager: crate::time_manager::TimeManager<LinuxRtc>,
     input: InputSource,
     boot_transformed_rotation: i8,
+    data_dir: PathBuf,
+}
+
+/// Chooses the data root from the install directory and the storage facts.
+///
+/// Pure so the policy is testable without reading `/proc/mounts`. Runtime data
+/// lives on the external card only when the device has removable storage and
+/// that card is mounted; otherwise it stays in the install directory.
+fn data_root(
+    install_dir: PathBuf,
+    data_subdir: &str,
+    removable: bool,
+    external_mounted: bool,
+) -> PathBuf {
+    if removable && external_mounted {
+        Path::new(crate::settings::EXTERNAL_CARD_ROOT).join(data_subdir)
+    } else {
+        install_dir
+    }
+}
+
+/// Reports whether the external card slot holds a mounted card.
+///
+/// Runs before logging is configured, so the fallback warnings go to stderr,
+/// which `cadmus.sh` merges into `info.log`.
+async fn external_card_mounted(install_dir: &Path) -> bool {
+    let root = Path::new(crate::settings::EXTERNAL_CARD_ROOT);
+    match crate::device::linux::mounts::is_mount_point(root).await {
+        Ok(mounted) => {
+            if !mounted {
+                eprintln!(
+                    "Warning: removable storage is present but {} is not a mount point; using {}",
+                    root.display(),
+                    install_dir.display()
+                );
+            }
+            mounted
+        }
+        Err(error) => {
+            eprintln!(
+                "Warning: failed to check whether {} is a mount point: {error}; using {}",
+                root.display(),
+                install_dir.display()
+            );
+            false
+        }
+    }
+}
+
+/// Resolves the data root once at startup.
+///
+/// The result is stored on the device so every later lookup sees the same
+/// directory, even if the card is mounted or removed while the app runs.
+async fn resolve_data_dir(device: &Device) -> PathBuf {
+    let install_dir = device.install_dir();
+    let removable = !cfg!(test) && crate::device::DeviceCapabilities::has_removable_storage(device);
+    let external_mounted = removable && external_card_mounted(&install_dir).await;
+    data_root(
+        install_dir,
+        device.data_subdir(),
+        removable,
+        external_mounted,
+    )
 }
 
 impl Debug for Device {
@@ -60,7 +123,7 @@ impl Device {
         clippy::too_many_arguments,
         reason = "device bundles all hardware subsystems"
     )]
-    pub(super) fn new(
+    pub(super) async fn new(
         model: Model,
         metadata: DeviceMetadata,
         framebuffer: Box<dyn crate::framebuffer::Framebuffer + Send>,
@@ -76,7 +139,7 @@ impl Device {
         boot_transformed_rotation: i8,
         input: InputSource,
     ) -> Self {
-        Self {
+        let mut device = Self {
             model,
             metadata,
             framebuffer,
@@ -91,7 +154,10 @@ impl Device {
             time_manager,
             input,
             boot_transformed_rotation,
-        }
+            data_dir: PathBuf::new(),
+        };
+        device.data_dir = resolve_data_dir(&device).await;
+        device
     }
 
     /// Creates a device from product and model number strings.
@@ -167,8 +233,11 @@ impl Device {
 /// Kobo install and data directory layout.
 ///
 /// Install root: `/mnt/onboard/.adds/cadmus` (or `cadmus-tst` for test builds).
-/// Data root: `/mnt/sd/.cadmus` when removable storage is mounted, else install root.
-impl crate::device::DevicePaths for Device {
+/// Data root: `/mnt/sd/.cadmus` when removable storage is present and the card
+/// slot holds an actual mount; otherwise the install root. The data root is
+/// resolved once at startup, so an empty card slot keeps runtime data on the
+/// internal card instead of creating `/mnt/sd/.cadmus` on the rootfs.
+impl DevicePaths for Device {
     fn install_subdir(&self) -> &'static str {
         cfg_select! {
             feature = "test" => { ".adds/cadmus-tst" }
@@ -197,19 +266,7 @@ impl crate::device::DevicePaths for Device {
     }
 
     fn data_dir(&self) -> PathBuf {
-        cfg_select! {
-            test => { self.install_dir() }
-            _ => {
-                if crate::device::DeviceCapabilities::has_removable_storage(self)
-                    && std::path::Path::new(crate::settings::EXTERNAL_CARD_ROOT).is_dir()
-                {
-                    PathBuf::from(crate::settings::EXTERNAL_CARD_ROOT)
-                        .join(self.data_subdir())
-                } else {
-                    self.install_dir()
-                }
-            }
-        }
+        self.data_dir.clone()
     }
 
     fn peer_installs(&self) -> Vec<crate::device::PeerInstall> {
@@ -258,7 +315,7 @@ crate::forward_device_rotation!(Device, model, boot = boot_transformed_rotation)
 #[cfg(all(test, feature = "kobo"))]
 mod tests {
     use super::*;
-    use crate::device::{DevicePaths as _, DeviceRotation as _};
+    use crate::device::DeviceRotation as _;
 
     mod paths {
         use super::*;
@@ -319,6 +376,33 @@ mod tests {
             let d = Model::Sage.device().await.unwrap();
             let expected = d.data_path(std::path::Path::new("tmp"));
             assert_eq!(d.tmp_dir(), expected);
+        }
+
+        #[tokio::test]
+        async fn data_dir_is_install_dir_under_test() {
+            let d = Model::Sage.device().await.unwrap();
+            assert_eq!(d.data_dir(), d.install_dir());
+        }
+
+        #[test]
+        fn data_root_prefers_mounted_external_card() {
+            let install = PathBuf::from("/mnt/onboard/.adds/cadmus");
+            assert_eq!(
+                data_root(install, ".cadmus", true, true),
+                Path::new(crate::settings::EXTERNAL_CARD_ROOT).join(".cadmus")
+            );
+        }
+
+        #[test]
+        fn data_root_keeps_install_dir_without_mounted_card() {
+            let install = PathBuf::from("/mnt/onboard/.adds/cadmus");
+            assert_eq!(data_root(install.clone(), ".cadmus", true, false), install);
+        }
+
+        #[test]
+        fn data_root_keeps_install_dir_without_removable_storage() {
+            let install = PathBuf::from("/mnt/onboard/.adds/cadmus");
+            assert_eq!(data_root(install.clone(), ".cadmus", false, true), install);
         }
 
         #[test]

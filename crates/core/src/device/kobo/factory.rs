@@ -91,6 +91,7 @@ impl Model {
         );
         let usb_manager = std::sync::Arc::new(
             crate::device::kobo::usb::KoboUsbManager::new(metadata.clone())
+                .await
                 .context("failed to create USB manager")?,
         );
         let power_manager =
@@ -132,6 +133,7 @@ impl Model {
                 pipeline_cancel: None,
                 gesture_job: None,
             },
-        ))
+        )
+        .await)
     }
 }
