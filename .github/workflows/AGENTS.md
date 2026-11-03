@@ -112,6 +112,7 @@ collection from posting for every reviewdog consumer:
 | Website                  | Website report          | prettier, eslint, stylelint |
 | OpenCode                 | OpenCode report         | prettier                    |
 | Docs lint                | Docs lint report        | rumdl                       |
+| Root scripts             | Root scripts report     | prettier                    |
 
 New reviewdog jobs must follow the same collect/report pair. Keep
 `pull-requests: write` on the report workflow only.

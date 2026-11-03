@@ -2,7 +2,7 @@
   "name": "cadmus",
   "private": true,
   "scripts": {
-    "postinstall": "puppeteer browsers install chrome-headless-shell"
+    "postinstall": "node scripts/install-chrome-headless-shell.mjs"
   },
   "devDependencies": {
     "@mermaid-js/mermaid-cli": "^12.2.0",
