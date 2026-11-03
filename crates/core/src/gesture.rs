@@ -489,8 +489,7 @@ async fn parse_gesture_events(
                                 },
                                 GestureEvent::Tap(c),
                             ) => {
-                                // Angle are positive in the counter clockwise direction.
-                                let angle = ((e - c).angle() - (s - c).angle()).to_degrees();
+                                let angle = rotation_angle(s, e, c);
                                 let quarter_turns = (angle / 90.0).round() as i8;
                                 ty.send(Event::Gesture(GestureEvent::Rotate {
                                     angle,
@@ -511,6 +510,9 @@ async fn parse_gesture_events(
                 code,
                 time,
             } => {
+                if !is_hold_candidate(&code) {
+                    continue;
+                }
                 let mut bt = buttons.lock().unwrap();
                 bt.insert(code, time);
                 tracing::debug!(
@@ -549,6 +551,21 @@ fn disarm_hold<K: std::hash::Hash + Eq>(holds: &mut FxHashMap<K, CancellationTok
     if let Some(token) = holds.remove(&key) {
         token.cancel();
     }
+}
+
+/// Signed rotation, in degrees, from `start` to `end` around `center`.
+///
+/// Angles are positive in the counter-clockwise direction.
+fn rotation_angle(start: Point, end: Point, center: Point) -> f32 {
+    ((end - center).angle() - (start - center).angle()).to_degrees()
+}
+
+/// Whether a pressed [`ButtonCode`] can become a `HoldButton*` event.
+///
+/// Keyboard and raw codes carry no hold semantics; no consumer acts on
+/// `HoldButton*` for them.
+fn is_hold_candidate(code: &ButtonCode) -> bool {
+    !matches!(code, ButtonCode::Keyboard(..) | ButtonCode::Raw(..))
 }
 
 fn disarm_all_holds<K: std::hash::Hash + Eq>(holds: &mut FxHashMap<K, CancellationToken>) {
@@ -794,7 +811,7 @@ fn interpret_segment(sp: &[Point], tap_jitter: f32) -> GestureEvent {
 mod tests {
     use super::*;
     use crate::geom::Point;
-    use crate::input::{DeviceEvent, FingerStatus};
+    use crate::input::{DeviceEvent, FingerStatus, KeyEvent, Modifiers};
     use std::time::Duration;
     use tokio::sync::mpsc;
 
@@ -910,6 +927,32 @@ mod tests {
             gesture,
             Some(GestureEvent::HoldFingerShort(pt, 3)) if pt == position
         ));
+
+        drop(device_tx);
+        let _ = pipeline.job.join(Duration::from_secs(1)).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn keyboard_press_does_not_arm_button_hold() {
+        let (device_tx, device_rx) = mpsc::unbounded_channel();
+        let pipeline = GesturePipeline::start(device_rx, 300);
+        let mut events = pipeline.events;
+
+        device_tx
+            .send(DeviceEvent::Button {
+                code: ButtonCode::Keyboard(KeyEvent {
+                    keycode: 30,
+                    modifiers: Modifiers::default(),
+                }),
+                status: ButtonStatus::Pressed,
+                time: 1.0,
+            })
+            .unwrap();
+
+        let gesture =
+            next_gesture(&mut events, HOLD_DELAY_SHORT + Duration::from_millis(250)).await;
+
+        assert!(!matches!(gesture, Some(GestureEvent::HoldButtonShort(_))));
 
         drop(device_tx);
         let _ = pipeline.job.join(Duration::from_secs(1)).await;
