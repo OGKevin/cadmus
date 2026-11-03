@@ -1891,6 +1891,7 @@ impl OpenInputDevices<'_> {
                         error = %error,
                         "failed to open input device; skipping"
                     );
+                    self.forget_scanned_identity(&features);
                     continue;
                 }
             };
@@ -1905,6 +1906,7 @@ impl OpenInputDevices<'_> {
                         error = %error,
                         "failed to watch input device; skipping"
                     );
+                    self.forget_scanned_identity(&features);
                     continue;
                 }
             };
@@ -1932,6 +1934,14 @@ impl OpenInputDevices<'_> {
                 (path_for_reader, identity_for_reader)
             });
             self.watched.push((path, identity));
+        }
+    }
+
+    /// Releases the dedup identity of a device that was scanned but not opened,
+    /// so the next scan retries it instead of treating it as a duplicate.
+    fn forget_scanned_identity(&mut self, features: &DeviceFeatures) {
+        if let Some(identity) = features.identity() {
+            self.known_identities.remove(&identity);
         }
     }
 
@@ -1969,6 +1979,45 @@ mod tests {
 
         assert!(blacklisted.contains("/dev/input/event3"));
         assert_eq!(blacklisted.len(), 1);
+    }
+
+    /// A device that was scanned but never opened (open or watch failed) must
+    /// have its dedup identity released: otherwise the next scan treats the
+    /// same node as a duplicate of itself and blacklists it until restart.
+    #[tokio::test]
+    async fn forget_scanned_identity_releases_unopened_device() {
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut devices = OpenInputDevices {
+            watched: Vec::new(),
+            readers: tokio::task::JoinSet::new(),
+            known_identities: FxHashSet::default(),
+            blacklisted_paths: FxHashSet::default(),
+            proto: TouchProto::MultiB,
+            display: Display {
+                dims: (1264, 1680),
+                rotation: 1,
+            },
+            tx: &tx,
+            next_source: SourceId::START,
+        };
+
+        let features = DeviceFeatures {
+            name: Some("virtual-keyboard".to_string()),
+            // USB keyboard (bustype 0x03 = BUS_USB).
+            bustype: 0x03,
+            vendor: 0x1,
+            product: 0x2,
+            version: 0x3,
+            emits_key: true,
+            emits_abs: false,
+            has_position_axes: false,
+        };
+        let identity = features.identity().expect("identity");
+        devices.known_identities.insert(identity.clone());
+
+        devices.forget_scanned_identity(&features);
+
+        assert!(!devices.known_identities.contains(&identity));
     }
 
     // Bus type for Bluetooth devices, used only in tests to verify that
