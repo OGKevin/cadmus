@@ -28,6 +28,41 @@ const FILENAME_PATTERN: &str = "sketch-%Y%m%d_%H%M%S.png";
 const ICON_NAME: &str = "enclosed_menu";
 // https://oeis.org/A000041
 const PEN_SIZES: [i32; 12] = [1, 2, 3, 5, 7, 11, 15, 22, 30, 42, 56, 77];
+// shortcut: full-canvas snapshots (~2.6 MB each on a 1404×1872 screen), switch to stroke deltas if more depth is needed.
+const MAX_HISTORY: usize = 10;
+
+/// Canvas snapshots for undo/redo, taken before each stroke or canvas-wide change.
+#[derive(Default)]
+struct History {
+    undo: Vec<Pixmap>,
+    redo: Vec<Pixmap>,
+}
+
+impl History {
+    fn checkpoint(&mut self, current: &Pixmap) {
+        if self.undo.len() == MAX_HISTORY {
+            self.undo.remove(0);
+        }
+        self.undo.push(current.clone());
+        self.redo.clear();
+    }
+
+    fn undo(&mut self, current: &mut Pixmap) -> bool {
+        Self::swap(&mut self.undo, &mut self.redo, current)
+    }
+
+    fn redo(&mut self, current: &mut Pixmap) -> bool {
+        Self::swap(&mut self.redo, &mut self.undo, current)
+    }
+
+    fn swap(from: &mut Vec<Pixmap>, to: &mut Vec<Pixmap>, current: &mut Pixmap) -> bool {
+        let Some(previous) = from.pop() else {
+            return false;
+        };
+        to.push(std::mem::replace(current, previous));
+        true
+    }
+}
 
 struct TouchState {
     pt: Point,
@@ -48,6 +83,8 @@ pub struct Sketch {
     pixmap: Pixmap,
     fingers: FxHashMap<i32, TouchState>,
     pen: Pen,
+    eraser: bool,
+    history: History,
     save_path: PathBuf,
     filename: String,
 }
@@ -90,6 +127,8 @@ impl Sketch {
             pixmap: Pixmap::new(rect.width(), rect.height(), 1),
             fingers: FxHashMap::default(),
             pen: context.settings.sketch.pen.clone(),
+            eraser: false,
+            history: History::default(),
             save_path,
             filename: Local::now().format(FILENAME_PATTERN).to_string(),
         }
@@ -176,6 +215,10 @@ impl Sketch {
             let mut entries = vec![
                 EntryKind::SubMenu("Size".to_string(), sizes),
                 EntryKind::SubMenu("Color".to_string(), colors),
+                EntryKind::CheckBox("Eraser".to_string(), EntryId::TogglePenEraser, self.eraser),
+                EntryKind::Separator,
+                EntryKind::Command("Undo".to_string(), EntryId::Undo),
+                EntryKind::Command("Redo".to_string(), EntryId::Redo),
                 EntryKind::Separator,
                 EntryKind::Command("Save".to_string(), EntryId::Save),
                 EntryKind::Command("Refresh".to_string(), EntryId::Refresh),
@@ -236,6 +279,10 @@ impl Sketch {
         Ok(())
     }
 
+    fn stroke_color(&self) -> Color {
+        if self.eraser { WHITE } else { self.pen.color }
+    }
+
     fn quit(&self, hub: &Hub, context: &AppContext) {
         hub.send(
             (Event::ImportLibrary {
@@ -256,6 +303,7 @@ fn draw_segment(
     position: Point,
     time: f64,
     pen: &Pen,
+    color: Color,
     dpi: u16,
     id: Id,
     fb_rect: &Rectangle,
@@ -288,7 +336,7 @@ fn draw_segment(
         end_radius.ceil() as i32,
     );
 
-    pixmap.draw_segment(ts.pt, position, start_radius, end_radius, pen.color);
+    pixmap.draw_segment(ts.pt, position, start_radius, end_radius, color);
 
     if let Some(render_rect) = rect.intersection(fb_rect) {
         rq.add(RenderData::no_wait(id, render_rect, UpdateMode::FastMono));
@@ -317,6 +365,7 @@ impl View for Sketch {
                 position,
                 time,
             }) => {
+                let color = self.stroke_color();
                 if let Some(ts) = self.fingers.get_mut(&id) {
                     draw_segment(
                         &mut self.pixmap,
@@ -324,6 +373,7 @@ impl View for Sketch {
                         position,
                         time,
                         &self.pen,
+                        color,
                         context.device.dpi(),
                         self.id,
                         &self.rect,
@@ -338,6 +388,9 @@ impl View for Sketch {
                 position,
                 time,
             }) => {
+                if self.fingers.is_empty() {
+                    self.history.checkpoint(&self.pixmap);
+                }
                 let radius = self.pen.size as f32 / 2.0;
                 self.fingers
                     .insert(id, TouchState::new(position, time, radius));
@@ -349,6 +402,7 @@ impl View for Sketch {
                 position,
                 time,
             }) => {
+                let color = self.stroke_color();
                 if let Some(ts) = self.fingers.get_mut(&id) {
                     draw_segment(
                         &mut self.pixmap,
@@ -356,6 +410,7 @@ impl View for Sketch {
                         position,
                         time,
                         &self.pen,
+                        color,
                         context.device.dpi(),
                         self.id,
                         &self.rect,
@@ -381,8 +436,27 @@ impl View for Sketch {
                 self.pen.dynamic = !self.pen.dynamic;
                 true
             }
+            Event::Select(EntryId::TogglePenEraser) => {
+                self.eraser = !self.eraser;
+                true
+            }
+            Event::Select(EntryId::Undo) => {
+                if self.history.undo(&mut self.pixmap) {
+                    rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+                }
+                true
+            }
+            Event::Select(EntryId::Redo) => {
+                if self.history.redo(&mut self.pixmap) {
+                    rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+                }
+                true
+            }
             Event::Select(EntryId::Load(ref name)) => {
+                self.history.checkpoint(&self.pixmap);
                 if let Err(e) = self.load(name) {
+                    self.history.undo(&mut self.pixmap);
+                    self.history.redo.clear();
                     let msg = format!("Couldn't load sketch: {}).", e);
                     let notif = Notification::new(None, msg, false, hub, rq, context);
                     self.children.push(Box::new(notif) as Box<dyn View>);
@@ -396,6 +470,7 @@ impl View for Sketch {
                 true
             }
             Event::Select(EntryId::New) => {
+                self.history.checkpoint(&self.pixmap);
                 self.pixmap.clear(WHITE);
                 self.filename = Local::now().format(FILENAME_PATTERN).to_string();
                 rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
@@ -463,5 +538,45 @@ impl View for Sketch {
 
     fn id(&self) -> Id {
         self.id
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn canvas(value: u8) -> Pixmap {
+        let mut pixmap = Pixmap::new(1, 1, 1);
+        pixmap.data_mut()[0] = value;
+        pixmap
+    }
+
+    #[test]
+    fn undo_redo_round_trip() {
+        let mut history = History::default();
+        let mut current = canvas(1);
+        history.checkpoint(&current);
+        current = canvas(2);
+
+        assert!(history.undo(&mut current));
+        assert_eq!(current.data[0], 1);
+        assert!(!history.undo(&mut current));
+        assert!(history.redo(&mut current));
+        assert_eq!(current.data[0], 2);
+        assert!(!history.redo(&mut current));
+    }
+
+    #[test]
+    fn checkpoint_clears_redo_and_caps_depth() {
+        let mut history = History::default();
+        let mut current = canvas(0);
+        history.checkpoint(&current);
+        assert!(history.undo(&mut current));
+        history.checkpoint(&current);
+        assert!(history.redo.is_empty());
+
+        (0..MAX_HISTORY as u8 + 5).for_each(|i| history.checkpoint(&canvas(i)));
+        assert_eq!(history.undo.len(), MAX_HISTORY);
+        assert_eq!(history.undo[0].data[0], 5);
     }
 }
