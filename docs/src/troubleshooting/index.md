@@ -12,9 +12,10 @@ Cadmus saves logs in a `logs` folder. Here's where to find it on each platform:
 
 <!-- i18n:skip-start -->
 
-| Platform | Stable build                     | Test build                           |
-| -------- | -------------------------------- | ------------------------------------ |
-| Kobo     | `/mnt/onboard/.adds/cadmus/logs` | `/mnt/onboard/.adds/cadmus-tst/logs` |
+| Platform          | Stable build                     | Test build                           |
+| ----------------- | -------------------------------- | ------------------------------------ |
+| Kobo              | `/mnt/onboard/.adds/cadmus/logs` | `/mnt/onboard/.adds/cadmus-tst/logs` |
+| Kobo with SD card | `/mnt/sd/.cadmus/logs`           | `/mnt/sd/.cadmus-tst/logs`           |
 
 <!-- i18n:skip-end -->
 
