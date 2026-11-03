@@ -902,6 +902,11 @@ in
     # Inspect and recover the sccache daemon. `restart` clears a server left
     # behind by an sccache upgrade ("Mismatch of client/server versions?") and
     # applies changed server-side settings such as SCCACHE_CACHE_SIZE.
+    #
+    # `--stop-server` returns as soon as shutdown is requested, and a lone
+    # `--stop-server` failure means no server was running. Repeat the request
+    # until it can no longer reach the server, so a replacement never runs
+    # alongside a draining one sharing the same cache directory.
     cadmus-sccache.exec = ''
       set -e
 
@@ -909,7 +914,20 @@ in
         stats) exec sccache --show-adv-stats ;;
         reset) exec sccache --zero-stats ;;
         restart)
-          sccache --stop-server || true
+          if sccache --stop-server >/dev/null 2>&1; then
+            stopped=0
+            for _ in $(seq 1 100); do
+              if ! sccache --stop-server >/dev/null 2>&1; then
+                stopped=1
+                break
+              fi
+              sleep 0.1
+            done
+            if [ "$stopped" -ne 1 ]; then
+              echo "cadmus-sccache: sccache still accepts requests after 10s; not starting a second server" >&2
+              exit 1
+            fi
+          fi
           exec sccache --start-server
           ;;
         log) exec tail -n "''${2:-50}" -f "$SCCACHE_ERROR_LOG" ;;
