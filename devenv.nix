@@ -1003,7 +1003,6 @@ in
 
     _cadmuscli_completions="${config.env.DEVENV_STATE}/completions"
     if [ -d "$_cadmuscli_completions" ]; then
-      export FPATH="$_cadmuscli_completions''${FPATH:+:$FPATH}"
       if [ -n "''${BASH_VERSION:-}" ] && [ -f "$_cadmuscli_completions/cadmuscli.bash" ]; then
         . "$_cadmuscli_completions/cadmuscli.bash"
       fi
