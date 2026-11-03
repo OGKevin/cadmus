@@ -43,7 +43,9 @@ const LEGACY_SETTINGS_FILE: &str = "Settings.toml";
 pub struct SettingsEntry {
     /// The version (e.g., v0.1.2 or v0.1.3-5-gabc123).
     pub version: GitVersion,
-    /// UUID v7 from the build that created this entry (timestamp-sortable).
+    /// UUID v7 whose timestamp is the build timestamp (commit time, or the real
+    /// build time in release), so string order follows build order. The payload
+    /// derives from the commit id and enabled features.
     pub uuid: String,
     /// Path to the settings file (relative to Settings directory).
     pub file: String,

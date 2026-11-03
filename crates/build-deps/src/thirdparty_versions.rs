@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use gix::ObjectId;
 use gix::commit::describe::SelectRef;
 
+use crate::git::open_repo;
 use crate::versions::LIBRARY_NAMES;
 
 /// Collects bundled third-party submodule versions for a Cadmus build.
@@ -86,10 +87,6 @@ fn describe_commit(commit: &gix::Commit<'_>, dirty: bool) -> Option<String> {
         resolution.format().ok()?
     };
     Some(format.to_string()).filter(|version| !version.is_empty())
-}
-
-fn open_repo(path: &Path) -> Option<gix::Repository> {
-    gix::open_opts(path, gix::open::Options::isolated()).ok()
 }
 
 #[cfg(test)]
