@@ -1,7 +1,6 @@
 use crate::framebuffer::Display;
 use crate::geom::{LinearDir, Point};
 use crate::settings::ButtonScheme;
-use anyhow::Error;
 use nix::{ioctl_read, ioctl_read_buf};
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde::Serialize;
@@ -12,7 +11,7 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::ptr;
 use std::time::{Duration, Instant};
 use tokio::io::Interest;
-use tokio::io::unix::AsyncFd;
+use tokio::io::unix::{AsyncFd, AsyncFdReadyGuard};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio_util::sync::CancellationToken;
 
@@ -33,6 +32,7 @@ pub const ABS_Y: u16 = 0x01;
 pub const ABS_PRESSURE: u16 = 0x18;
 pub const MSC_RAW: u16 = 0x03;
 pub const SYN_REPORT: u16 = 0x00;
+pub const SYN_DROPPED: u16 = 0x03;
 
 // Event values
 pub const MSC_RAW_GSENSOR_PORTRAIT_DOWN: i32 = 0x17;
@@ -669,7 +669,81 @@ pub fn raw_events(
     (tx, rx)
 }
 
-/// Forwards evdev events from one nonblocking device until it closes or `tx` drops.
+/// How long an opened device may stay silent before it is first reported.
+const SILENCE_REPORT_AFTER: Duration = Duration::from_secs(60);
+
+/// How often a still-silent device repeats its report after the first one.
+const SILENCE_REPEAT_EVERY: Duration = Duration::from_secs(600);
+
+/// Reports a device that has forwarded nothing since it was opened.
+///
+/// Only devices that have forwarded nothing at all are reported, so an
+/// idle-but-working device cannot trip it. Reports are trace-level, so the
+/// watch is only constructed when trace logging is enabled.
+///
+/// Timing comes from [`Instant`] (`CLOCK_MONOTONIC`), which does not advance
+/// while the system is suspended, and `tokio::time::sleep` shares that clock,
+/// so sleep and soft suspend cannot inflate the measured silence. The first
+/// window is [`SILENCE_REPORT_AFTER`]; later ones repeat every
+/// [`SILENCE_REPEAT_EVERY`].
+struct SilenceWatch<'a> {
+    path: &'a str,
+    profile: DeviceProfile,
+    opened_at: Instant,
+    reported: bool,
+}
+
+impl<'a> SilenceWatch<'a> {
+    fn new(path: &'a str, profile: DeviceProfile, opened_at: Instant) -> Self {
+        Self {
+            path,
+            profile,
+            opened_at,
+            reported: false,
+        }
+    }
+
+    /// Waits one silence window, then logs the absence of events.
+    async fn next_report(&mut self, events_read: u64) {
+        let window = if self.reported {
+            SILENCE_REPEAT_EVERY
+        } else {
+            SILENCE_REPORT_AFTER
+        };
+        tokio::time::sleep(window).await;
+
+        let open_ms = self.opened_at.elapsed().as_millis() as u64;
+        tracing::trace!(
+            device = self.path,
+            profile = ?self.profile,
+            events_read,
+            open_ms,
+            "input device produced no events since open"
+        );
+        self.reported = true;
+    }
+}
+
+/// Waits for `fd` to become readable.
+///
+/// When `silence` holds a watch, the wait races that device's silence timer and
+/// returns `None` whenever it elapses, so the caller loops and keeps waiting.
+async fn wait_readable<'a>(
+    fd: &'a AsyncFd<File>,
+    silence: &mut Option<SilenceWatch<'_>>,
+    events_read: u64,
+) -> std::io::Result<Option<AsyncFdReadyGuard<'a, File>>> {
+    match silence {
+        None => fd.readable().await.map(Some),
+        Some(watch) => tokio::select! {
+            guard = fd.readable() => guard.map(Some),
+            () = watch.next_report(events_read) => Ok(None),
+        },
+    }
+}
+
+/// Forwards evdev events from one nonblocking device until it closes, errors,
+/// or its consumers vanish.
 ///
 /// Each forwarded event is tagged with `profile`, the scancode classification of
 /// the device it was read from, and `source`, the identity of this reader's
@@ -680,16 +754,36 @@ pub fn raw_events(
 /// that short read as EOF would drop the device for the rest of the session.
 /// `pending` / `filled` keep those bytes across `readable()` waits until one
 /// full record is available. A zero-length read is the only EOF.
+///
+/// While the device has forwarded nothing yet, its readiness wait races a
+/// [`SilenceWatch`] so "opened but never delivered a byte" is observable.
 async fn read_input_events(
     fd: AsyncFd<File>,
+    path: &str,
     profile: DeviceProfile,
     source: SourceId,
     tx: &UnboundedSender<TaggedInputEvent>,
-) -> Result<(), Error> {
+) -> ReaderExit {
+    let opened_at = Instant::now();
     let mut pending = [0_u8; mem::size_of::<InputEvent>()];
     let mut filled = 0usize;
+    let mut events_read = 0u64;
+    let mut silence = if tracing::enabled!(tracing::Level::TRACE) {
+        Some(SilenceWatch::new(path, profile, opened_at))
+    } else {
+        None
+    };
+
     loop {
-        let mut guard = fd.readable().await?;
+        let mut guard = loop {
+            match wait_readable(&fd, &mut silence, events_read).await {
+                Ok(Some(guard)) => break guard,
+                Ok(None) => continue,
+                Err(error) => {
+                    return reader_exit(ExitReason::Io(error), events_read, opened_at);
+                }
+            }
+        };
         loop {
             match guard.try_io(|inner| read_input_event(inner.get_ref(), &mut pending, &mut filled))
             {
@@ -702,14 +796,68 @@ async fn read_input_events(
                         })
                         .is_err()
                     {
-                        return Ok(());
+                        return reader_exit(ExitReason::ChannelClosed, events_read, opened_at);
+                    }
+                    events_read += 1;
+                    if events_read == 1 {
+                        silence = None;
+                        tracing::debug!(
+                            device = path,
+                            first_event_after_ms = opened_at.elapsed().as_millis() as u64,
+                            "input device produced its first event"
+                        );
                     }
                 }
-                Ok(Err(err)) if err.kind() == std::io::ErrorKind::UnexpectedEof => return Ok(()),
-                Ok(Err(err)) => return Err(err.into()),
+                Ok(Err(err)) if err.kind() == std::io::ErrorKind::UnexpectedEof => {
+                    return reader_exit(ExitReason::Eof, events_read, opened_at);
+                }
+                Ok(Err(err)) => return reader_exit(ExitReason::Io(err), events_read, opened_at),
                 Err(_would_block) => break,
             }
         }
+    }
+}
+
+/// Why a device reader task stopped forwarding events.
+///
+/// Logged with the reader's totals: before this existed, the channel-closed and
+/// end-of-file paths returned silently, so a dead touch digitizer was
+/// indistinguishable in a log from a device that never sent anything.
+#[derive(Debug)]
+enum ExitReason {
+    /// The device node reported end-of-file.
+    Eof,
+    /// Every consumer of the tagged-event stream is gone.
+    ChannelClosed,
+    /// A read or readiness error other than end-of-file.
+    Io(std::io::Error),
+}
+
+impl std::fmt::Display for ExitReason {
+    /// Renders as a stable label, with the inner error text appended for the
+    /// I/O variant so the log carries the kernel message.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Eof => f.write_str("eof"),
+            Self::ChannelClosed => f.write_str("channel_closed"),
+            Self::Io(error) => write!(f, "io_error: {error}"),
+        }
+    }
+}
+
+/// Totals a reader reports when it stops forwarding events.
+#[derive(Debug)]
+struct ReaderExit {
+    reason: ExitReason,
+    events_read: u64,
+    open_ms: u64,
+}
+
+fn reader_exit(reason: ExitReason, events_read: u64, opened_at: Instant) -> ReaderExit {
+    ReaderExit {
+        reason,
+        events_read,
+        open_ms: opened_at.elapsed().as_millis() as u64,
     }
 }
 
@@ -1013,7 +1161,17 @@ pub fn gsensor_rotation_from_raw(value: i32, transform: GyroRotationTransform) -
         .map(|i| transform.transform(i as i8))
 }
 
-pub async fn trace_touch_device_geometry(path: &str, proto: TouchProto, screen: Display) {
+/// `min..max` reported by `EVIOCGABS` for one axis of one device.
+type AbsRange = (i32, i32);
+
+/// Per-axis `EVIOCGABS` ranges of one device: `x` then `y`.
+type TouchAxes = (Option<AbsRange>, Option<AbsRange>);
+
+pub async fn trace_touch_device_geometry(
+    path: &str,
+    proto: TouchProto,
+    screen: Display,
+) -> TouchAxes {
     let Display { dims, rotation } = screen;
     let (x_axis, y_axis) = match proto {
         TouchProto::Single => (ABS_X, ABS_Y),
@@ -1032,6 +1190,8 @@ pub async fn trace_touch_device_geometry(path: &str, proto: TouchProto, screen: 
         abs_y = ?abs_y,
         "evdev vs display geometry"
     );
+    let range = |info: Option<InputAbsInfo>| info.map(|info| (info.minimum, info.maximum));
+    (range(abs_x), range(abs_y))
 }
 
 #[derive(Debug)]
@@ -1081,6 +1241,74 @@ fn touch_pipeline(
         pipeline.packets.insert(pipeline.id, TouchState::default());
     }
     pipeline
+}
+
+/// How often the decoder heartbeat reports its event counters.
+///
+/// The heartbeat exists so a log can prove the decoder is alive and counting
+/// even when no device event reaches it — the #1138 freeze showed the app loop
+/// healthy while the digitizer stayed silent, and without this line that state
+/// is indistinguishable from a dead decoder.
+const DECODER_HEARTBEAT_EVERY: Duration = Duration::from_secs(60);
+
+/// How long a device may go without a report before [`DeviceEvent::UserActivity`]
+/// is emitted again.
+const ACTIVITY_REPORT_INTERVAL_SECS: libc::time_t = 60;
+
+/// Returns the decoder heartbeat timer.
+///
+/// A persistent interval rather than a fresh `sleep` per event: the timer keeps
+/// ticking while events stream, so the heartbeat still fires. `Interval::tick`
+/// is cancel-safe, so polling it inside `select!` against `rx.recv()` neither
+/// loses nor duplicates ticks. The first tick resolves immediately, which emits
+/// a zero baseline line when the decoder starts.
+fn heartbeat_interval() -> tokio::time::Interval {
+    let mut heartbeat = tokio::time::interval(DECODER_HEARTBEAT_EVERY);
+    heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    heartbeat
+}
+
+/// Emits [`DeviceEvent::UserActivity`] when the device clock passed the
+/// activity interval since the last report, and records the new reference time.
+///
+/// The difference is taken as an absolute value because `tv_sec` wraps on
+/// kernels whose `time_t` cannot grow forever, which would otherwise suppress
+/// the heartbeat for the rest of the session.
+fn report_user_activity(
+    last_activity: &mut libc::time_t,
+    time: libc::timeval,
+    ty: &UnboundedSender<DeviceEvent>,
+) {
+    if (time.tv_sec - *last_activity).abs() < ACTIVITY_REPORT_INTERVAL_SECS {
+        return;
+    }
+    *last_activity = time.tv_sec;
+    ty.send(DeviceEvent::UserActivity).ok();
+}
+
+/// Event counters for [`parse_device_events`], emitted on the heartbeat tick.
+///
+/// Read them as a funnel: a device whose reader forwards bytes shows up in
+/// `abs`/`key`, bytes the pipeline cannot place show up in `unmapped_abs`
+/// (rotated `tc` table, unexpected pressure axis, report without tracking id),
+/// and complete reports show up in `syn`/`touch_packets`. `dropped_syn` counts
+/// kernel-side event loss.
+#[derive(Debug, Default)]
+struct DecoderCounters {
+    abs: u64,
+    key: u64,
+    syn: u64,
+    unmapped_abs: u64,
+    touch_packets: u64,
+    dropped_syn: u64,
+}
+
+/// Returns `true` when an `EV_ABS` code cannot be consumed by the touch
+/// pipeline, i.e. it matches neither the tracking id nor any axis of the
+/// active `tc` table. Such events indicate a profile/protocol mismatch — for
+/// example a rotated or wrong-proto `tc` table — rather than lost data.
+fn is_unmapped_abs_code(code: u16, tc: &TouchCodes) -> bool {
+    code != ABS_MT_TRACKING_ID && code != tc.x && code != tc.y && code != tc.pressure
 }
 
 #[cfg_attr(
@@ -1166,9 +1394,16 @@ async fn parse_device_events(
     // bit must not latch into later events from other keyboards.
     let mut modifiers: FxHashMap<SourceId, Modifiers> = FxHashMap::default();
 
-    while let Some(tagged) = rx.recv().await {
-        let evt = tagged.event;
-        let _span = tracing::trace_span!("processing input event", event = ?evt).entered();
+    let mut counters = DecoderCounters::default();
+    let mut heartbeat = heartbeat_interval();
+
+    loop {
+        tokio::select! {
+            tagged = rx.recv() => {
+                let Some(tagged) = tagged else { break };
+                let evt = tagged.event;
+                #[cfg(feature = "tracing")]
+                let _span = tracing::trace_span!("processing input event", event = ?evt).entered();
 
         // `None` for synthetic events: they are EV_KEY controls and must not
         // touch per-device state.
@@ -1178,6 +1413,10 @@ async fn parse_device_events(
         };
 
         if evt.kind == EV_ABS {
+            counters.abs += 1;
+            if is_unmapped_abs_code(evt.code, &tc) {
+                counters.unmapped_abs += 1;
+            }
             let Some(source) = device else {
                 continue;
             };
@@ -1236,18 +1475,16 @@ async fn parse_device_events(
                     mem::swap(&mut state.position.x, &mut state.position.y);
                 }
             }
-        } else if evt.kind == EV_SYN && evt.code == SYN_REPORT {
-            // The absolute value accounts for the wrapping around that might occur,
-            // since `tv_sec` can't grow forever.
-            if (evt.time.tv_sec - last_activity).abs() >= 60 {
-                last_activity = evt.time.tv_sec;
-                ty.send(DeviceEvent::UserActivity).ok();
-            }
+        } else if evt.kind == EV_SYN {
+            if evt.code == SYN_REPORT {
+                counters.syn += 1;
+                report_user_activity(&mut last_activity, evt.time, ty);
 
-            let Some(source) = device else {
-                continue;
-            };
-            let pipeline = touch_pipeline(&mut touch, source, proto);
+                let Some(source) = device else {
+                    continue;
+                };
+                counters.touch_packets += 1;
+                let pipeline = touch_pipeline(&mut touch, source, proto);
             if proto == TouchProto::MultiB {
                 pipeline.fingers.retain(|other_id, other_position| {
                     pipeline.packets.contains_key(other_id)
@@ -1325,7 +1562,29 @@ async fn parse_device_events(
             if proto != TouchProto::Single {
                 pipeline.packets.clear();
             }
+            } else if evt.code == SYN_DROPPED {
+                counters.dropped_syn += 1;
+                tracing::warn!(
+                    source = ?device,
+                    dropped = counters.dropped_syn,
+                    "kernel dropped input events"
+                );
+                if let Some(source) = device
+                    && let Some(pipeline) = touch.remove(&source)
+                {
+                    for (id, position) in pipeline.fingers {
+                        ty.send(DeviceEvent::Finger {
+                            id,
+                            time: seconds(evt.time),
+                            status: FingerStatus::Up,
+                            position,
+                        })
+                        .ok();
+                    }
+                }
+            }
         } else if evt.kind == EV_KEY {
+            counters.key += 1;
             if evt.code == BTN_TOUCH {
                 // Touch-contact signal from a touch/pen device; not a button.
             } else {
@@ -1474,6 +1733,22 @@ async fn parse_device_events(
                     "gyroscope rotation event"
                 );
                 ty.send(DeviceEvent::RotateScreen(next_rotation)).ok();
+            }
+        }
+            }
+            _ = heartbeat.tick() => {
+                tracing::trace!(
+                    abs = counters.abs,
+                    key = counters.key,
+                    syn = counters.syn,
+                    unmapped_abs = counters.unmapped_abs,
+                    touch_packets = counters.touch_packets,
+                    dropped_syn = counters.dropped_syn,
+                    sources = touch.len(),
+                    tc_x = tc.x,
+                    tc_y = tc.y,
+                    "input decoder heartbeat"
+                );
             }
         }
     }
@@ -1878,6 +2153,7 @@ impl OpenInputDevices<'_> {
         )
         .await
         {
+            let mut touch_axes: Option<TouchAxes> = None;
             let file = match tokio::fs::OpenOptions::new()
                 .read(true)
                 .custom_flags(libc::O_NONBLOCK)
@@ -1896,7 +2172,8 @@ impl OpenInputDevices<'_> {
                 }
             };
             if features.emits_abs {
-                trace_touch_device_geometry(&path, self.proto, self.display).await;
+                touch_axes =
+                    Some(trace_touch_device_geometry(&path, self.proto, self.display).await);
             }
             let fd = match AsyncFd::with_interest(file, Interest::READABLE) {
                 Ok(fd) => fd,
@@ -1911,25 +2188,37 @@ impl OpenInputDevices<'_> {
                 }
             };
             let profile = classify_device(&features);
+            let identity = features.identity();
+            let source = self.next_source.next();
             tracing::info!(
                 device = %path,
                 profile = ?profile,
+                source = ?source,
+                name = features.name.as_deref().unwrap_or(""),
+                bus = features.bustype,
+                vendor = features.vendor,
+                product = features.product,
+                version = features.version,
+                identity = identity.as_deref().unwrap_or(""),
                 emits_key = features.emits_key,
                 emits_abs = features.emits_abs,
+                touch_candidate = features.has_position_axes,
+                abs_x = ?touch_axes.as_ref().and_then(|(x, _)| *x),
+                abs_y = ?touch_axes.as_ref().and_then(|(_, y)| *y),
                 hotplugged,
                 "opened input device"
             );
-            let identity = features.identity();
             let tx = self.tx.clone();
-            let source = self.next_source.next();
             let path_for_reader = path.clone();
             let identity_for_reader = identity.clone();
             self.readers.spawn(async move {
-                let outcome = read_input_events(fd, profile, source, &tx).await;
-                tracing::debug!(
+                let exit = read_input_events(fd, &path_for_reader, profile, source, &tx).await;
+                tracing::warn!(
                     device = %path_for_reader,
-                    error = ?outcome.as_ref().err(),
-                    "input device reader exited"
+                    reason = %exit.reason,
+                    events_read = exit.events_read,
+                    open_ms = exit.open_ms,
+                    "input device reader stopped"
                 );
                 (path_for_reader, identity_for_reader)
             });
@@ -2262,6 +2551,106 @@ mod tests {
         );
     }
 
+    /// A dropped-event notification from the kernel discards the digitizer's
+    /// report state, so in-contact fingers must be lifted explicitly instead of
+    /// staying tracked forever.
+    #[tokio::test]
+    async fn syn_dropped_lifts_tracked_fingers() {
+        let (raw_tx, raw_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (ty, mut ry) = tokio::sync::mpsc::unbounded_channel();
+        let info = DeviceInputInfo {
+            proto: TouchProto::MultiB,
+            mark: 13,
+            mirroring_scheme: (0, 0),
+            swapping_scheme: 0,
+            startup_rotation: 0,
+            gyro_rotation_transform: GyroRotationTransform::default(),
+        };
+        tokio::spawn(async move {
+            let mut rx = raw_rx;
+            parse_device_events(
+                &mut rx,
+                &ty,
+                Display {
+                    dims: (100, 100),
+                    rotation: 0,
+                },
+                ButtonScheme::Natural,
+                info,
+            )
+            .await;
+        });
+
+        let event = |kind, code, value| InputEvent {
+            time: libc::timeval {
+                tv_sec: 1,
+                tv_usec: 0,
+            },
+            kind,
+            code,
+            value,
+        };
+        let tagged = |kind, code, value| TaggedInputEvent {
+            event: event(kind, code, value),
+            profile: DeviceProfile::built_in(),
+            source: EventSource::Device(SourceId(0)),
+        };
+        for evt in [
+            tagged(EV_ABS, ABS_MT_TRACKING_ID, 7),
+            tagged(EV_ABS, ABS_MT_POSITION_X, 10),
+            tagged(EV_ABS, ABS_MT_POSITION_Y, 20),
+            tagged(EV_ABS, ABS_MT_PRESSURE, 200),
+            tagged(EV_SYN, SYN_REPORT, 0),
+        ] {
+            raw_tx.send(evt).expect("send raw event");
+        }
+        let down_position = match next_input_event(&mut ry).await {
+            DeviceEvent::Finger {
+                status: FingerStatus::Down,
+                position,
+                ..
+            } => position,
+            other => panic!("expected Finger Down before the drop, got {other:?}"),
+        };
+
+        raw_tx
+            .send(tagged(EV_SYN, SYN_DROPPED, 0))
+            .expect("send raw event");
+
+        match next_input_event(&mut ry).await {
+            DeviceEvent::Finger {
+                id,
+                status: FingerStatus::Up,
+                position,
+                ..
+            } => {
+                assert_eq!(id, 7);
+                assert_eq!(position, down_position);
+            }
+            other => panic!("expected Finger Up for the discarded finger, got {other:?}"),
+        }
+
+        for evt in [
+            tagged(EV_ABS, ABS_MT_TRACKING_ID, 7),
+            tagged(EV_ABS, ABS_MT_POSITION_X, 10),
+            tagged(EV_ABS, ABS_MT_POSITION_Y, 20),
+            tagged(EV_ABS, ABS_MT_PRESSURE, 200),
+            tagged(EV_SYN, SYN_REPORT, 0),
+        ] {
+            raw_tx.send(evt).expect("send raw event");
+        }
+        assert!(
+            matches!(
+                next_input_event(&mut ry).await,
+                DeviceEvent::Finger {
+                    status: FingerStatus::Down,
+                    ..
+                }
+            ),
+            "the discarded pipeline must not keep the finger tracked"
+        );
+    }
+
     /// Regression: a modifier held on one keyboard when it disconnects must not
     /// latch into keyboard events from another keyboard.
     #[tokio::test]
@@ -2495,7 +2884,14 @@ mod tests {
             .expect("open fifo");
         let fd = AsyncFd::with_interest(file, Interest::READABLE).expect("watch fifo");
         let reader = tokio::spawn(async move {
-            read_input_events(fd, DeviceProfile::built_in(), SourceId(0), &tx).await
+            read_input_events(
+                fd,
+                path_str.as_str(),
+                DeviceProfile::built_in(),
+                SourceId(0),
+                &tx,
+            )
+            .await
         });
 
         let writer_path = path.clone();
@@ -2534,9 +2930,197 @@ mod tests {
         assert_eq!(got.event.time.tv_sec, 4);
         assert_eq!(got.event.time.tv_usec, 5);
 
+        // The reader must report one forwarded event and a clean EOF exit once
+        // the write end closes, not a silent Ok(()) — a dead device must be
+        // visible in the log.
         drop(writer);
-        reader.abort();
+        let exit = tokio::time::timeout(Duration::from_secs(2), reader)
+            .await
+            .expect("timed out waiting for reader exit")
+            .expect("reader task panicked");
+        assert!(matches!(exit.reason, ExitReason::Eof));
+        assert_eq!(exit.events_read, 1);
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// A device node that delivers zero bytes (the kernel-side EOF case) must
+    /// surface as [`ExitReason::Eof`], not as a silent return.
+    #[tokio::test]
+    async fn read_input_events_reports_eof_for_empty_device() {
+        let path = std::env::temp_dir().join(format!(
+            "cadmus-evdev-eof-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        let c_path = CString::new(path.to_str().expect("utf8 path")).expect("path");
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) }, 0);
+
+        let path_str = path.to_str().expect("utf8 path").to_string();
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        drop(rx);
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NONBLOCK)
+            .open(&path_str)
+            .expect("open fifo");
+        let fd = AsyncFd::with_interest(file, Interest::READABLE).expect("watch fifo");
+        let reader_path = path_str.clone();
+        let reader = tokio::spawn(async move {
+            read_input_events(
+                fd,
+                reader_path.as_str(),
+                DeviceProfile::built_in(),
+                SourceId(0),
+                &tx,
+            )
+            .await
+        });
+
+        // Open and immediately close the write end so the read end reports EOF.
+        let writer = tokio::task::spawn_blocking(move || {
+            std::fs::OpenOptions::new().write(true).open(&path_str)
+        })
+        .await
+        .expect("writer task")
+        .expect("open fifo");
+        drop(writer);
+
+        let exit = tokio::time::timeout(Duration::from_secs(2), reader)
+            .await
+            .expect("timed out waiting for reader exit")
+            .expect("reader task panicked");
+        assert!(matches!(exit.reason, ExitReason::Eof));
+        assert_eq!(exit.events_read, 0);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// A reader whose consumers are all gone must stop with
+    /// [`ExitReason::ChannelClosed`] and report how many events it had
+    /// forwarded — previously this path returned silently.
+    #[tokio::test]
+    async fn read_input_events_reports_channel_closed() {
+        let path = std::env::temp_dir().join(format!(
+            "cadmus-evdev-closed-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        let c_path = CString::new(path.to_str().expect("utf8 path")).expect("path");
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) }, 0);
+
+        let path_str = path.to_str().expect("utf8 path").to_string();
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        drop(rx);
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NONBLOCK)
+            .open(&path_str)
+            .expect("open fifo");
+        let fd = AsyncFd::with_interest(file, Interest::READABLE).expect("watch fifo");
+        let reader_path = path_str.clone();
+        let reader = tokio::spawn(async move {
+            read_input_events(
+                fd,
+                reader_path.as_str(),
+                DeviceProfile::built_in(),
+                SourceId(0),
+                &tx,
+            )
+            .await
+        });
+
+        let writer_path = path.clone();
+        let mut writer = tokio::task::spawn_blocking(move || {
+            std::fs::OpenOptions::new().write(true).open(writer_path)
+        })
+        .await
+        .expect("writer task")
+        .expect("open fifo");
+
+        let event = InputEvent {
+            time: libc::timeval {
+                tv_sec: 4,
+                tv_usec: 5,
+            },
+            kind: EV_KEY,
+            code: KEY_HOME,
+            value: VAL_PRESS,
+        };
+        let mut bytes = vec![0u8; mem::size_of::<InputEvent>()];
+        unsafe {
+            std::ptr::write_unaligned(bytes.as_mut_ptr().cast::<InputEvent>(), event);
+        }
+        writer.write_all(&bytes).expect("write event");
+        writer.flush().expect("flush event");
+
+        let exit = tokio::time::timeout(Duration::from_secs(2), reader)
+            .await
+            .expect("timed out waiting for reader exit")
+            .expect("reader task panicked");
+        assert!(matches!(exit.reason, ExitReason::ChannelClosed));
+        assert_eq!(exit.events_read, 0);
+        drop(writer);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// `UserActivity` is throttled to one report per activity interval, and the
+    /// reference time is updated only when a report is emitted.
+    #[test]
+    fn user_activity_is_reported_at_the_activity_interval() {
+        let (ty, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let timeval = |tv_sec| libc::timeval { tv_sec, tv_usec: 0 };
+        let mut last_activity = 0;
+
+        report_user_activity(&mut last_activity, timeval(60), &ty);
+        assert!(matches!(rx.try_recv(), Ok(DeviceEvent::UserActivity)));
+        assert_eq!(last_activity, 60);
+
+        report_user_activity(&mut last_activity, timeval(30), &ty);
+        assert!(
+            rx.try_recv().is_err(),
+            "inside the interval must stay quiet"
+        );
+        assert_eq!(last_activity, 60, "reference time only moves on a report");
+    }
+
+    /// Reader exits render as stable labels, and the I/O variant carries the
+    /// inner error text into the log.
+    #[test]
+    fn exit_reason_renders_stable_label_and_io_error_text() {
+        assert_eq!(ExitReason::Eof.to_string(), "eof");
+        assert_eq!(ExitReason::ChannelClosed.to_string(), "channel_closed");
+
+        let io = ExitReason::Io(std::io::Error::from(std::io::ErrorKind::PermissionDenied));
+        let rendered = io.to_string();
+        assert!(rendered.starts_with("io_error: "), "{rendered}");
+        assert!(
+            rendered.to_lowercase().contains("permission denied"),
+            "{rendered}"
+        );
+    }
+
+    /// An `EV_ABS` code outside the active `tc` table is the signature of a
+    /// profile/protocol mismatch and must be classified as unmapped.
+    #[test]
+    fn unmapped_abs_codes_are_classified() {
+        assert!(is_unmapped_abs_code(
+            ABS_MT_TOUCH_MAJOR,
+            &MULTI_TOUCH_CODES_B
+        ));
+        assert!(!is_unmapped_abs_code(ABS_MT_PRESSURE, &MULTI_TOUCH_CODES_B));
+        assert!(!is_unmapped_abs_code(
+            ABS_MT_TRACKING_ID,
+            &MULTI_TOUCH_CODES_B
+        ));
+        assert!(is_unmapped_abs_code(ABS_MT_POSITION_X, &SINGLE_TOUCH_CODES));
+        assert!(!is_unmapped_abs_code(ABS_X, &SINGLE_TOUCH_CODES));
     }
 
     /// The device's classified profile must tag every forwarded event, not just
@@ -2565,7 +3149,14 @@ mod tests {
             .expect("open fifo");
         let fd = AsyncFd::with_interest(file, Interest::READABLE).expect("watch fifo");
         let reader = tokio::spawn(async move {
-            read_input_events(fd, DeviceProfile::remote(), SourceId(0), &tx).await
+            read_input_events(
+                fd,
+                path_str.as_str(),
+                DeviceProfile::remote(),
+                SourceId(0),
+                &tx,
+            )
+            .await
         });
 
         let writer_path = path.clone();
@@ -2629,7 +3220,14 @@ mod tests {
             .expect("open fifo");
         let fd = AsyncFd::with_interest(file, Interest::READABLE).expect("watch fifo");
         let reader = tokio::spawn(async move {
-            read_input_events(fd, DeviceProfile::built_in(), SourceId(0), &tx).await
+            read_input_events(
+                fd,
+                path_str.as_str(),
+                DeviceProfile::built_in(),
+                SourceId(0),
+                &tx,
+            )
+            .await
         });
 
         let writer_path = path.clone();
