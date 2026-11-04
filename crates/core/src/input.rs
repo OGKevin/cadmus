@@ -669,28 +669,28 @@ pub fn raw_events(
     (tx, rx)
 }
 
-/// How long an opened device may stay silent before it is reported.
-const SILENCE_WARN_AFTER: Duration = Duration::from_secs(60);
+/// How long an opened device may stay silent before it is first reported.
+const SILENCE_REPORT_AFTER: Duration = Duration::from_secs(60);
 
 /// How often a still-silent device repeats its report after the first one.
 const SILENCE_REPEAT_EVERY: Duration = Duration::from_secs(600);
 
 /// Reports a device that has forwarded nothing since it was opened.
 ///
-/// Every opened device is watched, regardless of the configured log level: the
-/// first report is a warning, so it has to fire on a default-level run too.
 /// Only devices that have forwarded nothing at all are reported, so an
-/// idle-but-working device cannot trip it.
+/// idle-but-working device cannot trip it. Reports are trace-level, so the
+/// watch is only constructed when trace logging is enabled.
 ///
 /// Timing comes from [`Instant`] (`CLOCK_MONOTONIC`), which does not advance
 /// while the system is suspended, and `tokio::time::sleep` shares that clock,
 /// so sleep and soft suspend cannot inflate the measured silence. The first
-/// window warns, later ones repeat at trace level.
+/// window is [`SILENCE_REPORT_AFTER`]; later ones repeat every
+/// [`SILENCE_REPEAT_EVERY`].
 struct SilenceWatch<'a> {
     path: &'a str,
     profile: DeviceProfile,
     opened_at: Instant,
-    warned: bool,
+    reported: bool,
 }
 
 impl<'a> SilenceWatch<'a> {
@@ -699,48 +699,38 @@ impl<'a> SilenceWatch<'a> {
             path,
             profile,
             opened_at,
-            warned: false,
+            reported: false,
         }
     }
 
     /// Waits one silence window, then logs the absence of events.
     async fn next_report(&mut self, events_read: u64) {
-        let window = if self.warned {
+        let window = if self.reported {
             SILENCE_REPEAT_EVERY
         } else {
-            SILENCE_WARN_AFTER
+            SILENCE_REPORT_AFTER
         };
         tokio::time::sleep(window).await;
 
         let open_ms = self.opened_at.elapsed().as_millis() as u64;
-        if self.warned {
-            tracing::trace!(
-                device = self.path,
-                profile = ?self.profile,
-                events_read,
-                open_ms,
-                "input device still produced no events since open"
-            );
-        } else {
-            self.warned = true;
-            tracing::warn!(
-                device = self.path,
-                profile = ?self.profile,
-                events_read,
-                open_ms,
-                "input device produced no events since open"
-            );
-        }
+        tracing::trace!(
+            device = self.path,
+            profile = ?self.profile,
+            events_read,
+            open_ms,
+            "input device produced no events since open"
+        );
+        self.reported = true;
     }
 }
 
 /// Waits for `fd` to become readable.
 ///
-/// When `silence` is `Some`, the wait races that device's silence timer and
+/// When `silence` holds a watch, the wait races that device's silence timer and
 /// returns `None` whenever it elapses, so the caller loops and keeps waiting.
 async fn wait_readable<'a>(
     fd: &'a AsyncFd<File>,
-    silence: Option<&mut SilenceWatch<'_>>,
+    silence: &mut Option<SilenceWatch<'_>>,
     events_read: u64,
 ) -> std::io::Result<Option<AsyncFdReadyGuard<'a, File>>> {
     match silence {
@@ -778,12 +768,15 @@ async fn read_input_events(
     let mut pending = [0_u8; mem::size_of::<InputEvent>()];
     let mut filled = 0usize;
     let mut events_read = 0u64;
-    let mut silence = SilenceWatch::new(path, profile, opened_at);
+    let mut silence = if tracing::enabled!(tracing::Level::TRACE) {
+        Some(SilenceWatch::new(path, profile, opened_at))
+    } else {
+        None
+    };
 
     loop {
         let mut guard = loop {
-            let silence = (events_read == 0).then_some(&mut silence);
-            match wait_readable(&fd, silence, events_read).await {
+            match wait_readable(&fd, &mut silence, events_read).await {
                 Ok(Some(guard)) => break guard,
                 Ok(None) => continue,
                 Err(error) => {
@@ -807,6 +800,7 @@ async fn read_input_events(
                     }
                     events_read += 1;
                     if events_read == 1 {
+                        silence = None;
                         tracing::debug!(
                             device = path,
                             first_event_after_ms = opened_at.elapsed().as_millis() as u64,
@@ -1575,8 +1569,18 @@ async fn parse_device_events(
                     dropped = counters.dropped_syn,
                     "kernel dropped input events"
                 );
-                if let Some(source) = device {
-                    touch.remove(&source);
+                if let Some(source) = device
+                    && let Some(pipeline) = touch.remove(&source)
+                {
+                    for (id, position) in pipeline.fingers {
+                        ty.send(DeviceEvent::Finger {
+                            id,
+                            time: seconds(evt.time),
+                            status: FingerStatus::Up,
+                            position,
+                        })
+                        .ok();
+                    }
                 }
             }
         } else if evt.kind == EV_KEY {
@@ -2544,6 +2548,106 @@ mod tests {
                 }
             ),
             "the finger must survive the foreign SYN_REPORT and report Motion"
+        );
+    }
+
+    /// A dropped-event notification from the kernel discards the digitizer's
+    /// report state, so in-contact fingers must be lifted explicitly instead of
+    /// staying tracked forever.
+    #[tokio::test]
+    async fn syn_dropped_lifts_tracked_fingers() {
+        let (raw_tx, raw_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (ty, mut ry) = tokio::sync::mpsc::unbounded_channel();
+        let info = DeviceInputInfo {
+            proto: TouchProto::MultiB,
+            mark: 13,
+            mirroring_scheme: (0, 0),
+            swapping_scheme: 0,
+            startup_rotation: 0,
+            gyro_rotation_transform: GyroRotationTransform::default(),
+        };
+        tokio::spawn(async move {
+            let mut rx = raw_rx;
+            parse_device_events(
+                &mut rx,
+                &ty,
+                Display {
+                    dims: (100, 100),
+                    rotation: 0,
+                },
+                ButtonScheme::Natural,
+                info,
+            )
+            .await;
+        });
+
+        let event = |kind, code, value| InputEvent {
+            time: libc::timeval {
+                tv_sec: 1,
+                tv_usec: 0,
+            },
+            kind,
+            code,
+            value,
+        };
+        let tagged = |kind, code, value| TaggedInputEvent {
+            event: event(kind, code, value),
+            profile: DeviceProfile::built_in(),
+            source: EventSource::Device(SourceId(0)),
+        };
+        for evt in [
+            tagged(EV_ABS, ABS_MT_TRACKING_ID, 7),
+            tagged(EV_ABS, ABS_MT_POSITION_X, 10),
+            tagged(EV_ABS, ABS_MT_POSITION_Y, 20),
+            tagged(EV_ABS, ABS_MT_PRESSURE, 200),
+            tagged(EV_SYN, SYN_REPORT, 0),
+        ] {
+            raw_tx.send(evt).expect("send raw event");
+        }
+        let down_position = match next_input_event(&mut ry).await {
+            DeviceEvent::Finger {
+                status: FingerStatus::Down,
+                position,
+                ..
+            } => position,
+            other => panic!("expected Finger Down before the drop, got {other:?}"),
+        };
+
+        raw_tx
+            .send(tagged(EV_SYN, SYN_DROPPED, 0))
+            .expect("send raw event");
+
+        match next_input_event(&mut ry).await {
+            DeviceEvent::Finger {
+                id,
+                status: FingerStatus::Up,
+                position,
+                ..
+            } => {
+                assert_eq!(id, 7);
+                assert_eq!(position, down_position);
+            }
+            other => panic!("expected Finger Up for the discarded finger, got {other:?}"),
+        }
+
+        for evt in [
+            tagged(EV_ABS, ABS_MT_TRACKING_ID, 7),
+            tagged(EV_ABS, ABS_MT_POSITION_X, 10),
+            tagged(EV_ABS, ABS_MT_POSITION_Y, 20),
+            tagged(EV_ABS, ABS_MT_PRESSURE, 200),
+            tagged(EV_SYN, SYN_REPORT, 0),
+        ] {
+            raw_tx.send(evt).expect("send raw event");
+        }
+        assert!(
+            matches!(
+                next_input_event(&mut ry).await,
+                DeviceEvent::Finger {
+                    status: FingerStatus::Down,
+                    ..
+                }
+            ),
+            "the discarded pipeline must not keep the finger tracked"
         );
     }
 
