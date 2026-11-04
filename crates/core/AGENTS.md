@@ -14,7 +14,7 @@ multi-thread Tokio runtime with the worker pool capped at `WORKER_THREADS` and
 the blocking pool capped at `MAX_BLOCKING_THREADS`. The main app future runs on
 the main thread; spawned tasks run on the worker pool. Blocking a worker stalls
 input and timers, so use an async API or `spawn_blocking` there.
-[`src/input.rs`](src/input.rs) is the `AsyncFd` reference pattern.
+[`src/input/reader.rs`](src/input/reader.rs) is the `AsyncFd` reference pattern.
 
 Work that outlives the current call — input pipelines, view polling, downloads,
 timers — must be a [`Job`](src/runtime.rs) owned by the subsystem that started
