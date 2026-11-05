@@ -145,6 +145,20 @@ where
     current_handle().spawn_blocking(f)
 }
 
+/// Spawns `future` on the process runtime, detached.
+///
+/// Prefer [`Job`] for work that outlives the current call; use this only
+/// where ownership already lives elsewhere (a caller-held cancellation
+/// token, a `JoinSet` that observes exits).
+#[track_caller]
+pub fn spawn<F>(future: F) -> tokio::task::JoinHandle<F::Output>
+where
+    F: Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    current_handle().spawn(future)
+}
+
 /// A cancellation observed by [`race_cancel`].
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub(crate) struct Cancelled;

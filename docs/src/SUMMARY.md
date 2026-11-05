@@ -45,6 +45,7 @@
 - [SSH](contributing/ssh.md)
 - [Code Style and Linting](contributing/code-style.md)
 - [Event System](contributing/event-system.md)
+- [Input Pipeline](contributing/input.md)
 - [WiFi Leases](contributing/wifi.md)
 - [Device](contributing/device/index.md)
   - [Time and RTC](contributing/device/time.md)
