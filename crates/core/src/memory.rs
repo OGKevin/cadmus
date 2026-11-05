@@ -17,13 +17,20 @@ const AVAILABLE_MARGIN: f64 = 0.25;
 /// `sysinfo` has no async API, and the refresh it performs is one small
 /// `/proc/meminfo` read, so the remaining work does not warrant a blocking-pool
 /// hop from the async callers.
-fn system() -> &'static Mutex<System> {
-    static SYSTEM: OnceLock<Mutex<System>> = OnceLock::new();
-    SYSTEM.get_or_init(|| {
-        Mutex::new(System::new_with_specifics(
-            RefreshKind::nothing().with_memory(MemoryRefreshKind::nothing().with_ram()),
-        ))
-    })
+fn system() -> Option<&'static Mutex<System>> {
+    static SYSTEM: OnceLock<Option<Mutex<System>>> = OnceLock::new();
+    SYSTEM
+        .get_or_init(|| {
+            System::new_with_specifics(
+                RefreshKind::nothing().with_memory(MemoryRefreshKind::nothing().with_ram()),
+            )
+            .inspect_err(|error| {
+                tracing::warn!(error = %error, "memory info unavailable; streaming buffers");
+            })
+            .ok()
+            .map(Mutex::new)
+        })
+        .as_ref()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,7 +42,10 @@ pub enum BufferPath {
 /// Returns whether `needed_bytes` fits in available RAM after the safety margin.
 #[must_use]
 pub fn choose_buffer_path(needed_bytes: u64) -> BufferPath {
-    let mut system = system().lock().unwrap_or_else(|e| e.into_inner());
+    let Some(system) = system() else {
+        return BufferPath::Stream;
+    };
+    let mut system = system.lock().unwrap_or_else(|e| e.into_inner());
     system.refresh_memory_specifics(MemoryRefreshKind::nothing().with_ram());
     let available = system.available_memory();
     let budget = (available as f64 * (1.0 - AVAILABLE_MARGIN)) as u64;
