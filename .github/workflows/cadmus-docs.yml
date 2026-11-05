@@ -1,7 +1,7 @@
 name: Cadmus Documentation
 
 env:
-  NODE_VERSION: "24"
+  NODE_VERSION: "26"
   SQLX_OFFLINE: true
 
 on:
