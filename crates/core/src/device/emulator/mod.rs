@@ -52,12 +52,16 @@ const EMULATOR_HEIGHT: u32 = 800;
 
 struct SendableSdl(Sdl);
 
-// SAFETY: SDL types contain raw pointers for thread-affinity enforcement, but
-// we ensure each value is only ever accessed from the single thread it is moved
-// into. The event pump is created and used exclusively on the spawned thread.
+/// SDL values are `!Send` (`PhantomData<*mut ()>`) because SDL's event queue
+/// may only be pumped on the main thread. This wrapper exists solely to
+/// satisfy the `InputSource: Send` bound: the value is created and touched
+/// exclusively on the main thread, which owns the platform event queue.
 unsafe impl Send for SendableSdl {}
 
 struct SendableEventPump(sdl3::EventPump);
+
+/// Same invariant as [`SendableSdl`]: the pump never leaves the main thread;
+/// `Send` exists only for the `InputSource: Send` trait bound.
 unsafe impl Send for SendableEventPump {}
 
 impl std::ops::Deref for SendableEventPump {
@@ -77,12 +81,13 @@ pub struct EmulatorInputSource {
     dpi: u16,
     sender: Option<UnboundedSender<DeviceEvent>>,
     sdl_context: Option<SendableSdl>,
-    /// Owns the input-side work started by [`InputSource::start`].
+    pump: Option<SendableEventPump>,
+    hub: Option<Hub>,
+    inhibitor: Option<Arc<Inhibitor>>,
+    /// Owns the input-side jobs started by [`InputSource::start`].
     ///
-    /// Held so `Drop` cancels it. The SDL pump is a blocking-pool loop that
-    /// would otherwise be a thread the process waits for at exit; the plan is
-    /// for the device (not `TaskManager`) to own it, since it outlives every
-    /// view.
+    /// Held so `Drop` cancels them. The device (not `TaskManager`) owns these
+    /// jobs, since they outlive every view.
     jobs: Vec<crate::runtime::Job>,
 }
 
@@ -92,6 +97,9 @@ impl EmulatorInputSource {
             dpi,
             sender: None,
             sdl_context: None,
+            pump: None,
+            hub: None,
+            inhibitor: None,
             jobs: Vec::new(),
         }
     }
@@ -101,28 +109,43 @@ impl EmulatorInputSource {
             dpi,
             sender: None,
             sdl_context: Some(SendableSdl(sdl_context)),
+            pump: None,
+            hub: None,
+            inhibitor: None,
             jobs: Vec::new(),
         }
     }
 }
 
-/// Polls SDL and forwards device events until `cancel` is tripped.
-///
-/// A 1 ms poll loop on the blocking pool, because `poll_event` is a blocking
-/// C call. It re-reads `cancel` every iteration so dropping the owning
-/// [`EmulatorInputSource`] releases the thread at once instead of at process
-/// exit's shutdown deadline.
-fn run_sdl_event_pump_blocking(
-    mut event_pump: SendableEventPump,
-    sender: UnboundedSender<DeviceEvent>,
-    hub: crate::view::Hub,
-    inhibitor: Arc<Inhibitor>,
-    cancel: tokio_util::sync::CancellationToken,
-) {
-    'outer: loop {
-        if cancel.is_cancelled() {
-            break;
+impl Drop for EmulatorInputSource {
+    fn drop(&mut self) {
+        for job in self.jobs.drain(..) {
+            job.cancel();
         }
+    }
+}
+
+impl InputSource for EmulatorInputSource {
+    /// No-op — emulator rotation is unsupported until touch mapping tracks rotation.
+    fn set_rotation(&self, _n: i8) {}
+
+    /// Drains pending SDL events into the hub and device-event channel.
+    ///
+    /// Runs on the main thread, driven by the app main loop: SDL's event
+    /// queue may only be pumped there (`EventPump` is `!Send` for that
+    /// reason), so the pump created in [`Self::start`] is stored on `self`
+    /// and polled here instead of on a spawned thread.
+    fn pump(&mut self) {
+        let (Some(hub), Some(inhibitor), Some(sender)) = (
+            self.hub.clone(),
+            self.inhibitor.clone(),
+            self.sender.clone(),
+        ) else {
+            return;
+        };
+        let Some(event_pump) = self.pump.as_mut() else {
+            return;
+        };
         while let Some(sdl_evt) = event_pump.poll_event() {
             #[cfg(feature = "tracing")]
             let span = tracing::trace_span!("sdl-event-loop", event = ?sdl_evt);
@@ -139,7 +162,7 @@ fn run_sdl_event_pump_blocking(
                     ..
                 } => {
                     hub.send(Event::Select(EntryId::Quit).into()).ok();
-                    break 'outer;
+                    return;
                 }
                 SdlEvent::KeyUp {
                     scancode: Some(scancode),
@@ -251,21 +274,7 @@ fn run_sdl_event_pump_blocking(
                 }
             }
         }
-        std::thread::sleep(Duration::from_millis(1));
     }
-}
-
-impl Drop for EmulatorInputSource {
-    fn drop(&mut self) {
-        for job in self.jobs.drain(..) {
-            job.cancel();
-        }
-    }
-}
-
-impl InputSource for EmulatorInputSource {
-    /// No-op — emulator rotation is unsupported until touch mapping tracks rotation.
-    fn set_rotation(&self, _n: i8) {}
 
     fn start(
         &mut self,
@@ -275,7 +284,7 @@ impl InputSource for EmulatorInputSource {
     ) -> (Hub, crate::view::HubReceiver) {
         let (hub, rx) = crate::view::hub_channel();
         let (device_tx, device_rx) = tokio::sync::mpsc::unbounded_channel();
-        self.sender = Some(device_tx.clone());
+        self.sender = Some(device_tx);
 
         let (gesture_rx, gesture_job) =
             crate::gesture::GesturePipeline::start(device_rx, self.dpi).into_parts();
@@ -299,26 +308,11 @@ impl InputSource for EmulatorInputSource {
             }));
 
         if let Some(sendable_sdl) = self.sdl_context.take() {
-            let hub = hub.clone();
-            let sdl_inhibitor = Arc::clone(&inhibitor);
-            let sender = device_tx;
-            let event_pump =
-                SendableEventPump(sendable_sdl.0.event_pump().expect("SDL3 event pump failed"));
-            self.jobs
-                .push(crate::runtime::Job::spawn(move |cancel| async move {
-                    let handle = crate::runtime::spawn_blocking(move || {
-                        run_sdl_event_pump_blocking(
-                            event_pump,
-                            sender,
-                            hub.clone(),
-                            sdl_inhibitor.clone(),
-                            cancel,
-                        );
-                    });
-                    if let Err(error) = handle.await {
-                        tracing::warn!(error = %error, "SDL event pump task join failed");
-                    }
-                }));
+            self.pump = Some(SendableEventPump(
+                sendable_sdl.0.event_pump().expect("SDL3 event pump failed"),
+            ));
+            self.hub = Some(hub.clone());
+            self.inhibitor = Some(inhibitor);
         }
 
         let hub_clone = hub.clone();
