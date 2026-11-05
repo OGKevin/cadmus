@@ -54,9 +54,17 @@ rustdoc.private_intra_doc_links = "allow"
 await_holding_lock = "deny"
 await_holding_refcell_ref = "deny"
 
+# Renovate's checkout does not initialize git submodules, so patching by path breaks its
+# Cargo.lock artifact updates. Pin by git rev in normal builds; the `html5ever` Renovate group
+# keeps this rev in sync with thirdparty/html5ever.
 [patch.crates-io]
-markup5ever = { path = "thirdparty/html5ever/markup5ever" }
-xml5ever = { path = "thirdparty/html5ever/xml5ever" }
+markup5ever = { git = "https://github.com/OGKevin/html5ever", rev = "feb171c28b48012d5c42e24d7acfb7e2d8f79189" }
+xml5ever = { git = "https://github.com/OGKevin/html5ever", rev = "feb171c28b48012d5c42e24d7acfb7e2d8f79189" }
+
+# For html5ever development, comment out both git entries above and uncomment both path entries
+# below, then run Cadmus tests against the submodule changes.
+# markup5ever = { path = "thirdparty/html5ever/markup5ever" }
+# xml5ever = { path = "thirdparty/html5ever/xml5ever" }
 
 [profile.release-minsized]
 inherits = "release"
