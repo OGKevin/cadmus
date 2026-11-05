@@ -82,6 +82,8 @@ tower = { workspace = true }
 rustls = { workspace = true }
 sntpc = { version = "0.11", features = ["std"] }
 webpki-roots = "1.0.5"
+portable-pty = { version = "0.9.0", optional = true }
+vt100 = { version = "0.16.2", optional = true }
 
 ctor = "1.0"
 once_cell = "1.20.2"
@@ -153,7 +155,7 @@ emulator = ["sdl3", "device"]
 deviceless = ["device"]
 kobo = ["procfs", "zbus", "futures-util", "device"]
 # device-list-end
-test = []
+test = ["terminal"]
 bench = []
 tracing = [
     "tracing-opentelemetry",
@@ -169,6 +171,7 @@ tracing = [
 ]
 profiling = ["pyroscope", "tikv-jemallocator"]
 telemetry = ["tracing", "profiling"]
+terminal = ["portable-pty", "vt100"]
 docs = [
     "deviceless",
     "zbus",
@@ -176,6 +179,7 @@ docs = [
     "sdl3",
     "procfs",
     "device",
+    "terminal",
 ]
 
 [lints]
