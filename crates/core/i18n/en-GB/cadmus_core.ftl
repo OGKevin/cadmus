@@ -231,6 +231,11 @@ settings-dictionaries-re-download = Re-download
 settings-dictionaries-update = Update
 settings-dictionaries-update-available = Update Available
 
+# Sketch
+sketch-eraser = Eraser
+sketch-redo = Redo
+sketch-undo = Undo
+
 # Languages
 catalan = Catalan
 chinese = Chinese
