@@ -2174,7 +2174,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c93ead32f1aded3f2ce985c3af4b4492f403a3f0d433250362eb845732d74893"
 dependencies = [
  "bstr",
- "hashbrown 0.16.1",
+ "hashbrown 0.17.1",
 ]
 
 [[package]]
@@ -3566,6 +3566,7 @@ dependencies = [
 [[package]]
 name = "markup5ever"
 version = "0.41.0"
+source = "git+https://github.com/OGKevin/html5ever?rev=feb171c28b48012d5c42e24d7acfb7e2d8f79189#feb171c28b48012d5c42e24d7acfb7e2d8f79189"
 dependencies = [
  "log",
  "tendril",
@@ -5849,9 +5850,9 @@ dependencies = [
 
 [[package]]
 name = "sysinfo"
-version = "0.39.6"
+version = "0.40.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2071df9448915b71c4fe6d25deaf1c22f12bd234f01540b77312bb8e41361e6"
+checksum = "0e8a3edbe0394ce115f3917a00349dd242be09eb5a091ed509eaf67b55cfb8a8"
 dependencies = [
  "libc",
  "memchr",
@@ -5879,7 +5880,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
@@ -5888,6 +5889,7 @@ dependencies = [
 [[package]]
 name = "tendril"
 version = "0.5.1"
+source = "git+https://github.com/OGKevin/html5ever?rev=feb171c28b48012d5c42e24d7acfb7e2d8f79189#feb171c28b48012d5c42e24d7acfb7e2d8f79189"
 dependencies = [
  "new_debug_unreachable",
 ]
@@ -6653,6 +6655,7 @@ dependencies = [
 [[package]]
 name = "web_atoms"
 version = "0.3.0"
+source = "git+https://github.com/OGKevin/html5ever?rev=feb171c28b48012d5c42e24d7acfb7e2d8f79189#feb171c28b48012d5c42e24d7acfb7e2d8f79189"
 dependencies = [
  "phf 0.14.0",
  "phf_codegen",
@@ -6953,6 +6956,7 @@ checksum = "a67300977d3dc3f8034dae89778f502b6ba20b269527b3223ba59c0cf393bb8a"
 [[package]]
 name = "xml5ever"
 version = "0.41.0"
+source = "git+https://github.com/OGKevin/html5ever?rev=feb171c28b48012d5c42e24d7acfb7e2d8f79189#feb171c28b48012d5c42e24d7acfb7e2d8f79189"
 dependencies = [
  "log",
  "markup5ever",

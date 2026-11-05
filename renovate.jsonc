@@ -129,6 +129,14 @@
       "minimumReleaseAge": null
     },
     {
+      "description": "Keep html5ever submodule and Cargo.toml patch revs in sync",
+      "matchManagers": ["git-submodules", "custom.regex"],
+      "matchDepNames": ["OGKevin/html5ever", "thirdparty/html5ever"],
+      "groupName": "html5ever",
+      "groupSlug": "html5ever",
+      "minimumReleaseAge": null
+    },
+    {
       "description": "Group bundled font release pins and font git submodules",
       "matchManagers": ["custom.regex", "git-submodules"],
       "matchPackageNames": [
@@ -399,6 +407,18 @@
       "depNameTemplate": "ArtifexSoftware/mupdf",
       "packageNameTemplate": "ArtifexSoftware/mupdf",
       "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "description": "Keep Cargo.toml [patch.crates-io] html5ever revs in sync with thirdparty/html5ever",
+      "managerFilePatterns": ["/^Cargo\\.toml$/"],
+      "matchStrings": [
+        "(?:markup5ever|xml5ever) = \\{ git = \"https://github\\.com/OGKevin/html5ever\", rev = \"(?<currentDigest>[a-f0-9]{40})\" \\}"
+      ],
+      "depNameTemplate": "OGKevin/html5ever",
+      "datasourceTemplate": "git-refs",
+      "packageNameTemplate": "https://github.com/OGKevin/html5ever",
+      "versioningTemplate": "git"
     }
   ]
 }
