@@ -2,6 +2,7 @@ use crate::color::{BLACK, Color, WHITE};
 use crate::device::AppContext;
 use crate::device::DeviceHardware as _;
 use crate::device::{DeviceIdentity as _, DevicePaths as _};
+use crate::fl;
 use crate::framebuffer::{Framebuffer, Pixmap, UpdateMode};
 use crate::geom::{CornerSpec, Point, Rectangle};
 use crate::helpers::IsHidden;
@@ -28,7 +29,9 @@ const FILENAME_PATTERN: &str = "sketch-%Y%m%d_%H%M%S.png";
 const ICON_NAME: &str = "enclosed_menu";
 // https://oeis.org/A000041
 const PEN_SIZES: [i32; 12] = [1, 2, 3, 5, 7, 11, 15, 22, 30, 42, 56, 77];
-// shortcut: full-canvas snapshots (~2.6 MB each on a 1404×1872 screen), switch to stroke deltas if more depth is needed.
+/// Maximum number of undo (and redo) canvas snapshots kept in [`History`].
+///
+/// shortcut: full-canvas snapshots (~2.6 MB each on a 1404×1872 screen), switch to stroke deltas if more depth is needed.
 const MAX_HISTORY: usize = 10;
 
 /// Canvas snapshots for undo/redo, taken before each stroke or canvas-wide change.
@@ -215,10 +218,10 @@ impl Sketch {
             let mut entries = vec![
                 EntryKind::SubMenu("Size".to_string(), sizes),
                 EntryKind::SubMenu("Color".to_string(), colors),
-                EntryKind::CheckBox("Eraser".to_string(), EntryId::TogglePenEraser, self.eraser),
+                EntryKind::CheckBox(fl!("sketch-eraser"), EntryId::TogglePenEraser, self.eraser),
                 EntryKind::Separator,
-                EntryKind::Command("Undo".to_string(), EntryId::Undo),
-                EntryKind::Command("Redo".to_string(), EntryId::Redo),
+                EntryKind::Command(fl!("sketch-undo"), EntryId::Undo),
+                EntryKind::Command(fl!("sketch-redo"), EntryId::Redo),
                 EntryKind::Separator,
                 EntryKind::Command("Save".to_string(), EntryId::Save),
                 EntryKind::Command("Refresh".to_string(), EntryId::Refresh),
