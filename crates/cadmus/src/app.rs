@@ -59,10 +59,13 @@ use cadmus_core::view::{handle_event, process_render_queue, wait_for_all};
 use std::collections::VecDeque;
 use std::env;
 use std::path::PathBuf;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tracing::{error, info, warn};
 
 pub const APP_NAME: &str = "Cadmus";
+
+/// Cadence for draining platform input (SDL) from the main loop.
+const INPUT_PUMP_INTERVAL: Duration = Duration::from_millis(10);
 
 /// The main loop's mutable state, borrowed by shutdown.
 struct ShutdownState<'a> {
@@ -668,7 +671,19 @@ pub async fn run() -> Result<(), Error> {
     context.release_startup_lease();
     drop(startup_led);
 
-    while let Some(message) = rx.recv().await {
+    let mut input_tick = tokio::time::interval(INPUT_PUMP_INTERVAL);
+    input_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    loop {
+        let message = tokio::select! {
+            message = rx.recv() => message,
+            _ = input_tick.tick() => {
+                context.device.input_mut().pump();
+                continue;
+            }
+        };
+        let Some(message) = message else {
+            break;
+        };
         let (evt, _input_wake) = message.into_parts();
         let skip_main_loop_lease =
             AppDevice::should_skip_main_loop_soft_suspend_lease(&context, &evt);

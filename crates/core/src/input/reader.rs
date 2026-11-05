@@ -283,6 +283,11 @@ mod tests {
     /// The reader must report one forwarded event and a clean EOF exit once
     /// the write end closes, not a silent `Ok(())`: a dead device must be
     /// visible in the log.
+    ///
+    /// Linux-only: epoll reports a FIFO at EOF with no buffered data as
+    /// readable, so the reader observes the zero-byte read. macOS kqueue never
+    /// signals that state, so the fixture would wait forever.
+    #[cfg(target_os = "linux")]
     #[tokio::test]
     async fn raw_reader_forwards_one_evdev_event() {
         let path = std::env::temp_dir().join(format!(
@@ -363,6 +368,10 @@ mod tests {
     }
     /// A device node that delivers zero bytes (the kernel-side EOF case) must
     /// surface as [`ExitReason::Eof`], not as a silent return.
+    ///
+    /// Linux-only for the readiness reason documented on
+    /// [`raw_reader_forwards_one_evdev_event`].
+    #[cfg(target_os = "linux")]
     #[tokio::test]
     async fn read_input_events_reports_eof_for_empty_device() {
         let path = std::env::temp_dir().join(format!(

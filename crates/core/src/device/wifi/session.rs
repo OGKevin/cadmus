@@ -1139,20 +1139,13 @@ mod tests {
         drop(lease);
     }
 
-    fn soft_suspend_inhibitor() -> (tempfile::TempDir, Arc<Inhibitor>) {
-        use crate::device::linux::soft_suspend::paths::SoftSuspendPaths;
-        let (dir, paths) = SoftSuspendPaths::test_fixture();
-        let inhibitor = Inhibitor::with_paths(
-            paths,
-            None,
-            std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
-        );
-        (dir, inhibitor)
+    fn soft_suspend_inhibitor() -> Arc<Inhibitor> {
+        Inhibitor::noop()
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn always_on_holds_soft_suspend_only_while_radio_on() {
-        let (_dir, soft) = soft_suspend_inhibitor();
+        let soft = soft_suspend_inhibitor();
         let (session, _) = session(WifiMode::Auto);
         session.set_inhibitor(Arc::clone(&soft));
         assert!(soft.is_empty());
@@ -1178,7 +1171,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn always_on_keeps_soft_suspend_after_last_wifi_holder() {
-        let (_dir, soft) = soft_suspend_inhibitor();
+        let soft = soft_suspend_inhibitor();
         let (session, _) = session(WifiMode::AlwaysOn);
         session.set_inhibitor(Arc::clone(&soft));
         session.enable_radio().await.unwrap();
@@ -1193,7 +1186,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn leaving_always_on_keeps_soft_suspend_while_holders_remain() {
-        let (_dir, soft) = soft_suspend_inhibitor();
+        let soft = soft_suspend_inhibitor();
         let (session, _) = session(WifiMode::AlwaysOn);
         session.set_inhibitor(Arc::clone(&soft));
         session.enable_radio().await.unwrap();
@@ -1209,7 +1202,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn disable_radio_drops_always_on_soft_suspend_lease() {
-        let (_dir, soft) = soft_suspend_inhibitor();
+        let soft = soft_suspend_inhibitor();
         let (session, _) = session(WifiMode::AlwaysOn);
         session.set_inhibitor(Arc::clone(&soft));
         session.enable_radio().await.unwrap();
@@ -1225,7 +1218,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn auto_holder_pins_soft_suspend_while_radio_on() {
-        let (_dir, soft) = soft_suspend_inhibitor();
+        let soft = soft_suspend_inhibitor();
         let (session, _) = session(WifiMode::Auto);
         session.set_inhibitor(Arc::clone(&soft));
         session.enable_radio().await.unwrap();
@@ -1244,7 +1237,7 @@ mod tests {
     async fn soft_suspend_stays_pinned_while_holder_active_under_churn() {
         use std::sync::atomic::{AtomicBool, Ordering};
 
-        let (_dir, soft) = soft_suspend_inhibitor();
+        let soft = soft_suspend_inhibitor();
         let (session, _) = session(WifiMode::Auto);
         session.set_inhibitor(Arc::clone(&soft));
         session.enable_radio().await.unwrap();

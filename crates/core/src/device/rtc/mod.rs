@@ -99,6 +99,7 @@ impl From<DateTime<Utc>> for RtcTime {
 }
 
 impl RtcWkalrm {
+    #[cfg(any(target_os = "linux", docsrs))]
     pub(crate) fn for_wake_time(wake_time: DateTime<Utc>) -> Self {
         Self {
             enabled: 1,

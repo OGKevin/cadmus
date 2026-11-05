@@ -227,6 +227,12 @@ pub trait InputSource: Send {
     ///
     /// Default: no-op.
     fn set_rotation(&self, _n: i8) {}
+
+    /// Drains pending platform input events into the hub.
+    ///
+    /// Called from the main loop, on the thread that owns the platform's event
+    /// queue. Default: no-op.
+    fn pump(&mut self) {}
 }
 
 /// Device identity: model, touch protocol, screen dimensions, and mark.

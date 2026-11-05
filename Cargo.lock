@@ -488,6 +488,7 @@ version = "0.12.0"
 dependencies = [
  "cadmus-core",
  "tikv-jemallocator",
+ "tokio",
  "tracing",
 ]
 

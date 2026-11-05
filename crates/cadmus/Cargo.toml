@@ -20,6 +20,7 @@ emulator = ["cadmus-core/emulator"]
 [dependencies]
 cadmus-core = { path = "../core" }
 tikv-jemallocator = { version = "0.7", features = ["profiling"], optional = true }
+tokio = { workspace = true, features = ["macros", "time"] }
 tracing = "0.1"
 
 [lints]
