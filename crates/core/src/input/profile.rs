@@ -2,9 +2,11 @@ use crate::geom::LinearDir;
 use crate::settings::ButtonScheme;
 
 use super::codes::{
-    KEY_BACKWARD, KEY_BUTTON_SCHEME, KEY_DOWN, KEY_FORWARD, KEY_HOME, KEY_LIGHT, KEY_POWER,
-    KEY_ROTATE_DISPLAY, KEY_UP, PEN_ERASE, PEN_HIGHLIGHT, SLEEP_COVER,
+    KEY_BACKWARD, KEY_BUTTON_SCHEME, KEY_FORWARD, KEY_HOME, KEY_LIGHT, KEY_POWER,
+    KEY_ROTATE_DISPLAY, PEN_ERASE, PEN_HIGHLIGHT, SLEEP_COVER,
 };
+#[cfg(any(target_os = "linux", test))]
+use super::codes::{KEY_DOWN, KEY_UP};
 use super::event::ButtonCode;
 
 /// How a device's `EV_KEY` events map to semantic actions.
@@ -47,6 +49,7 @@ impl DeviceProfile {
     /// page-turn buttons (bypassing the button-scheme, since the remote is
     /// orientation-agnostic); all other keys are forwarded as
     /// [`ButtonCode::Keyboard`] with modifier tracking.
+    #[cfg(any(target_os = "linux", test))]
     pub(super) const fn remote() -> Self {
         Self {
             key_map: REMOTE_KEY_MAP,
@@ -56,6 +59,7 @@ impl DeviceProfile {
 
     /// Profile for a generic hotplugged keyboard: no special scancodes; all
     /// keys are forwarded as [`ButtonCode::Keyboard`] with modifier tracking.
+    #[cfg(any(target_os = "linux", test))]
     pub(super) const fn keyboard() -> Self {
         Self {
             key_map: &[],
@@ -84,6 +88,7 @@ pub(super) enum KeyAction {
     PageTurnScheme(LinearDir),
     /// Page-turn that bypasses the button-scheme, used by orientation-agnostic
     /// remotes.
+    #[cfg(any(target_os = "linux", test))]
     PageTurnRaw(LinearDir),
     Erase,
     Highlight,
@@ -99,13 +104,12 @@ impl KeyAction {
     /// Resolves a button-dispatch action to a [`ButtonCode`].
     ///
     /// [`PageTurnScheme`] respects the button-scheme (rotation-based
-    /// inversion); [`PageTurnRaw`] bypasses it. Control actions
+    /// inversion); `PageTurnRaw` bypasses it. Control actions
     /// ([`SleepCover`], [`ButtonScheme`], [`RotateDisplay`]) are handled by
     /// their own match arms in [`parse_device_events`] before this is called,
     /// so reaching them here is a logic error.
     ///
     /// [`PageTurnScheme`]: KeyAction::PageTurnScheme
-    /// [`PageTurnRaw`]: KeyAction::PageTurnRaw
     /// [`SleepCover`]: KeyAction::SleepCover
     /// [`ButtonScheme`]: KeyAction::ButtonScheme
     /// [`RotateDisplay`]: KeyAction::RotateDisplay
@@ -126,7 +130,9 @@ impl KeyAction {
             KeyAction::PageTurnScheme(direction) => {
                 resolve_button_direction(direction, rotation, button_scheme, startup_rotation, dir)
             }
+            #[cfg(any(target_os = "linux", test))]
             KeyAction::PageTurnRaw(LinearDir::Forward) => ButtonCode::Forward,
+            #[cfg(any(target_os = "linux", test))]
             KeyAction::PageTurnRaw(LinearDir::Backward) => ButtonCode::Backward,
             KeyAction::SleepCover | KeyAction::ButtonScheme | KeyAction::RotateDisplay => {
                 unreachable!("control actions are handled before to_button_code is called")
@@ -151,6 +157,7 @@ const BUILT_IN_KEY_MAP: &[(u16, KeyAction)] = &[
 ];
 
 /// Scancode table for [`DeviceProfile::remote`].
+#[cfg(any(target_os = "linux", test))]
 const REMOTE_KEY_MAP: &[(u16, KeyAction)] = &[
     (KEY_UP, KeyAction::PageTurnRaw(LinearDir::Backward)),
     (KEY_DOWN, KeyAction::PageTurnRaw(LinearDir::Forward)),

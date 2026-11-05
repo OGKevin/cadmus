@@ -24,11 +24,13 @@ pub(super) struct SourceId(pub(super) u32);
 
 impl SourceId {
     /// First id handed out for a fresh device set.
+    #[cfg(target_os = "linux")]
     pub(super) const START: Self = Self(0);
 
     /// Returns the next id. Wraparound after four billion devices is
     /// irrelevant in practice and only risks aliasing with long-gone devices.
     #[cfg_attr(feature = "tracing", tracing::instrument(level = tracing::Level::TRACE))]
+    #[cfg(target_os = "linux")]
     pub(super) fn next(&mut self) -> Self {
         let id = *self;
         self.0 = self.0.wrapping_add(1);
@@ -43,6 +45,7 @@ impl SourceId {
 /// id so they can never be confused with a device.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub(super) enum EventSource {
+    #[cfg(any(target_os = "linux", test))]
     Device(SourceId),
     Synthetic,
 }

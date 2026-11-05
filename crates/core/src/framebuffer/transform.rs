@@ -67,12 +67,28 @@ pub fn transform_dither_g2(x: u32, y: u32, color: Color) -> Color {
     // Get the address of the drift value.
     let addr = (x % DITHER_PITCH) + (y % DITHER_PITCH) * DITHER_PITCH;
     // Apply the drift to the input color.
-    let c = (gray as i16 + DITHER_G2_DRIFTS[addr as usize] as i16).clamp(0, 255);
-    // Return the nearest color in G2.
+    quantize_g2(gray, DITHER_G2_DRIFTS[addr as usize])
+}
+fn quantize_g2(gray: u8, drift: i8) -> Color {
+    let c = (gray as i16 + drift as i16).clamp(0, 255);
     Color::Gray(if c < 128 { 0 } else { 255 })
 }
 
 #[cfg(any(feature = "kobo", docsrs))]
 pub fn transform_identity(_x: u32, _y: u32, color: Color) -> Color {
     color
+}
+#[cfg(test)]
+mod tests {
+    use super::quantize_g2;
+    use crate::color::Color;
+
+    #[test]
+    fn g2_quantization_uses_only_black_and_white() {
+        for drift in i8::MIN..=i8::MAX {
+            for gray in 0..=u8::MAX {
+                assert!(matches!(quantize_g2(gray, drift), Color::Gray(0 | 255)));
+            }
+        }
+    }
 }
