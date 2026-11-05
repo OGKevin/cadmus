@@ -62,7 +62,9 @@ pub(super) const KEY_BACKWARD: u16 = 193;
 pub(super) const KEY_FORWARD: u16 = 194;
 #[cfg(test)]
 pub(super) const KEY_SPACE: u16 = 57;
+#[cfg(any(target_os = "linux", test))]
 pub(super) const KEY_UP: u16 = 103;
+#[cfg(any(target_os = "linux", test))]
 pub(super) const KEY_DOWN: u16 = 108;
 pub(super) const KEY_LEFTCTRL: u16 = 29;
 pub(super) const KEY_RIGHTCTRL: u16 = 97;

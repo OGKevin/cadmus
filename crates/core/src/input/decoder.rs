@@ -297,6 +297,7 @@ impl Keyboards {
 /// events: they are `EV_KEY` controls and must not touch per-device state.
 fn device_source(source: EventSource) -> Option<SourceId> {
     match source {
+        #[cfg(any(target_os = "linux", test))]
         EventSource::Device(source) => Some(source),
         EventSource::Synthetic => None,
     }
@@ -689,9 +690,10 @@ fn handle_control_action(
         | KeyAction::Home
         | KeyAction::Light
         | KeyAction::PageTurnScheme(_)
-        | KeyAction::PageTurnRaw(_)
         | KeyAction::Erase
         | KeyAction::Highlight => {}
+        #[cfg(any(target_os = "linux", test))]
+        KeyAction::PageTurnRaw(_) => {}
     }
 }
 

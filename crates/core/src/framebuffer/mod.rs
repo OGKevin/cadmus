@@ -5,8 +5,11 @@ mod ion_sys;
 mod kobo1;
 #[cfg(any(feature = "kobo", docsrs))]
 mod kobo2;
+#[cfg(any(feature = "kobo", docsrs))]
 mod linuxfb_sys;
+#[cfg(any(feature = "kobo", docsrs))]
 mod mxcfb_sys;
+#[cfg(any(feature = "kobo", docsrs))]
 mod sunxi_sys;
 mod transform;
 
