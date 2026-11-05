@@ -30,8 +30,6 @@ const ICON_NAME: &str = "enclosed_menu";
 // https://oeis.org/A000041
 const PEN_SIZES: [i32; 12] = [1, 2, 3, 5, 7, 11, 15, 22, 30, 42, 56, 77];
 /// Maximum number of undo (and redo) canvas snapshots kept in [`History`].
-///
-/// shortcut: full-canvas snapshots (~2.6 MB each on a 1404×1872 screen), switch to stroke deltas if more depth is needed.
 const MAX_HISTORY: usize = 10;
 
 /// Canvas snapshots for undo/redo, taken before each stroke or canvas-wide change.
