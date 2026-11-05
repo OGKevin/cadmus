@@ -58,6 +58,7 @@ async fn prepare_usb_share(
     }
     settings_manager
         .save(&context.settings)
+        .await
         .map_err(|error| tracing::error!(error = %error, "Can't save settings"))
         .ok();
     context.database.close().await;

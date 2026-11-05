@@ -1,8 +1,8 @@
 //! Setting kinds for the Power category.
 
 use super::{
-    InputSettingKind, SettingData, SettingIdentity, SettingKind, SettingsFetchData, ToggleSettings,
-    WidgetKind,
+    InputSettingKind, SettingData, SettingIdentity, SettingKind, SettingsFetchData, TextMode,
+    ToggleSettings, WidgetKind,
 };
 use crate::device::AppContext;
 use crate::device::reschedule_auto_suspend_alarm;
@@ -76,6 +76,10 @@ impl InputSettingKind for AutoSuspend {
         10
     }
 
+    fn text_mode(&self) -> TextMode {
+        TextMode::Number
+    }
+
     fn current_text(&self, settings: &Settings) -> String {
         if settings.auto_suspend == 0.0 {
             "0".to_string()
@@ -141,6 +145,10 @@ impl InputSettingKind for AutoPowerOff {
 
     fn input_max_chars(&self) -> usize {
         10
+    }
+
+    fn text_mode(&self) -> TextMode {
+        TextMode::Number
     }
 
     fn current_text(&self, settings: &Settings) -> String {
@@ -374,6 +382,10 @@ impl InputSettingKind for AutosleepGrace {
 
     fn input_max_chars(&self) -> usize {
         10
+    }
+
+    fn text_mode(&self) -> TextMode {
+        TextMode::Number
     }
 
     fn current_text(&self, settings: &Settings) -> String {

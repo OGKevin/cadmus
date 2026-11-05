@@ -37,6 +37,8 @@ jobs:
             cargo:
               - '**/*.rs'
               - 'crates/core/i18n/**'
+              - 'docs/po/**'
+              - 'proto/**'
               - 'Cargo.*'
               - '**/Cargo.*'
               - '.github/workflows/cargo.yml'
@@ -49,6 +51,7 @@ jobs:
               - '.github/actions/clone-needed-cargo-submodules/**'
               - '.github/actions/install-doc-tools/**'
               - '.github/actions/install-cadmuscli/**'
+              - '.github/actions/install-proto-tools/**'
               - 'build-scripts/**'
               - '.gitmodules'
               - 'mupdf_wrapper/**'
@@ -236,6 +239,10 @@ jobs:
         if: runner.os == 'Linux'
         uses: ./.github/actions/apt
 
+      - name: Install protobuf tools (Linux)
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/install-proto-tools
+
       - name: Save clippy JSON artifact
         if: github.event_name == 'pull_request'
         run: |
@@ -332,6 +339,9 @@ jobs:
       - name: Install apt packages (Linux)
         if: runner.os == 'Linux'
         uses: ./.github/actions/apt
+      - name: Install protobuf tools (Linux)
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/install-proto-tools
       - name: Cache Homebrew packages (macOS)
         if: runner.os == 'macOS'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

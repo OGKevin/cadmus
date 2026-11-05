@@ -31,6 +31,25 @@ impl Color {
         Color::Rgb(rgb[0], rgb[1], rgb[2])
     }
 
+    /// Parses `#rrggbb` or `rrggbb`.
+    ///
+    /// Pure white and pure black map to [`WHITE`] and [`BLACK`], the palette
+    /// entries the device draws them as, so settings round-trip unchanged.
+    pub fn from_hex(hex: &str) -> Option<Color> {
+        let hex = hex.strip_prefix('#').unwrap_or(hex);
+        if hex.len() != 6 || !hex.is_ascii() {
+            return None;
+        }
+        let red = u8::from_str_radix(&hex[0..2], 16).ok()?;
+        let green = u8::from_str_radix(&hex[2..4], 16).ok()?;
+        let blue = u8::from_str_radix(&hex[4..6], 16).ok()?;
+        Some(match (red, green, blue) {
+            (255, 255, 255) => WHITE,
+            (0, 0, 0) => BLACK,
+            _ => Color::Rgb(red, green, blue),
+        })
+    }
+
     pub fn apply<F>(&self, f: F) -> Color
     where
         F: Fn(u8) -> u8,
@@ -130,3 +149,18 @@ pub const READING_PROGRESS: Color = GRAY07;
 pub const PROGRESS_FULL: Color = GRAY05;
 pub const PROGRESS_EMPTY: Color = GRAY13;
 pub const PROGRESS_VALUE: Color = GRAY06;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn from_hex_parses_palette_rgb_and_rejects_invalid() {
+        assert_eq!(Color::from_hex("#ffffff"), Some(WHITE));
+        assert_eq!(Color::from_hex("000000"), Some(BLACK));
+        assert_eq!(Color::from_hex("#804020"), Some(Color::Rgb(128, 64, 32)));
+        assert_eq!(Color::from_hex("gggggg"), None);
+        assert_eq!(Color::from_hex("#fff"), None);
+        assert_eq!(Color::from_hex(""), None);
+    }
+}

@@ -66,9 +66,15 @@ chrono = { version = "0.4.42", features = [
 ], default-features = false }
 chrono-tz = "0.10"
 sunrise = "3.0"
+buffa-types = { workspace = true }
 bytes = { workspace = true }
+cadmus-api-proto = { path = "../api-proto" }
+connectrpc = { workspace = true, features = ["json", "server"] }
 http = { workspace = true }
+http-body = { workspace = true }
 http-body-util = { workspace = true }
+hyper = { workspace = true }
+hyper-util = { workspace = true }
 mdns-sd = { workspace = true }
 octocrab = { workspace = true }
 reqwest = { version = "0.13.1", default-features = false, features = [
@@ -121,6 +127,7 @@ procfs = { version = "0.18", optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.8", features = ["html_reports"] }
+h2 = "0.4"
 tempfile = "3.14"
 
 [[bench]]

@@ -44,6 +44,12 @@
       "skip-github-release": true,
       "skip-changelog": true
     },
+    "crates/api-proto": {
+      "release-type": "rust",
+      "component": "cadmus-api-proto",
+      "skip-github-release": true,
+      "skip-changelog": true
+    },
     "xtask": {
       "release-type": "rust",
       "component": "xtask",
@@ -60,6 +66,7 @@
         "cadmus",
         "cadmus-core",
         "cadmus-bin",
+        "cadmus-api-proto",
         "cadmus-macros",
         "importer",
         "fetcher",

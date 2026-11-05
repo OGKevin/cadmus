@@ -7,7 +7,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::Cow;
 use std::char;
 use std::fmt;
-use std::fs::{self, File};
+use std::fs::File;
 use std::io::{self, BufReader, BufWriter};
 use std::ops::Deref;
 use std::path::{Component, Path, PathBuf};
@@ -89,54 +89,43 @@ where
         .map_err(Into::into)
 }
 
-pub fn load_toml<T, P: AsRef<Path>>(path: P) -> Result<T, Error>
+pub async fn load_toml<T, P: AsRef<Path>>(path: P) -> Result<T, Error>
 where
     for<'a> T: Deserialize<'a>,
 {
-    let s = fs::read_to_string(path.as_ref())
-        .with_context(|| format!("can't read file {}", path.as_ref().display()))?;
-    toml::from_str(&s)
-        .with_context(|| format!("can't parse TOML content from {}", path.as_ref().display()))
-        .map_err(Into::into)
+    let path_ref = path.as_ref();
+    let raw = tokio::fs::read_to_string(path_ref)
+        .await
+        .with_context(|| format!("can't read file {}", path_ref.display()))?;
+    toml::from_str(&raw)
+        .with_context(|| format!("can't parse TOML content from {}", path_ref.display()))
 }
 
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(data, path), fields(file_path = %path.as_ref().display())))]
-pub fn save_toml<T, P: AsRef<Path>>(data: &T, path: P) -> Result<(), Error>
+pub async fn save_toml<T, P: AsRef<Path>>(data: &T, path: P) -> Result<(), Error>
 where
     T: Serialize,
 {
     let path_ref = path.as_ref();
-    tracing::debug!(file_path = %path_ref.display(), "serializing data to TOML");
-    let s = toml::to_string(data).context("can't convert to TOML format")?;
-
+    let serialized = toml::to_string(data).context("can't convert to TOML format")?;
     tracing::debug!(
         file_path = %path_ref.display(),
-        toml_size = s.len(),
+        toml_size = serialized.len(),
         "writing TOML to file"
     );
-
-    match fs::write(path_ref, &s) {
-        Ok(()) => {
-            let file_size = path_ref.metadata().ok().map(|m| m.len());
-
-            tracing::debug!(
-                file_path = %path_ref.display(),
-                file_size = ?file_size,
-                "successfully wrote TOML file"
-            );
-
-            Ok(())
-        }
-        Err(e) => {
-            tracing::error!(
-                file_path = %path_ref.display(),
-                error = %e,
-                "failed to write TOML file"
-            );
-            Err(anyhow::Error::new(e))
-                .context(format!("can't write to file {}", path_ref.display()))
-        }
-    }
+    tokio::fs::write(path_ref, &serialized)
+        .await
+        .with_context(|| format!("can't write to file {}", path_ref.display()))?;
+    let file_size = tokio::fs::metadata(path_ref)
+        .await
+        .ok()
+        .map(|meta| meta.len());
+    tracing::debug!(
+        file_path = %path_ref.display(),
+        file_size = ?file_size,
+        "successfully wrote TOML file"
+    );
+    Ok(())
 }
 
 /// Computes a content-based fingerprint for a file.
