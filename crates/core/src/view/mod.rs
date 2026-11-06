@@ -75,7 +75,7 @@ use crate::metadata::{
     Info, Margin, PageScheme, ScrollMode, SimpleStatus, SortMethod, TextAlign, ZoomMode,
 };
 use crate::settings::{
-    self, ButtonScheme, FinishedAction, FirstColumn, RotationLock, SecondColumn, StartupMode,
+    self, ButtonScheme, FinishedAction, FirstColumn, RotationMode, SecondColumn, StartupMode,
 };
 use crate::view::ota::OtaEntryId;
 use downcast_rs::{Downcast, impl_downcast};
@@ -961,7 +961,7 @@ pub enum EntryId {
     SetLineHeight(i32),
     SetContrastExponent(i32),
     SetContrastGray(i32),
-    SetRotationLock(Option<RotationLock>),
+    SetRotation(RotationMode),
     SetSearchTarget(Option<String>),
     SetInputText(ViewId, String),
     SetKeyboardLayout(String),
