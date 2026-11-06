@@ -22,7 +22,9 @@ use crate::chrono::{Duration as ChronoDuration, Local, Timelike};
 use crate::device::DeviceHardware as _;
 use crate::device::inhibitor::{Kind, SoftSuspendName};
 use crate::device::power::PowerManager;
-use crate::device::rtc::{AlarmManager, EnsureAlarmOutcome, PastDueAction, PreSleepAlarms, Rtc};
+use crate::device::rtc::{
+    AlarmManager, EnsureAlarmOutcome, HardwareWakeAlarm, PastDueAction, PreSleepAlarms, Rtc,
+};
 use crate::device::soft_suspend::SoftSuspendBackend as _;
 use crate::device::soft_suspend::mode::AutosleepMode;
 use crate::device::{
@@ -667,19 +669,34 @@ async fn schedule_alarms_before_sleep(
     None
 }
 
+/// Reads the hardware wake-alarm slot through the device's own RTC handle.
+///
+/// The device hands out the same handle the manager wraps, so this never takes
+/// the alarm-manager lock and cannot contend with the IRQ listener.
+async fn read_wake_alarm(context: &AppContext) -> HardwareWakeAlarm {
+    match context.device.rtc() {
+        Ok(rtc) => rtc.wake_alarm().await,
+        Err(error) => {
+            tracing::debug!(error = %error, "wake alarm read skipped: no RTC");
+            HardwareWakeAlarm::default()
+        }
+    }
+}
+
 /// Captures the hardware and Cadmus alarm state that deep-idle entry leaves in place.
 ///
-/// The manager lock is released before the hardware read is awaited.
+/// The manager lock covers only the schedule read; the hardware slot is read
+/// through [`read_wake_alarm`].
 async fn capture_pre_sleep_alarms(context: &AppContext) -> PreSleepAlarms {
-    let pending = context.alarm_manager.as_ref().map(|alarms| {
+    let cadmus = context.alarm_manager.as_ref().and_then(|alarms| {
         alarms
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .pre_sleep_alarms()
+            .next_scheduled_alarm()
     });
-    match pending {
-        Some(pending) => pending.await,
-        None => PreSleepAlarms::default(),
+    PreSleepAlarms {
+        hardware: read_wake_alarm(context).await,
+        cadmus,
     }
 }
 
@@ -692,19 +709,9 @@ async fn log_wake_source(context: &AppContext, state: &DeepIdleWaitState) {
     #[cfg(target_os = "linux")]
     {
         use crate::device::linux::wake_telemetry;
-        use crate::device::rtc::HardwareWakeAlarm;
 
         let pre_sleep_alarms = state.pre_sleep_alarms();
-        let pending = context.alarm_manager.as_ref().map(|alarms| {
-            alarms
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .wake_alarm()
-        });
-        let post_hardware_alarm = match pending {
-            Some(pending) => pending.await,
-            None => HardwareWakeAlarm::default(),
-        };
+        let post_hardware_alarm = read_wake_alarm(context).await;
         let wake_irq = wake_telemetry::read_wakeup_irq().await;
         let wake_irq_name = match wake_irq {
             Some(irq) => wake_telemetry::read_irq_name(irq).await,

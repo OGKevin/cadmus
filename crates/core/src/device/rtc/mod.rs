@@ -365,26 +365,6 @@ impl<R: Rtc> AlarmManager<R> {
             .map(|alarm| (alarm.alarm_type, alarm.wake_time))
     }
 
-    /// Reads the hardware wake-alarm slot.
-    #[cfg(any(feature = "kobo", docsrs))]
-    pub(crate) fn wake_alarm(&self) -> impl Future<Output = HardwareWakeAlarm> + Send + use<R> {
-        let rtc = Arc::clone(&self.rtc);
-        async move { rtc.wake_alarm().await }
-    }
-
-    /// Snapshot of the hardware slot and the earliest logical alarm.
-    #[cfg(any(feature = "kobo", docsrs))]
-    pub(crate) fn pre_sleep_alarms(&self) -> impl Future<Output = PreSleepAlarms> + Send + use<R> {
-        let rtc = Arc::clone(&self.rtc);
-        let cadmus = self.next_scheduled_alarm();
-        async move {
-            PreSleepAlarms {
-                hardware: rtc.wake_alarm().await,
-                cadmus,
-            }
-        }
-    }
-
     /// Ensures an alarm is active and scheduled for the future.
     ///
     /// Accepts either an [`AlarmWhen`] or a relative [`Duration`]. A stale
