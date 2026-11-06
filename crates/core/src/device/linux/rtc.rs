@@ -196,11 +196,15 @@ impl Rtc for LinuxRtc {
     /// The node reports an epoch while an alarm is enabled and is empty while
     /// none is, which is what the diagnostic comparison needs; `RTC_ALM_READ`
     /// keeps the stale programmed time after the alarm is disabled.
-    fn wake_alarm(&self) -> HardwareWakeAlarm {
-        match std::fs::read_to_string(WAKEALARM_PATH) {
+    async fn wake_alarm(&self) -> HardwareWakeAlarm {
+        match tokio::fs::read_to_string(WAKEALARM_PATH).await {
             Ok(raw) => parse_wakealarm(&raw),
             Err(error) => {
-                tracing::debug!(error = %error, path = WAKEALARM_PATH, "wake alarm node unavailable");
+                tracing::debug!(
+                    error = %error,
+                    path = WAKEALARM_PATH,
+                    "wake alarm node unavailable"
+                );
                 HardwareWakeAlarm::Unavailable
             }
         }

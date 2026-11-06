@@ -3,7 +3,7 @@
 //! Reads the two Linux nodes that name the IRQ behind a wake: the IRQ the kernel
 //! recorded (`/sys/power/pm_wakeup_irq`) and that IRQ's owner in
 //! `/proc/interrupts`. The RTC's own wake-alarm slot is read by
-//! [`crate::device::rtc::read_hardware_wakealarm`], next to the value it parses to.
+//! [`LinuxRtc`](super::LinuxRtc)'s [`Rtc::wake_alarm`](crate::device::rtc::Rtc::wake_alarm).
 //!
 //! `pm_wakeup_irq` fails the read with `-ENODATA` while the kernel's recorded
 //! IRQ is zero, so an unavailable node means "not reported", not "no wake".
@@ -42,8 +42,16 @@ fn parse_irq_name(interrupts: &str, irq: u32) -> Option<String> {
     interrupts.lines().find_map(|line| {
         let rest = line.trim_start().strip_prefix(&prefix)?;
         let name = rest.split_whitespace().next_back()?;
-        (!name.bytes().all(|byte| byte.is_ascii_digit())).then(|| name.to_owned())
+        (!names_no_action(name)).then(|| name.to_owned())
     })
+}
+
+/// Whether a row's last field is a column value rather than an action name.
+///
+/// `show_interrupts` ends an action-less row with the trigger type, and with a
+/// per-CPU count when the row carries no chip or trigger column at all.
+fn names_no_action(field: &str) -> bool {
+    matches!(field, "Level" | "Edge") || field.bytes().all(|byte| byte.is_ascii_digit())
 }
 
 #[cfg(test)]
@@ -85,7 +93,11 @@ mod tests {
     }
 
     #[test]
-    fn irq_name_absent_when_row_has_only_counts() {
-        assert_eq!(parse_irq_name("  7:   3    0\n", 7), None);
+    fn irq_name_absent_when_row_has_no_action() {
+        assert_eq!(
+            parse_irq_name("  7:   3   0   MT_SYSIRQ   7 Level\n", 7),
+            None
+        );
+        assert_eq!(parse_irq_name("  8:   3   0\n", 8), None);
     }
 }

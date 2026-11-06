@@ -588,7 +588,7 @@ async fn enter_sleep(
         if let Some(outcome) = schedule_alarms_before_sleep(context, runtime).await {
             return outcome;
         }
-        start_deep_idle_wait(hub, context, runtime.tasks);
+        start_deep_idle_wait(hub, context, runtime.tasks).await;
         return EventOutcome::Handled;
     }
 
@@ -669,19 +669,18 @@ async fn schedule_alarms_before_sleep(
 
 /// Captures the hardware and Cadmus alarm state that deep-idle entry leaves in place.
 ///
-/// The alarm-manager lock is taken in a short synchronous block so the
-/// `MutexGuard` is dropped before any `.await`.
-fn capture_pre_sleep_alarms(context: &AppContext) -> PreSleepAlarms {
-    context
-        .alarm_manager
-        .as_ref()
-        .map(|alarms| {
-            alarms
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .pre_sleep_alarms()
-        })
-        .unwrap_or_default()
+/// The manager lock is released before the hardware read is awaited.
+async fn capture_pre_sleep_alarms(context: &AppContext) -> PreSleepAlarms {
+    let pending = context.alarm_manager.as_ref().map(|alarms| {
+        alarms
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .pre_sleep_alarms()
+    });
+    match pending {
+        Some(pending) => pending.await,
+        None => PreSleepAlarms::default(),
+    }
 }
 
 /// Emits the kernel wake source and alarm comparison for one primary wake.
@@ -693,18 +692,19 @@ async fn log_wake_source(context: &AppContext, state: &DeepIdleWaitState) {
     #[cfg(target_os = "linux")]
     {
         use crate::device::linux::wake_telemetry;
+        use crate::device::rtc::HardwareWakeAlarm;
 
         let pre_sleep_alarms = state.pre_sleep_alarms();
-        let post_hardware_alarm = context
-            .alarm_manager
-            .as_ref()
-            .map(|alarms| {
-                alarms
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner())
-                    .wake_alarm()
-            })
-            .unwrap_or_default();
+        let pending = context.alarm_manager.as_ref().map(|alarms| {
+            alarms
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .wake_alarm()
+        });
+        let post_hardware_alarm = match pending {
+            Some(pending) => pending.await,
+            None => HardwareWakeAlarm::default(),
+        };
         let wake_irq = wake_telemetry::read_wakeup_irq().await;
         let wake_irq_name = match wake_irq {
             Some(irq) => wake_telemetry::read_irq_name(irq).await,
@@ -728,14 +728,14 @@ async fn log_wake_source(context: &AppContext, state: &DeepIdleWaitState) {
 }
 
 /// Arms mem autosleep, kernel deep idle, and periodic [`Event::PollDeepIdleWait`] polling.
-fn start_deep_idle_wait(hub: &Hub, context: &mut AppContext, tasks: &mut Vec<DeviceTask>) {
+async fn start_deep_idle_wait(hub: &Hub, context: &mut AppContext, tasks: &mut Vec<DeviceTask>) {
     context.inhibitor.pause_sleep_wake_lock();
     let before = Local::now();
     tracing::info!(
         "{}",
         before.format("Entered deep idle on %B %-d, %Y at %H:%M:%S.")
     );
-    let pre_sleep_alarms = capture_pre_sleep_alarms(context);
+    let pre_sleep_alarms = capture_pre_sleep_alarms(context).await;
 
     let restore_mode = context.inhibitor.mode();
     if let Some(cycle) = context.suspend.as_mut()
@@ -854,7 +854,7 @@ async fn poll_deep_idle_wait(
                 finish_cycle(context, runtime.tasks, runtime.view.as_mut(), hub, rq);
                 return EventOutcome::Handled;
             }
-            start_deep_idle_wait(hub, context, runtime.tasks);
+            start_deep_idle_wait(hub, context, runtime.tasks).await;
             EventOutcome::Handled
         }
     }

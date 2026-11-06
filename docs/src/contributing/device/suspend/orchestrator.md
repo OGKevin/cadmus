@@ -96,6 +96,42 @@ via `AppContext::deep_idle_poll_inject`.
 
 On timeout: retry while soft suspend can re-arm; otherwise `finish_cycle`.
 
+## Wake-source telemetry
+
+On Linux,
+<a href="/api/cadmus_core/device/suspend/orchestrator/fn.start_deep_idle_wait.html">`start_deep_idle_wait`</a>
+snapshots two alarm views immediately before
+<a href="/api/cadmus_core/device/power/trait.PowerManager.html#method.arm_deep_idle">`arm_deep_idle`</a> and stores them
+on <a href="/api/cadmus_core/device/suspend/cycle/struct.DeepIdleWaitState.html">`DeepIdleWaitState`</a>:
+
+| Captured               | Source                                                    |
+| ---------------------- | --------------------------------------------------------- |
+| hardware wake alarm    | `Rtc::wake_alarm` → `/sys/class/rtc/rtc0/wakealarm`       |
+| earliest logical alarm | `AlarmManager::next_scheduled_alarm` (future alarms only) |
+
+Each detected wake then emits one `Primary deep-idle wake` record from
+<a href="/api/cadmus_core/device/suspend/orchestrator/fn.log_wake_source.html">`log_wake_source`</a>,
+carrying `pre_hardware_alarm`, `pre_cadmus_alarm_type`, `pre_cadmus_alarm`,
+`post_hardware_alarm`, `wake_irq`, `wake_irq_name` and `unmanaged_alarm_candidate`.
+
+What the fields mean, and what they cannot say:
+
+- `wake_irq` is `/sys/power/pm_wakeup_irq`, read inside the wake path because the
+  kernel clears it on the next suspend. An unreadable node (`-ENODATA`, logged as
+  `wake_irq = None`) means the kernel recorded no IRQ, not that no hardware wake
+  happened.
+- `wake_irq_name` is the owning row in `/proc/interrupts`. A parent controller
+  such as the PMIC (`bd71828_irq`) does not identify its own child, so compare
+  per-IRQ counters before naming a source.
+- `unmanaged_alarm_candidate` is true when the hardware slot and the earliest
+  future logical alarm disagree. The kernel records no writer for the slot, so a
+  mismatch is a candidate for an unmanaged alarm, never proof of who wrote it.
+- `next_scheduled_alarm` ignores past-due alarms, matching what
+  `update_hardware_alarm_at` programs into the slot.
+
+Non-Linux targets still record the earliest logical alarm, but the hardware slot
+reads `Unavailable` and nothing is emitted.
+
 ## Phase-aware Suspend
 
 | Situation                                                  | Action                          |

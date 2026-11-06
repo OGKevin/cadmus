@@ -43,8 +43,8 @@ pub trait Rtc: Send + Sync {
     /// hardware slot, used to compare it against the logical schedule before
     /// sleep. Implementations that expose no readable slot keep the default,
     /// which reports [`HardwareWakeAlarm::Unavailable`].
-    fn wake_alarm(&self) -> HardwareWakeAlarm {
-        HardwareWakeAlarm::Unavailable
+    fn wake_alarm(&self) -> impl Future<Output = HardwareWakeAlarm> + Send {
+        async { HardwareWakeAlarm::Unavailable }
     }
 
     /// Schedules a single-shot wake alarm at `wake_time`.
@@ -137,7 +137,7 @@ impl<T: Rtc + ?Sized> Rtc for std::sync::Arc<T> {
         (**self).alarm()
     }
 
-    fn wake_alarm(&self) -> HardwareWakeAlarm {
+    fn wake_alarm(&self) -> impl Future<Output = HardwareWakeAlarm> + Send {
         (**self).wake_alarm()
     }
 
