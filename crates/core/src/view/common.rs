@@ -9,7 +9,7 @@ use crate::fl;
 use crate::framebuffer::Framebuffer as _;
 use crate::framebuffer::UpdateMode;
 use crate::geom::{Point, Rectangle};
-use crate::settings::{ButtonScheme, RotationLock};
+use crate::settings::{ButtonScheme, RotationLock, RotationMode};
 use chrono::Local;
 
 pub fn shift(view: &mut dyn View, delta: Point) {
@@ -99,6 +99,90 @@ pub fn find_notification_mut(view: &mut dyn View, id: ViewId) -> Option<&mut Not
     None
 }
 
+/// Entries of the main menu's Rotation submenu.
+///
+/// The gyro auto modes (when the device has a gyroscope), the fixed angles and
+/// the button scheme (when the device has page turn buttons) form separate
+/// radio groups separated by dividers. A fixed angle implies ignoring the
+/// gyroscope; without a gyroscope the lock is vestigial and the current angle
+/// is the active option.
+fn rotation_entries(context: &AppContext) -> Vec<EntryKind> {
+    let mut entries = Vec::new();
+    let has_gyroscope = context.device.has_gyroscope();
+
+    if has_gyroscope {
+        let lock = context.settings.rotation_lock;
+        for (label_id, mode, active) in [
+            (
+                fl!("top-menu-rotation-auto"),
+                RotationMode::Auto,
+                lock.is_none(),
+            ),
+            (
+                fl!("top-menu-rotation-auto-portrait"),
+                RotationMode::AutoPortrait,
+                lock == Some(RotationLock::Portrait),
+            ),
+            (
+                fl!("top-menu-rotation-auto-landscape"),
+                RotationMode::AutoLandscape,
+                lock == Some(RotationLock::Landscape),
+            ),
+        ] {
+            entries.push(EntryKind::RadioButton(
+                label_id.to_string(),
+                EntryId::SetRotation(mode),
+                active,
+            ));
+        }
+        entries.push(EntryKind::Separator);
+    }
+
+    let rotation = context.device.to_canonical(context.display.rotation);
+    for n in 0..4 {
+        let fixed = context.device.to_native(n);
+        let locked =
+            !has_gyroscope || context.settings.rotation_lock == Some(RotationLock::Current);
+        let degrees: i16 = (n as i16) * 90;
+        entries.push(EntryKind::RadioButton(
+            fl!("settings-rotation-angle", degrees = degrees).to_string(),
+            EntryId::SetRotation(RotationMode::Fixed(fixed)),
+            locked && n == rotation,
+        ));
+    }
+
+    if context.device.has_page_turn_buttons() {
+        let button_scheme = context.settings.button_scheme;
+        entries.push(EntryKind::Separator);
+        entries.extend(button_scheme_entries(button_scheme));
+    }
+
+    entries
+}
+
+/// Button scheme radio group of the main menu's Rotation submenu.
+fn button_scheme_entries(button_scheme: ButtonScheme) -> Vec<EntryKind> {
+    [
+        (
+            fl!("settings-rotation-button-scheme-natural"),
+            ButtonScheme::Natural,
+        ),
+        (
+            fl!("settings-rotation-button-scheme-inverted"),
+            ButtonScheme::Inverted,
+        ),
+    ]
+    .into_iter()
+    .map(|(label, scheme)| {
+        EntryKind::RadioButton(
+            label.to_string(),
+            EntryId::SetButtonScheme(scheme),
+            button_scheme == scheme,
+        )
+    })
+    .collect()
+}
+
 pub fn toggle_main_menu(
     view: &mut dyn View,
     rect: Rectangle,
@@ -119,17 +203,6 @@ pub fn toggle_main_menu(
         if let Some(false) = enable {
             return;
         }
-
-        let rotation = context.device.to_canonical(context.display.rotation);
-        let rotate = (0..4)
-            .map(|n| {
-                EntryKind::RadioButton(
-                    (n as i16 * 90).to_string(),
-                    EntryId::Rotate(context.device.to_native(n)),
-                    n == rotation,
-                )
-            })
-            .collect::<Vec<EntryKind>>();
 
         let apps = vec![
             EntryKind::Command(
@@ -165,53 +238,10 @@ pub fn toggle_main_menu(
             EntryKind::Separator,
         ];
 
-        if context.device.has_gyroscope() {
-            let rotation_lock = context.settings.rotation_lock;
-            let gyro = vec![
-                EntryKind::RadioButton(
-                    "Auto".to_string(),
-                    EntryId::SetRotationLock(None),
-                    rotation_lock.is_none(),
-                ),
-                EntryKind::Separator,
-                EntryKind::RadioButton(
-                    "Portrait".to_string(),
-                    EntryId::SetRotationLock(Some(RotationLock::Portrait)),
-                    rotation_lock == Some(RotationLock::Portrait),
-                ),
-                EntryKind::RadioButton(
-                    "Landscape".to_string(),
-                    EntryId::SetRotationLock(Some(RotationLock::Landscape)),
-                    rotation_lock == Some(RotationLock::Landscape),
-                ),
-                EntryKind::RadioButton(
-                    "Ignore".to_string(),
-                    EntryId::SetRotationLock(Some(RotationLock::Current)),
-                    rotation_lock == Some(RotationLock::Current),
-                ),
-            ];
-            entries.push(EntryKind::SubMenu("Gyroscope".to_string(), gyro));
-        }
-
-        if context.device.has_page_turn_buttons() {
-            let button_scheme = context.settings.button_scheme;
-            let button_schemes = vec![
-                EntryKind::RadioButton(
-                    ButtonScheme::Natural.to_string(),
-                    EntryId::SetButtonScheme(ButtonScheme::Natural),
-                    button_scheme == ButtonScheme::Natural,
-                ),
-                EntryKind::RadioButton(
-                    ButtonScheme::Inverted.to_string(),
-                    EntryId::SetButtonScheme(ButtonScheme::Inverted),
-                    button_scheme == ButtonScheme::Inverted,
-                ),
-            ];
-            entries.push(EntryKind::SubMenu(
-                "Button Scheme".to_string(),
-                button_schemes,
-            ));
-        }
+        entries.push(EntryKind::SubMenu(
+            fl!("top-menu-rotation").to_string(),
+            rotation_entries(&*context),
+        ));
 
         entries.extend(vec![
             EntryKind::CheckBox(
@@ -240,7 +270,6 @@ pub fn toggle_main_menu(
                 ],
             ),
             EntryKind::Separator,
-            EntryKind::SubMenu("Rotate".to_string(), rotate),
             EntryKind::Command("Take Screenshot".to_string(), EntryId::TakeScreenshot),
             EntryKind::Separator,
             EntryKind::SubMenu("Applications".to_string(), apps),
@@ -514,5 +543,82 @@ mod tests {
         }
         toggle_main_menu(&mut parent, target, Some(false), &mut rq, &mut context);
         assert!(!context.inhibitor.sleep_active());
+    }
+
+    fn rotation_modes(entries: &[EntryKind]) -> Vec<(EntryId, bool)> {
+        entries
+            .iter()
+            .filter_map(|entry| match entry {
+                EntryKind::RadioButton(_, id, checked) => Some((id.clone(), *checked)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn rotation_labels(entries: &[EntryKind]) -> Vec<(String, bool)> {
+        entries
+            .iter()
+            .filter_map(|entry| match entry {
+                EntryKind::RadioButton(label, _, checked) => Some((label.clone(), *checked)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn rotation_submenu_unifies_gyro_and_manual_entries() {
+        let context = create_test_context().await;
+
+        assert!(!context.device.has_gyroscope());
+        assert!(!context.device.has_page_turn_buttons());
+        let entries = rotation_entries(&context);
+        let modes = rotation_modes(&entries);
+        assert!(
+            modes
+                .iter()
+                .all(|(id, _)| matches!(id, EntryId::SetRotation(RotationMode::Fixed(_)))),
+            "gyro-less devices list only fixed angles: {modes:?}"
+        );
+        assert_eq!(modes.iter().filter(|(_, checked)| *checked).count(), 1);
+        assert!(
+            entries
+                .iter()
+                .all(|entry| !matches!(entry, EntryKind::Separator))
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn rotation_submenu_marks_fixed_angle_current() {
+        let mut context = create_test_context().await;
+        context.settings.rotation_lock = Some(RotationLock::Current);
+
+        let labels = rotation_labels(&rotation_entries(&context));
+        let current = context.device.to_canonical(context.display.rotation);
+        let degrees: i16 = (current as i16) * 90;
+        let expected = fl!("settings-rotation-angle", degrees = degrees);
+        assert!(labels.contains(&(expected, true)));
+    }
+
+    #[test]
+    fn button_scheme_group_marks_active_scheme() {
+        for scheme in [ButtonScheme::Natural, ButtonScheme::Inverted] {
+            let entries = button_scheme_entries(scheme);
+            assert!(
+                entries.iter().all(|entry| matches!(
+                    entry,
+                    EntryKind::RadioButton(_, EntryId::SetButtonScheme(_), _)
+                )),
+                "button entries form their own radio group: {entries:?}"
+            );
+            assert_eq!(
+                entries.iter().filter(|e| is_checked(e)).count(),
+                1,
+                "exactly one scheme is checked for {scheme:?}: {entries:?}"
+            );
+        }
+    }
+
+    fn is_checked(entry: &EntryKind) -> bool {
+        matches!(entry, EntryKind::RadioButton(_, _, true))
     }
 }

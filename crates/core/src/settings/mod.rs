@@ -142,6 +142,32 @@ pub enum RotationLock {
     Current,
 }
 
+/// Choosable rotation modes of the main menu's Rotation submenu.
+///
+/// The gyro auto modes and the fixed angles form a single radio group.
+/// [`RotationMode::Fixed`] implies [`RotationLock::Current`]: the gyroscope
+/// is ignored until an auto mode is picked again. No settings migration is
+/// needed because the persisted state remains [`RotationLock`].
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub enum RotationMode {
+    Auto,
+    AutoPortrait,
+    AutoLandscape,
+    Fixed(i8),
+}
+
+impl RotationMode {
+    /// The rotation lock implied by choosing this mode.
+    pub fn rotation_lock(self) -> Option<RotationLock> {
+        match self {
+            RotationMode::Auto => None,
+            RotationMode::AutoPortrait => Some(RotationLock::Portrait),
+            RotationMode::AutoLandscape => Some(RotationLock::Landscape),
+            RotationMode::Fixed(_) => Some(RotationLock::Current),
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum WifiMode {
