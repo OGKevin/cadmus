@@ -112,21 +112,25 @@ fn rotation_entries(context: &AppContext) -> Vec<EntryKind> {
 
     if has_gyroscope {
         let lock = context.settings.rotation_lock;
-        for (label, mode, active) in [
-            ("Auto Rotation", RotationMode::Auto, lock.is_none()),
+        for (label_id, mode, active) in [
             (
-                "Auto Portrait",
+                fl!("top-menu-rotation-auto"),
+                RotationMode::Auto,
+                lock.is_none(),
+            ),
+            (
+                fl!("top-menu-rotation-auto-portrait"),
                 RotationMode::AutoPortrait,
                 lock == Some(RotationLock::Portrait),
             ),
             (
-                "Auto Landscape",
+                fl!("top-menu-rotation-auto-landscape"),
                 RotationMode::AutoLandscape,
                 lock == Some(RotationLock::Landscape),
             ),
         ] {
             entries.push(EntryKind::RadioButton(
-                label.to_string(),
+                label_id.to_string(),
                 EntryId::SetRotation(mode),
                 active,
             ));
@@ -139,8 +143,9 @@ fn rotation_entries(context: &AppContext) -> Vec<EntryKind> {
         let fixed = context.device.to_native(n);
         let locked =
             !has_gyroscope || context.settings.rotation_lock == Some(RotationLock::Current);
+        let degrees: i16 = (n as i16) * 90;
         entries.push(EntryKind::RadioButton(
-            format!("{}\u{b0}", n as i16 * 90),
+            fl!("settings-rotation-angle", degrees = degrees).to_string(),
             EntryId::SetRotation(RotationMode::Fixed(fixed)),
             locked && n == rotation,
         ));
@@ -158,8 +163,14 @@ fn rotation_entries(context: &AppContext) -> Vec<EntryKind> {
 /// Button scheme radio group of the main menu's Rotation submenu.
 fn button_scheme_entries(button_scheme: ButtonScheme) -> Vec<EntryKind> {
     [
-        ("Natural buttons", ButtonScheme::Natural),
-        ("Inverted buttons", ButtonScheme::Inverted),
+        (
+            fl!("settings-rotation-button-scheme-natural"),
+            ButtonScheme::Natural,
+        ),
+        (
+            fl!("settings-rotation-button-scheme-inverted"),
+            ButtonScheme::Inverted,
+        ),
     ]
     .into_iter()
     .map(|(label, scheme)| {
@@ -228,7 +239,7 @@ pub fn toggle_main_menu(
         ];
 
         entries.push(EntryKind::SubMenu(
-            "Rotation".to_string(),
+            fl!("top-menu-rotation").to_string(),
             rotation_entries(&*context),
         ));
 
@@ -583,7 +594,8 @@ mod tests {
 
         let labels = rotation_labels(&rotation_entries(&context));
         let current = context.device.to_canonical(context.display.rotation);
-        let expected = format!("{}\u{b0}", current as i16 * 90);
+        let degrees: i16 = (current as i16) * 90;
+        let expected = fl!("settings-rotation-angle", degrees = degrees);
         assert!(labels.contains(&(expected, true)));
     }
 
