@@ -1,6 +1,11 @@
 //! Real-time clock and alarm management.
 
 mod manager;
+mod wake_alarm;
+
+pub use wake_alarm::HardwareWakeAlarm;
+#[cfg(any(feature = "kobo", docsrs, test))]
+pub(crate) use wake_alarm::PreSleepAlarms;
 
 #[cfg(any(
     test,
@@ -343,6 +348,33 @@ impl<R: Rtc> AlarmManager<R> {
     /// Returns `true` if an alarm of `alarm_type` exists in the schedule.
     pub fn has_alarm(&self, alarm_type: AlarmType) -> bool {
         self.scheduled_alarms.contains_key(&alarm_type)
+    }
+
+    /// Returns the earliest logical alarm and its wake time, if any.
+    ///
+    /// Used by suspend telemetry to compare the schedule against the single
+    /// hardware alarm slot. Past-due alarms are included; they are not
+    /// programmed into hardware, so they can read as a mismatch.
+    #[cfg(any(feature = "kobo", docsrs, test))]
+    pub(crate) fn next_scheduled_alarm(&self) -> Option<(AlarmType, DateTime<Utc>)> {
+        self.scheduled_alarms
+            .values()
+            .min_by_key(|alarm| alarm.wake_time)
+            .map(|alarm| (alarm.alarm_type, alarm.wake_time))
+    }
+
+    /// Returns the hardware wake-alarm slot.
+    pub fn wake_alarm(&self) -> HardwareWakeAlarm {
+        self.rtc.wake_alarm()
+    }
+
+    /// Snapshot of the hardware slot and the earliest logical alarm.
+    #[cfg(any(feature = "kobo", docsrs, test))]
+    pub(crate) fn pre_sleep_alarms(&self) -> PreSleepAlarms {
+        PreSleepAlarms {
+            hardware: self.wake_alarm(),
+            cadmus: self.next_scheduled_alarm(),
+        }
     }
 
     /// Ensures an alarm is active and scheduled for the future.
@@ -895,6 +927,26 @@ mod tests {
         let wake = rtc.scheduled_wake_time().unwrap();
         let expected = Utc::now() + Duration::minutes(30);
         assert!((wake - expected).num_seconds().abs() < 2);
+    }
+
+    #[test]
+    fn next_scheduled_alarm_is_none_when_empty() {
+        let (_rtc, manager) = test_alarm_manager();
+        assert_eq!(manager.next_scheduled_alarm(), None);
+    }
+
+    #[test]
+    fn next_scheduled_alarm_returns_earliest_and_matches_hardware() {
+        let (rtc, mut manager) = test_alarm_manager();
+        manager
+            .schedule_in(AlarmType::AutoPowerOff, Duration::hours(2))
+            .unwrap();
+        manager
+            .schedule_in(AlarmType::CalendarUpdate, Duration::minutes(30))
+            .unwrap();
+        let (alarm_type, wake) = manager.next_scheduled_alarm().unwrap();
+        assert_eq!(alarm_type, AlarmType::CalendarUpdate);
+        assert_eq!(Some(wake), rtc.scheduled_wake_time());
     }
 
     #[test]
