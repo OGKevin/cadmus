@@ -5,6 +5,7 @@ use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use std::time::Duration;
 
 use super::RtcWkalrm;
+use super::wake_alarm::HardwareWakeAlarm;
 
 /// Battery-backed real-time clock and wake-alarm operations.
 ///
@@ -35,6 +36,16 @@ pub trait Rtc: Send + Sync {
     ///
     /// Returns an error when the alarm state cannot be read.
     fn alarm(&self) -> Result<RtcWkalrm, Error>;
+
+    /// Returns the wake-alarm slot as the kernel reports it.
+    ///
+    /// Distinct from [`Rtc::alarm`]: this is the diagnostic view of the single
+    /// hardware slot, used to compare it against the logical schedule before
+    /// sleep. Implementations that expose no readable slot keep the default,
+    /// which reports [`HardwareWakeAlarm::Unavailable`].
+    fn wake_alarm(&self) -> impl Future<Output = HardwareWakeAlarm> + Send {
+        async { HardwareWakeAlarm::Unavailable }
+    }
 
     /// Schedules a single-shot wake alarm at `wake_time`.
     ///
@@ -124,6 +135,10 @@ pub trait Rtc: Send + Sync {
 impl<T: Rtc + ?Sized> Rtc for std::sync::Arc<T> {
     fn alarm(&self) -> Result<RtcWkalrm, Error> {
         (**self).alarm()
+    }
+
+    fn wake_alarm(&self) -> impl Future<Output = HardwareWakeAlarm> + Send {
+        (**self).wake_alarm()
     }
 
     fn set_alarm(&self, wake_time: DateTime<Utc>) -> Result<i32, Error> {

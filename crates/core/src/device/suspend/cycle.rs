@@ -6,6 +6,7 @@
 //! mid-cycle `is_armed()` probes.
 
 use crate::device::inhibitor::InhibitorGuard;
+use crate::device::rtc::PreSleepAlarms;
 use crate::device::soft_suspend::mode::AutosleepMode;
 use chrono::{DateTime, Local};
 use std::time::{Duration, Instant};
@@ -51,15 +52,21 @@ pub(in crate::device::suspend) struct DeepIdleWaitState {
     mono_anchor: Instant,
     /// Wall-clock time when sleep began; used for post-wake RTC alarm claims.
     sleep_started_at: DateTime<Local>,
+    /// Alarm state captured immediately before deep-idle entry.
+    pre_sleep_alarms: PreSleepAlarms,
 }
 
 impl DeepIdleWaitState {
     /// Samples boottime and monotonic clocks at deep-idle wait start.
-    pub(in crate::device::suspend) fn capture(sleep_started_at: DateTime<Local>) -> Self {
+    pub(in crate::device::suspend) fn capture(
+        sleep_started_at: DateTime<Local>,
+        pre_sleep_alarms: PreSleepAlarms,
+    ) -> Self {
         Self {
             boot_anchor: super::wake::clock_boottime(),
             mono_anchor: Instant::now(),
             sleep_started_at,
+            pre_sleep_alarms,
         }
     }
 
@@ -75,6 +82,10 @@ impl DeepIdleWaitState {
         self.sleep_started_at
     }
 
+    pub(in crate::device::suspend) fn pre_sleep_alarms(&self) -> PreSleepAlarms {
+        self.pre_sleep_alarms
+    }
+
     #[cfg(test)]
     pub(in crate::device::suspend) fn synthetic(
         boot_anchor: Option<Duration>,
@@ -85,6 +96,7 @@ impl DeepIdleWaitState {
             boot_anchor,
             mono_anchor,
             sleep_started_at,
+            pre_sleep_alarms: PreSleepAlarms::default(),
         }
     }
 }

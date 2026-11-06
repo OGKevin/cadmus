@@ -14,13 +14,16 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use crate::device::rtc::{Rtc, RtcTime, RtcWkalrm};
+use crate::device::rtc::{HardwareWakeAlarm, Rtc, RtcTime, RtcWkalrm};
 
 ioctl_read!(rtc_read_alarm, b'p', 0x10, RtcWkalrm);
 ioctl_write_ptr!(rtc_write_alarm, b'p', 0x0f, RtcWkalrm);
 ioctl_none!(rtc_disable_alarm, b'p', 0x02);
 ioctl_read!(rtc_read_time, b'p', 0x09, RtcTime);
 ioctl_write_ptr!(rtc_set_time, b'p', 0x0a, RtcTime);
+
+/// Sysfs view of the single hardware wake-alarm slot.
+const WAKEALARM_PATH: &str = "/sys/class/rtc/rtc0/wakealarm";
 
 /// Hardware RTC accessed through the Linux kernel RTC character device.
 ///
@@ -188,6 +191,25 @@ impl Rtc for LinuxRtc {
         }
     }
 
+    /// Reads the RTC's `wakealarm` sysfs node.
+    ///
+    /// The node reports an epoch while an alarm is enabled and is empty while
+    /// none is, which is what the diagnostic comparison needs; `RTC_ALM_READ`
+    /// keeps the stale programmed time after the alarm is disabled.
+    async fn wake_alarm(&self) -> HardwareWakeAlarm {
+        match tokio::fs::read_to_string(WAKEALARM_PATH).await {
+            Ok(raw) => parse_wakealarm(&raw),
+            Err(error) => {
+                tracing::debug!(
+                    error = %error,
+                    path = WAKEALARM_PATH,
+                    "wake alarm node unavailable"
+                );
+                HardwareWakeAlarm::Unavailable
+            }
+        }
+    }
+
     /// Issues `RTC_ALM_SET` with the alarm enabled and `pending` cleared.
     fn set_alarm(&self, wake_time: DateTime<Utc>) -> Result<i32, Error> {
         let rwa = RtcWkalrm::for_wake_time(wake_time);
@@ -274,10 +296,53 @@ impl Rtc for LinuxRtc {
     }
 }
 
+/// Parses `/sys/class/rtc/rtc0/wakealarm` content.
+///
+/// Empty content means no alarm is armed; unparseable content means the node is
+/// present but not understood.
+fn parse_wakealarm(raw: &str) -> HardwareWakeAlarm {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return HardwareWakeAlarm::Disabled;
+    }
+    match trimmed
+        .parse::<i64>()
+        .ok()
+        .and_then(|epoch| DateTime::from_timestamp(epoch, 0))
+    {
+        Some(time) => HardwareWakeAlarm::Armed(time),
+        None => HardwareWakeAlarm::Unavailable,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::TimeZone as _;
     use tempfile::NamedTempFile;
+
+    #[test]
+    fn wakealarm_parses_epoch_seconds() {
+        assert_eq!(
+            parse_wakealarm("1700000000\n"),
+            HardwareWakeAlarm::Armed(Utc.with_ymd_and_hms(2023, 11, 14, 22, 13, 20).unwrap())
+        );
+    }
+
+    #[test]
+    fn wakealarm_empty_is_disabled() {
+        assert_eq!(parse_wakealarm(""), HardwareWakeAlarm::Disabled);
+        assert_eq!(parse_wakealarm("\n"), HardwareWakeAlarm::Disabled);
+    }
+
+    #[test]
+    fn wakealarm_malformed_is_unavailable() {
+        assert_eq!(parse_wakealarm("garbage\n"), HardwareWakeAlarm::Unavailable);
+        assert_eq!(
+            parse_wakealarm("999999999999999999999999\n"),
+            HardwareWakeAlarm::Unavailable
+        );
+    }
 
     #[test]
     fn wait_fd_is_close_on_exec() {
