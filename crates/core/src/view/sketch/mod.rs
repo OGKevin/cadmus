@@ -32,19 +32,28 @@ const PEN_SIZES: [i32; 12] = [1, 2, 3, 5, 7, 11, 15, 22, 30, 42, 56, 77];
 /// Maximum number of undo (and redo) canvas snapshots kept in [`History`].
 const MAX_HISTORY: usize = 10;
 
+/// A canvas snapshot and the file it belongs to, so undo/redo also restores the save target.
+struct Snapshot {
+    pixmap: Pixmap,
+    filename: String,
+}
+
 /// Canvas snapshots for undo/redo, taken before each stroke or canvas-wide change.
 #[derive(Default)]
 struct History {
-    undo: Vec<Pixmap>,
-    redo: Vec<Pixmap>,
+    undo: Vec<Snapshot>,
+    redo: Vec<Snapshot>,
 }
 
 impl History {
-    fn checkpoint(&mut self, current: &Pixmap) {
-        self.commit(current.clone());
+    fn checkpoint(&mut self, current: &Pixmap, filename: &str) {
+        self.commit(Snapshot {
+            pixmap: current.clone(),
+            filename: filename.to_string(),
+        });
     }
 
-    fn commit(&mut self, snapshot: Pixmap) {
+    fn commit(&mut self, snapshot: Snapshot) {
         if self.undo.len() == MAX_HISTORY {
             self.undo.remove(0);
         }
@@ -52,19 +61,27 @@ impl History {
         self.redo.clear();
     }
 
-    fn undo(&mut self, current: &mut Pixmap) -> bool {
-        Self::swap(&mut self.undo, &mut self.redo, current)
+    fn undo(&mut self, current: &mut Pixmap, filename: &mut String) -> bool {
+        Self::swap(&mut self.undo, &mut self.redo, current, filename)
     }
 
-    fn redo(&mut self, current: &mut Pixmap) -> bool {
-        Self::swap(&mut self.redo, &mut self.undo, current)
+    fn redo(&mut self, current: &mut Pixmap, filename: &mut String) -> bool {
+        Self::swap(&mut self.redo, &mut self.undo, current, filename)
     }
 
-    fn swap(from: &mut Vec<Pixmap>, to: &mut Vec<Pixmap>, current: &mut Pixmap) -> bool {
+    fn swap(
+        from: &mut Vec<Snapshot>,
+        to: &mut Vec<Snapshot>,
+        current: &mut Pixmap,
+        filename: &mut String,
+    ) -> bool {
         let Some(previous) = from.pop() else {
             return false;
         };
-        to.push(std::mem::replace(current, previous));
+        to.push(Snapshot {
+            pixmap: std::mem::replace(current, previous.pixmap),
+            filename: std::mem::replace(filename, previous.filename),
+        });
         true
     }
 }
@@ -274,7 +291,7 @@ impl Sketch {
         let mut reader = decoder.read_info()?;
         let mut pixmap = self.pixmap.clone();
         reader.next_frame(pixmap.data_mut())?;
-        self.history.checkpoint(&self.pixmap);
+        self.history.checkpoint(&self.pixmap, &self.filename);
         self.pixmap = pixmap;
         self.filename = filename.to_string_lossy().into_owned();
         Ok(())
@@ -429,9 +446,12 @@ impl View for Sketch {
                 }
                 self.fingers.remove(&id);
                 if self.fingers.is_empty() {
-                    if let Some(snapshot) = self.pending.take() {
-                        if snapshot.data != self.pixmap.data {
-                            self.history.commit(snapshot);
+                    if let Some(pixmap) = self.pending.take() {
+                        if pixmap.data != self.pixmap.data {
+                            self.history.commit(Snapshot {
+                                pixmap,
+                                filename: self.filename.clone(),
+                            });
                         }
                     }
                 }
@@ -458,13 +478,13 @@ impl View for Sketch {
                 true
             }
             Event::Select(EntryId::Undo) => {
-                if self.history.undo(&mut self.pixmap) {
+                if self.history.undo(&mut self.pixmap, &mut self.filename) {
                     rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
                 }
                 true
             }
             Event::Select(EntryId::Redo) => {
-                if self.history.redo(&mut self.pixmap) {
+                if self.history.redo(&mut self.pixmap, &mut self.filename) {
                     rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
                 }
                 true
@@ -484,7 +504,7 @@ impl View for Sketch {
                 true
             }
             Event::Select(EntryId::New) => {
-                self.history.checkpoint(&self.pixmap);
+                self.history.checkpoint(&self.pixmap, &self.filename);
                 self.pixmap.clear(WHITE);
                 self.filename = Local::now().format(FILENAME_PATTERN).to_string();
                 rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
@@ -569,28 +589,33 @@ mod tests {
     fn undo_redo_round_trip() {
         let mut history = History::default();
         let mut current = canvas(1);
-        history.checkpoint(&current);
+        let mut filename = "a".to_string();
+        history.checkpoint(&current, &filename);
         current = canvas(2);
+        filename = "b".to_string();
 
-        assert!(history.undo(&mut current));
+        assert!(history.undo(&mut current, &mut filename));
         assert_eq!(current.data[0], 1);
-        assert!(!history.undo(&mut current));
-        assert!(history.redo(&mut current));
+        assert_eq!(filename, "a");
+        assert!(!history.undo(&mut current, &mut filename));
+        assert!(history.redo(&mut current, &mut filename));
         assert_eq!(current.data[0], 2);
-        assert!(!history.redo(&mut current));
+        assert_eq!(filename, "b");
+        assert!(!history.redo(&mut current, &mut filename));
     }
 
     #[test]
     fn checkpoint_clears_redo_and_caps_depth() {
         let mut history = History::default();
         let mut current = canvas(0);
-        history.checkpoint(&current);
-        assert!(history.undo(&mut current));
-        history.checkpoint(&current);
+        let mut filename = "a".to_string();
+        history.checkpoint(&current, &filename);
+        assert!(history.undo(&mut current, &mut filename));
+        history.checkpoint(&current, &filename);
         assert!(history.redo.is_empty());
 
-        (0..MAX_HISTORY as u8 + 5).for_each(|i| history.checkpoint(&canvas(i)));
+        (0..MAX_HISTORY as u8 + 5).for_each(|i| history.checkpoint(&canvas(i), &i.to_string()));
         assert_eq!(history.undo.len(), MAX_HISTORY);
-        assert_eq!(history.undo[0].data[0], 5);
+        assert_eq!(history.undo[0].pixmap.data[0], 5);
     }
 }
