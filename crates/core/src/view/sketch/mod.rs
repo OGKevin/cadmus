@@ -41,10 +41,14 @@ struct History {
 
 impl History {
     fn checkpoint(&mut self, current: &Pixmap) {
+        self.commit(current.clone());
+    }
+
+    fn commit(&mut self, snapshot: Pixmap) {
         if self.undo.len() == MAX_HISTORY {
             self.undo.remove(0);
         }
-        self.undo.push(current.clone());
+        self.undo.push(snapshot);
         self.redo.clear();
     }
 
@@ -86,6 +90,7 @@ pub struct Sketch {
     pen: Pen,
     eraser: bool,
     history: History,
+    pending: Option<Pixmap>,
     save_path: PathBuf,
     filename: String,
 }
@@ -130,6 +135,7 @@ impl Sketch {
             pen: context.settings.sketch.pen.clone(),
             eraser: false,
             history: History::default(),
+            pending: None,
             save_path,
             filename: Local::now().format(FILENAME_PATTERN).to_string(),
         }
@@ -266,7 +272,10 @@ impl Sketch {
         let file = File::open(path)?;
         let decoder = png::Decoder::new(BufReader::new(file));
         let mut reader = decoder.read_info()?;
-        reader.next_frame(self.pixmap.data_mut())?;
+        let mut pixmap = self.pixmap.clone();
+        reader.next_frame(pixmap.data_mut())?;
+        self.history.checkpoint(&self.pixmap);
+        self.pixmap = pixmap;
         self.filename = filename.to_string_lossy().into_owned();
         Ok(())
     }
@@ -390,7 +399,7 @@ impl View for Sketch {
                 time,
             }) => {
                 if self.fingers.is_empty() {
-                    self.history.checkpoint(&self.pixmap);
+                    self.pending = Some(self.pixmap.clone());
                 }
                 let radius = self.pen.size as f32 / 2.0;
                 self.fingers
@@ -419,6 +428,13 @@ impl View for Sketch {
                     );
                 }
                 self.fingers.remove(&id);
+                if self.fingers.is_empty() {
+                    if let Some(snapshot) = self.pending.take() {
+                        if snapshot.data != self.pixmap.data {
+                            self.history.commit(snapshot);
+                        }
+                    }
+                }
                 true
             }
             Event::ToggleNear(ViewId::TitleMenu, rect) => {
@@ -454,10 +470,7 @@ impl View for Sketch {
                 true
             }
             Event::Select(EntryId::Load(ref name)) => {
-                self.history.checkpoint(&self.pixmap);
                 if let Err(e) = self.load(name) {
-                    self.history.undo(&mut self.pixmap);
-                    self.history.redo.clear();
                     let msg = format!("Couldn't load sketch: {}).", e);
                     let notif = Notification::new(None, msg, false, hub, rq, context);
                     self.children.push(Box::new(notif) as Box<dyn View>);
