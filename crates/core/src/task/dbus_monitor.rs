@@ -4,10 +4,14 @@
 //! This is a diagnostic tool for investigating dhcpcd-dbus and
 //! wpa_supplicant interactions on Kobo devices (CAD-18).
 
+use std::num::NonZeroUsize;
+
 use futures_util::stream::StreamExt;
 use tokio_util::sync::CancellationToken;
 
 use crate::task::{BackgroundTask, TaskId};
+
+const SIGNAL_QUEUE_CAPACITY: NonZeroUsize = NonZeroUsize::new(100).unwrap();
 
 /// Monitors the system D-Bus and logs all signal events.
 ///
@@ -44,9 +48,10 @@ async fn monitor() -> Result<(), Box<dyn std::error::Error>> {
 
     let rule = zbus::MatchRule::builder()
         .msg_type(zbus::message::Type::Signal)
-        .build();
+        .build()?;
 
-    let mut stream = zbus::MessageStream::for_match_rule(rule, &connection, Some(100)).await?;
+    let mut stream =
+        zbus::MessageStream::for_match_rule(rule, &connection, Some(SIGNAL_QUEUE_CAPACITY)).await?;
 
     tracing::info!("subscribed to all signals");
 
@@ -65,7 +70,7 @@ async fn monitor() -> Result<(), Box<dyn std::error::Error>> {
                 };
 
                 let body = msg.body();
-                let body: Option<zbus::zvariant::Structure> = match body.deserialize() {
+                let body: Option<zbus::Structure> = match body.deserialize() {
                     Ok(b) => Some(b),
                     Err(e) => {
                         tracing::warn!(error = %e, "failed to deserialize dbus message body");

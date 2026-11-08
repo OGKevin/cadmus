@@ -104,7 +104,6 @@ fn assemble_network_info(
 async fn dhcpcd_connection() -> Result<zbus::Connection, WifiError> {
     tracing::debug!("connecting to system bus for dhcpcd-dbus");
     zbus::connection::Builder::system()
-        .map_err(|e| WifiError::Dbus(format!("system bus builder: {e}")))?
         .method_timeout(DHCPCD_METHOD_TIMEOUT)
         .build()
         .await
@@ -118,7 +117,7 @@ async fn dhcpcd_proxy<'a>(connection: &'a zbus::Connection) -> Result<zbus::Prox
 }
 
 async fn get_interfaces_with_proxy(proxy: &zbus::Proxy<'_>) -> Result<InterfaceIpMap, WifiError> {
-    let raw: HashMap<String, HashMap<String, zbus::zvariant::OwnedValue>> = proxy
+    let raw: HashMap<String, HashMap<String, zbus::OwnedVariant>> = proxy
         .call(METHOD_GET_INTERFACES, &())
         .await
         .map_err(|e| WifiError::Dbus(format!("{METHOD_GET_INTERFACES}: {e}")))?;
