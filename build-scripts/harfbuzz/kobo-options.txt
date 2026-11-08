@@ -9,3 +9,6 @@ system = 'linux'
 cpu_family = 'arm'
 cpu = 'armv8'
 endian = 'little'
+
+[built-in options]
+c_std = 'gnu99'
