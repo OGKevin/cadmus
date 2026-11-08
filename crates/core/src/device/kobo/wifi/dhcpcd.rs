@@ -104,7 +104,6 @@ fn assemble_network_info(
 async fn dhcpcd_connection() -> Result<zbus::Connection, WifiError> {
     tracing::debug!("connecting to system bus for dhcpcd-dbus");
     zbus::connection::Builder::system()
-        .map_err(|e| WifiError::Dbus(format!("system bus builder: {e}")))?
         .method_timeout(DHCPCD_METHOD_TIMEOUT)
         .build()
         .await
@@ -118,25 +117,28 @@ async fn dhcpcd_proxy<'a>(connection: &'a zbus::Connection) -> Result<zbus::Prox
 }
 
 async fn get_interfaces_with_proxy(proxy: &zbus::Proxy<'_>) -> Result<InterfaceIpMap, WifiError> {
-    let raw: HashMap<String, HashMap<String, zbus::zvariant::OwnedValue>> = proxy
+    let raw: HashMap<String, HashMap<String, zbus::OwnedVariant>> = proxy
         .call(METHOD_GET_INTERFACES, &())
         .await
         .map_err(|e| WifiError::Dbus(format!("{METHOD_GET_INTERFACES}: {e}")))?;
 
-    let mut map = InterfaceIpMap::new();
-    for (iface, props) in raw {
-        if let Some(value) = props.get(PROP_IP_ADDRESS)
-            && let Ok(host) = u32::try_from(value)
-        {
-            map.insert(iface, host);
-        }
-    }
+    let map = interface_ips(raw);
     tracing::debug!(
         method = METHOD_GET_INTERFACES,
         count = map.len(),
         "parsed interface addresses"
     );
     Ok(map)
+}
+
+/// Keeps the interfaces whose [`PROP_IP_ADDRESS`] decodes as a `u32`.
+fn interface_ips(raw: HashMap<String, HashMap<String, zbus::OwnedVariant>>) -> InterfaceIpMap {
+    raw.into_iter()
+        .filter_map(|(iface, props)| {
+            let host = u32::try_from(props.get(PROP_IP_ADDRESS)?).ok()?;
+            Some((iface, host))
+        })
+        .collect()
 }
 
 async fn list_networks_with_proxy(
@@ -248,5 +250,39 @@ mod tests {
             assemble_network_info("wlan0", &essid, &InterfaceIpMap::new()),
             Err(WifiError::Incomplete(_))
         ));
+    }
+
+    fn props(value: Option<zbus::OwnedVariant>) -> HashMap<String, zbus::OwnedVariant> {
+        value
+            .map(|value| HashMap::from([(PROP_IP_ADDRESS.to_string(), value)]))
+            .unwrap_or_default()
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn interface_ips_keeps_u32_address() {
+        let raw = HashMap::from([
+            ("wlan0".to_string(), props(Some(2147592384u32.into()))),
+            ("wlan1".to_string(), props(None)),
+        ]);
+
+        let map = interface_ips(raw);
+
+        assert_eq!(map.len(), 1);
+        assert_eq!(
+            map.get("wlan0").map(|host| ipv4_from_host_u32(*host)),
+            Some(Ipv4Addr::new(192, 168, 1, 128))
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn interface_ips_skips_non_u32_address() {
+        let raw = HashMap::from([
+            ("wlan0".to_string(), props(Some(true.into()))),
+            ("wlan1".to_string(), props(Some(2147592384u32.into()))),
+        ]);
+
+        let map = interface_ips(raw);
+
+        assert_eq!(map.keys().collect::<Vec<_>>(), vec!["wlan1"]);
     }
 }
