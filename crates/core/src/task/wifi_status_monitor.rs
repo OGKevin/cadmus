@@ -48,15 +48,21 @@ impl BackgroundTask for WifiStatusMonitorTask {
     }
 }
 
+/// Matches the dhcpcd `WpaStatus` signal on [`DHCPCCD_PATH`].
+fn wpa_status_rule() -> zbus::Result<zbus::OwnedMatchRule> {
+    Ok(zbus::MatchRule::builder()
+        .msg_type(zbus::message::Type::Signal)
+        .path(DHCPCCD_PATH)
+        .member("WpaStatus")
+        .build()?
+        .into())
+}
+
 async fn monitor(hub: &crate::view::Hub) -> Result<(), Box<dyn std::error::Error>> {
     let connection = zbus::Connection::system().await?;
     tracing::info!("connected to system bus");
 
-    let rule = zbus::MatchRule::builder()
-        .msg_type(zbus::message::Type::Signal)
-        .path(DHCPCCD_PATH)
-        .member("WpaStatus")
-        .build()?;
+    let rule = wpa_status_rule()?;
 
     let mut stream =
         zbus::MessageStream::for_match_rule(rule, &connection, Some(SIGNAL_QUEUE_CAPACITY)).await?;
@@ -211,5 +217,14 @@ mod tests {
             rx.try_recv().is_err(),
             "should not send NetUp with empty ip_address"
         );
+    }
+
+    #[test]
+    fn wpa_status_rule_matches_dhcpcd_signal() {
+        let rule = wpa_status_rule().expect("rule should build").to_string();
+
+        assert!(rule.contains("type='signal'"), "{rule}");
+        assert!(rule.contains(&format!("path='{DHCPCCD_PATH}'")), "{rule}");
+        assert!(rule.contains("member='WpaStatus'"), "{rule}");
     }
 }

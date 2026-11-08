@@ -42,13 +42,19 @@ impl BackgroundTask for DbusMonitorTask {
     }
 }
 
+/// Matches every signal on the system bus.
+fn all_signals_rule() -> zbus::Result<zbus::OwnedMatchRule> {
+    Ok(zbus::MatchRule::builder()
+        .msg_type(zbus::message::Type::Signal)
+        .build()?
+        .into())
+}
+
 async fn monitor() -> Result<(), Box<dyn std::error::Error>> {
     let connection = zbus::Connection::system().await?;
     tracing::info!("connected to system bus");
 
-    let rule = zbus::MatchRule::builder()
-        .msg_type(zbus::message::Type::Signal)
-        .build()?;
+    let rule = all_signals_rule()?;
 
     let mut stream =
         zbus::MessageStream::for_match_rule(rule, &connection, Some(SIGNAL_QUEUE_CAPACITY)).await?;
@@ -95,4 +101,16 @@ async fn monitor() -> Result<(), Box<dyn std::error::Error>> {
 
     tracing::info!("dbus monitor stopped");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn all_signals_rule_matches_signals() {
+        let rule = all_signals_rule().expect("rule should build").to_string();
+
+        assert_eq!(rule, "type='signal'");
+    }
 }
