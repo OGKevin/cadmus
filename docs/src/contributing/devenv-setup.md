@@ -329,10 +329,16 @@ Create `devenv.local.nix` to override settings without modifying the tracked con
   env = {
     # Example: Set TEST_ROOT_DIR automatically
     TEST_ROOT_DIR = builtins.getEnv "PWD";
+
+    # Default device for `cadmuscli kobo deploy` and `cadmuscli kobo restart`.
+    # An explicit `--ip` still wins.
+    KOBO_IP = "192.168.1.128";
   };
 }
 ```
 
-This file is gitignored and won't affect other contributors.
+This file is gitignored and won't affect other contributors. After adding
+`KOBO_IP`, re-enter the devenv shell (`direnv reload` or `devenv shell`) and
+the `kobo` commands can run without `--ip`.
 
 <!-- i18n:skip-end -->

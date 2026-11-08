@@ -41,4 +41,35 @@ is ignored, so closing the SSH session does not stop Cadmus.
 `pidof cadmus` matches whichever install is running. How those signals map onto
 Quit and Restart is in [Event System](event-system.md).
 
+## Deploying and restarting from the host
+
+`cadmuscli` talks SSH directly, so neither `ssh` nor `rsync` has to be
+installed on the host:
+
+```sh
+# Cross-compile the test feature set, assemble dist/, and upload it.
+cadmuscli kobo deploy --ip 192.168.1.128
+
+# Upload and restart in one step.
+cadmuscli kobo deploy --ip 192.168.1.128 --restart
+
+# Restart without deploying.
+cadmuscli kobo restart --ip 192.168.1.128
+```
+
+`--ip` accepts an address or a `~/.ssh/config` alias. When it is omitted,
+`KOBO_IP` is used; inside devenv, set it once in `devenv.local.nix` (see
+[Development Environment Setup](devenv-setup.md#local-configuration)). Both
+commands also take `--port`, `--user`, `--identity` (repeatable),
+`--known-hosts`, `--accept-new`, and `--ssh-config`. Each flag overrides the
+matching `ssh_config(5)` entry; the defaults are port 22, user `root`,
+`~/.ssh/known_hosts`, and `~/.ssh/config`. `deploy --features tracing` adds
+Cargo features on top of the pinned `test,kobo` pair. The first connect needs
+`--accept-new` (or one manual `ssh`) to record the host key, and
+`KOBO_PASSWORD` enables password login.
+
+`restart` sends `SIGUSR1` to the Cadmus process whose working directory is the
+test install, then waits up to 30 seconds for a new pid. It reports a clear
+error when Cadmus is not running or when the relaunch does not happen.
+
 <!-- i18n:skip-end -->

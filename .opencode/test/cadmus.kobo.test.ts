@@ -13,19 +13,16 @@ import { test } from "node:test";
 
 import plugin from "../plugins/cadmus.kobo/index.ts";
 import {
-  INSTALL_DIR,
-  cargoFeatures,
+  deployArgs,
+  deployInputSchema,
   hostSchema,
-  quoteForRsync,
   resolveBin,
-  rsyncArgs,
+  restartArgs,
+  restartInputSchema,
   run,
-  sshCommand,
 } from "../plugins/cadmus.kobo/common.ts";
 import { createDeployTool } from "../plugins/cadmus.kobo/deploy.ts";
-import { RESTART_SCRIPT } from "../plugins/cadmus.kobo/restart.ts";
-
-const FLAGS = ["-rc", "--no-owner", "--no-group", "-e"];
+import { createRestartTool } from "../plugins/cadmus.kobo/restart.ts";
 
 type RegisteredTool = {
   name: string;
@@ -66,7 +63,7 @@ async function setup(): Promise<{
 
 function toolByName(tools: RegisteredTool[], name: string) {
   const tool = tools.find((candidate) => candidate.name === name);
-  assert.ok(tool, `missing tool ${name}`);
+  assert.ok(tool, `tool ${name} is not registered`);
   return tool;
 }
 
@@ -84,16 +81,6 @@ function writeStub(dir: string, name: string, body: string) {
   return path;
 }
 
-function withPath<T>(dir: string, fn: () => T): T {
-  const previous = process.env.PATH;
-  process.env.PATH = `${dir}:${previous ?? ""}`;
-  try {
-    return fn();
-  } finally {
-    process.env.PATH = previous;
-  }
-}
-
 async function withPathAsync<T>(dir: string, fn: () => Promise<T>): Promise<T> {
   const previous = process.env.PATH;
   process.env.PATH = `${dir}:${previous ?? ""}`;
@@ -104,12 +91,12 @@ async function withPathAsync<T>(dir: string, fn: () => Promise<T>): Promise<T> {
   }
 }
 
-function stubPath(dir: string) {
-  return `${dir}:${process.env.PATH ?? ""}`;
-}
-
 function deployTool(root: string): RegisteredTool {
   return createDeployTool(root) as unknown as RegisteredTool;
+}
+
+function restartTool(root: string): RegisteredTool {
+  return createRestartTool(root) as unknown as RegisteredTool;
 }
 
 test("registers the deploy and restart tools", async () => {
@@ -119,103 +106,300 @@ test("registers the deploy and restart tools", async () => {
   assert.deepEqual(namespaces, ["cadmus.kobo"]);
 });
 
-test("both tools require the device address and reject extra fields", async () => {
+test("the device address is optional and extra fields are rejected", async () => {
   const { tools } = await setup();
-  for (const name of ["deploy", "restart"]) {
-    const tool = toolByName(tools, name);
-    assert.deepEqual(tool.input.required, ["ip"]);
-    assert.equal(tool.input.additionalProperties, false);
+  const dir = mkdtempSync(join(tmpdir(), "cadmus-kobo-"));
+  writeStub(dir, "cadmuscli", "exit 99");
+  assert.doesNotThrow(() => deployInputSchema.parse({}));
+  assert.doesNotThrow(() => restartInputSchema.parse({}));
+  await withPathAsync(dir, async () => {
+    for (const name of ["deploy", "restart"]) {
+      const tool = toolByName(tools, name);
+      assert.deepEqual(tool.input.required, []);
+      assert.equal(tool.input.additionalProperties, false);
+      await assert.rejects(
+        () => tool.execute({ ip: "192.168.1.128", extra: true }, toolContext()),
+        /unrecognized key/i,
+      );
+    }
+  });
+});
+
+test("tool schemas mirror the zod shapes", () => {
+  const deploy = deployTool(process.cwd());
+  const restart = restartTool(process.cwd());
+
+  assert.deepEqual(
+    Object.keys(deploy.input.properties ?? {}),
+    Object.keys(deployInputSchema.shape),
+  );
+  assert.deepEqual(
+    Object.keys(restart.input.properties ?? {}),
+    Object.keys(restartInputSchema.shape),
+  );
+  assert.deepEqual(deploy.input.required, []);
+  assert.deepEqual(restart.input.required, []);
+});
+
+test("deploy argv is minimal without optional flags", () => {
+  assert.deepEqual(deployArgs({}), ["kobo", "deploy"]);
+  assert.deepEqual(deployArgs({ ip: "192.168.1.128" }), [
+    "kobo",
+    "deploy",
+    "--ip",
+    "192.168.1.128",
+  ]);
+});
+
+test("deploy argv forwards features, restart, and ssh options", () => {
+  assert.deepEqual(
+    deployArgs({
+      ip: "kobo.local",
+      features: "tracing",
+      restart: true,
+      port: 2222,
+      user: "root",
+      identity: "/keys/id_ed25519",
+      knownHosts: "/tmp/known_hosts",
+      acceptNew: true,
+      sshConfig: "/tmp/ssh_config",
+    }),
+    [
+      "kobo",
+      "deploy",
+      "--ip",
+      "kobo.local",
+      "--features",
+      "tracing",
+      "--restart",
+      "--port",
+      "2222",
+      "--user",
+      "root",
+      "--identity",
+      "/keys/id_ed25519",
+      "--known-hosts",
+      "/tmp/known_hosts",
+      "--accept-new",
+      "--ssh-config",
+      "/tmp/ssh_config",
+    ],
+  );
+});
+
+test("restart argv forwards ssh options", () => {
+  assert.deepEqual(restartArgs({}), ["kobo", "restart"]);
+  assert.deepEqual(restartArgs({ ip: "192.168.1.128" }), [
+    "kobo",
+    "restart",
+    "--ip",
+    "192.168.1.128",
+  ]);
+  assert.deepEqual(restartArgs({ port: 2222 }), [
+    "kobo",
+    "restart",
+    "--port",
+    "2222",
+  ]);
+  assert.deepEqual(restartArgs({ ip: "192.168.1.128", port: 2222 }), [
+    "kobo",
+    "restart",
+    "--ip",
+    "192.168.1.128",
+    "--port",
+    "2222",
+  ]);
+  assert.deepEqual(restartArgs({ ip: "192.168.1.128", acceptNew: true }), [
+    "kobo",
+    "restart",
+    "--ip",
+    "192.168.1.128",
+    "--accept-new",
+  ]);
+});
+
+test("schemas accept the documented fields and reject unknown ones", () => {
+  assert.doesNotThrow(() =>
+    deployInputSchema.parse({
+      ip: "kobo.local",
+      features: "tracing",
+      restart: true,
+      port: 2222,
+      user: "root",
+      identity: "/keys/id_ed25519",
+      knownHosts: "/tmp/known_hosts",
+      acceptNew: true,
+      sshConfig: "/tmp/ssh_config",
+    }),
+  );
+  assert.doesNotThrow(() =>
+    restartInputSchema.parse({ ip: "kobo.local", acceptNew: true }),
+  );
+  assert.throws(
+    () => restartInputSchema.parse({ ip: "kobo.local", features: "tracing" }),
+    /unrecognized key/i,
+  );
+});
+
+test("host names reject shell metacharacters", () => {
+  assert.doesNotThrow(() => hostSchema.parse("192.168.1.128"));
+  assert.doesNotThrow(() => hostSchema.parse("kobo.local"));
+  assert.doesNotThrow(() => hostSchema.parse("fe80::1%wlan0"));
+  assert.throws(() => hostSchema.parse("$(reboot)"));
+  assert.throws(() => hostSchema.parse("kobo; reboot"));
+});
+
+test("the deploy tool runs cadmuscli kobo deploy", async () => {
+  const root = mkdtempSync(join(tmpdir(), "cadmus-deploy-"));
+  const bin = join(root, "bin");
+  mkdirSync(bin);
+  const log = join(root, "argv.log");
+  writeStub(
+    bin,
+    "cadmuscli",
+    'printf "%s\\n" "$@" >> "$STUB_LOG"; echo "Uploaded 7 files"',
+  );
+  const previousRoot = process.env.DEVENV_ROOT;
+  process.env.DEVENV_ROOT = root;
+  process.env.STUB_LOG = log;
+  try {
+    const text = await withPathAsync(bin, () =>
+      deployTool(root).execute(
+        { ip: "192.168.1.128", features: "trac ing", restart: true },
+        toolContext(),
+      ),
+    );
+    assert.match(text.content, /Uploaded 7 files/);
+    const argv = execFileSync("cat", [log], { encoding: "utf8" })
+      .trim()
+      .split("\n");
+    assert.deepEqual(argv, [
+      "kobo",
+      "deploy",
+      "--ip",
+      "192.168.1.128",
+      "--features",
+      "trac ing",
+      "--restart",
+    ]);
+  } finally {
+    process.env.DEVENV_ROOT = previousRoot;
+    delete process.env.STUB_LOG;
   }
 });
 
-test("the deploy tool takes optional extra features", async () => {
-  const { tools } = await setup();
-  const deploy = toolByName(tools, "deploy");
-  assert.equal(typeof deploy.input.properties?.features, "object");
-  assert.deepEqual(deploy.input.required, ["ip"]);
-});
-
-test("cargoFeatures always keeps test,kobo first", () => {
-  assert.equal(cargoFeatures(), "test,kobo");
-  assert.equal(cargoFeatures("tracing"), "test,kobo,tracing");
-  assert.equal(cargoFeatures("test,kobo,tracing"), "test,kobo,tracing");
-  assert.equal(cargoFeatures("kobo,tracing,test"), "test,kobo,tracing");
-  assert.throws(() => cargoFeatures("tracing; reboot"), /invalid feature/);
-});
-
-test("rsync uses batch-mode ssh and the test install", () => {
-  assert.deepEqual(rsyncArgs("192.168.1.128", ["dist/cadmus", "dist/libs"]), [
-    ...FLAGS,
-    `${resolveBin("ssh")} -o BatchMode=yes -o ConnectTimeout=15`,
-    "dist/cadmus",
-    "dist/libs",
-    `root@192.168.1.128:${INSTALL_DIR}`,
-  ]);
-});
-
-test("rsync copies to the device and never deletes", () => {
-  const args = rsyncArgs("192.168.1.128", ["dist/cadmus"]);
-  assert.ok(
-    !args.some((arg) => arg === "--delete" || arg.startsWith("--delete-")),
-    "deploy must never remove files from the device",
+test("the deploy tool omits --ip and reports a sane status without one", async () => {
+  const root = mkdtempSync(join(tmpdir(), "cadmus-deploy-"));
+  const bin = join(root, "bin");
+  mkdirSync(bin);
+  const log = join(root, "argv.log");
+  writeStub(
+    bin,
+    "cadmuscli",
+    'printf "%s\\n" "$@" >> "$STUB_LOG"; echo "Uploaded 1 file"',
   );
-  assert.ok(
-    !args.some((arg) => arg.startsWith("--filter")),
-    "deletion filters are meaningless without --delete",
-  );
-  assert.ok(
-    args.includes("--no-owner"),
-    "chown fails on the FAT onboard volume",
-  );
-  assert.ok(
-    args.includes("--no-group"),
-    "chgrp fails on the FAT onboard volume",
-  );
-  assert.ok(!args.includes("--owner") && !args.includes("--group"));
-});
-
-test("rsync brackets an IPv6 host", () => {
-  const flags = FLAGS;
-  const ssh = `${resolveBin("ssh")} -o BatchMode=yes -o ConnectTimeout=15`;
-  assert.deepEqual(rsyncArgs("fe80::1", ["dist/cadmus"]), [
-    ...flags,
-    ssh,
-    "dist/cadmus",
-    `root@[fe80::1]:${INSTALL_DIR}`,
-  ]);
-  assert.deepEqual(rsyncArgs("fe80::1%wlan0", ["dist/cadmus"]), [
-    ...flags,
-    ssh,
-    "dist/cadmus",
-    `root@[fe80::1%wlan0]:${INSTALL_DIR}`,
-  ]);
-});
-
-test("rsync runs the ssh path resolved from PATH, not a bare name", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "cadmus-ssh-"));
-  const stub = writeStub(dir, "ssh", "exit 0");
-  await withPathAsync(dir, async () => {
-    assert.equal(sshCommand(), `${stub} -o BatchMode=yes -o ConnectTimeout=15`);
-  });
-});
-
-test("an ssh path with a space is quoted for rsync", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "cadmus ssh "));
-  const stub = writeStub(dir, "ssh", "exit 0");
-  await withPathAsync(dir, async () => {
-    assert.equal(
-      sshCommand(),
-      `'${stub}' -o BatchMode=yes -o ConnectTimeout=15`,
+  const previousRoot = process.env.DEVENV_ROOT;
+  process.env.DEVENV_ROOT = root;
+  process.env.STUB_LOG = log;
+  const statuses: string[] = [];
+  const context = {
+    signal: AbortSignal.timeout(5_000),
+    progress: async (update: { status: string }) => {
+      statuses.push(update.status);
+    },
+  };
+  try {
+    const text = await withPathAsync(bin, () =>
+      deployTool(root).execute({}, context),
     );
-    assert.equal(rsyncArgs("192.168.1.128", [])[4], sshCommand());
-  });
+    assert.match(text.content, /Uploaded 1 file/);
+    const argv = execFileSync("cat", [log], { encoding: "utf8" })
+      .trim()
+      .split("\n");
+    assert.deepEqual(argv, ["kobo", "deploy"]);
+    assert.equal(statuses.length, 1);
+    assert.doesNotMatch(statuses[0] ?? "", /undefined/);
+  } finally {
+    process.env.DEVENV_ROOT = previousRoot;
+    delete process.env.STUB_LOG;
+  }
 });
 
-test("quoteForRsync quotes only when rsync would split", () => {
-  assert.equal(quoteForRsync("/usr/bin/ssh"), "/usr/bin/ssh");
-  assert.equal(quoteForRsync("/opt/my ssh/bin/ssh"), "'/opt/my ssh/bin/ssh'");
-  assert.equal(quoteForRsync("/opt/it's/ssh"), `"/opt/it's/ssh"`);
-  assert.throws(() => quoteForRsync(`/opt/a'b"c/ssh`), /cannot quote/);
+test("the deploy tool surfaces failures", async () => {
+  const root = mkdtempSync(join(tmpdir(), "cadmus-deploy-"));
+  const bin = join(root, "bin");
+  mkdirSync(bin);
+  writeStub(bin, "cadmuscli", 'echo "build exploded" >&2; exit 9');
+  const previousRoot = process.env.DEVENV_ROOT;
+  process.env.DEVENV_ROOT = root;
+  try {
+    const text = await withPathAsync(bin, () =>
+      deployTool(root).execute({ ip: "192.168.1.128" }, toolContext()),
+    );
+    assert.match(text.content, /deploy: failed \(exit 9\)/);
+    assert.match(text.content, /build exploded/);
+  } finally {
+    process.env.DEVENV_ROOT = previousRoot;
+  }
+});
+
+test("the restart tool runs cadmuscli kobo restart", async () => {
+  const root = mkdtempSync(join(tmpdir(), "cadmus-restart-"));
+  const bin = join(root, "bin");
+  mkdirSync(bin);
+  const log = join(root, "argv.log");
+  writeStub(
+    bin,
+    "cadmuscli",
+    'printf "%s\\n" "$@" >> "$STUB_LOG"; echo "Restart on 192.168.1.128:"',
+  );
+  const previousRoot = process.env.DEVENV_ROOT;
+  process.env.DEVENV_ROOT = root;
+  process.env.STUB_LOG = log;
+  try {
+    const text = await withPathAsync(bin, () =>
+      restartTool(root).execute(
+        { ip: "192.168.1.128", acceptNew: true },
+        toolContext(),
+      ),
+    );
+    assert.match(text.content, /Restart on 192\.168\.1\.128/);
+    const argv = execFileSync("cat", [log], { encoding: "utf8" })
+      .trim()
+      .split("\n");
+    assert.deepEqual(argv, [
+      "kobo",
+      "restart",
+      "--ip",
+      "192.168.1.128",
+      "--accept-new",
+    ]);
+  } finally {
+    process.env.DEVENV_ROOT = previousRoot;
+    delete process.env.STUB_LOG;
+  }
+});
+
+test("the restart tool surfaces failures", async () => {
+  const root = mkdtempSync(join(tmpdir(), "cadmus-restart-"));
+  const bin = join(root, "bin");
+  mkdirSync(bin);
+  writeStub(
+    bin,
+    "cadmuscli",
+    'echo "Cadmus is not running on 192.168.1.128." >&2; exit 1',
+  );
+  const previousRoot = process.env.DEVENV_ROOT;
+  process.env.DEVENV_ROOT = root;
+  try {
+    const text = await withPathAsync(bin, () =>
+      restartTool(root).execute({ ip: "192.168.1.128" }, toolContext()),
+    );
+    assert.match(text.content, /restart: failed \(exit 1\)/);
+    assert.match(text.content, /not running/);
+  } finally {
+    process.env.DEVENV_ROOT = previousRoot;
+  }
 });
 
 test("child processes keep the fallback bin dirs on PATH", async () => {
@@ -234,241 +418,6 @@ test("child processes keep the fallback bin dirs on PATH", async () => {
     );
   } finally {
     process.env.PATH = previous;
-  }
-});
-
-test("the deploy tool refuses a host with shell metacharacters", async () => {
-  const { tools } = await setup();
-  await assert.rejects(
-    () =>
-      toolByName(tools, "deploy").execute(
-        { ip: "192.168.1.128; reboot" },
-        toolContext(),
-      ),
-    /invalid host/,
-  );
-});
-
-test("the restart tool refuses a host with shell metacharacters", async () => {
-  const { tools } = await setup();
-  await assert.rejects(
-    () =>
-      toolByName(tools, "restart").execute({ ip: "$(reboot)" }, toolContext()),
-    /invalid host/,
-  );
-});
-
-test("a plain address or hostname is accepted", () => {
-  assert.doesNotThrow(() => hostSchema.parse("192.168.1.128"));
-  assert.doesNotThrow(() => hostSchema.parse("kobo.local"));
-  assert.doesNotThrow(() => hostSchema.parse("fe80::1%wlan0"));
-});
-
-test("zod rejects extra fields on execute", async () => {
-  const { tools } = await setup();
-  await assert.rejects(
-    () =>
-      toolByName(tools, "restart").execute(
-        { ip: "192.168.1.128", extra: true },
-        toolContext(),
-      ),
-    /unrecognized key/i,
-  );
-});
-
-test("the restart script is valid shell", () => {
-  execFileSync("sh", ["-n"], { input: RESTART_SCRIPT });
-});
-
-test("the restart script restarts a process in the test install", () => {
-  const dir = mkdtempSync(join(tmpdir(), "cadmus-kobo-"));
-  writeStub(
-    dir,
-    "pidof",
-    'if [ -f "$STUB_DIR/killed" ]; then echo 200; else echo 100; fi',
-  );
-  writeStub(dir, "readlink", "echo /mnt/onboard/.adds/cadmus-tst");
-  writeStub(dir, "kill", 'touch "$STUB_DIR/killed"');
-  writeStub(dir, "sleep", ":");
-  const result = withPath(dir, () =>
-    execFileSync("sh", ["-c", RESTART_SCRIPT], {
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        PATH: stubPath(dir),
-        STUB_DIR: dir,
-      },
-    }),
-  );
-  assert.match(result, /RESULT: restarted/);
-  assert.match(result, /100 -> 200/);
-});
-
-test("the restart script ignores a cadmus process in another install", () => {
-  const dir = mkdtempSync(join(tmpdir(), "cadmus-kobo-"));
-  writeStub(dir, "pidof", "echo 9");
-  writeStub(dir, "readlink", "echo /mnt/onboard/.adds/cadmus");
-  writeStub(dir, "kill", "exit 1");
-  writeStub(dir, "sleep", ":");
-  try {
-    withPath(dir, () =>
-      execFileSync("sh", ["-c", RESTART_SCRIPT], {
-        encoding: "utf8",
-        env: { ...process.env, PATH: stubPath(dir) },
-      }),
-    );
-    assert.fail("expected exit 1");
-  } catch (error) {
-    assert.equal((error as { status?: number }).status, 1);
-  }
-});
-
-test("the restart script fails when the pid does not change", () => {
-  const dir = mkdtempSync(join(tmpdir(), "cadmus-kobo-"));
-  writeStub(dir, "pidof", "echo 7");
-  writeStub(dir, "readlink", "echo /mnt/onboard/.adds/cadmus-tst");
-  writeStub(dir, "kill", ":");
-  writeStub(dir, "sleep", ":");
-  try {
-    withPath(dir, () =>
-      execFileSync("sh", ["-c", RESTART_SCRIPT], {
-        encoding: "utf8",
-        env: { ...process.env, PATH: stubPath(dir) },
-      }),
-    );
-    assert.fail("expected exit 2");
-  } catch (error) {
-    assert.equal((error as { status?: number }).status, 2);
-  }
-});
-
-test("restart reports each remote exit code", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "cadmus-kobo-"));
-  const log = join(dir, "ssh.log");
-  writeStub(
-    dir,
-    "ssh",
-    [
-      'printf "%s\n" "$@" >> "$STUB_LOG"',
-      'code="${SSH_EXIT:-0}"',
-      'echo "remote $code"',
-      'exit "$code"',
-    ].join("\n"),
-  );
-  const { tools } = await setup();
-  const restart = toolByName(tools, "restart");
-  await withPathAsync(dir, async () => {
-    process.env.STUB_LOG = log;
-    process.env.SSH_EXIT = "0";
-    let text = await restart.execute({ ip: "192.168.1.128" }, toolContext());
-    assert.match(text.content, /Restart on 192\.168\.1\.128/);
-
-    process.env.SSH_EXIT = "1";
-    text = await restart.execute({ ip: "192.168.1.128" }, toolContext());
-    assert.match(text.content, /not running/);
-
-    process.env.SSH_EXIT = "2";
-    text = await restart.execute({ ip: "192.168.1.128" }, toolContext());
-    assert.match(text.content, /did not restart/);
-
-    process.env.SSH_EXIT = "255";
-    text = await restart.execute({ ip: "192.168.1.128" }, toolContext());
-    assert.match(text.content, /ssh to 192\.168\.1\.128 failed \(exit 255\)/);
-    delete process.env.STUB_LOG;
-    delete process.env.SSH_EXIT;
-  });
-});
-
-test("deploy runs cadmuscli then rsync with test,kobo", async () => {
-  const root = mkdtempSync(join(tmpdir(), "cadmus-deploy-"));
-  const bin = join(root, "bin");
-  mkdirSync(bin);
-  mkdirSync(join(root, "dist"));
-  writeFileSync(join(root, "dist", "cadmus"), "binary\n");
-  const log = join(root, "argv.log");
-  writeStub(bin, "cadmuscli", 'printf "cadmuscli %s\n" "$*" >> "$STUB_LOG"');
-  writeStub(bin, "rsync", 'printf "rsync %s\n" "$*" >> "$STUB_LOG"');
-  const previousRoot = process.env.DEVENV_ROOT;
-  process.env.DEVENV_ROOT = root;
-  process.env.STUB_LOG = log;
-  const deploy = deployTool(root);
-  try {
-    const text = await withPathAsync(bin, () =>
-      deploy.execute({ ip: "192.168.1.128" }, toolContext()),
-    );
-    assert.match(text.content, /build \(test,kobo\): ok/);
-    assert.match(text.content, /dist: ok/);
-    assert.match(text.content, /rsync \(1 entries/);
-    assert.match(text.content, /Deployed to 192\.168\.1\.128/);
-    assert.doesNotMatch(text.content, /Finished/);
-    const argv = execFileSync("cat", [log], { encoding: "utf8" });
-    assert.match(argv, /cadmuscli build-kobo --features test,kobo/);
-    assert.match(argv, /cadmuscli dist/);
-    assert.match(argv, /rsync -rc --no-owner --no-group -e /);
-    assert.doesNotMatch(argv, /--delete/);
-    assert.match(argv, /BatchMode=yes/);
-    assert.doesNotMatch(argv, /tracing/);
-  } finally {
-    process.env.DEVENV_ROOT = previousRoot;
-    delete process.env.STUB_LOG;
-  }
-});
-
-test("deploy appends extra features on top of test,kobo", async () => {
-  const root = mkdtempSync(join(tmpdir(), "cadmus-deploy-"));
-  const bin = join(root, "bin");
-  mkdirSync(bin);
-  mkdirSync(join(root, "dist"));
-  writeFileSync(join(root, "dist", "cadmus"), "binary\n");
-  const log = join(root, "argv.log");
-  writeStub(bin, "cadmuscli", 'printf "cadmuscli %s\n" "$*" >> "$STUB_LOG"');
-  writeStub(bin, "rsync", 'printf "rsync %s\n" "$*" >> "$STUB_LOG"');
-  const previousRoot = process.env.DEVENV_ROOT;
-  process.env.DEVENV_ROOT = root;
-  process.env.STUB_LOG = log;
-  const deploy = deployTool(root);
-  try {
-    const text = await withPathAsync(bin, () =>
-      deploy.execute(
-        { ip: "192.168.1.128", features: "tracing" },
-        toolContext(),
-      ),
-    );
-    assert.match(text.content, /build \(test,kobo,tracing\): ok/);
-    const argv = execFileSync("cat", [log], { encoding: "utf8" });
-    assert.match(argv, /cadmuscli build-kobo --features test,kobo,tracing/);
-  } finally {
-    process.env.DEVENV_ROOT = previousRoot;
-    delete process.env.STUB_LOG;
-  }
-});
-
-test("deploy stops after a failed build", async () => {
-  const root = mkdtempSync(join(tmpdir(), "cadmus-deploy-"));
-  const bin = join(root, "bin");
-  mkdirSync(bin);
-  const log = join(root, "argv.log");
-  writeStub(
-    bin,
-    "cadmuscli",
-    'printf "cadmuscli %s\n" "$*" >> "$STUB_LOG"; echo "build exploded"; exit 9',
-  );
-  writeStub(bin, "rsync", 'printf "rsync\n" >> "$STUB_LOG"; exit 0');
-  const previousRoot = process.env.DEVENV_ROOT;
-  process.env.DEVENV_ROOT = root;
-  process.env.STUB_LOG = log;
-  try {
-    const text = await withPathAsync(bin, () =>
-      deployTool(root).execute({ ip: "192.168.1.128" }, toolContext()),
-    );
-    assert.match(text.content, /build \(test,kobo\): failed \(exit 9\)/);
-    assert.match(text.content, /build exploded/);
-    assert.doesNotMatch(text.content, /^dist:/m);
-    const argv = execFileSync("cat", [log], { encoding: "utf8" });
-    assert.doesNotMatch(argv, /rsync/);
-  } finally {
-    process.env.DEVENV_ROOT = previousRoot;
-    delete process.env.STUB_LOG;
   }
 });
 

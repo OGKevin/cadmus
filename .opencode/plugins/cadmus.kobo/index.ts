@@ -1,6 +1,6 @@
 import { Plugin } from "@opencode/plugin";
 import { createDeployTool } from "./deploy.ts";
-import { restartTool } from "./restart.ts";
+import { createRestartTool } from "./restart.ts";
 
 export default Plugin.define({
   id: "cadmus.kobo",
@@ -12,7 +12,7 @@ export default Plugin.define({
           "Build, deploy and restart Cadmus on a Kobo device over SSH",
       });
       editor.add(createDeployTool(ctx.location.directory));
-      editor.add(restartTool);
+      editor.add(createRestartTool(ctx.location.directory));
     });
   },
 });

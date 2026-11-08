@@ -22,6 +22,7 @@
 //! | [`test`](tasks::test) | Run `cargo test` across the feature matrix |
 //! | [`bench`](tasks::bench) | Run benchmarks with the `bench` feature enabled |
 //! | [`build-kobo`](tasks::build_kobo) | Cross-compile for Kobo (ARM, Linux & macOS) |
+//! | [`kobo`](tasks::kobo) | Deploy and restart Cadmus on a Kobo over SSH |
 //! | [`run-emulator`](tasks::run_emulator) | Run the Cadmus emulator |
 //! | [`install-importer`](tasks::install_importer) | Install the Cadmus importer crate |
 //! | [`docs`](tasks::docs) | Build the full documentation website |
@@ -50,8 +51,8 @@ pub use clap::Parser;
 pub use tasks::{
     bench::BenchArgs, build_kobo::BuildKoboArgs, bundle::BundleArgs, ci::CiArgs,
     clippy::ClippyArgs, completions::CompletionsArgs, dist::DistArgs, docs::DocsArgs, fmt::FmtArgs,
-    install_importer::InstallImporterArgs, run_emulator::RunEmulatorArgs, setup::SetupArgs,
-    test::TestArgs,
+    install_importer::InstallImporterArgs, kobo::KoboArgs, run_emulator::RunEmulatorArgs,
+    setup::SetupArgs, test::TestArgs,
 };
 
 /// Cadmus build automation.
@@ -90,6 +91,8 @@ pub enum Command {
     Fmt(FmtArgs),
     /// Install the Cadmus importer crate.
     InstallImporter(InstallImporterArgs),
+    /// Deploy and restart Cadmus on a Kobo over SSH.
+    Kobo(KoboArgs),
     /// Run the Cadmus emulator.
     RunEmulator(RunEmulatorArgs),
     /// Build thirdparty deps (SQLite) that must exist before `cargo build`.
@@ -104,27 +107,44 @@ pub enum Command {
 ///
 /// This is the main entry point for the binary, but can also be called
 /// from tests.
-pub fn run() -> Result<()> {
+pub async fn run() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Command::Bench(args) => tasks::bench::run(args),
-        Command::BuildKobo(args) => tasks::build_kobo::run(args),
-        Command::Bundle(args) => tasks::bundle::run(args),
-        Command::Ci(args) => tasks::ci::run(args),
-        Command::Clippy(args) => tasks::clippy::run(args),
-        Command::Completions(args) => tasks::completions::run(args),
-        Command::Dist(args) => tasks::dist::run(args),
-        Command::Docs(args) => tasks::docs::run(args),
-        Command::DownloadAssets => tasks::download_assets::run(),
-        Command::DownloadFonts => tasks::download_fonts::run(),
-        Command::Fmt(args) => tasks::fmt::run(args),
-        Command::InstallImporter(args) => tasks::install_importer::run(args),
-        Command::RunEmulator(args) => tasks::run_emulator::run(args),
-        Command::Setup(args) => tasks::setup::run(args),
-        Command::SqlxPrepare => tasks::sqlx_prepare::run(),
-        Command::Test(args) => tasks::test::run(args),
+        Command::Bench(args) => blocking(move || tasks::bench::run(args)).await?,
+        Command::BuildKobo(args) => blocking(move || tasks::build_kobo::run(args)).await?,
+        Command::Bundle(args) => blocking(move || tasks::bundle::run(args)).await?,
+        Command::Ci(args) => blocking(move || tasks::ci::run(args)).await?,
+        Command::Clippy(args) => blocking(move || tasks::clippy::run(args)).await?,
+        Command::Completions(args) => blocking(move || tasks::completions::run(args)).await?,
+        Command::Dist(args) => blocking(move || tasks::dist::run(args)).await?,
+        Command::Docs(args) => blocking(move || tasks::docs::run(args)).await?,
+        Command::DownloadAssets => blocking(tasks::download_assets::run).await?,
+        Command::DownloadFonts => blocking(tasks::download_fonts::run).await?,
+        Command::Fmt(args) => blocking(move || tasks::fmt::run(args)).await?,
+        Command::InstallImporter(args) => {
+            blocking(move || tasks::install_importer::run(args)).await?
+        }
+        Command::Kobo(args) => tasks::kobo::run(args).await?,
+        Command::RunEmulator(args) => blocking(move || tasks::run_emulator::run(args)).await?,
+        Command::Setup(args) => blocking(move || tasks::setup::run(args)).await?,
+        Command::SqlxPrepare => blocking(tasks::sqlx_prepare::run).await?,
+        Command::Test(args) => blocking(move || tasks::test::run(args)).await?,
     }
+
+    Ok(())
+}
+
+/// Runs a blocking task on the blocking pool and propagates its result.
+///
+/// Every existing task shells out to `cargo` or similar and blocks until the
+/// child exits, so they all go through here instead of the async worker pool.
+pub(crate) async fn blocking<T, F>(task: F) -> Result<T>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T> + Send + 'static,
+{
+    tokio::task::spawn_blocking(task).await?
 }
 
 #[cfg(test)]
