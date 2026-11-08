@@ -295,6 +295,12 @@ impl Sketch {
         }
     }
 
+    fn rebase_pending(&mut self) {
+        if !self.fingers.is_empty() {
+            self.pending = Some(self.pixmap.clone());
+        }
+    }
+
     fn load(&mut self, filename: &PathBuf) -> Result<(), Error> {
         let path = self.save_path.join(filename);
         let file = File::open(path)?;
@@ -306,9 +312,7 @@ impl Sketch {
         self.history.checkpoint(&self.pixmap, &self.filename);
         self.pixmap = pixmap;
         self.filename = filename.to_string_lossy().into_owned();
-        if !self.fingers.is_empty() {
-            self.pending = Some(self.pixmap.clone());
-        }
+        self.rebase_pending();
         Ok(())
     }
 
@@ -486,15 +490,19 @@ impl View for Sketch {
                 true
             }
             Event::Select(EntryId::Undo) => {
+                self.finish_pending();
                 if self.history.undo(&mut self.pixmap, &mut self.filename) {
                     rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
                 }
+                self.rebase_pending();
                 true
             }
             Event::Select(EntryId::Redo) => {
+                self.finish_pending();
                 if self.history.redo(&mut self.pixmap, &mut self.filename) {
                     rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
                 }
+                self.rebase_pending();
                 true
             }
             Event::Select(EntryId::Load(ref name)) => {
@@ -516,9 +524,7 @@ impl View for Sketch {
                 self.history.checkpoint(&self.pixmap, &self.filename);
                 self.pixmap.clear(WHITE);
                 self.filename = Local::now().format(FILENAME_PATTERN).to_string();
-                if !self.fingers.is_empty() {
-                    self.pending = Some(self.pixmap.clone());
-                }
+                self.rebase_pending();
                 rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
                 true
             }
