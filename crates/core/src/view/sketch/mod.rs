@@ -284,6 +284,17 @@ impl Sketch {
         }
     }
 
+    fn finish_pending(&mut self) {
+        if let Some(pixmap) = self.pending.take()
+            && pixmap.data != self.pixmap.data
+        {
+            self.history.commit(Snapshot {
+                pixmap,
+                filename: self.filename.clone(),
+            });
+        }
+    }
+
     fn load(&mut self, filename: &PathBuf) -> Result<(), Error> {
         let path = self.save_path.join(filename);
         let file = File::open(path)?;
@@ -291,9 +302,13 @@ impl Sketch {
         let mut reader = decoder.read_info()?;
         let mut pixmap = self.pixmap.clone();
         reader.next_frame(pixmap.data_mut())?;
+        self.finish_pending();
         self.history.checkpoint(&self.pixmap, &self.filename);
         self.pixmap = pixmap;
         self.filename = filename.to_string_lossy().into_owned();
+        if !self.fingers.is_empty() {
+            self.pending = Some(self.pixmap.clone());
+        }
         Ok(())
     }
 
@@ -446,14 +461,7 @@ impl View for Sketch {
                 }
                 self.fingers.remove(&id);
                 if self.fingers.is_empty() {
-                    if let Some(pixmap) = self.pending.take() {
-                        if pixmap.data != self.pixmap.data {
-                            self.history.commit(Snapshot {
-                                pixmap,
-                                filename: self.filename.clone(),
-                            });
-                        }
-                    }
+                    self.finish_pending();
                 }
                 true
             }
@@ -504,9 +512,13 @@ impl View for Sketch {
                 true
             }
             Event::Select(EntryId::New) => {
+                self.finish_pending();
                 self.history.checkpoint(&self.pixmap, &self.filename);
                 self.pixmap.clear(WHITE);
                 self.filename = Local::now().format(FILENAME_PATTERN).to_string();
+                if !self.fingers.is_empty() {
+                    self.pending = Some(self.pixmap.clone());
+                }
                 rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
                 true
             }
