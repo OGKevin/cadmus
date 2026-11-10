@@ -6,9 +6,13 @@
 //! mid-cycle `is_armed()` probes.
 
 use crate::device::inhibitor::InhibitorGuard;
+#[cfg(target_os = "linux")]
+use crate::device::linux::wake_telemetry::InterruptSnapshot;
 use crate::device::rtc::PreSleepAlarms;
 use crate::device::soft_suspend::mode::AutosleepMode;
 use chrono::{DateTime, Local};
+#[cfg(target_os = "linux")]
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 /// Sleep backend for one explicit suspend cycle.
@@ -54,6 +58,8 @@ pub(in crate::device::suspend) struct DeepIdleWaitState {
     sleep_started_at: DateTime<Local>,
     /// Alarm state captured immediately before deep-idle entry.
     pre_sleep_alarms: PreSleepAlarms,
+    #[cfg(target_os = "linux")]
+    interrupt_baseline: Option<Arc<InterruptSnapshot>>,
 }
 
 impl DeepIdleWaitState {
@@ -61,12 +67,15 @@ impl DeepIdleWaitState {
     pub(in crate::device::suspend) fn capture(
         sleep_started_at: DateTime<Local>,
         pre_sleep_alarms: PreSleepAlarms,
+        #[cfg(target_os = "linux")] interrupt_baseline: Option<Arc<InterruptSnapshot>>,
     ) -> Self {
         Self {
             boot_anchor: super::wake::clock_boottime(),
             mono_anchor: Instant::now(),
             sleep_started_at,
             pre_sleep_alarms,
+            #[cfg(target_os = "linux")]
+            interrupt_baseline,
         }
     }
 
@@ -86,6 +95,11 @@ impl DeepIdleWaitState {
         self.pre_sleep_alarms
     }
 
+    #[cfg(target_os = "linux")]
+    pub(in crate::device::suspend) fn interrupt_baseline(&self) -> Option<Arc<InterruptSnapshot>> {
+        self.interrupt_baseline.clone()
+    }
+
     #[cfg(test)]
     pub(in crate::device::suspend) fn synthetic(
         boot_anchor: Option<Duration>,
@@ -97,6 +111,8 @@ impl DeepIdleWaitState {
             mono_anchor,
             sleep_started_at,
             pre_sleep_alarms: PreSleepAlarms::default(),
+            #[cfg(target_os = "linux")]
+            interrupt_baseline: None,
         }
     }
 }

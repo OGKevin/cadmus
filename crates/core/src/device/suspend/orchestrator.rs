@@ -21,6 +21,8 @@ use crate::ClockInstant;
 use crate::chrono::{Duration as ChronoDuration, Local, Timelike};
 use crate::device::DeviceHardware as _;
 use crate::device::inhibitor::{Kind, SoftSuspendName};
+#[cfg(target_os = "linux")]
+use crate::device::linux::wake_telemetry::InterruptSnapshot;
 use crate::device::power::PowerManager;
 use crate::device::rtc::{
     AlarmManager, EnsureAlarmOutcome, HardwareWakeAlarm, PastDueAction, PreSleepAlarms, Rtc,
@@ -38,6 +40,8 @@ use crate::settings::IntermKind;
 use crate::view::common::locate;
 use crate::view::intermission::Intermission;
 use crate::view::{Event, Hub, RenderData, RenderQueue, View, wait_for_all};
+#[cfg(target_os = "linux")]
+use std::sync::Arc;
 use std::time::Duration;
 
 const DEEP_IDLE_POLL_INTERVAL: Duration = Duration::from_millis(100);
@@ -700,22 +704,57 @@ async fn capture_pre_sleep_alarms(context: &AppContext) -> PreSleepAlarms {
     }
 }
 
-/// Emits the kernel wake source and alarm comparison for one primary wake.
+#[cfg(target_os = "linux")]
+async fn read_interrupts(context: &mut AppContext) -> Option<String> {
+    #[cfg(test)]
+    {
+        context.deep_idle_interrupts_inject.pop_front().flatten()
+    }
+    #[cfg(not(test))]
+    {
+        let _ = context;
+        crate::device::linux::wake_telemetry::read_interrupts().await
+    }
+}
+
+#[cfg(target_os = "linux")]
+async fn read_interrupt_snapshot(context: &mut AppContext) -> Option<Arc<InterruptSnapshot>> {
+    let raw = read_interrupts(context).await?;
+    InterruptSnapshot::parse(&raw).map(Arc::new)
+}
+
+/// Emits the kernel wake source, alarm comparison, and IRQ counter delta for
+/// one primary wake.
+///
+/// Samples `/proc/interrupts` once, before the other post-wake node reads, so
+/// the delta excludes those telemetry reads. That sample supplies both the
+/// existing `wake_irq_name` and the comparison against the baseline stored on
+/// [`DeepIdleWaitState`].
 ///
 /// A PMIC parent IRQ does not identify its RTC child, and the kernel reports no
 /// writer for the hardware alarm, so neither field alone names a cause. Only
 /// Linux exposes these nodes, so other platforms emit nothing.
-async fn log_wake_source(context: &AppContext, state: &DeepIdleWaitState) {
+async fn log_wake_source(context: &mut AppContext, state: &DeepIdleWaitState) {
     #[cfg(target_os = "linux")]
     {
-        use crate::device::linux::wake_telemetry;
+        use crate::device::linux::wake_telemetry::{self, InterruptDeltas, InterruptSnapshot};
 
+        let interrupts = read_interrupts(context).await;
         let pre_sleep_alarms = state.pre_sleep_alarms();
         let post_hardware_alarm = read_wake_alarm(context).await;
         let wake_irq = wake_telemetry::read_wakeup_irq().await;
-        let wake_irq_name = match wake_irq {
-            Some(irq) => wake_telemetry::read_irq_name(irq).await,
-            None => None,
+        let wake_irq_name = wake_irq.and_then(|irq| {
+            interrupts
+                .as_deref()
+                .and_then(|raw| wake_telemetry::parse_irq_name(raw, irq))
+        });
+        let comparison = state.interrupt_baseline().map(|baseline| {
+            let after = interrupts.as_deref().and_then(InterruptSnapshot::parse);
+            baseline.compare(after.as_ref())
+        });
+        let (irq_delta_status, irq_deltas_json, irq_delta_reasons_json) = match comparison {
+            Some(comparison) => comparison.json(),
+            None => InterruptDeltas::unavailable().json(),
         };
         tracing::info!(
             pre_hardware_alarm = %pre_sleep_alarms.hardware,
@@ -725,6 +764,9 @@ async fn log_wake_source(context: &AppContext, state: &DeepIdleWaitState) {
             wake_irq = ?wake_irq,
             wake_irq_name = ?wake_irq_name,
             unmanaged_alarm_candidate = pre_sleep_alarms.unmanaged_alarm_candidate(),
+            irq_delta_status,
+            irq_deltas_json,
+            irq_delta_reasons_json,
             "Primary deep-idle wake"
         );
     }
@@ -764,10 +806,17 @@ async fn start_deep_idle_wait(hub: &Hub, context: &mut AppContext, tasks: &mut V
     }
 
     nix::unistd::sync();
+    #[cfg(target_os = "linux")]
+    let interrupt_baseline = read_interrupt_snapshot(context).await;
     if let Some(cycle) = context.suspend.as_mut() {
         cycle.cycle_lease = None;
         cycle.phase = SuspendPhase::InSleep {
-            wait: DeepIdleWaitState::capture(before, pre_sleep_alarms),
+            wait: DeepIdleWaitState::capture(
+                before,
+                pre_sleep_alarms,
+                #[cfg(target_os = "linux")]
+                interrupt_baseline,
+            ),
         };
     }
     log_soft_suspend_holders(context, "deep idle enter wait");
