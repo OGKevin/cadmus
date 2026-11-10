@@ -513,6 +513,245 @@ async fn soft_prepare_suspend_enters_deep_idle() {
     assert!(!lock_alarms(&mut harness).has_alarm(AlarmType::Suspend));
 }
 
+#[cfg(target_os = "linux")]
+mod irq_deltas {
+    use super::*;
+    use serde::Deserialize;
+    use std::future::Future;
+    use std::sync::{Arc, Mutex};
+    use tracing::instrument::WithSubscriber;
+    use tracing_subscriber::layer::SubscriberExt;
+
+    const BEFORE: &str = "           CPU0       CPU1
+ 90:        10          0      MTK   90 Level      bd71828_irq
+195:         2          8      bd71828   195 Edge      bd71828_pwrkey
+213:         4          4      bd71828   213 Edge      rtc-alarm
+";
+    const AFTER: &str = "           CPU0       CPU1
+ 90:        12          1      MTK   90 Level      bd71828_irq
+195:         3         10      bd71828   195 Edge      bd71828_pwrkey
+213:         4          4      bd71828   213 Edge      rtc-alarm
+";
+    const AFTER_PARTIAL: &str = "           CPU0       CPU1
+ 90:        12          1      MTK   90 Level      bd71828_irq
+195:         3         10      bd71828   195 Edge      bd71828_pwrkey
+";
+
+    #[derive(Clone, Default)]
+    struct LogBuffer(Arc<Mutex<Vec<u8>>>);
+
+    impl std::io::Write for LogBuffer {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for LogBuffer {
+        type Writer = Self;
+
+        fn make_writer(&'a self) -> Self::Writer {
+            self.clone()
+        }
+    }
+
+    #[derive(Deserialize)]
+    struct WakeEvent {
+        fields: WakeFields,
+    }
+
+    #[derive(Deserialize)]
+    struct WakeFields {
+        pre_hardware_alarm: String,
+        post_hardware_alarm: String,
+        pre_cadmus_alarm_type: serde_json::Value,
+        pre_cadmus_alarm: serde_json::Value,
+        unmanaged_alarm_candidate: bool,
+        irq_delta_status: String,
+        irq_deltas_json: String,
+        irq_delta_reasons_json: String,
+    }
+
+    async fn wake_with_snapshots(snapshots: Vec<Option<String>>) -> (Vec<WakeEvent>, String) {
+        let logs = LogBuffer::default();
+        capture_wake_events(&logs, async move {
+            let mut harness = DeviceRuntimeHarness::new().await;
+            let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
+            harness
+                .context
+                .deep_idle_interrupts_inject
+                .extend(snapshots);
+            {
+                crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+                    start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+                });
+                let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+                    handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
+                });
+                assert_eq!(outcome, EventOutcome::Handled);
+            }
+            pump_deep_idle_wake(&mut harness).await;
+            assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::WakeDebounce));
+            assert!(
+                harness.context.deep_idle_interrupts_inject.is_empty(),
+                "wake telemetry did not consume every injected snapshot"
+            );
+        })
+        .await
+    }
+
+    async fn capture_wake_events(
+        logs: &LogBuffer,
+        scenario: impl Future<Output = ()>,
+    ) -> (Vec<WakeEvent>, String) {
+        let subscriber = tracing_subscriber::registry().with(
+            tracing_subscriber::fmt::layer()
+                .json()
+                .with_ansi(false)
+                .with_writer(logs.clone()),
+        );
+        scenario.with_subscriber(subscriber).await;
+        wake_events_from_logs(logs)
+    }
+
+    fn wake_events_from_logs(logs: &LogBuffer) -> (Vec<WakeEvent>, String) {
+        let buffer = logs.0.lock().unwrap();
+        let raw = String::from_utf8(buffer.clone()).unwrap();
+        drop(buffer);
+        let events = raw
+            .lines()
+            .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+            .filter(|event| event["fields"]["message"].as_str() == Some("Primary deep-idle wake"))
+            .map(|event| {
+                serde_json::from_value::<WakeEvent>(event.clone())
+                    .unwrap_or_else(|error| panic!("invalid wake event {error}: {event}"))
+            })
+            .collect();
+        (events, raw)
+    }
+
+    #[tokio::test]
+    async fn deep_idle_wake_logs_changed_parent_and_child_counters() {
+        let (events, raw) =
+            wake_with_snapshots(vec![Some(BEFORE.to_owned()), Some(AFTER.to_owned())]).await;
+        assert_eq!(events.len(), 1, "unexpected wake events:\n{raw}");
+        let fields = &events[0].fields;
+        assert_eq!(fields.irq_delta_status, "complete");
+        assert_eq!(fields.irq_delta_reasons_json, "[]");
+        assert_eq!(fields.pre_hardware_alarm, "unavailable");
+        assert_eq!(fields.post_hardware_alarm, "unavailable");
+        assert_eq!(fields.pre_cadmus_alarm_type, "Some(AutoPowerOff)");
+        assert!(
+            fields
+                .pre_cadmus_alarm
+                .as_str()
+                .is_some_and(|value| value.starts_with("Some("))
+        );
+        assert!(!fields.unmanaged_alarm_candidate);
+        let deltas: serde_json::Value = serde_json::from_str(&fields.irq_deltas_json).unwrap();
+        assert_eq!(
+            deltas,
+            serde_json::json!([
+                {"irq": "195", "name": "bd71828_pwrkey", "delta": 3},
+                {"irq": "90", "name": "bd71828_irq", "delta": 3},
+            ])
+        );
+    }
+
+    #[tokio::test]
+    async fn deep_idle_wake_logs_partial_reasons() {
+        let (events, raw) = wake_with_snapshots(vec![
+            Some(BEFORE.to_owned()),
+            Some(AFTER_PARTIAL.to_owned()),
+        ])
+        .await;
+        assert_eq!(events.len(), 1, "unexpected wake events:\n{raw}");
+        let fields = &events[0].fields;
+        assert_eq!(fields.irq_delta_status, "partial");
+        assert_eq!(
+            fields.irq_delta_reasons_json,
+            r#"[{"irq":"213","reason":"missing_after"}]"#
+        );
+        let deltas: serde_json::Value = serde_json::from_str(&fields.irq_deltas_json).unwrap();
+        assert_eq!(
+            deltas,
+            serde_json::json!([
+                {"irq": "195", "name": "bd71828_pwrkey", "delta": 3},
+                {"irq": "90", "name": "bd71828_irq", "delta": 3},
+            ])
+        );
+    }
+
+    #[tokio::test]
+    async fn deep_idle_wake_keeps_handling_when_baseline_unavailable() {
+        let (events, raw) = wake_with_snapshots(vec![None, Some(AFTER.to_owned())]).await;
+        assert_eq!(events.len(), 1, "unexpected wake events:\n{raw}");
+        assert_eq!(events[0].fields.irq_delta_status, "unavailable");
+        assert_eq!(events[0].fields.irq_deltas_json, "[]");
+        assert_eq!(events[0].fields.irq_delta_reasons_json, "[]");
+    }
+
+    #[tokio::test]
+    async fn deep_idle_wake_reports_unavailable_when_post_wake_snapshot_missing() {
+        let (events, raw) = wake_with_snapshots(vec![Some(BEFORE.to_owned()), None]).await;
+        assert_eq!(events.len(), 1, "unexpected wake events:\n{raw}");
+        assert_eq!(events[0].fields.irq_delta_status, "unavailable");
+        assert_eq!(events[0].fields.irq_deltas_json, "[]");
+        assert_eq!(events[0].fields.irq_delta_reasons_json, "[]");
+    }
+
+    #[tokio::test]
+    async fn timeout_reentry_replaces_interrupt_baseline() {
+        let logs = LogBuffer::default();
+        let (event, raw) = capture_wake_events(&logs, async {
+            let mut harness = DeviceRuntimeHarness::new().await;
+            let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
+            harness.context.settings.intermissions[IntermKind::Suspend] =
+                IntermissionDisplay::Calendar;
+            for fixture in [BEFORE, AFTER, AFTER] {
+                harness
+                    .context
+                    .deep_idle_interrupts_inject
+                    .push_back(Some(fixture.to_owned()));
+            }
+            crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+                start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+            });
+            crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+                handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
+            });
+            harness
+                .context
+                .deep_idle_poll_inject
+                .push_back(PollResult::TimedOut);
+            let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+                handle_event(&Event::PollDeepIdleWait, hub, bus, rq, context, runtime)
+            });
+            assert_eq!(outcome, EventOutcome::Handled);
+            pump_deep_idle_wake(&mut harness).await;
+            assert!(
+                harness.context.deep_idle_interrupts_inject.is_empty(),
+                "re-entry did not consume every injected snapshot"
+            );
+        })
+        .await;
+        assert_eq!(event.len(), 1, "unexpected wake events:\n{raw}");
+        assert_eq!(event[0].fields.irq_delta_status, "complete");
+        assert_eq!(event[0].fields.irq_delta_reasons_json, "[]");
+        let deltas: serde_json::Value =
+            serde_json::from_str(&event[0].fields.irq_deltas_json).unwrap();
+        assert_eq!(
+            deltas,
+            serde_json::json!([]),
+            "the re-entered wait must compare against its fresh baseline"
+        );
+    }
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn soft_deep_idle_has_no_holders_when_cycle_lease_dropped() {
     let mut harness = DeviceRuntimeHarness::new().await;

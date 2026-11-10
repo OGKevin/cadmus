@@ -84,6 +84,9 @@ pub struct Context<D: Device> {
     #[cfg(all(test, feature = "kobo"))]
     pub(crate) deep_idle_poll_inject:
         std::collections::VecDeque<crate::device::suspend::PollResult>,
+    /// Test-only `/proc/interrupts` snapshots consumed by DeepIdle telemetry.
+    #[cfg(all(test, feature = "kobo", target_os = "linux"))]
+    pub(crate) deep_idle_interrupts_inject: std::collections::VecDeque<Option<String>>,
 }
 
 impl<D: Device> Context<D> {
@@ -179,6 +182,8 @@ impl<D: Device> Context<D> {
             inhibitor,
             #[cfg(all(test, feature = "kobo"))]
             deep_idle_poll_inject: std::collections::VecDeque::new(),
+            #[cfg(all(test, feature = "kobo", target_os = "linux"))]
+            deep_idle_interrupts_inject: std::collections::VecDeque::new(),
         }
     }
 

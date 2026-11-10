@@ -85,12 +85,20 @@ pub(in crate::device::suspend) fn clock_boottime() -> Option<Duration> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::device::rtc::PreSleepAlarms;
     use chrono::Local;
     use std::time::Instant;
 
     #[test]
     fn production_no_gap_still_waiting() {
-        let state = DeepIdleWaitState::capture(Local::now());
+        #[cfg(target_os = "linux")]
+        let interrupt_baseline = None;
+        let state = DeepIdleWaitState::capture(
+            Local::now(),
+            PreSleepAlarms::default(),
+            #[cfg(target_os = "linux")]
+            interrupt_baseline,
+        );
         assert_eq!(production_resolve(&state), PollResult::StillWaiting);
     }
 

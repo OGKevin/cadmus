@@ -96,6 +96,67 @@ via `AppContext::deep_idle_poll_inject`.
 
 On timeout: retry while soft suspend can re-arm; otherwise `finish_cycle`.
 
+## Wake-source telemetry
+
+On Linux,
+<a href="/api/cadmus_core/device/suspend/orchestrator/fn.start_deep_idle_wait.html">`start_deep_idle_wait`</a>
+snapshots the pre-sleep alarm state before
+<a href="/api/cadmus_core/device/power/trait.PowerManager.html#method.arm_deep_idle">`arm_deep_idle`</a>
+and the IRQ counters after it, just before the cycle lease drops, storing both on
+<a href="/api/cadmus_core/device/suspend/cycle/struct.DeepIdleWaitState.html">`DeepIdleWaitState`</a>:
+
+| Captured               | Source                                                    |
+| ---------------------- | --------------------------------------------------------- |
+| hardware wake alarm    | `Rtc::wake_alarm` → `/sys/class/rtc/rtc0/wakealarm`       |
+| earliest logical alarm | `AlarmManager::next_scheduled_alarm` (future alarms only) |
+| IRQ counters           | `/proc/interrupts`, sampled before the cycle lease drops  |
+
+Each detected wake then emits one `Primary deep-idle wake` record from
+<a href="/api/cadmus_core/device/suspend/orchestrator/fn.log_wake_source.html">`log_wake_source`</a>,
+carrying `pre_hardware_alarm`, `pre_cadmus_alarm_type`, `pre_cadmus_alarm`,
+`post_hardware_alarm`, `wake_irq`, `wake_irq_name`, `unmanaged_alarm_candidate`,
+`irq_delta_status`, `irq_deltas_json` and `irq_delta_reasons_json`. Sampling
+`/proc/interrupts` after wake, before the other post-wake node reads, also
+supplies the existing `wake_irq_name`; each retry samples a new baseline.
+
+What the fields mean, and what they cannot say:
+
+- `wake_irq` is `/sys/power/pm_wakeup_irq`, read inside the wake path because the
+  kernel clears it on the next suspend. `-ENODATA` means the kernel recorded no
+  IRQ. Other read errors and malformed content also log `wake_irq = None`, so a
+  missing value means "not reported", not that no hardware wake happened.
+- `wake_irq_name` is the owning row in `/proc/interrupts`. A parent controller
+  such as the PMIC (`bd71828_irq`) does not identify its own child, so compare
+  per-IRQ counters before naming a source.
+- `unmanaged_alarm_candidate` is true when the hardware slot and the earliest
+  future logical alarm disagree. The kernel records no writer for the slot, so a
+  mismatch is a candidate for an unmanaged alarm, never proof of who wrote it.
+- `irq_deltas_json` is a JSON-encoded array of `{irq, name, delta}` objects. `irq`
+  is a string; `name` is the post-wake action, or `null` for rows without one.
+  `before_name` is present when the baseline action was present and differs from
+  the post-wake action, including when the post-wake snapshot has no action. Each
+  delta sums
+  increases across the CPUs for one IRQ. Non-numeric summary rows (`IPI*`, `ERR`,
+  `NMI`) are excluded from the comparison. Decode it with
+  `.fields.irq_deltas_json | fromjson`. Parent and child rows appear independently.
+  Changed counters are evidence of activity between the samples, not proof of wake
+  causation; they can also include activity before sleep and after wake.
+- `irq_delta_reasons_json` explains a `partial` status: a JSON array of
+  `{irq, reason}` objects. Reasons are `missing_before`, `missing_after`,
+  `unparseable_before`, `unparseable_after` and `counter_not_monotonic`. It is
+  `[]` for `complete` and `unavailable`.
+- `irq_delta_status` is `complete` for a successful comparison, including no changes,
+  `partial` when unusable rows, rows added, removed, or duplicated, or
+  counter decreases/overflows make the coverage incomplete, or `unavailable` when a
+  snapshot, valid CPU header, or numeric row data cannot support a comparison, including
+  CPU columns that differ between samples. Only positive deltas are emitted; missing or
+  incompatible data does not become a zero.
+- `next_scheduled_alarm` ignores past-due alarms, matching what
+  `update_hardware_alarm_at` programs into the slot.
+
+Non-Linux targets still record the earliest logical alarm, but the hardware slot
+reads `Unavailable` and nothing is emitted.
+
 ## Phase-aware Suspend
 
 | Situation                                                  | Action                          |
