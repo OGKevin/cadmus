@@ -1,7 +1,7 @@
 name: Website
 
 env:
-  NODE_VERSION: "24"
+  NODE_VERSION: "26"
 
 on:
   pull_request:
