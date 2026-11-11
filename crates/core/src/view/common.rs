@@ -101,14 +101,22 @@ pub fn find_notification_mut(view: &mut dyn View, id: ViewId) -> Option<&mut Not
 
 /// Entries of the main menu's Rotation submenu.
 ///
-/// The gyro auto modes (when the device has a gyroscope), the fixed angles and
-/// the button scheme (when the device has page turn buttons) form separate
-/// radio groups separated by dividers. A fixed angle implies ignoring the
-/// gyroscope; without a gyroscope the lock is vestigial and the current angle
-/// is the active option.
+/// The nested Buttons submenu (when the device has page turn buttons), the gyro
+/// auto modes (when the device has a gyroscope) and the fixed angles form
+/// separate radio groups separated by dividers. A fixed angle implies ignoring
+/// the gyroscope; without a gyroscope the lock is vestigial and the current
+/// angle is the active option.
 fn rotation_entries(context: &AppContext) -> Vec<EntryKind> {
     let mut entries = Vec::new();
     let has_gyroscope = context.device.has_gyroscope();
+
+    if context.device.has_page_turn_buttons() {
+        entries.push(EntryKind::SubMenu(
+            fl!("settings-rotation-buttons").to_string(),
+            button_scheme_entries(context.settings.button_scheme),
+        ));
+        entries.push(EntryKind::Separator);
+    }
 
     if has_gyroscope {
         let lock = context.settings.rotation_lock;
@@ -151,16 +159,10 @@ fn rotation_entries(context: &AppContext) -> Vec<EntryKind> {
         ));
     }
 
-    if context.device.has_page_turn_buttons() {
-        let button_scheme = context.settings.button_scheme;
-        entries.push(EntryKind::Separator);
-        entries.extend(button_scheme_entries(button_scheme));
-    }
-
     entries
 }
 
-/// Button scheme radio group of the main menu's Rotation submenu.
+/// Button scheme radio group of the Rotation submenu's nested Buttons submenu.
 fn button_scheme_entries(button_scheme: ButtonScheme) -> Vec<EntryKind> {
     [
         (
@@ -517,8 +519,9 @@ pub fn toggle_keyboard_layout_menu(
 mod tests {
     use super::*;
     use crate::color::WHITE;
-    use crate::context::test_helpers::create_test_context;
+    use crate::context::test_helpers::{create_test_context, create_test_context_from_device};
     use crate::device::soft_suspend::SoftSuspendBackend as _;
+    use crate::device::test_device::TestDevice;
     use crate::view::filler::Filler;
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -616,6 +619,30 @@ mod tests {
                 "exactly one scheme is checked for {scheme:?}: {entries:?}"
             );
         }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn rotation_submenu_nests_button_scheme_at_top() {
+        let mut device = TestDevice::new();
+        device.set_has_page_turn_buttons(true);
+        let mut context = create_test_context_from_device(device).await;
+
+        context.settings.rotation_lock = Some(RotationLock::Current);
+        let entries = rotation_entries(&context);
+
+        let EntryKind::SubMenu(label, nested) = &entries[0] else {
+            panic!("buttons submenu must lead the rotation entries: {entries:?}");
+        };
+        assert_eq!(label, &fl!("settings-rotation-buttons").to_string());
+        assert_eq!(
+            rotation_modes(nested),
+            rotation_modes(&button_scheme_entries(context.settings.button_scheme)),
+            "nested buttons entries must mirror the button scheme radio group"
+        );
+        assert!(
+            matches!(entries.get(1), Some(EntryKind::Separator)),
+            "buttons submenu is followed by a separator: {entries:?}"
+        );
     }
 
     fn is_checked(entry: &EntryKind) -> bool {

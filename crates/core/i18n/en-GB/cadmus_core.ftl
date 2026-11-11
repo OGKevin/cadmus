@@ -142,6 +142,7 @@ settings-general-wifi-idle-timeout-input = { -wifi-idle-timeout } ({ -minutes },
 
 # Settings - Rotation
 settings-rotation-angle = { $degrees }°
+settings-rotation-buttons = Buttons
 settings-rotation-button-scheme-natural = Natural
 settings-rotation-button-scheme-inverted = Inverted
 
