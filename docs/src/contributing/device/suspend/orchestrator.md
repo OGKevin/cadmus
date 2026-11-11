@@ -94,7 +94,21 @@ Production: `CLOCK_BOOTTIME` − `CLOCK_MONOTONIC` (~1 s threshold). Tests injec
 <a href="/api/cadmus_core/device/suspend/wake/enum.PollResult.html">`PollResult`</a>
 via `AppContext::deep_idle_poll_inject`.
 
-On timeout: retry while soft suspend can re-arm; otherwise `finish_cycle`.
+On timeout, the wait re-arms while soft suspend can re-arm; otherwise
+`finish_cycle`. A cycle makes at most three deep-idle attempts (two retries):
+the cap counts consecutive timeouts on `SuspendCycle` and resets on a detected
+wake. Past the cap the cycle falls back to `Classic` and disarms autosleep
+(`Off`) for the rest of the cycle, because the kernel rejects `state=mem` while
+autosleep is armed, which would turn every attempt into the same guard error;
+`finish_cycle` restores the stashed mode. The cycle then stays on the classic
+WakeDebounce re-sleep path, whose errno is visible, instead of polling autosleep
+every 30 s.
+
+The first timeout of a failing cycle also emits one `deep idle wait timed out;
+suspend blockers` warning naming the lease holders, `/sys/power/wake_lock`,
+`/sys/power/wakeup_count` (read under a short timeout), the charger/USB state,
+and the IRQ delta. A refused `Classic` suspend adds the same kernel-side fields
+to `Failed to suspend device`.
 
 ## Wake-source telemetry
 

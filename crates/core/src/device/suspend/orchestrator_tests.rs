@@ -109,7 +109,7 @@ async fn handle_post_wake_auto_power_off_exit() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn perform_suspend_resume_schedules_wake_debounce() {
     let mut harness = DeviceRuntimeHarness::new().await;
-    let (_before, _after) = harness.with_parts(|hub, _bus, _rq, context, runtime| {
+    let (_before, _after) = crate::poll_parts!(harness, |hub, _bus, _rq, context, runtime| {
         perform_suspend_resume(hub, context, runtime)
     });
     assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::WakeDebounce));
@@ -712,7 +712,7 @@ mod irq_deltas {
             let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
             harness.context.settings.intermissions[IntermKind::Suspend] =
                 IntermissionDisplay::Calendar;
-            for fixture in [BEFORE, AFTER, AFTER] {
+            for fixture in [BEFORE, AFTER, AFTER, AFTER] {
                 harness
                     .context
                     .deep_idle_interrupts_inject
@@ -999,6 +999,222 @@ async fn soft_deep_idle_timeout_retries_without_finishing_cycle() {
     pump_deep_idle_wake(&mut harness).await;
     assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::WakeDebounce));
     assert!(locate::<Intermission>(harness.view.as_ref()).is_some());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn deep_idle_timeout_cap_falls_back_to_classic_suspend() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
+    harness.context.settings.auto_suspend = 30.0;
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+    });
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
+    });
+
+    for _ in 0..3 {
+        harness
+            .context
+            .deep_idle_poll_inject
+            .push_back(PollResult::TimedOut);
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            handle_event(&Event::PollDeepIdleWait, hub, bus, rq, context, runtime)
+        });
+        assert_eq!(outcome, EventOutcome::Handled);
+    }
+
+    let power = harness.context.device.power_manager_for_test();
+    assert_eq!(
+        power.arm_deep_idle_call_count(),
+        3,
+        "three timeouts must produce exactly three deep-idle entries"
+    );
+    assert_eq!(
+        power.disarm_deep_idle_call_count(),
+        3,
+        "each deep-idle leg must leave once"
+    );
+    assert_eq!(
+        power.suspend_call_count(),
+        1,
+        "the retry cap must hand over to one classic suspend attempt"
+    );
+    assert!(
+        !has_task(&harness.tasks, DeviceTaskId::PollDeepIdleWait),
+        "no fourth deep-idle entry may be scheduled"
+    );
+    assert_eq!(
+        harness.context.suspend.as_ref().map(|c| c.kind),
+        Some(SuspendKind::Classic),
+        "the cycle must stay on the classic path after the fallback"
+    );
+    assert_eq!(
+        harness.context.inhibitor.mode(),
+        AutosleepMode::Off,
+        "the classic fallback must run with autosleep disarmed"
+    );
+    assert_eq!(
+        harness
+            .context
+            .suspend
+            .as_ref()
+            .and_then(|c| c.deep_idle_restore),
+        Some(AutosleepMode::Freeze),
+        "the fallback must stash the armed mode for finish_cycle"
+    );
+    assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::WakeDebounce));
+
+    lock_alarms(&mut harness)
+        .cancel_alarm(AlarmType::WakeDebounce)
+        .unwrap();
+    crate::poll_parts!(harness, |hub, _bus, rq, context, runtime| async {
+        finish_cycle(context, runtime.tasks, runtime.view.as_mut(), hub, rq)
+    });
+    assert!(harness.context.suspend.is_none());
+    assert_eq!(
+        harness.context.inhibitor.mode(),
+        AutosleepMode::Freeze,
+        "finish_cycle must restore the stashed autosleep mode"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn deep_idle_timeout_counter_resets_after_wake() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
+    harness.context.settings.auto_suspend = 30.0;
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+    });
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
+    });
+
+    for expected in 1..=2 {
+        harness
+            .context
+            .deep_idle_poll_inject
+            .push_back(PollResult::TimedOut);
+        crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            handle_event(&Event::PollDeepIdleWait, hub, bus, rq, context, runtime)
+        });
+        assert_eq!(
+            harness
+                .context
+                .suspend
+                .as_ref()
+                .map(|c| c.consecutive_deep_idle_timeouts),
+            Some(expected),
+            "timeouts must count up within one cycle"
+        );
+    }
+
+    pump_deep_idle_wake(&mut harness).await;
+    assert_eq!(
+        harness
+            .context
+            .suspend
+            .as_ref()
+            .map(|c| c.consecutive_deep_idle_timeouts),
+        Some(0),
+        "a detected wake must reset the consecutive timeout counter"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn classic_fallback_refusal_retries_via_wake_debounce() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
+    harness.context.settings.auto_suspend = 30.0;
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+    });
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
+    });
+    harness
+        .context
+        .device
+        .power_manager_for_test()
+        .set_suspend_fails(true);
+
+    for _ in 0..3 {
+        harness
+            .context
+            .deep_idle_poll_inject
+            .push_back(PollResult::TimedOut);
+        crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            handle_event(&Event::PollDeepIdleWait, hub, bus, rq, context, runtime)
+        });
+    }
+
+    assert_eq!(
+        harness.context.suspend.as_ref().map(|c| c.kind),
+        Some(SuspendKind::Classic),
+        "the fallback must keep the cycle on the classic path"
+    );
+    assert!(
+        !has_task(&harness.tasks, DeviceTaskId::PollDeepIdleWait),
+        "a refused classic fallback must not re-enter deep idle"
+    );
+    assert!(
+        lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::WakeDebounce),
+        "a refused classic attempt must stay on the classic retry path"
+    );
+    assert_eq!(
+        harness.context.inhibitor.mode(),
+        AutosleepMode::Off,
+        "the classic fallback must run with autosleep disarmed"
+    );
+    assert_eq!(
+        harness
+            .context
+            .suspend
+            .as_ref()
+            .and_then(|c| c.deep_idle_restore),
+        Some(AutosleepMode::Freeze),
+        "the fallback must stash the armed mode for finish_cycle"
+    );
+    assert_eq!(
+        harness
+            .context
+            .device
+            .power_manager_for_test()
+            .suspend_call_count(),
+        1
+    );
+
+    let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(
+            &Event::RtcAlarmFired(AlarmType::WakeDebounce),
+            hub,
+            bus,
+            rq,
+            context,
+            runtime,
+        )
+    });
+    assert_eq!(outcome, EventOutcome::Handled);
+    assert_eq!(
+        harness
+            .context
+            .device
+            .power_manager_for_test()
+            .suspend_call_count(),
+        2,
+        "WakeDebounce must retry the classic attempt"
+    );
+    assert_eq!(
+        harness.context.suspend.as_ref().map(|c| c.kind),
+        Some(SuspendKind::Classic)
+    );
+    assert_eq!(
+        harness.context.inhibitor.mode(),
+        AutosleepMode::Off,
+        "the retried attempt must also run disarmed so EBUSY is the real blocker"
+    );
+    assert!(!has_task(&harness.tasks, DeviceTaskId::PollDeepIdleWait));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

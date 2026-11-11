@@ -205,6 +205,7 @@ struct TestPowerState {
     resume_calls: u32,
     arm_deep_idle_calls: u32,
     disarm_deep_idle_calls: u32,
+    suspend_fails: bool,
 }
 
 /// Assertable power manager test double.
@@ -246,6 +247,14 @@ impl TestPowerManager {
         self.suspend_call_count() > 0
     }
 
+    /// Makes subsequent [`suspend`](crate::device::power::PowerManager::suspend)
+    /// calls fail with `EBUSY`, like a kernel autosleep refusal.
+    pub fn set_suspend_fails(&self, fails: bool) {
+        if let Ok(mut state) = self.state.lock() {
+            state.suspend_fails = fails;
+        }
+    }
+
     pub fn was_resume_called(&self) -> bool {
         self.resume_call_count() > 0
     }
@@ -259,8 +268,17 @@ impl Default for TestPowerManager {
 
 impl crate::device::power::PowerManager for TestPowerManager {
     fn suspend(&self) -> Result<(), crate::device::power::PowerError> {
-        if let Ok(mut state) = self.state.lock() {
-            state.suspend_calls += 1;
+        let fails = match self.state.lock() {
+            Ok(mut state) => {
+                state.suspend_calls += 1;
+                state.suspend_fails
+            }
+            Err(_) => false,
+        };
+        if fails {
+            return Err(crate::device::power::PowerError::Io(
+                std::io::Error::from_raw_os_error(16),
+            ));
         }
         Ok(())
     }

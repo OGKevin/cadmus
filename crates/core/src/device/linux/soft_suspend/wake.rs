@@ -171,7 +171,7 @@ impl UnlockInner {
         state.due_at = None;
         self.cv.notify_one();
         drop(state);
-        tracing::info!(
+        tracing::debug!(
             wake_lock = WAKE_LOCK_NAME,
             "soft-suspend writing wake_unlock"
         );
