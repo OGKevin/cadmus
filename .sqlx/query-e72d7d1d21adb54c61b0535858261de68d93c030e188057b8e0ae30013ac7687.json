@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT indexed_lines FROM dictionary_index_meta WHERE dict_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "indexed_lines",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dictionary_index_meta",
+            "name": "indexed_lines"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "e72d7d1d21adb54c61b0535858261de68d93c030e188057b8e0ae30013ac7687"
+}

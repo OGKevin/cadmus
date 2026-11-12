@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT offset, size, original FROM dictionary_index_entry WHERE dict_id = ? AND word = ? ORDER BY offset",
+  "describe": {
+    "columns": [
+      {
+        "name": "offset",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dictionary_index_entry",
+            "name": "offset"
+          }
+        }
+      },
+      {
+        "name": "size",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dictionary_index_entry",
+            "name": "size"
+          }
+        }
+      },
+      {
+        "name": "original",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "dictionary_index_entry",
+            "name": "original"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      null,
+      false,
+      true
+    ]
+  },
+  "hash": "9b0ce857dacf2cb155cf079090ec411ab5d7ac763a52b7522b87de6ae83574d0"
+}

@@ -23,6 +23,14 @@ use tokio_util::sync::CancellationToken;
 
 const BATCH_SIZE: usize = 5000;
 
+/// Rows per multi-row `INSERT` statement.
+///
+/// A transaction still batches [`BATCH_SIZE`] entries, but each statement stays
+/// at 500 rows (2500 bound values): SQLite caps host parameters per statement at
+/// [`SQLITE_MAX_VARIABLE_NUMBER`](https://www.sqlite.org/limits.html#max_variable_number)
+/// (32766 by default), so five values per row must stay under that cap.
+const INSERT_CHUNK_ROWS: usize = 500;
+
 struct IndexFileJob<'a> {
     index_path: &'a std::path::Path,
     path_str: &'a str,
@@ -31,6 +39,18 @@ struct IndexFileJob<'a> {
     total_lines: u64,
     notif_id: ViewId,
     metadata: Metadata,
+}
+
+/// One normalized entry queued for insertion into `dictionary_index_entry`.
+///
+/// Mirrors the insert column order so batch construction and binding stay
+/// readable without positional tuples.
+struct IndexEntry {
+    dict_id: i64,
+    word: String,
+    offset: i64,
+    size: i64,
+    original: Option<String>,
 }
 
 /// Decodes a base64-like encoded number from the StarDict/dictd `.index` format.
@@ -386,16 +406,14 @@ impl DictionaryIndexTask {
 
             if raw_batch.len() >= BATCH_SIZE {
                 let normalized = normalize(&raw_batch, &job.metadata);
-                let batch: Vec<(i64, String, i64, i64, Option<String>)> = normalized
+                let batch: Vec<IndexEntry> = normalized
                     .into_iter()
-                    .map(|e| {
-                        (
-                            job.dict_id,
-                            e.headword,
-                            e.offset as i64,
-                            e.size as i64,
-                            e.original,
-                        )
+                    .map(|e| IndexEntry {
+                        dict_id: job.dict_id,
+                        word: e.headword,
+                        offset: e.offset as i64,
+                        size: e.size as i64,
+                        original: e.original,
                     })
                     .collect();
 
@@ -414,16 +432,14 @@ impl DictionaryIndexTask {
 
         if !raw_batch.is_empty() {
             let normalized = normalize(&raw_batch, &job.metadata);
-            let batch: Vec<(i64, String, i64, i64, Option<String>)> = normalized
+            let batch: Vec<IndexEntry> = normalized
                 .into_iter()
-                .map(|e| {
-                    (
-                        job.dict_id,
-                        e.headword,
-                        e.offset as i64,
-                        e.size as i64,
-                        e.original,
-                    )
+                .map(|e| IndexEntry {
+                    dict_id: job.dict_id,
+                    word: e.headword,
+                    offset: e.offset as i64,
+                    size: e.size as i64,
+                    original: e.original,
                 })
                 .collect();
 
@@ -506,11 +522,19 @@ impl DictionaryIndexTask {
         }
     }
 
+    /// Writes one batch of index entries inside a transaction.
+    ///
+    /// The batch is inserted as multi-row `INSERT OR IGNORE` statements of up
+    /// to [`INSERT_CHUNK_ROWS`] rows. The number of `VALUES` rows is
+    /// runtime-dependent (the final chunk is usually partial), so
+    /// `sqlx::query!` cannot type-check this statement;
+    /// [`sqlx::QueryBuilder`] assembles the runtime-sized `VALUES` list. An
+    /// empty batch issues no insert statement.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(batch_size = batch.len(), current_line, total_lines = job.total_lines)))]
     async fn flush_batch(
         &self,
         job: &IndexFileJob<'_>,
-        batch: &[(i64, String, i64, i64, Option<String>)],
+        batch: &[IndexEntry],
         current_line: u64,
         hub: &crate::view::Hub,
     ) -> Result<(), anyhow::Error> {
@@ -519,18 +543,8 @@ impl DictionaryIndexTask {
 
         let mut tx = pool.begin().await?;
 
-        for (dict_id, word, offset, size, original) in batch {
-            sqlx::query!(
-                    r#"INSERT OR IGNORE INTO dictionary_index_entry (dict_id, word, offset, size, original)
-                       VALUES (?, ?, ?, ?, ?)"#,
-                    dict_id,
-                    word,
-                    offset,
-                    size,
-                    original,
-                )
-                .execute(&mut *tx)
-                .await?;
+        for chunk in batch.chunks(INSERT_CHUNK_ROWS) {
+            Self::insert_chunk(&mut tx, chunk).await?;
         }
 
         sqlx::query!(
@@ -559,6 +573,29 @@ impl DictionaryIndexTask {
         )
         .ok();
 
+        Ok(())
+    }
+
+    /// Inserts one chunk of entries with a single multi-row `INSERT OR IGNORE`.
+    ///
+    /// The runtime row count rules out a compile-time-checked
+    /// `sqlx::query!` statement, so [`sqlx::QueryBuilder`] assembles the
+    /// `VALUES` list.
+    async fn insert_chunk(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        chunk: &[IndexEntry],
+    ) -> Result<(), anyhow::Error> {
+        let mut insert = sqlx::QueryBuilder::new(
+            "INSERT OR IGNORE INTO dictionary_index_entry (dict_id, word, offset, size, original) ",
+        );
+        insert.push_values(chunk, |mut row, entry| {
+            row.push_bind(entry.dict_id)
+                .push_bind(entry.word.as_str())
+                .push_bind(entry.offset)
+                .push_bind(entry.size)
+                .push_bind(entry.original.as_deref());
+        });
+        insert.build().execute(&mut **tx).await?;
         Ok(())
     }
 
@@ -903,6 +940,200 @@ mod tests {
         .fetch_one(pool)
         .await
         .expect("failed to count entries")
+    }
+
+    fn batch_rows(
+        dict_id: i64,
+        count: usize,
+        original: impl Fn(usize) -> Option<String>,
+    ) -> Vec<IndexEntry> {
+        (0..count)
+            .map(|i| IndexEntry {
+                dict_id,
+                word: format!("word{i:06}"),
+                offset: i as i64,
+                size: (i * 2) as i64,
+                original: original(i),
+            })
+            .collect()
+    }
+
+    async fn flush(
+        pool: &sqlx::SqlitePool,
+        dict_id: i64,
+        batch: &[IndexEntry],
+        current_line: u64,
+    ) -> anyhow::Result<()> {
+        let task = DictionaryIndexTask::new(
+            pool.clone(),
+            std::path::PathBuf::from("/tmp/cadmus-dictionary-index-tests"),
+            Inhibitor::noop(),
+        );
+        let path = "/tmp/cadmus-dictionary-index-tests/dictionaries/bench.index";
+        let job = IndexFileJob {
+            index_path: std::path::Path::new(path),
+            path_str: path,
+            dict_id,
+            dict_name: "bench",
+            total_lines: 0,
+            notif_id: ViewId::MessageNotif(ID_FEEDER.next()),
+            metadata: Metadata {
+                all_chars: true,
+                case_sensitive: true,
+            },
+        };
+        let (hub, _rx) = crate::view::hub_channel();
+        task.flush_batch(&job, batch, current_line, &hub).await
+    }
+
+    async fn indexed_lines(pool: &sqlx::SqlitePool, dict_id: i64) -> i64 {
+        sqlx::query_scalar!(
+            "SELECT indexed_lines FROM dictionary_index_meta WHERE dict_id = ?",
+            dict_id,
+        )
+        .fetch_one(pool)
+        .await
+        .expect("failed to read indexed_lines")
+    }
+
+    async fn entry_rows(
+        pool: &sqlx::SqlitePool,
+        dict_id: i64,
+        word: &str,
+    ) -> Vec<(Option<i64>, i64, Option<String>)> {
+        sqlx::query!(
+            "SELECT offset, size, original FROM dictionary_index_entry WHERE dict_id = ? AND word = ? ORDER BY offset",
+            dict_id,
+            word,
+        )
+        .fetch_all(pool)
+        .await
+        .expect("failed to read entry rows")
+        .into_iter()
+        .map(|row| (row.offset, row.size, row.original))
+        .collect()
+    }
+
+    #[tokio::test]
+    async fn flush_batch_inserts_a_full_chunk() {
+        let db = setup_db().await;
+        let pool = db.pool();
+        let dict_id = insert_meta(pool, "full-chunk").await;
+        let batch = batch_rows(dict_id, 500, |_| None);
+
+        flush(pool, dict_id, &batch, 500).await.expect("flush");
+
+        assert_eq!(count_entries(pool, dict_id).await, 500);
+        assert_eq!(
+            entry_rows(pool, dict_id, "word000499").await,
+            vec![(Some(499), 998, None)]
+        );
+    }
+
+    #[tokio::test]
+    async fn flush_batch_inserts_a_partial_final_chunk_and_a_small_batch() {
+        let db = setup_db().await;
+        let pool = db.pool();
+        let dict_id = insert_meta(pool, "partial-chunk").await;
+        let batch = batch_rows(dict_id, 720, |_| None);
+
+        flush(pool, dict_id, &batch, 720).await.expect("flush");
+
+        assert_eq!(count_entries(pool, dict_id).await, 720);
+        assert_eq!(
+            entry_rows(pool, dict_id, "word000719").await,
+            vec![(Some(719), 1438, None)]
+        );
+
+        let small_id = insert_meta(pool, "small-batch").await;
+        let small = batch_rows(small_id, 37, |_| None);
+
+        flush(pool, small_id, &small, 37).await.expect("flush");
+
+        assert_eq!(count_entries(pool, small_id).await, 37);
+    }
+
+    #[tokio::test]
+    async fn flush_batch_with_an_empty_batch_inserts_nothing() {
+        let db = setup_db().await;
+        let pool = db.pool();
+        let dict_id = insert_meta(pool, "empty-batch").await;
+
+        flush(pool, dict_id, &[], 42).await.expect("flush");
+
+        assert_eq!(count_entries(pool, dict_id).await, 0);
+        assert_eq!(indexed_lines(pool, dict_id).await, 42);
+    }
+
+    #[tokio::test]
+    async fn flush_batch_stores_original_only_when_present() {
+        let db = setup_db().await;
+        let pool = db.pool();
+        let dict_id = insert_meta(pool, "original").await;
+        let batch = batch_rows(dict_id, 37, |i| {
+            if i % 2 == 0 {
+                Some(format!("Word{i:06}"))
+            } else {
+                None
+            }
+        });
+
+        flush(pool, dict_id, &batch, 37).await.expect("flush");
+
+        assert_eq!(
+            entry_rows(pool, dict_id, "word000000").await,
+            vec![(Some(0), 0, Some("Word000000".to_string()))]
+        );
+        assert_eq!(
+            entry_rows(pool, dict_id, "word000001").await,
+            vec![(Some(1), 2, None)]
+        );
+    }
+
+    #[tokio::test]
+    async fn flush_batch_ignores_duplicates_across_chunks() {
+        let db = setup_db().await;
+        let pool = db.pool();
+        let dict_id = insert_meta(pool, "duplicates").await;
+        let mut batch = batch_rows(dict_id, 500, |_| None);
+        batch.extend(batch_rows(dict_id, 100, |_| None));
+        batch.push(IndexEntry {
+            dict_id,
+            word: "word000000".to_string(),
+            offset: 100_000,
+            size: 10,
+            original: None,
+        });
+
+        flush(pool, dict_id, &batch, 601).await.expect("flush");
+
+        assert_eq!(count_entries(pool, dict_id).await, 501);
+        assert_eq!(
+            entry_rows(pool, dict_id, "word000000").await,
+            vec![(Some(0), 0, None), (Some(100_000), 10, None)]
+        );
+        assert_eq!(
+            entry_rows(pool, dict_id, "word000099").await,
+            vec![(Some(99), 198, None)]
+        );
+    }
+
+    #[tokio::test]
+    async fn flush_batch_updates_indexed_lines_metadata() {
+        let db = setup_db().await;
+        let pool = db.pool();
+        let dict_id = insert_meta(pool, "metadata").await;
+        let batch = batch_rows(dict_id, 120, |_| None);
+
+        flush(pool, dict_id, &batch, 4_999)
+            .await
+            .expect("first flush");
+        assert_eq!(indexed_lines(pool, dict_id).await, 4_999);
+
+        flush(pool, dict_id, &batch, 5_100)
+            .await
+            .expect("second flush");
+        assert_eq!(indexed_lines(pool, dict_id).await, 5_100);
     }
 
     #[tokio::test]

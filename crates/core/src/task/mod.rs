@@ -41,6 +41,8 @@ mod auto_frontlight;
 #[cfg(any(all(feature = "test", feature = "kobo"), docsrs))]
 mod dbus_monitor;
 mod dictionary_index;
+#[cfg(feature = "bench")]
+pub use dictionary_index::DictionaryIndexTask;
 #[cfg(any(feature = "test", docsrs))]
 mod hello_world;
 mod import;
