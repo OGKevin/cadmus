@@ -196,17 +196,13 @@ fn write_index_file(dict_dir: &std::path::Path, rows: usize, transformed_headwor
 /// The full-size workload reuses the Reader-Dict-en index that the fuzzy
 /// benchmark downloads and caches; the smaller generated workloads exist so
 /// `original` coverage can be toggled independently of the dictionary data.
+/// `CADMUS_DICT_BENCH_SKIP_READER_DICT` drops the Reader-Dict workload so the
+/// generated workloads run without the dictionary download.
 #[cfg(feature = "bench")]
 fn bench_index_batch_writes(c: &mut Criterion) {
     let rt = Runtime::new().expect("tokio runtime");
 
-    let reader_headword = reader_dict_fixture::default_reader_dict_headword();
-    let reader_dict = rt.block_on(reader_dict_fixture::init_reader_dict_fixture(
-        &reader_headword,
-    ));
-    let reader_index = rt.block_on(reader_dict_fixture::reader_dict_index_path());
-
-    let workloads = [
+    let mut workloads = vec![
         IndexWriteWorkload {
             label: "insert_10k",
             fixture: IndexWriteFixture::Generated {
@@ -242,14 +238,21 @@ fn bench_index_batch_writes(c: &mut Criterion) {
                 transformed_headwords: false,
             },
         },
-        IndexWriteWorkload {
+    ];
+    if std::env::var("CADMUS_DICT_BENCH_SKIP_READER_DICT").is_err() {
+        let reader_headword = reader_dict_fixture::default_reader_dict_headword();
+        let reader_dict = rt.block_on(reader_dict_fixture::init_reader_dict_fixture(
+            &reader_headword,
+        ));
+        let reader_index = rt.block_on(reader_dict_fixture::reader_dict_index_path());
+        workloads.push(IndexWriteWorkload {
             label: "insert_reader_dict",
             fixture: IndexWriteFixture::ReaderDict {
                 index_path: reader_index,
                 rows: reader_dict.entry_count,
             },
-        },
-    ];
+        });
+    }
 
     let mut group = c.benchmark_group("index_batch_writes");
     group.sample_size(10);
