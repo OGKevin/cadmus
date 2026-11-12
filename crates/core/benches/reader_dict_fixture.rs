@@ -60,6 +60,11 @@ fn cache_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/dict-bench-cache")
 }
 
+/// Path to the cached Reader-Dict-en `.index` file used by the dictionary benches.
+pub(crate) async fn reader_dict_index_path() -> PathBuf {
+    ensure_reader_dict_index_on_disk().await
+}
+
 async fn ensure_reader_dict_index_on_disk() -> PathBuf {
     if let Ok(path) = std::env::var("CADMUS_DICT_BENCH_INDEX") {
         let path = PathBuf::from(path);

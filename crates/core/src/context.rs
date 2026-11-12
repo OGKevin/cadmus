@@ -34,6 +34,9 @@ use tracing::error;
 use walkdir::WalkDir;
 
 const KEYBOARD_LAYOUTS_DIRNAME: &str = "keyboard-layouts";
+#[cfg(feature = "bench")]
+pub const DICTIONARIES_DIRNAME: &str = "dictionaries";
+#[cfg(not(feature = "bench"))]
 pub(crate) const DICTIONARIES_DIRNAME: &str = "dictionaries";
 const INPUT_HISTORY_SIZE: usize = 32;
 
