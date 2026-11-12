@@ -60,7 +60,7 @@ runs:
         mode: save
 
     - name: Install cargo-nextest
-      uses: taiki-e/install-action@682ce6c3c696a4cd5168a05f98e51aa02b877941 # v2.89.1
+      uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
       with:
         tool: nextest@${{ inputs.nextest-version }}
 
