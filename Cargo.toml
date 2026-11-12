@@ -61,6 +61,9 @@ await_holding_refcell_ref = "deny"
 markup5ever = { git = "https://github.com/OGKevin/html5ever", rev = "feb171c28b48012d5c42e24d7acfb7e2d8f79189" }
 xml5ever = { git = "https://github.com/OGKevin/html5ever", rev = "feb171c28b48012d5c42e24d7acfb7e2d8f79189" }
 
+# The KacperLa fork adds HPA/REP escape-sequence support needed by the Terminal.
+vt100 = { git = "https://github.com/KacperLa/vt100-rust.git", rev = "6a45351ac049a6c87f893aa6896451c5b3720ee7" }
+
 # For html5ever development, comment out both git entries above and uncomment both path entries
 # below, then run Cadmus tests against the submodule changes.
 # markup5ever = { path = "thirdparty/html5ever/markup5ever" }

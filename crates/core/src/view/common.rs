@@ -99,6 +99,42 @@ pub fn find_notification_mut(view: &mut dyn View, id: ViewId) -> Option<&mut Not
     None
 }
 
+/// Entries of the main menu's Applications submenu.
+fn application_entries() -> Vec<EntryKind> {
+    let mut entries = vec![
+        EntryKind::Command(
+            "Dictionary".to_string(),
+            EntryId::Launch(AppCmd::Dictionary {
+                query: "".to_string(),
+                language: "".to_string(),
+            }),
+        ),
+        EntryKind::Command(
+            "Calculator".to_string(),
+            EntryId::Launch(AppCmd::Calculator),
+        ),
+        EntryKind::Command("Sketch".to_string(), EntryId::Launch(AppCmd::Sketch)),
+    ];
+    // TODO: Let EntryKind::Command accept typed labels instead of converting here.
+    #[cfg(feature = "terminal")]
+    entries.push(EntryKind::Command(
+        super::terminal::title(),
+        EntryId::Launch(AppCmd::Terminal),
+    ));
+    entries.extend([
+        EntryKind::Separator,
+        EntryKind::Command(
+            "Touch Events".to_string(),
+            EntryId::Launch(AppCmd::TouchEvents),
+        ),
+        EntryKind::Command(
+            "Rotation Values".to_string(),
+            EntryId::Launch(AppCmd::RotationValues),
+        ),
+    ]);
+    entries
+}
+
 pub fn toggle_main_menu(
     view: &mut dyn View,
     rect: Rectangle,
@@ -131,29 +167,7 @@ pub fn toggle_main_menu(
             })
             .collect::<Vec<EntryKind>>();
 
-        let apps = vec![
-            EntryKind::Command(
-                "Dictionary".to_string(),
-                EntryId::Launch(AppCmd::Dictionary {
-                    query: "".to_string(),
-                    language: "".to_string(),
-                }),
-            ),
-            EntryKind::Command(
-                "Calculator".to_string(),
-                EntryId::Launch(AppCmd::Calculator),
-            ),
-            EntryKind::Command("Sketch".to_string(), EntryId::Launch(AppCmd::Sketch)),
-            EntryKind::Separator,
-            EntryKind::Command(
-                "Touch Events".to_string(),
-                EntryId::Launch(AppCmd::TouchEvents),
-            ),
-            EntryKind::Command(
-                "Rotation Values".to_string(),
-                EntryId::Launch(AppCmd::RotationValues),
-            ),
-        ];
+        let apps = application_entries();
         let mut entries = vec![
             EntryKind::Command("About".to_string(), EntryId::About),
             EntryKind::Command("System Info".to_string(), EntryId::SystemInfo),
@@ -514,5 +528,32 @@ mod tests {
         }
         toggle_main_menu(&mut parent, target, Some(false), &mut rq, &mut context);
         assert!(!context.inhibitor.sleep_active());
+    }
+
+    fn launch_commands(entries: &[EntryKind]) -> Vec<AppCmd> {
+        entries
+            .iter()
+            .filter_map(|entry| match entry {
+                EntryKind::Command(_, EntryId::Launch(cmd)) => Some(cmd.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn applications_submenu_lists_terminal_only_when_built() {
+        let mut expected = vec![
+            AppCmd::Dictionary {
+                query: String::new(),
+                language: String::new(),
+            },
+            AppCmd::Calculator,
+            AppCmd::Sketch,
+        ];
+        #[cfg(feature = "terminal")]
+        expected.push(AppCmd::Terminal);
+        expected.extend([AppCmd::TouchEvents, AppCmd::RotationValues]);
+
+        assert_eq!(launch_commands(&application_entries()), expected);
     }
 }
