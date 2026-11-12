@@ -56,6 +56,10 @@ device-auth-cancelled-on-github = Authorization cancelled
 top-menu-exit = Exit
 top-menu-reboot-device = Reboot Device
 top-menu-restart-app = Restart {-app-name}
+top-menu-rotation = Rotation
+top-menu-rotation-auto = Auto Rotation
+top-menu-rotation-auto-landscape = Auto Landscape
+top-menu-rotation-auto-portrait = Auto Portrait
 top-menu-suspend = Suspend
 top-menu-quit = Quit
 top-menu-power-off = Power Off
@@ -135,6 +139,12 @@ settings-general-unknown = Unknown
 settings-general-wifi-idle-immediate = Immediate
 settings-general-wifi-idle-timeout = { -wifi-idle-timeout } ({ -minutes })
 settings-general-wifi-idle-timeout-input = { -wifi-idle-timeout } ({ -minutes }, 0 = { settings-general-wifi-idle-immediate })
+
+# Settings - Rotation
+settings-rotation-angle = { $degrees }°
+settings-rotation-buttons = Buttons
+settings-rotation-button-scheme-natural = Natural
+settings-rotation-button-scheme-inverted = Inverted
 
 # Settings - Power
 settings-power-auto-power-off = Auto Power Off (days)

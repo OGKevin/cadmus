@@ -28,7 +28,7 @@ use cadmus_core::input::{button_scheme_event, display_rotate_event};
 use cadmus_core::library::Library;
 use cadmus_core::metadata::Info;
 use cadmus_core::settings::versioned::SettingsManager;
-use cadmus_core::settings::{ButtonScheme, Settings, StartupMode};
+use cadmus_core::settings::{ButtonScheme, RotationMode, Settings, StartupMode};
 use cadmus_core::task::TaskManager;
 use cadmus_core::unix_signals::UnixSignals;
 use cadmus_core::version::{get_current_version, get_version};
@@ -1119,6 +1119,15 @@ pub async fn run() -> Result<(), Error> {
                     UpdateMode::Full,
                 ));
             }
+            Event::Select(EntryId::SetRotation(mode)) => {
+                context.settings.rotation_lock = mode.rotation_lock();
+                if let RotationMode::Fixed(n) = mode
+                    && n != context.display.rotation
+                    && view.might_rotate()
+                {
+                    apply_rotation(n, &mut view, &mut updating, &tx, &mut rq, &mut context);
+                }
+            }
             Event::Select(EntryId::Rotate(n))
                 if n != context.display.rotation && view.might_rotate() =>
             {
@@ -1131,9 +1140,6 @@ pub async fn run() -> Result<(), Error> {
                     might_rotate = view.might_rotate(),
                     "ignoring rotation request in main loop"
                 );
-            }
-            Event::Select(EntryId::SetRotationLock(rotation_lock)) => {
-                context.settings.rotation_lock = rotation_lock;
             }
             Event::Select(EntryId::SetButtonScheme(button_scheme)) => {
                 context.settings.button_scheme = button_scheme;

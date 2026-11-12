@@ -382,6 +382,8 @@ impl InputSource for TestInputSource {
 pub struct TestDevice {
     dims: (u32, u32),
     dpi: u16,
+    gyroscope: bool,
+    page_turn_buttons: bool,
     framebuffer: Pixmap,
     battery: Arc<FakeBattery>,
     frontlight: LightLevels,
@@ -402,6 +404,8 @@ impl TestDevice {
         Self {
             dims: (600, 800),
             dpi: 300,
+            gyroscope: false,
+            page_turn_buttons: false,
             framebuffer: Pixmap::new(600, 800, 1),
             battery: Arc::new(FakeBattery::new()),
             frontlight: LightLevels::default(),
@@ -434,6 +438,16 @@ impl TestDevice {
     /// Returns the LED test double for assertion helpers.
     pub fn leds_for_test(&self) -> &TestLeds {
         self.leds.as_ref()
+    }
+
+    /// Simulates the presence of a gyroscope.
+    pub fn set_has_gyroscope(&mut self, present: bool) {
+        self.gyroscope = present;
+    }
+
+    /// Simulates the presence of dedicated page-turn buttons.
+    pub fn set_has_page_turn_buttons(&mut self, present: bool) {
+        self.page_turn_buttons = present;
     }
 
     /// Builds the test device.
@@ -473,6 +487,14 @@ impl DeviceIdentity for TestDevice {
 impl DeviceCapabilities for TestDevice {
     fn frontlight_kind(&self) -> FrontlightKind {
         FrontlightKind::Standard
+    }
+
+    fn has_gyroscope(&self) -> bool {
+        self.gyroscope
+    }
+
+    fn has_page_turn_buttons(&self) -> bool {
+        self.page_turn_buttons
     }
 }
 
