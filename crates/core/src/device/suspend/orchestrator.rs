@@ -42,6 +42,8 @@ use crate::view::intermission::Intermission;
 use crate::view::{Event, Hub, RenderData, RenderQueue, View, wait_for_all};
 #[cfg(target_os = "linux")]
 use std::sync::Arc;
+#[cfg(target_os = "linux")]
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 const DEEP_IDLE_POLL_INTERVAL: Duration = Duration::from_millis(100);
@@ -982,8 +984,7 @@ async fn log_deep_idle_refusal(context: &mut AppContext, state: &DeepIdleWaitSta
     #[cfg(target_os = "linux")]
     {
         let kernel_wake_locks = read_power_node("/sys/power/wake_lock").await;
-        let wakeup_count =
-            read_power_node_with_timeout("/sys/power/wakeup_count", POWER_NODE_READ_TIMEOUT).await;
+        let wakeup_count = read_wakeup_count().await;
         let interrupts = read_interrupts(context).await;
         let (irq_delta_status, irq_deltas_json, irq_delta_reasons_json) =
             interrupt_delta_json(state.interrupt_baseline(), interrupts.as_deref());
@@ -1024,15 +1025,43 @@ async fn read_power_node(path: &str) -> Option<String> {
         .map(|value| value.trim().to_owned())
 }
 
-/// Reads a `/sys/power` node with a bound, so a blocked node yields `None`
-/// instead of stalling the caller.
+/// One `/sys/power/wakeup_count` read in flight at a time.
+///
+/// Dropping a timed-out `tokio::fs` future does not stop the blocking-pool
+/// read it started, and the kernel can block that node for the duration of a
+/// wakeup event. While one read is outstanding, callers get `None` instead of
+/// piling up another blocked read.
 #[cfg(target_os = "linux")]
-async fn read_power_node_with_timeout(path: &str, timeout: Duration) -> Option<String> {
-    tokio::time::timeout(timeout, tokio::fs::read_to_string(path))
+static WAKEUP_COUNT_READ_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
+
+/// Reads `/sys/power/wakeup_count` under a timeout, at most one read in
+/// flight; a blocked, timed-out, or failed read yields `None`.
+///
+/// The read runs detached on the process runtime because the caller's timeout
+/// only drops the await, not the blocking-pool read it started: the task has to
+/// outlive the timeout to clear the in-flight gate when the kernel returns. It
+/// is a one-shot with no owner to cancel, so it uses [`crate::runtime::spawn`]
+/// rather than a [`Job`](crate::runtime::Job), whose drop cancels.
+#[cfg(target_os = "linux")]
+async fn read_wakeup_count() -> Option<String> {
+    if WAKEUP_COUNT_READ_IN_FLIGHT
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        return None;
+    }
+    let read = crate::runtime::spawn(async {
+        let value = tokio::fs::read_to_string("/sys/power/wakeup_count")
+            .await
+            .ok()
+            .map(|value| value.trim().to_owned());
+        WAKEUP_COUNT_READ_IN_FLIGHT.store(false, Ordering::Release);
+        value
+    });
+    tokio::time::timeout(POWER_NODE_READ_TIMEOUT, read)
         .await
         .ok()?
-        .ok()
-        .map(|value| value.trim().to_owned())
+        .ok()?
 }
 
 /// Interrupt delta fields comparing a deep-idle baseline with a fresh sample.
@@ -1102,11 +1131,7 @@ async fn perform_suspend_resume(
                 #[cfg(target_os = "linux")]
                 {
                     let kernel_wake_locks = read_power_node("/sys/power/wake_lock").await;
-                    let wakeup_count = read_power_node_with_timeout(
-                        "/sys/power/wakeup_count",
-                        POWER_NODE_READ_TIMEOUT,
-                    )
-                    .await;
+                    let wakeup_count = read_wakeup_count().await;
                     tracing::error!(
                         error = %error,
                         kernel_wake_locks = ?kernel_wake_locks,

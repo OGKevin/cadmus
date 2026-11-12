@@ -34,8 +34,9 @@ When soft suspend is armed, same triggers use
 2. PrepareSuspend teardown runs with zero delay; there is no Suspend RTC
 3. Force autosleep **`mem`**, `arm_deep_idle` (`state-extended=1`), drop lease
 4. Poll boottime−monotonic until wake or timeout; re-arm while soft suspend
-   can re-arm, otherwise `finish_cycle`. At most three deep-idle attempts
-   (two retries) per cycle
+   can re-arm, otherwise `finish_cycle`. DeepIdle stops after three
+   consecutive timed-out attempts; a detected wake resets the count, so the
+   WakeDebounce re-entry starts fresh
 5. Past the cap, fall back to `Classic` for the rest of the cycle: autosleep
    is disarmed (`Off`) so the blocking `state=mem` write is not refused by the
    armed-mode guard, and `finish_cycle` restores the mode; a refused `Classic`
