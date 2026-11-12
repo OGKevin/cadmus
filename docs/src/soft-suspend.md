@@ -89,3 +89,6 @@ autosleep-grace = 5.0
 
 You can use both together. Soft suspend naps between events; after the idle
 timeout, Auto Suspend still puts the device into a deeper sleep.
+
+If the kernel refuses that deep sleep, Cadmus falls back to the normal suspend
+cycle instead of repeatedly asking the kernel to autosleep.

@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-10-25T06:09:55+01:00\n"
+"POT-Creation-Date: 2026-11-11T11:48:17+01:00\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -171,98 +171,102 @@ msgid "Event System"
 msgstr ""
 
 #: src/SUMMARY.md:48
-msgid "WiFi Leases"
+msgid "Input Pipeline"
 msgstr ""
 
 #: src/SUMMARY.md:49
-msgid "Device"
+msgid "WiFi Leases"
 msgstr ""
 
 #: src/SUMMARY.md:50
-msgid "Time and RTC"
+msgid "Device"
 msgstr ""
 
 #: src/SUMMARY.md:51
-msgid "Suspend"
+msgid "Time and RTC"
 msgstr ""
 
 #: src/SUMMARY.md:52
-msgid "Suspend orchestrator"
+msgid "Suspend"
 msgstr ""
 
 #: src/SUMMARY.md:53
-msgid "Soft suspend"
+msgid "Suspend orchestrator"
 msgstr ""
 
 #: src/SUMMARY.md:54
-msgid "Inhibitor"
+msgid "Soft suspend"
 msgstr ""
 
 #: src/SUMMARY.md:55
+msgid "Inhibitor"
+msgstr ""
+
+#: src/SUMMARY.md:56
 msgid "Kobo suspend"
 msgstr ""
 
-#: src/SUMMARY.md:56 src/settings/index.md:1170
+#: src/SUMMARY.md:57 src/settings/index.md:1170
 msgid "Telemetry"
 msgstr ""
 
-#: src/SUMMARY.md:57
+#: src/SUMMARY.md:58
 msgid "Logging"
 msgstr ""
 
-#: src/SUMMARY.md:58
+#: src/SUMMARY.md:59
 msgid "Tracing"
 msgstr ""
 
-#: src/SUMMARY.md:59
+#: src/SUMMARY.md:60
 msgid "Profiling"
 msgstr ""
 
-#: src/SUMMARY.md:60
+#: src/SUMMARY.md:61
 msgid "Website"
 msgstr ""
 
-#: src/SUMMARY.md:61
+#: src/SUMMARY.md:62
 msgid "User guide"
 msgstr ""
 
-#: src/SUMMARY.md:62
+#: src/SUMMARY.md:63
 msgid "Translations"
 msgstr ""
 
-#: src/SUMMARY.md:63
+#: src/SUMMARY.md:64
 msgid "For developers"
 msgstr ""
 
-#: src/SUMMARY.md:64
+#: src/SUMMARY.md:65
 msgid "SQLite & SQLx"
 msgstr ""
 
-#: src/SUMMARY.md:65
+#: src/SUMMARY.md:66
 msgid "Library Database"
 msgstr ""
 
-#: src/SUMMARY.md:66
+#: src/SUMMARY.md:67
 msgid "Runtime Migrations"
 msgstr ""
 
-#: src/SUMMARY.md:70
+#: src/SUMMARY.md:71
 msgid "Investigations"
 msgstr ""
 
-#: src/SUMMARY.md:72
+#: src/SUMMARY.md:73
 msgid "Intro"
 msgstr ""
 
-#: src/SUMMARY.md:73
+#: src/SUMMARY.md:74
 msgid "DHCP IP Address Changes on WiFi Toggle"
 msgstr ""
 
-#: src/SUMMARY.md:74
+#: src/SUMMARY.md:75
 msgid "Reading IP and ESSID via dhcpcd-dbus"
 msgstr ""
 
-#: src/SUMMARY.md:75
+#: src/SUMMARY.md:76
 msgid "Soft suspend via autosleep and wake_lock"
 msgstr ""
 
@@ -4108,6 +4112,12 @@ msgstr ""
 msgid ""
 "You can use both together. Soft suspend naps between events; after the idle "
 "timeout, Auto Suspend still puts the device into a deeper sleep."
+msgstr ""
+
+#: src/soft-suspend.md:93
+msgid ""
+"If the kernel refuses that deep sleep, Cadmus falls back to the normal "
+"suspend cycle instead of repeatedly asking the kernel to autosleep."
 msgstr ""
 
 #: src/database-backup.md:3

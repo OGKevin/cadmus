@@ -42,9 +42,26 @@ use crate::view::intermission::Intermission;
 use crate::view::{Event, Hub, RenderData, RenderQueue, View, wait_for_all};
 #[cfg(target_os = "linux")]
 use std::sync::Arc;
+#[cfg(target_os = "linux")]
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 const DEEP_IDLE_POLL_INTERVAL: Duration = Duration::from_millis(100);
+
+/// Upper bound for `/sys/power/wakeup_count` reads in refusal diagnostics.
+///
+/// The kernel can block that node while a wakeup event is in progress; a
+/// stalled diagnostic read must not extend a failing suspend cycle.
+const POWER_NODE_READ_TIMEOUT: Duration = Duration::from_millis(100);
+
+/// Consecutive deep-idle wait timeouts before falling back to Classic suspend.
+///
+/// `/sys/power/autosleep` has no error channel, so a kernel refusal only shows
+/// up as the 30 s wait timeout. Retrying forever keeps the device awake; after
+/// this many refusals the cycle disarms autosleep and hands over to the
+/// Classic path, whose errno reaches the log and whose WakeDebounce re-sleep
+/// owns any further retries.
+const DEEP_IDLE_TIMEOUT_RETRY_CAP: u32 = 3;
 
 /// Origin of a deferred suspend so Full-release flush can pick the right path.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -615,7 +632,7 @@ async fn enter_sleep(
         return outcome;
     }
 
-    let (before, after) = perform_suspend_resume(hub, context, runtime);
+    let (before, after) = perform_suspend_resume(hub, context, runtime).await;
     if let Some(cycle) = context.suspend.as_mut() {
         cycle.phase = SuspendPhase::PostWakeDebounce;
     }
@@ -737,7 +754,7 @@ async fn read_interrupt_snapshot(context: &mut AppContext) -> Option<Arc<Interru
 async fn log_wake_source(context: &mut AppContext, state: &DeepIdleWaitState) {
     #[cfg(target_os = "linux")]
     {
-        use crate::device::linux::wake_telemetry::{self, InterruptDeltas, InterruptSnapshot};
+        use crate::device::linux::wake_telemetry;
 
         let interrupts = read_interrupts(context).await;
         let pre_sleep_alarms = state.pre_sleep_alarms();
@@ -748,14 +765,8 @@ async fn log_wake_source(context: &mut AppContext, state: &DeepIdleWaitState) {
                 .as_deref()
                 .and_then(|raw| wake_telemetry::parse_irq_name(raw, irq))
         });
-        let comparison = state.interrupt_baseline().map(|baseline| {
-            let after = interrupts.as_deref().and_then(InterruptSnapshot::parse);
-            baseline.compare(after.as_ref())
-        });
-        let (irq_delta_status, irq_deltas_json, irq_delta_reasons_json) = match comparison {
-            Some(comparison) => comparison.json(),
-            None => InterruptDeltas::unavailable().json(),
-        };
+        let (irq_delta_status, irq_deltas_json, irq_delta_reasons_json) =
+            interrupt_delta_json(state.interrupt_baseline(), interrupts.as_deref());
         tracing::info!(
             pre_hardware_alarm = %pre_sleep_alarms.hardware,
             pre_cadmus_alarm_type = ?pre_sleep_alarms.cadmus.map(|(alarm_type, _)| alarm_type),
@@ -864,6 +875,7 @@ async fn poll_deep_idle_wait(
         PollResult::Woke => {
             if let Some(cycle) = context.suspend.as_mut() {
                 cycle.phase = SuspendPhase::PostWakeDebounce;
+                cycle.consecutive_deep_idle_timeouts = 0;
             }
             let after = Local::now();
             tracing::info!(
@@ -887,8 +899,24 @@ async fn poll_deep_idle_wait(
         PollResult::TimedOut => {
             let after = Local::now();
             tracing::warn!("deep idle wait timed out without detecting suspend");
-            log_soft_suspend_holders(context, "deep idle wait timeout");
-            tracing::warn!("deep idle timed out; retrying deep idle");
+            let Some(cycle) = context.suspend.as_mut() else {
+                return EventOutcome::Handled;
+            };
+            cycle.consecutive_deep_idle_timeouts =
+                cycle.consecutive_deep_idle_timeouts.saturating_add(1);
+            let timeouts = cycle.consecutive_deep_idle_timeouts;
+            if timeouts == 1 {
+                log_deep_idle_refusal(context, &state).await;
+            }
+            let fallback = timeouts >= DEEP_IDLE_TIMEOUT_RETRY_CAP;
+            if fallback {
+                tracing::warn!(
+                    timeouts,
+                    "deep idle retry cap reached; falling back to classic suspend"
+                );
+            } else {
+                tracing::warn!(timeouts, "deep idle timed out; retrying deep idle");
+            }
             tracing::info!(
                 "{}",
                 after.format("Left deep idle on %B %-d, %Y at %H:%M:%S.")
@@ -902,6 +930,9 @@ async fn poll_deep_idle_wait(
                 finish_cycle(context, runtime.tasks, runtime.view.as_mut(), hub, rq);
                 return EventOutcome::Handled;
             }
+            if fallback {
+                return fallback_to_classic(hub, bus, rq, context, runtime).await;
+            }
             if let Some(cycle) = context.suspend.as_mut() {
                 cycle.phase = SuspendPhase::ArmingSleep;
             }
@@ -913,6 +944,142 @@ async fn poll_deep_idle_wait(
             start_deep_idle_wait(hub, context, runtime.tasks).await;
             EventOutcome::Handled
         }
+    }
+}
+
+/// Falls back to the Classic suspend path after capped deep-idle timeouts.
+///
+/// The kernel's autosleep refusal has no errno, so the blocking Classic path is
+/// the only way to surface the reason. Autosleep is disarmed for the rest of
+/// the cycle because `/sys/power/state` rejects `mem` while it is armed, which
+/// would turn every attempt into the same guard error; the armed mode is
+/// stashed on the cycle and [`finish_cycle`] restores it. Re-entering through
+/// [`enter_sleep`] keeps the cycle on the classic Suspend RTC / WakeDebounce
+/// retry path instead of polling autosleep every 30 s.
+async fn fallback_to_classic(
+    hub: &Hub,
+    bus: &mut crate::view::Bus,
+    rq: &mut RenderQueue,
+    context: &mut AppContext,
+    runtime: &mut DeviceRuntime<'_>,
+) -> EventOutcome {
+    let restored_mode = context.inhibitor.mode();
+    if let Some(cycle) = context.suspend.as_mut() {
+        cycle.kind = SuspendKind::Classic;
+        cycle.phase = SuspendPhase::ArmingSleep;
+        cycle.deep_idle_restore = Some(restored_mode);
+    }
+    context.inhibitor.set_mode(AutosleepMode::Off);
+    enter_sleep(hub, bus, rq, context, runtime).await
+}
+
+/// Emits one blocker snapshot per failing deep-idle cycle.
+///
+/// Autosleep refusals carry no errno, so this names the app-side lease holders
+/// and the kernel-side wake state at the first wait timeout. Node reads are
+/// best-effort: a missing or unreadable node only yields `None` fields.
+async fn log_deep_idle_refusal(context: &mut AppContext, state: &DeepIdleWaitState) {
+    let holders = context.inhibitor.holders();
+    let holder_names: Vec<&str> = holders.iter().map(|h| h.as_str()).collect();
+    #[cfg(target_os = "linux")]
+    {
+        let kernel_wake_locks = read_power_node("/sys/power/wake_lock").await;
+        let wakeup_count = read_wakeup_count().await;
+        let interrupts = read_interrupts(context).await;
+        let (irq_delta_status, irq_deltas_json, irq_delta_reasons_json) =
+            interrupt_delta_json(state.interrupt_baseline(), interrupts.as_deref());
+        tracing::warn!(
+            holders = holders.len(),
+            holder_names = ?holder_names,
+            grace_secs = context.inhibitor.autosleep_grace().as_secs_f32(),
+            kernel_wake_locks = ?kernel_wake_locks,
+            wakeup_count = ?wakeup_count,
+            plugged = context.plugged,
+            shared = context.shared,
+            irq_delta_status,
+            irq_deltas_json,
+            irq_delta_reasons_json,
+            "deep idle wait timed out; suspend blockers"
+        );
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = state;
+        tracing::warn!(
+            holders = holders.len(),
+            holder_names = ?holder_names,
+            grace_secs = context.inhibitor.autosleep_grace().as_secs_f32(),
+            plugged = context.plugged,
+            shared = context.shared,
+            "deep idle wait timed out; suspend blockers"
+        );
+    }
+}
+
+/// Reads a `/sys/power` node trimmed; read failures are optional context.
+#[cfg(target_os = "linux")]
+async fn read_power_node(path: &str) -> Option<String> {
+    tokio::fs::read_to_string(path)
+        .await
+        .ok()
+        .map(|value| value.trim().to_owned())
+}
+
+/// One `/sys/power/wakeup_count` read in flight at a time.
+///
+/// Dropping a timed-out `tokio::fs` future does not stop the blocking-pool
+/// read it started, and the kernel can block that node for the duration of a
+/// wakeup event. While one read is outstanding, callers get `None` instead of
+/// piling up another blocked read.
+#[cfg(target_os = "linux")]
+static WAKEUP_COUNT_READ_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
+
+/// Reads `/sys/power/wakeup_count` under a timeout, at most one read in
+/// flight; a blocked, timed-out, or failed read yields `None`.
+///
+/// The read runs detached on the process runtime because the caller's timeout
+/// only drops the await, not the blocking-pool read it started: the task has to
+/// outlive the timeout to clear the in-flight gate when the kernel returns. It
+/// is a one-shot with no owner to cancel, so it uses [`crate::runtime::spawn`]
+/// rather than a [`Job`](crate::runtime::Job), whose drop cancels.
+#[cfg(target_os = "linux")]
+async fn read_wakeup_count() -> Option<String> {
+    if WAKEUP_COUNT_READ_IN_FLIGHT
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        return None;
+    }
+    let read = crate::runtime::spawn(async {
+        let value = tokio::fs::read_to_string("/sys/power/wakeup_count")
+            .await
+            .ok()
+            .map(|value| value.trim().to_owned());
+        WAKEUP_COUNT_READ_IN_FLIGHT.store(false, Ordering::Release);
+        value
+    });
+    tokio::time::timeout(POWER_NODE_READ_TIMEOUT, read)
+        .await
+        .ok()?
+        .ok()?
+}
+
+/// Interrupt delta fields comparing a deep-idle baseline with a fresh sample.
+///
+/// Missing or unparsable samples collapse to the `unavailable` status the wake
+/// telemetry already reports.
+#[cfg(target_os = "linux")]
+fn interrupt_delta_json(
+    baseline: Option<Arc<InterruptSnapshot>>,
+    interrupts: Option<&str>,
+) -> (&'static str, String, String) {
+    let comparison = baseline.map(|baseline| {
+        let after = interrupts.and_then(InterruptSnapshot::parse);
+        baseline.compare(after.as_ref())
+    });
+    match comparison {
+        Some(comparison) => comparison.json(),
+        None => crate::device::linux::wake_telemetry::InterruptDeltas::unavailable().json(),
     }
 }
 
@@ -935,7 +1102,12 @@ fn log_soft_suspend_holders(context: &AppContext, at: &str) {
 }
 
 /// Classic blocking `power.suspend` / `resume` and WakeDebounce arming.
-fn perform_suspend_resume(
+///
+/// A refusal is logged with the same kernel-side wake state the deep-idle
+/// refusal snapshot records, so the errno is not the only clue. WakeDebounce is
+/// armed either way: a refused attempt retries through the classic re-sleep
+/// path.
+async fn perform_suspend_resume(
     hub: &Hub,
     context: &mut AppContext,
     runtime: &mut DeviceRuntime<'_>,
@@ -956,6 +1128,20 @@ fn perform_suspend_resume(
     match context.device.power_manager() {
         Ok(power) => {
             if let Err(error) = power.suspend() {
+                #[cfg(target_os = "linux")]
+                {
+                    let kernel_wake_locks = read_power_node("/sys/power/wake_lock").await;
+                    let wakeup_count = read_wakeup_count().await;
+                    tracing::error!(
+                        error = %error,
+                        kernel_wake_locks = ?kernel_wake_locks,
+                        wakeup_count = ?wakeup_count,
+                        plugged = context.plugged,
+                        shared = context.shared,
+                        "Failed to suspend device"
+                    );
+                }
+                #[cfg(not(target_os = "linux"))]
                 tracing::error!(error = %error, "Failed to suspend device");
                 log_soft_suspend_holders(context, "classic suspend failed");
             }

@@ -339,6 +339,71 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn spawn_wifi_idle_poller_skips_negative_timeout() {
+        let harness = DeviceRuntimeHarness::new().await;
+        assert!(
+            spawn_wifi_idle_poller(&harness.hub_tx, -1.0, &harness.context.wifi_session).is_none(),
+            "a negative timeout must not start a poller"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn spawn_wifi_idle_poller_starts_for_zero_and_positive_timeout() {
+        let harness = DeviceRuntimeHarness::new().await;
+        for timeout in [0.0, 5.0] {
+            assert!(
+                spawn_wifi_idle_poller(&harness.hub_tx, timeout, &harness.context.wifi_session)
+                    .is_some(),
+                "timeout {timeout} must start the poller"
+            );
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn zero_idle_timeout_poller_disables_on_last_lease_release() {
+        let mut harness = DeviceRuntimeHarness::new().await;
+        harness.context.settings.wifi = WifiMode::Auto;
+        harness.context.settings.wifi_idle_timeout = 0.0;
+        harness.context.wifi_session.set_mode(WifiMode::Auto);
+        harness.context.online = true;
+        harness.context.wifi_session.notify_online();
+        let _job = spawn_wifi_idle_poller(&harness.hub_tx, 0.0, &harness.context.wifi_session)
+            .expect("a zero timeout must start the poller");
+
+        let lease = harness.context.wifi_session.acquire("test").await.unwrap();
+        drop(lease);
+
+        let mut polled = false;
+        for _ in 0..100 {
+            if harness
+                .drain_hub()
+                .iter()
+                .any(|event| matches!(event, Event::MightDisableWifi))
+            {
+                polled = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(
+            polled,
+            "the poller must emit MightDisableWifi on the last-lease idle wake"
+        );
+
+        let outcome = handle_event(
+            &Event::MightDisableWifi,
+            &harness.hub_tx,
+            &mut harness.context,
+        );
+        assert_eq!(outcome, EventOutcome::Handled);
+        wait_for_wifi_thread();
+        assert!(
+            !harness.context.online,
+            "zero idle timeout must disable WiFi as soon as the last lease is released"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn might_disable_wifi_after_idle() {
         let mut harness = DeviceRuntimeHarness::new().await;
         harness.context.settings.wifi = WifiMode::Auto;

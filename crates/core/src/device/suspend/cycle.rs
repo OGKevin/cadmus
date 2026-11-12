@@ -125,6 +125,9 @@ pub(crate) struct SuspendCycle {
     pub(in crate::device::suspend) cycle_lease: Option<InhibitorGuard>,
     /// Autosleep mode to restore after a DeepIdle Mem force.
     pub(in crate::device::suspend) deep_idle_restore: Option<AutosleepMode>,
+    /// Consecutive deep-idle wait timeouts in this cycle; caps autosleep
+    /// retries before the Classic fallback.
+    pub(in crate::device::suspend) consecutive_deep_idle_timeouts: u32,
 }
 
 impl SuspendCycle {
@@ -135,6 +138,7 @@ impl SuspendCycle {
             phase: SuspendPhase::Preparing,
             cycle_lease: None,
             deep_idle_restore: None,
+            consecutive_deep_idle_timeouts: 0,
         }
     }
 
