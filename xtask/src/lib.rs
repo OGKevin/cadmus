@@ -31,6 +31,7 @@
 //! | [`bundle`](tasks::bundle) | Package a `KoboRoot.tgz` ready for device installation |
 //! | [`setup`](tasks::setup) | Build thirdparty deps (SQLite) needed before `cargo build` |
 //! | [`sqlx_prepare`](tasks::sqlx_prepare) | Rebuild `.sqlx/` from a temporary database |
+//! | [`list-devices`](tasks::list_devices) | List Cadmus devices on the LAN via mDNS |
 //! | [`ci`](tasks::ci) | CI-specific setup tasks (e.g. `install-doc-tools`) |
 //! | [`completions`](tasks::completions) | Emit shell completion scripts |
 //!
@@ -50,8 +51,8 @@ pub use clap::Parser;
 pub use tasks::{
     bench::BenchArgs, build_kobo::BuildKoboArgs, bundle::BundleArgs, ci::CiArgs,
     clippy::ClippyArgs, completions::CompletionsArgs, dist::DistArgs, docs::DocsArgs, fmt::FmtArgs,
-    install_importer::InstallImporterArgs, run_emulator::RunEmulatorArgs, setup::SetupArgs,
-    test::TestArgs,
+    install_importer::InstallImporterArgs, list_devices::ListDevicesArgs,
+    run_emulator::RunEmulatorArgs, setup::SetupArgs, test::TestArgs,
 };
 
 /// Cadmus build automation.
@@ -90,6 +91,8 @@ pub enum Command {
     Fmt(FmtArgs),
     /// Install the Cadmus importer crate.
     InstallImporter(InstallImporterArgs),
+    /// List Cadmus devices advertised on the LAN via mDNS.
+    ListDevices(ListDevicesArgs),
     /// Run the Cadmus emulator.
     RunEmulator(RunEmulatorArgs),
     /// Build thirdparty deps (SQLite) that must exist before `cargo build`.
@@ -120,6 +123,7 @@ pub fn run() -> Result<()> {
         Command::DownloadFonts => tasks::download_fonts::run(),
         Command::Fmt(args) => tasks::fmt::run(args),
         Command::InstallImporter(args) => tasks::install_importer::run(args),
+        Command::ListDevices(args) => tasks::list_devices::run(args),
         Command::RunEmulator(args) => tasks::run_emulator::run(args),
         Command::Setup(args) => tasks::setup::run(args),
         Command::SqlxPrepare => tasks::sqlx_prepare::run(),
