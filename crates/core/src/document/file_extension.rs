@@ -75,6 +75,18 @@ impl FileExtension {
         ]
     }
 
+    /// True for the still image formats the intermission screen can draw.
+    pub fn is_still_image(self) -> bool {
+        matches!(
+            self,
+            FileExtension::Png
+                | FileExtension::Jpeg
+                | FileExtension::Jpg
+                | FileExtension::Svg
+                | FileExtension::Webp
+        )
+    }
+
     /// Returns the lowercase canonical string used for storage and TOML keys.
     pub fn as_str(self) -> &'static str {
         match self {

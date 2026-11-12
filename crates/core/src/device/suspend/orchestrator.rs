@@ -540,6 +540,7 @@ async fn prepare_for_sleep(
     if let Some(settings_manager) = runtime.settings_manager {
         settings_manager
             .save(&context.settings)
+            .await
             .map_err(|error| tracing::error!(error = %error, "Can't save settings"))
             .ok();
     }
@@ -1398,6 +1399,9 @@ pub(in crate::device::suspend) fn finish_cycle(
         rq.add(RenderData::expose(rect, UpdateMode::Full));
     } else {
         tracing::warn!("resume called but no intermission view found to remove");
+    }
+    if context.api.is_on() {
+        hub.send(Event::ApiResume.into()).ok();
     }
     hub.send((Event::ClockTick).into()).ok();
     hub.send((Event::BatteryTick).into()).ok();

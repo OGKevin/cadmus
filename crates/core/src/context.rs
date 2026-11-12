@@ -1,3 +1,4 @@
+use crate::api::ApiSession;
 use crate::db::Database;
 use crate::device::Device;
 use crate::device::DeviceHardware;
@@ -79,6 +80,8 @@ pub struct Context<D: Device> {
     #[cfg(any(feature = "kobo", docsrs))]
     pub(crate) deferred_suspend: Option<DeferredSuspend>,
     pub wifi_session: std::sync::Arc<crate::device::wifi::WifiSession>,
+    /// In-memory public API listener for this boot. A reboot leaves it off.
+    pub(crate) api: crate::api::ApiSession,
     /// Process-wide mDNS responder.
     pub mdns: MdnsSession,
     /// Top-level inhibitor: SoftSuspend settings, Full and Sleep holders, wake locks, LED.
@@ -182,6 +185,7 @@ impl<D: Device> Context<D> {
             #[cfg(any(feature = "kobo", docsrs))]
             deferred_suspend: None,
             wifi_session,
+            api: ApiSession::new(),
             mdns: MdnsSession::new(),
             inhibitor,
             #[cfg(all(test, feature = "kobo"))]

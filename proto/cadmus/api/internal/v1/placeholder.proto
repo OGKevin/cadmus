@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package cadmus.api.internal.v1;
+
+// Placeholder for internal-only RPCs. Delete once a real one exists.
+service Placeholder {
+  // No-op.
+  rpc Ping(PingRequest) returns (PingResponse);
+}
+
+// Empty.
+message PingRequest {}
+
+// Empty.
+message PingResponse {}

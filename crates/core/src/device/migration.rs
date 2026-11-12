@@ -43,7 +43,7 @@ crate::migration!(
         if ctx.device.install_dir != ctx.device.data_dir {
             let manager =
                 SettingsManager::new(ctx.device.data_dir.clone(), get_current_version());
-            *ctx.settings = manager.load();
+            *ctx.settings = manager.load().await;
         }
 
         Ok(())

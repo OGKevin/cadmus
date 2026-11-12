@@ -387,6 +387,16 @@ impl Intermissions {
     }
 }
 
+fn deserialize_ntp_server<'de, D>(deserializer: D) -> Result<NetworkAddress, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = String::deserialize(deserializer)?;
+    Ok(value
+        .parse()
+        .unwrap_or_else(|_| NetworkAddress::ntp_cloudflare()))
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case")]
 pub struct Settings {
@@ -408,7 +418,10 @@ pub struct Settings {
     /// NTP server used for automatic and manual time sync.
     ///
     /// Port 123 is fixed; only the hostname or IP is stored.
-    #[serde(default = "NetworkAddress::ntp_cloudflare")]
+    #[serde(
+        default = "NetworkAddress::ntp_cloudflare",
+        deserialize_with = "deserialize_ntp_server"
+    )]
     pub ntp_server: NetworkAddress,
     /// Whether frontlight levels should be managed automatically.
     ///
@@ -1376,6 +1389,19 @@ unknown-format = { regular = 1, inverted = 1 }
         let settings: Settings = toml::from_str("wifi = true\n").expect("settings");
         assert_eq!(settings.wifi, WifiMode::AlwaysOn);
         assert_eq!(settings.wifi_idle_timeout, 5.0);
+    }
+
+    #[test]
+    fn invalid_ntp_server_falls_back_to_cloudflare() {
+        let settings: Settings = toml::from_str("ntp-server = \"!!!\"\n").expect("settings");
+        assert_eq!(settings.ntp_server.as_str(), "time.cloudflare.com");
+    }
+
+    #[test]
+    fn valid_ntp_server_still_loads() {
+        let settings: Settings =
+            toml::from_str("ntp-server = \"pool.ntp.org\"\n").expect("settings");
+        assert_eq!(settings.ntp_server.as_str(), "pool.ntp.org");
     }
 
     #[test]
