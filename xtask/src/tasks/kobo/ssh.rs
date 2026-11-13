@@ -4,9 +4,11 @@
 //! Settings come from three layers: CLI flags override the matching
 //! `~/.ssh/config` entry, which overrides built-in defaults. Identity files
 //! try `--identity` first, then the host-specific `IdentityFile` list, then
-//! the default key names. Authentication tries the agent, key files, the
-//! `none` method, and finally a password from `KOBO_PASSWORD`, so a device
-//! that accepts any of these works without a prompt.
+//! the default key names. Authentication tries those key files, the `none`
+//! method, a password from `KOBO_PASSWORD`, and only then ssh-agent
+//! identities, so a large agent cannot burn the server's auth attempts before
+//! a working method is reached. `--identities-only` drops unrelated agent keys
+//! entirely.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -43,6 +45,8 @@ pub(crate) struct Settings {
     pub known_hosts: PathBuf,
     /// Learn unknown host keys instead of rejecting them.
     pub accept_new: bool,
+    /// Never offer unrelated ssh-agent identities.
+    pub identities_only: bool,
 }
 
 impl Settings {
@@ -136,6 +140,7 @@ pub(crate) async fn resolve(opts: &SshOptions) -> Result<Settings> {
         identities,
         known_hosts,
         accept_new,
+        identities_only: opts.identities_only,
     })
 }
 
@@ -161,6 +166,10 @@ async fn parse_ssh_config(path: &Path, host: &str) -> Result<Option<russh_config
 ///   russh-config's parser rejects them with `HostNotFound`. Prefixing
 ///   `Host *` makes them the wildcard entry; earlier entries win in
 ///   russh-config, which matches OpenSSH's first-obtained-value rule.
+/// - OpenSSH accepts whitespace or optional whitespace and one `=` between a
+///   keyword and its argument; russh-config only splits on a space. Every
+///   directive is rewritten to `Keyword value`, which also keeps
+///   `ProxyJump=bastion` visible to the refusal check instead of dropped.
 /// - `StrictHostKeyChecking accept-new` collapses to `yes` in russh-config.
 ///   Rewriting it to `no` keeps trust-on-first-use, and a changed key is
 ///   still rejected.
@@ -171,8 +180,8 @@ fn normalize_ssh_config(text: &str) -> Result<String> {
     normalized.push_str("Host *\n");
 
     for line in text.lines() {
-        let Some((keyword, value)) = directive(line) else {
-            normalized.push_str(line);
+        let Some((keyword, value)) = directive(line)? else {
+            normalized.push_str(line.trim_end());
             normalized.push('\n');
             continue;
         };
@@ -184,29 +193,52 @@ fn normalize_ssh_config(text: &str) -> Result<String> {
             );
         }
 
+        let indent = &line[..line.len() - line.trim_start().len()];
+        normalized.push_str(indent);
         if keyword.eq_ignore_ascii_case("stricthostkeychecking")
-            && value.trim().eq_ignore_ascii_case("accept-new")
+            && value.eq_ignore_ascii_case("accept-new")
         {
-            let indent = &line[..line.len() - line.trim_start().len()];
-            normalized.push_str(indent);
             normalized.push_str("StrictHostKeyChecking no\n");
-            continue;
+        } else {
+            normalized.push_str(keyword);
+            normalized.push(' ');
+            normalized.push_str(value);
+            normalized.push('\n');
         }
-
-        normalized.push_str(line);
-        normalized.push('\n');
     }
 
     Ok(normalized)
 }
 
 /// Splits an ssh_config line into its keyword and value.
-fn directive(line: &str) -> Option<(&str, &str)> {
-    let trimmed = line.trim_start();
-    if trimmed.starts_with('#') {
-        return None;
+///
+/// OpenSSH accepts whitespace or optional whitespace and one `=` between the
+/// two. Directives without an argument are rejected instead of dropped, so a
+/// malformed `ProxyJump` cannot slip through.
+fn directive(line: &str) -> Result<Option<(&str, &str)>> {
+    let trimmed = line.trim();
+    if trimmed.is_empty() || trimmed.starts_with('#') {
+        return Ok(None);
     }
-    trimmed.split_once(char::is_whitespace)
+
+    let keyword_end = trimmed
+        .find(|character: char| character.is_whitespace() || character == '=')
+        .unwrap_or(trimmed.len());
+    let keyword = &trimmed[..keyword_end];
+    if keyword.is_empty() {
+        bail!("malformed ssh_config directive: {trimmed:?}");
+    }
+
+    let rest = trimmed[keyword_end..].trim_start();
+    let rest = rest
+        .strip_prefix('=')
+        .map_or(rest, |after| after.trim_start());
+    let value = rest.trim_end();
+    if value.is_empty() {
+        bail!("ssh_config directive {keyword:?} has no argument");
+    }
+
+    Ok(Some((keyword, value)))
 }
 
 fn home_dir() -> Result<PathBuf> {
@@ -228,21 +260,70 @@ pub(crate) enum HostKeyDecision {
     RejectChanged,
 }
 
-/// Decides what to do with a `check_known_hosts_path` result.
-///
-/// Unreadable or unparseable known_hosts files surface as errors rather than
-/// an "unknown host" rejection, because `--accept-new` cannot fix those.
-pub(crate) fn decide_host_key(
-    known: std::result::Result<bool, russh::keys::Error>,
-    accept_new: bool,
-) -> std::result::Result<HostKeyDecision, russh::keys::Error> {
-    match known {
-        Ok(true) => Ok(HostKeyDecision::Accept),
-        Ok(false) if accept_new => Ok(HostKeyDecision::Learn),
-        Ok(false) => Ok(HostKeyDecision::RejectUnknown),
-        Err(russh::keys::Error::KeyChanged { .. }) => Ok(HostKeyDecision::RejectChanged),
-        Err(error) => Err(error),
+/// What the known_hosts file says about the server key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum KnownHostStatus {
+    /// The recorded key matches.
+    Matched,
+    /// No key of any algorithm is recorded for the host and port.
+    Unknown,
+    /// A different key of the same algorithm is recorded.
+    KeyChanged,
+    /// The host is recorded only under a different algorithm.
+    AlgorithmMismatch,
+}
+
+/// Decides what to do with a [`KnownHostStatus`].
+pub(crate) fn decide_host_key(status: KnownHostStatus, accept_new: bool) -> HostKeyDecision {
+    match status {
+        KnownHostStatus::Matched => HostKeyDecision::Accept,
+        KnownHostStatus::Unknown if accept_new => HostKeyDecision::Learn,
+        KnownHostStatus::Unknown => HostKeyDecision::RejectUnknown,
+        KnownHostStatus::KeyChanged | KnownHostStatus::AlgorithmMismatch => {
+            HostKeyDecision::RejectChanged
+        }
     }
+}
+
+/// Reads the known_hosts entries for `host:port`.
+///
+/// Only a missing file counts as an empty key list; any other read or parse
+/// error is propagated so an unreadable known_hosts fails closed. A host that
+/// is recorded under a different algorithm is reported as a mismatch instead
+/// of being treated as unknown, so `--accept-new` cannot overwrite it.
+fn known_host_status(
+    host: &str,
+    port: u16,
+    key: &russh::keys::PublicKey,
+    path: &Path,
+) -> Result<KnownHostStatus> {
+    match std::fs::File::open(path) {
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(KnownHostStatus::Unknown);
+        }
+        Err(error) => {
+            return Err(error).with_context(|| format!("failed to read {}", path.display()));
+        }
+    }
+
+    let recorded = russh::keys::known_hosts::known_host_keys_path(host, port, path)
+        .with_context(|| format!("failed to parse {}", path.display()))?;
+
+    if recorded.is_empty() {
+        return Ok(KnownHostStatus::Unknown);
+    }
+    if recorded.iter().any(|(_, recorded)| recorded == key) {
+        return Ok(KnownHostStatus::Matched);
+    }
+    if recorded
+        .iter()
+        .any(|(_, recorded)| recorded.algorithm() == key.algorithm())
+    {
+        return Ok(KnownHostStatus::KeyChanged);
+    }
+
+    Ok(KnownHostStatus::AlgorithmMismatch)
 }
 
 /// Client handler that enforces the host-key policy during the handshake.
@@ -265,26 +346,19 @@ impl client::Handler for Handler {
         let known_hosts = self.known_hosts.clone();
         let port = self.port;
         let check_key = key.clone();
-        let known = tokio::task::spawn_blocking(move || {
-            russh::keys::known_hosts::check_known_hosts_path(&host, port, &check_key, &known_hosts)
+        let status = tokio::task::spawn_blocking(move || {
+            known_host_status(&host, port, &check_key, &known_hosts)
         })
         .await
-        .context("failed to check the known_hosts file")?;
+        .context("failed to check the known_hosts file")??;
 
-        let decision = decide_host_key(known, self.accept_new).with_context(|| {
-            format!(
-                "failed to check the host key against {}",
-                self.known_hosts.display()
-            )
-        })?;
-
-        match decision {
+        match decide_host_key(status, self.accept_new) {
             HostKeyDecision::Accept => Ok(true),
             HostKeyDecision::Learn => {
                 let host = self.host.clone();
                 let known_hosts = self.known_hosts.clone();
                 let port = self.port;
-                let recorded = tokio::task::spawn_blocking(move || {
+                tokio::task::spawn_blocking(move || {
                     russh::keys::known_hosts::learn_known_hosts_path(
                         &host,
                         port,
@@ -293,16 +367,14 @@ impl client::Handler for Handler {
                     )
                 })
                 .await
-                .context("failed to record the host key")
-                .and_then(|result| result.map_err(anyhow::Error::from));
-
-                match recorded {
-                    Ok(()) => println!("Learned the host key for {}:{}", self.host, self.port),
-                    Err(error) => eprintln!(
-                        "Warning: could not record the host key in {}: {error}",
+                .context("failed to record the host key")?
+                .with_context(|| {
+                    format!(
+                        "failed to record the host key in {}",
                         self.known_hosts.display()
-                    ),
-                }
+                    )
+                })?;
+                println!("Learned the host key for {}:{}", self.host, self.port);
                 Ok(true)
             }
             HostKeyDecision::RejectUnknown => bail!(
@@ -355,7 +427,13 @@ pub(crate) async fn connect(settings: &Settings) -> Result<Handle<Handler>> {
             )
         })??;
 
-    authenticate(&mut handle, &settings.user, &settings.identities).await?;
+    authenticate(
+        &mut handle,
+        &settings.user,
+        &settings.identities,
+        settings.identities_only,
+    )
+    .await?;
     Ok(handle)
 }
 
@@ -369,24 +447,20 @@ fn client_config() -> client::Config {
 }
 
 /// Authenticates with the first method the server accepts.
+///
+/// Configured key files run first, then `none` and the password fallback, and
+/// only then ssh-agent identities. That order keeps a large agent from using
+/// up the server's auth attempts before a working method is reached.
 async fn authenticate(
     handle: &mut Handle<Handler>,
     user: &str,
     identities: &[PathBuf],
+    identities_only: bool,
 ) -> Result<()> {
     let mut tried = Vec::new();
 
-    if std::env::var_os("SSH_AUTH_SOCK").is_some() {
-        tried.push("ssh-agent");
-        if let Ok(mut agent) = AgentClient::connect_env().await
-            && try_agent(handle, &mut agent, user).await?
-        {
-            return Ok(());
-        }
-    }
-
     tried.push("key files");
-    let (authenticated, encrypted) = try_key_files(handle, user, identities).await?;
+    let (authenticated, encrypted, configured) = try_key_files(handle, user, identities).await?;
     if authenticated {
         return Ok(());
     }
@@ -410,6 +484,15 @@ async fn authenticate(
         return Ok(());
     }
 
+    if std::env::var_os("SSH_AUTH_SOCK").is_some() {
+        tried.push("ssh-agent");
+        if let Ok(mut agent) = AgentClient::connect_env().await
+            && try_agent(handle, &mut agent, user, &configured, identities_only).await?
+        {
+            return Ok(());
+        }
+    }
+
     let message = auth_failure_message(user, &tried, &encrypted);
     bail!("{message}")
 }
@@ -431,14 +514,17 @@ fn auth_failure_message(user: &str, tried: &[&str], encrypted: &[String]) -> Str
     )
 }
 
-/// Tries every identity the agent holds.
+/// Tries the agent identities, configured ones before unrelated ones.
 ///
 /// Binding the agent to the session only matters for agent forwarding, so a
-/// rejected binding does not stop key signing.
+/// rejected binding does not stop key signing. With `identities_only`, agent
+/// keys that do not match a configured identity are skipped entirely.
 async fn try_agent<S>(
     handle: &mut Handle<Handler>,
     agent: &mut AgentClient<S>,
     user: &str,
+    configured: &[russh::keys::PublicKey],
+    identities_only: bool,
 ) -> Result<bool>
 where
     S: AgentStream + Send + Unpin,
@@ -451,7 +537,21 @@ where
         return Ok(false);
     };
 
-    for identity in identities {
+    let matches_configured =
+        |identity: &russh::keys::agent::AgentIdentity| configured.contains(&identity.public_key());
+    let mut ordered: Vec<_> = identities
+        .iter()
+        .filter(|identity| matches_configured(identity))
+        .collect();
+    if !identities_only {
+        ordered.extend(
+            identities
+                .iter()
+                .filter(|identity| !matches_configured(identity)),
+        );
+    }
+
+    for identity in ordered {
         let hash = handle.best_supported_rsa_hash().await?.flatten();
         let result = handle
             .authenticate_publickey_with(user, identity.public_key().into_owned(), hash, agent)
@@ -466,14 +566,16 @@ where
 
 /// Tries each configured key file in order.
 ///
-/// Returns whether one authenticated plus the paths skipped because they are
-/// passphrase-protected, so the caller can explain why they were not used.
+/// Returns whether one authenticated, the paths skipped because they are
+/// passphrase-protected, and the public keys of configured identities so the
+/// agent pass can try those before unrelated keys.
 async fn try_key_files(
     handle: &mut Handle<Handler>,
     user: &str,
     identities: &[PathBuf],
-) -> Result<(bool, Vec<String>)> {
+) -> Result<(bool, Vec<String>, Vec<russh::keys::PublicKey>)> {
     let mut encrypted = Vec::new();
+    let mut configured = Vec::new();
 
     for path in identities {
         let key_path = path.clone();
@@ -484,12 +586,21 @@ async fn try_key_files(
         let key = match loaded {
             Ok(key) => key,
             Err(russh::keys::Error::KeyIsEncrypted) => {
-                encrypted.push(path.display().to_string());
+                match configured_public_key(path).await? {
+                    Some(public) => configured.push(public),
+                    None => encrypted.push(path.display().to_string()),
+                }
                 continue;
             }
-            Err(_) => continue,
+            Err(_) => {
+                if let Some(public) = configured_public_key(path).await? {
+                    configured.push(public);
+                }
+                continue;
+            }
         };
 
+        configured.push(key.public_key().clone());
         let hash = handle.best_supported_rsa_hash().await?.flatten();
         let auth = handle
             .authenticate_publickey(
@@ -498,11 +609,30 @@ async fn try_key_files(
             )
             .await?;
         if auth.success() {
-            return Ok((true, encrypted));
+            return Ok((true, encrypted, configured));
         }
     }
 
-    Ok((false, encrypted))
+    Ok((false, encrypted, configured))
+}
+
+/// Loads the public key beside a configured identity file, off the async pool.
+async fn configured_public_key(path: &Path) -> Result<Option<russh::keys::PublicKey>> {
+    let path = path.to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        russh::keys::load_public_key(public_key_path(&path))
+            .or_else(|_| russh::keys::load_public_key(&path))
+            .ok()
+    })
+    .await
+    .context("failed to load a public key")
+}
+
+/// Path of the public key next to a private key file.
+fn public_key_path(path: &Path) -> PathBuf {
+    let mut public = path.as_os_str().to_owned();
+    public.push(".pub");
+    PathBuf::from(public)
 }
 
 /// Captured output of a remote command.
@@ -528,6 +658,10 @@ pub(crate) async fn exec(handle: &mut Handle<Handler>, command: &str) -> Result<
             russh::ChannelMsg::ExitStatus {
                 exit_status: status,
             } => exit_status = Some(status),
+            russh::ChannelMsg::Failure => {
+                let _ = channel.close().await;
+                bail!("the server rejected the command request: {command}");
+            }
             _ => {}
         }
     }
@@ -557,6 +691,7 @@ mod tests {
             port: None,
             user: None,
             identity: Vec::new(),
+            identities_only: false,
             known_hosts: None,
             accept_new: false,
             ssh_config: config.map(Path::to_path_buf),
@@ -676,28 +811,95 @@ mod tests {
         assert!(error.to_string().contains("ProxyJump"), "{error}");
     }
 
+    const ED_A: &str = "AAAAC3NzaC1lZDI1NTE5AAAAIHOo87rwqXnbc3va+uUgKkskUS+hCOWmK7WGKR6uQYKm";
+    const ED_B: &str = "AAAAC3NzaC1lZDI1NTE5AAAAIIPwtO6eMarR44pdCXV4LiVVt/olMnK4PN6g8O1nYbeN";
+    const EC_C: &str = "AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBAj2f/5JAzBQS4MDBGwBGCM/fhb0RJ+Wt84mfcsdCS9F5BtdPyQGqapj2kmKGhfm6rV3rmlHQqSwzihfNhUvkRM=";
+
+    fn public_key(base64: &str) -> russh::keys::PublicKey {
+        russh::keys::parse_public_key_base64(base64).unwrap()
+    }
+
+    fn known_hosts_file(dir: &Path, contents: &str) -> PathBuf {
+        let path = dir.join("known_hosts");
+        std::fs::write(&path, contents).unwrap();
+        path
+    }
+
     #[test]
     fn host_key_decisions() {
         assert_eq!(
-            decide_host_key(Ok(true), false).unwrap(),
+            decide_host_key(KnownHostStatus::Matched, false),
             HostKeyDecision::Accept
         );
         assert_eq!(
-            decide_host_key(Ok(false), true).unwrap(),
+            decide_host_key(KnownHostStatus::Unknown, true),
             HostKeyDecision::Learn
         );
         assert_eq!(
-            decide_host_key(Ok(false), false).unwrap(),
+            decide_host_key(KnownHostStatus::Unknown, false),
             HostKeyDecision::RejectUnknown
         );
         assert_eq!(
-            decide_host_key(Err(russh::keys::Error::KeyChanged { line: 1 }), true).unwrap(),
+            decide_host_key(KnownHostStatus::KeyChanged, true),
             HostKeyDecision::RejectChanged
         );
-        assert!(
-            decide_host_key(Err(russh::keys::Error::NoHomeDir), true).is_err(),
-            "unreadable known_hosts must not become an unknown-host rejection"
+        assert_eq!(
+            decide_host_key(KnownHostStatus::AlgorithmMismatch, true),
+            HostKeyDecision::RejectChanged
         );
+    }
+
+    #[test]
+    fn known_host_status_reports_match_change_and_algorithm_mismatch() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = known_hosts_file(dir.path(), &format!("kobo ssh-ed25519 {ED_A}\n"));
+
+        assert_eq!(
+            known_host_status("kobo", 22, &public_key(ED_A), &path).unwrap(),
+            KnownHostStatus::Matched
+        );
+        assert_eq!(
+            known_host_status("kobo", 22, &public_key(ED_B), &path).unwrap(),
+            KnownHostStatus::KeyChanged
+        );
+        assert_eq!(
+            known_host_status("kobo", 22, &public_key(EC_C), &path).unwrap(),
+            KnownHostStatus::AlgorithmMismatch
+        );
+    }
+
+    #[test]
+    fn known_host_status_treats_a_missing_file_as_unknown() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("missing");
+
+        assert_eq!(
+            known_host_status("kobo", 22, &public_key(ED_A), &path).unwrap(),
+            KnownHostStatus::Unknown
+        );
+    }
+
+    #[test]
+    fn known_host_status_fails_closed_when_the_file_cannot_be_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("known_hosts");
+        std::fs::create_dir(&path).unwrap();
+
+        assert!(known_host_status("kobo", 22, &public_key(ED_A), &path).is_err());
+    }
+
+    #[test]
+    fn directive_accepts_equals_and_tab_separators() {
+        assert_eq!(directive("Port=2222").unwrap(), Some(("Port", "2222")));
+        assert_eq!(
+            directive("\tUser\treader ").unwrap(),
+            Some(("User", "reader"))
+        );
+        assert_eq!(directive("Host = kobo").unwrap(), Some(("Host", "kobo")));
+        assert_eq!(directive("# comment").unwrap(), None);
+        assert_eq!(directive("").unwrap(), None);
+        assert!(directive("ProxyJump").is_err());
+        assert!(directive("= kobo").is_err());
     }
 
     #[test]
@@ -744,5 +946,46 @@ mod tests {
         let settings = resolve(&options(Some(file.path()), "kobo")).await.unwrap();
 
         assert_eq!(settings.host(), "kobo");
+    }
+
+    #[tokio::test]
+    async fn equals_and_tab_directives_are_honoured() {
+        let file = config_file(
+            "Host=kobo\n\tPort=2222\n\tUser\treader\n\tStrictHostKeyChecking=accept-new\n",
+        );
+
+        let settings = resolve(&options(Some(file.path()), "kobo")).await.unwrap();
+
+        assert_eq!(settings.port(), 2222);
+        assert_eq!(settings.user, "reader");
+        assert!(settings.accept_new);
+    }
+
+    #[tokio::test]
+    async fn proxy_jump_with_alternate_separators_is_refused() {
+        for config in [
+            "Host kobo\nProxyJump=bastion\n",
+            "Host kobo\nProxyJump\tbastion\n",
+            "Host kobo\nProxyJump = bastion\n",
+        ] {
+            let file = config_file(config);
+            let error = resolve(&options(Some(file.path()), "kobo"))
+                .await
+                .unwrap_err();
+
+            assert!(
+                error.to_string().contains("ProxyJump"),
+                "{config:?}: {error}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn identities_only_flag_is_kept() {
+        let file = config_file("");
+        let mut opts = options(Some(file.path()), "kobo");
+        opts.identities_only = true;
+
+        assert!(resolve(&opts).await.unwrap().identities_only);
     }
 }

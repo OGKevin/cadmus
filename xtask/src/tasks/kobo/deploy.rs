@@ -35,6 +35,7 @@ pub(crate) async fn run(args: DeployArgs) -> Result<()> {
     upload::run(
         &mut handle,
         settings.host(),
+        settings.port(),
         &root.join("dist"),
         &upload::manifest_path(&root),
     )

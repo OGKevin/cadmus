@@ -109,8 +109,8 @@ pub(crate) fn manifest_path(root: &Path) -> PathBuf {
     root.join("target/kobo-deploy-manifest.json")
 }
 
-fn manifest_key(host: &str, remote: &str) -> String {
-    format!("{host}:{remote}")
+fn manifest_key(host: &str, port: u16, remote: &str) -> String {
+    format!("[{host}]:{port}:{remote}")
 }
 
 /// Whether the local file differs from what was uploaded to `remote`.
@@ -173,6 +173,7 @@ fn save_manifest(path: &Path, manifest: &Manifest) -> Result<()> {
 pub(crate) async fn run(
     handle: &mut Handle<Handler>,
     host: &str,
+    port: u16,
     dist: &Path,
     manifest_path: &Path,
 ) -> Result<()> {
@@ -226,7 +227,7 @@ pub(crate) async fn run(
                     .await
                     .ok()
                     .and_then(|metadata| metadata.size);
-                let key = manifest_key(host, remote);
+                let key = manifest_key(host, port, remote);
 
                 if !should_upload(
                     manifest.entries.get(&key),
@@ -303,30 +304,105 @@ async fn upload_file(sftp: &SftpSession, local: &Path, remote: &str) -> Result<u
     Ok(bytes)
 }
 
-/// Renames `staging` over `remote`, removing the target first when the server
-/// refuses to rename onto an existing path.
-async fn replace_file(sftp: &SftpSession, staging: &str, remote: &str) -> Result<()> {
-    if sftp.rename(staging, remote).await.is_ok() {
-        return Ok(());
+/// A failed rename, flagged when the server refused because the target exists.
+#[derive(Debug)]
+struct RenameError {
+    destination_exists: bool,
+    source: anyhow::Error,
+}
+
+/// Remote file operations used while replacing a file, split out so the
+/// rollback paths can be unit-tested without a server.
+trait ReplaceOps {
+    async fn rename(&self, from: &str, to: &str) -> std::result::Result<(), RenameError>;
+    async fn exists(&self, path: &str) -> Result<bool>;
+    async fn remove(&self, path: &str) -> Result<()>;
+}
+
+impl ReplaceOps for SftpSession {
+    async fn rename(&self, from: &str, to: &str) -> std::result::Result<(), RenameError> {
+        SftpSession::rename(self, from, to)
+            .await
+            .map_err(|error| RenameError {
+                destination_exists: matches!(
+                    &error,
+                    russh_sftp::client::error::Error::Status(status)
+                        if status.status_code == russh_sftp::protocol::StatusCode::Failure
+                ),
+                source: anyhow::Error::from(error),
+            })
     }
 
-    match sftp.remove_file(remote).await {
-        Ok(()) => {}
-        Err(russh_sftp::client::error::Error::Status(status))
-            if status.status_code == russh_sftp::protocol::StatusCode::NoSuchFile => {}
-        Err(error) => {
-            bail!("failed to replace {remote}: removing the old file failed with {error}");
-        }
+    async fn exists(&self, path: &str) -> Result<bool> {
+        self.try_exists(path)
+            .await
+            .with_context(|| format!("failed to stat {path}"))
     }
 
-    sftp.rename(staging, remote)
+    async fn remove(&self, path: &str) -> Result<()> {
+        self.remove_file(path)
+            .await
+            .with_context(|| format!("failed to remove {path}"))
+    }
+}
+
+/// Replaces `remote` with `staging`, keeping the installed file until the new
+/// one is in place.
+///
+/// A rename refused because the target exists (OpenSSH reports `Failure` for
+/// that case) falls back to moving the target aside, promoting the staged
+/// file, and restoring the old file when the promotion fails.
+async fn replace_file<O: ReplaceOps>(ops: &O, staging: &str, remote: &str) -> Result<()> {
+    let conflict = match ops.rename(staging, remote).await {
+        Ok(()) => return Ok(()),
+        Err(error) => error,
+    };
+
+    if !conflict.destination_exists || !ops.exists(remote).await? {
+        let _ = ops.remove(staging).await;
+        return Err(conflict.source).with_context(|| format!("failed to replace {remote}"));
+    }
+
+    let backup = backup_path(remote);
+    if ops.exists(&backup).await? {
+        ops.remove(&backup).await?;
+    }
+    ops.rename(remote, &backup)
         .await
-        .with_context(|| format!("failed to replace {remote}"))
+        .map_err(|error| error.source)
+        .with_context(|| format!("failed to move {remote} aside"))?;
+
+    match ops.rename(staging, remote).await {
+        Ok(()) => {
+            let _ = ops.remove(&backup).await;
+            Ok(())
+        }
+        Err(promote) => match ops.rename(&backup, remote).await {
+            Ok(()) => {
+                let _ = ops.remove(staging).await;
+                bail!(
+                    "failed to install {remote} ({}); the old file was restored",
+                    promote.source
+                );
+            }
+            Err(restore) => bail!(
+                "failed to install {remote}: {}; restoring the old file also failed: {}; \
+                 the previous file remains at {backup}",
+                promote.source,
+                restore.source
+            ),
+        },
+    }
 }
 
 /// Staging name used beside the target so a rename can replace it.
 fn staging_path(remote: &str) -> String {
-    format!("{remote}.cadmus-tmp")
+    format!("{remote}.cadmus-tmp.{}", std::process::id())
+}
+
+/// Backup name used while replacing an existing file.
+fn backup_path(remote: &str) -> String {
+    format!("{remote}.cadmus-bak.{}", std::process::id())
 }
 
 #[cfg(test)]
@@ -337,8 +413,156 @@ mod tests {
     fn staging_paths_sit_beside_the_target() {
         assert_eq!(
             staging_path(&format!("{INSTALL_DIR}/cadmus")),
-            format!("{INSTALL_DIR}/cadmus.cadmus-tmp")
+            format!("{INSTALL_DIR}/cadmus.cadmus-tmp.{}", std::process::id())
         );
+        assert_eq!(
+            backup_path(&format!("{INSTALL_DIR}/cadmus")),
+            format!("{INSTALL_DIR}/cadmus.cadmus-bak.{}", std::process::id())
+        );
+    }
+
+    #[test]
+    fn manifest_keys_include_the_port() {
+        let remote = format!("{INSTALL_DIR}/cadmus");
+
+        assert_eq!(
+            manifest_key("127.0.0.1", 2222, &remote),
+            format!("[127.0.0.1]:2222:{remote}")
+        );
+        assert_ne!(
+            manifest_key("127.0.0.1", 2222, &remote),
+            manifest_key("127.0.0.1", 2223, &remote)
+        );
+    }
+
+    /// In-memory [`ReplaceOps`] used to exercise every rollback branch.
+    #[derive(Default)]
+    struct FakeOps {
+        files: std::sync::Mutex<std::collections::BTreeSet<String>>,
+        renames: std::sync::Mutex<Vec<(String, String)>>,
+        fail_promote: bool,
+        hard_error: bool,
+    }
+
+    impl FakeOps {
+        fn with_files(paths: &[&str]) -> Self {
+            let ops = Self::default();
+            for path in paths {
+                ops.files.lock().unwrap().insert((*path).to_string());
+            }
+            ops
+        }
+
+        fn contains(&self, path: &str) -> bool {
+            self.files.lock().unwrap().contains(path)
+        }
+
+        fn renames(&self) -> Vec<(String, String)> {
+            self.renames.lock().unwrap().clone()
+        }
+    }
+
+    impl ReplaceOps for FakeOps {
+        async fn rename(&self, from: &str, to: &str) -> std::result::Result<(), RenameError> {
+            self.renames
+                .lock()
+                .unwrap()
+                .push((from.to_string(), to.to_string()));
+            if self.hard_error {
+                return Err(RenameError {
+                    destination_exists: false,
+                    source: anyhow::anyhow!("connection lost"),
+                });
+            }
+            if self.contains(to) {
+                return Err(RenameError {
+                    destination_exists: true,
+                    source: anyhow::anyhow!("destination exists"),
+                });
+            }
+            if self.fail_promote && from.contains(".cadmus-tmp.") {
+                return Err(RenameError {
+                    destination_exists: false,
+                    source: anyhow::anyhow!("promotion failed"),
+                });
+            }
+            self.files.lock().unwrap().remove(from);
+            self.files.lock().unwrap().insert(to.to_string());
+            Ok(())
+        }
+
+        async fn exists(&self, path: &str) -> Result<bool> {
+            Ok(self.contains(path))
+        }
+
+        async fn remove(&self, path: &str) -> Result<()> {
+            self.files.lock().unwrap().remove(path);
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn replace_renames_directly_when_the_target_is_absent() {
+        let ops = FakeOps::with_files(&["/dev/cadmus.cadmus-tmp.1"]);
+
+        replace_file(&ops, "/dev/cadmus.cadmus-tmp.1", "/dev/cadmus")
+            .await
+            .unwrap();
+
+        assert!(ops.contains("/dev/cadmus"));
+        assert_eq!(
+            ops.renames(),
+            vec![(
+                "/dev/cadmus.cadmus-tmp.1".to_string(),
+                "/dev/cadmus".to_string()
+            )]
+        );
+    }
+
+    #[tokio::test]
+    async fn replace_swaps_in_the_new_file_and_drops_the_backup() {
+        let ops = FakeOps::with_files(&["/dev/cadmus", "/dev/cadmus.cadmus-tmp.1"]);
+
+        replace_file(&ops, "/dev/cadmus.cadmus-tmp.1", "/dev/cadmus")
+            .await
+            .unwrap();
+
+        assert!(ops.contains("/dev/cadmus"));
+        assert!(!ops.contains("/dev/cadmus.cadmus-tmp.1"));
+        assert!(!ops.contains("/dev/cadmus.cadmus-bak.1"));
+        assert_eq!(ops.renames().len(), 3);
+    }
+
+    #[tokio::test]
+    async fn replace_restores_the_old_file_when_promotion_fails() {
+        let mut ops = FakeOps::with_files(&["/dev/cadmus", "/dev/cadmus.cadmus-tmp.1"]);
+        ops.fail_promote = true;
+
+        let error = replace_file(&ops, "/dev/cadmus.cadmus-tmp.1", "/dev/cadmus")
+            .await
+            .unwrap_err();
+
+        assert!(
+            error.to_string().contains("old file was restored"),
+            "{error}"
+        );
+        assert!(ops.contains("/dev/cadmus"));
+        assert!(!ops.contains("/dev/cadmus.cadmus-bak.1"));
+    }
+
+    #[tokio::test]
+    async fn replace_keeps_the_target_on_an_unrelated_rename_error() {
+        let mut ops = FakeOps::with_files(&["/dev/cadmus", "/dev/cadmus.cadmus-tmp.1"]);
+        ops.hard_error = true;
+
+        let error = replace_file(&ops, "/dev/cadmus.cadmus-tmp.1", "/dev/cadmus")
+            .await
+            .unwrap_err();
+
+        let chain = format!("{error:#}");
+        assert!(chain.contains("connection lost"), "{chain}");
+        assert!(ops.contains("/dev/cadmus"));
+        assert_eq!(ops.renames().len(), 1);
     }
 
     #[test]
@@ -362,7 +586,7 @@ mod tests {
         let path = dir.path().join("manifest.json");
         let mut manifest = Manifest::default();
         manifest.entries.insert(
-            manifest_key("kobo", &format!("{INSTALL_DIR}/cadmus")),
+            manifest_key("kobo", 22, &format!("{INSTALL_DIR}/cadmus")),
             ManifestEntry {
                 size: 42,
                 hash: "abc".to_string(),

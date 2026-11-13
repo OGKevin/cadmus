@@ -63,6 +63,11 @@ pub struct SshOptions {
     #[arg(long, value_name = "PATH")]
     pub identity: Vec<PathBuf>,
 
+    /// Only use the configured identity files and matching ssh-agent keys;
+    /// never offer unrelated agent identities.
+    #[arg(long)]
+    pub identities_only: bool,
+
     /// known_hosts file (default: ssh_config UserKnownHostsFile, else
     /// `~/.ssh/known_hosts`).
     #[arg(long, value_name = "PATH")]
