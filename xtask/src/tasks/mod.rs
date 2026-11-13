@@ -17,6 +17,7 @@ pub mod download_assets;
 pub mod download_fonts;
 pub mod fmt;
 pub mod install_importer;
+pub mod list_devices;
 pub mod run_emulator;
 pub mod setup;
 pub mod sqlx_prepare;
