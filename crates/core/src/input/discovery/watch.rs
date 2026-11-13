@@ -45,6 +45,10 @@ impl DeviceWatch {
     /// support or the path cannot be watched; the caller should then fall back
     /// to polling the directory so hotplug support degrades to the previous
     /// behaviour instead of disappearing.
+    ///
+    /// Registering with [`AsyncFd`] is unsafe: `WatchFd` owns the inotify
+    /// descriptor, so it stays open and unchanged until the `AsyncFd` is
+    /// dropped.
     #[cfg_attr(feature = "tracing", tracing::instrument(fields(watch = path)))]
     pub(super) fn new(path: &str) -> io::Result<Self> {
         let inotify = Inotify::init(InitFlags::IN_NONBLOCK | InitFlags::IN_CLOEXEC)
@@ -60,7 +64,7 @@ impl DeviceWatch {
             )
             .map_err(io::Error::from)?;
         Ok(Self {
-            fd: AsyncFd::new(WatchFd(inotify))?,
+            fd: unsafe { AsyncFd::register(WatchFd(inotify))? },
         })
     }
 

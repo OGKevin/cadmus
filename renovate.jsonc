@@ -11,7 +11,9 @@
   ],
   "minimumReleaseAge": "7 days",
   "osvVulnerabilityAlerts": true,
-  "dependencyDashboardOSVVulnerabilitySummary": "unresolved",
+  "dependencyDashboard": {
+    "osvVulnerabilitySummary": "unresolved"
+  },
   "vulnerabilityAlerts": {
     "enabled": true,
     "addLabels": ["security"]
@@ -118,6 +120,13 @@
       "matchDepNames": ["node"],
       "groupName": "node",
       "groupSlug": "node"
+    },
+    {
+      "description": "Keep Rust toolchain pins in sync across devenv.nix and CI workflows",
+      "matchManagers": ["custom.regex"],
+      "matchDepNames": ["rust"],
+      "groupName": "rust toolchain",
+      "groupSlug": "rust-toolchain"
     },
     {
       "description": "Keep mupdf submodule and version pins in sync",
@@ -419,6 +428,23 @@
       "datasourceTemplate": "git-refs",
       "packageNameTemplate": "https://github.com/OGKevin/html5ever",
       "versioningTemplate": "git"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^devenv\\.nix$/"],
+      "matchStrings": ["rustVersion = \"(?<currentValue>\\d+\\.\\d+\\.\\d+)\""],
+      "datasourceTemplate": "rust-version",
+      "depNameTemplate": "rust"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^\\.github\\/workflows\\/[^/]+\\.yml$/",
+        "/^\\.github\\/actions\\/cargo-cache-warmup\\/action\\.yml$/"
+      ],
+      "matchStrings": ["toolchain: \"(?<currentValue>\\d+\\.\\d+\\.\\d+)\""],
+      "datasourceTemplate": "rust-version",
+      "depNameTemplate": "rust"
     }
   ]
 }

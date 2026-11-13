@@ -355,6 +355,12 @@ impl OpenInputDevices<'_> {
     /// udev permission race, so the caller arms a retry instead of waiting for
     /// the next directory event. Every failure is logged where it happens; the
     /// returned error only carries the retry signal.
+    ///
+    /// Registering an opened node for readiness is unsafe because
+    /// [`AsyncFd::register_with_interest`] requires the descriptor to stay open
+    /// and unchanged for its lifetime; the `File` owns that descriptor and
+    /// closes it only when the registration is dropped, which satisfies the
+    /// contract.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     async fn open(&mut self, tracked: &[String], hotplugged: bool) -> Result<(), DiscoverError> {
         let Scan { devices, mut error } = scan_input_devices(
@@ -387,7 +393,7 @@ impl OpenInputDevices<'_> {
                 touch_axes =
                     Some(trace_touch_device_geometry(&path, self.proto, self.display).await);
             }
-            let fd = match AsyncFd::with_interest(file, Interest::READABLE) {
+            let fd = match unsafe { AsyncFd::register_with_interest(file, Interest::READABLE) } {
                 Ok(fd) => fd,
                 Err(source) => {
                     tracing::warn!(
@@ -396,7 +402,10 @@ impl OpenInputDevices<'_> {
                         "failed to watch input device; skipping"
                     );
                     self.forget_scanned_identity(&features);
-                    error.get_or_insert(DiscoverError::Setup { path, source });
+                    error.get_or_insert(DiscoverError::Setup {
+                        path,
+                        source: source.into(),
+                    });
                     continue;
                 }
             };

@@ -9,6 +9,10 @@ let
   inherit (pkgs.stdenv) isLinux;
   inherit (pkgs.stdenv) isDarwin;
 
+  # Single source for the Rust toolchain pin; Renovate's custom.regex manager
+  # (renovate.jsonc) bumps it together with the CI `toolchain:` pins.
+  rustVersion = "1.100.0";
+
   openHtml =
     path:
     if isLinux then
@@ -96,7 +100,7 @@ let
           // pkgs.lib.optionalAttrs (mkAggregatedArgs ? pkgsHostHost) { inherit (pkgs) pkgsHostHost; }
         );
 
-        toolchain = rustBin.stable.latest;
+        toolchain = rustBin.stable.${rustVersion};
         nativeTarget = pkgs.stdenv.hostPlatform.rust.rustcTargetSpec;
         allTargets = pkgs.lib.unique ([ nativeTarget ] ++ [ "arm-unknown-linux-gnueabihf" ]);
         components = [
@@ -428,6 +432,7 @@ in
     rust = {
       enable = true;
       channel = "stable";
+      version = rustVersion;
       targets = [ "arm-unknown-linux-gnueabihf" ];
       components = [
         "cargo"
