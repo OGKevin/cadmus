@@ -71,6 +71,8 @@ jobs:
       - uses: ./.github/actions/clone-needed-cargo-submodules
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         id: rust-toolchain
+        with:
+          toolchain: "1.100.0"
 
       - name: Install cadmuscli
         uses: ./.github/actions/install-cadmuscli

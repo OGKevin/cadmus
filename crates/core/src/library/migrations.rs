@@ -121,9 +121,9 @@ crate::migration!(
                     ) AS "absolute_path?: String"
                 FROM books b
                 "#
-            )
-            .fetch_all(pool)
-            .await?;
+        )
+        .fetch_all(pool)
+        .await?;
 
         for book in &books {
             let Some(absolute_path) = book.absolute_path.as_ref() else {

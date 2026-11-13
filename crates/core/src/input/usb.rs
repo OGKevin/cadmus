@@ -12,7 +12,7 @@ use super::sys::read_fd;
 pub fn usb_events() -> UnboundedReceiver<DeviceEvent> {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
     crate::runtime::spawn(async move {
-        read_usb_events(&tx).await;
+        read_usb_events(USB_STATUS_FIFO_PATH, &tx).await;
     });
     rx
 }
@@ -23,23 +23,32 @@ const USB_STATUS_READ_BYTES: usize = 256;
 /// real nickel status string split across wakes (messages are short ASCII tokens).
 const USB_STATUS_PENDING_MAX: usize = USB_STATUS_READ_BYTES * 2;
 
-/// Opens the nickel hardware-status FIFO.
+/// The FIFO nickel writes hardware status events to.
+const USB_STATUS_FIFO_PATH: &str = "/tmp/nickel-hardware-status";
+
+/// Opens the nickel hardware-status FIFO at `path`.
 ///
 /// Uses `OpenOptions` + `custom_flags` rather than a raw `libc::open` +
 /// `OwnedFd::from_raw_fd`: the owned `File` closes the fd on drop, so there
 /// is no unsafe here and no leak if the `AsyncFd` setup in the caller fails.
 #[cfg_attr(feature = "tracing", tracing::instrument)]
-fn open_status_fifo() -> std::io::Result<std::fs::File> {
+fn open_status_fifo(path: &str) -> std::io::Result<std::fs::File> {
     std::fs::OpenOptions::new()
         .read(true)
         .write(true)
         .custom_flags(libc::O_NONBLOCK)
-        .open("/tmp/nickel-hardware-status")
+        .open(path)
 }
 
+/// Reads power-source events from the nickel status FIFO at `path`.
+///
+/// The opened `File` becomes an [`OwnedFd`] handed to
+/// [`AsyncFd::register_with_interest`]; the descriptor stays open and unchanged
+/// until the `AsyncFd` is dropped, satisfying the registration's safety
+/// contract.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(tx)))]
-async fn read_usb_events(tx: &UnboundedSender<DeviceEvent>) {
-    let file = match open_status_fifo() {
+async fn read_usb_events(path: &str, tx: &UnboundedSender<DeviceEvent>) {
+    let file = match open_status_fifo(path) {
         Ok(file) => file,
         Err(error) => {
             tracing::debug!(error = %error, "usb status fifo unavailable");
@@ -47,7 +56,7 @@ async fn read_usb_events(tx: &UnboundedSender<DeviceEvent>) {
         }
     };
     let owned = OwnedFd::from(file);
-    let async_fd = match AsyncFd::with_interest(owned, Interest::READABLE) {
+    let async_fd = match unsafe { AsyncFd::register_with_interest(owned, Interest::READABLE) } {
         Ok(async_fd) => async_fd,
         Err(err) => {
             tracing::warn!(error = %err, "usb status reader failed");
@@ -187,5 +196,43 @@ mod tests {
             DeviceEvent::Plug(PowerSource::Host)
         ));
         assert!(rx.try_recv().is_err());
+    }
+
+    /// Drives `read_usb_events` through the real nickel status fifo so the
+    /// nonblocking registration and the chunk reassembly path run end to end.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn read_usb_events_forwards_fifo_status_lines() {
+        use std::ffi::CString;
+        use std::io::Write;
+
+        let dir = tempfile::Builder::new()
+            .prefix("cadmus-usb-test-")
+            .tempdir()
+            .expect("temp dir");
+        let path = dir.path().join("hardware-status");
+        let path_str = path.to_str().expect("utf8 path").to_string();
+        let c_path = CString::new(path_str.as_str()).expect("path");
+        assert_eq!(unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) }, 0);
+
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let reader = tokio::spawn(async move { read_usb_events(&path_str, &tx).await });
+        let writer = tokio::task::spawn_blocking(move || {
+            let mut writer = std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .custom_flags(libc::O_NONBLOCK)
+                .open(path)
+                .expect("writer");
+            writer.write_all(b"usb plug add\n").expect("write status");
+            writer
+        });
+
+        assert!(matches!(
+            rx.recv().await.expect("plug event"),
+            DeviceEvent::Plug(PowerSource::Host)
+        ));
+        writer.await.expect("writer task").flush().expect("flush");
+        reader.abort();
     }
 }

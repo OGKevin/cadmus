@@ -35,14 +35,10 @@ crate::migration!(
     /// on subsequent boots without a card.
     "v1_migrate_data_to_sd_card",
     async fn migrate_data_to_sd_card(ctx: &mut crate::db::migrations::MigrationContext<'_>) {
-        migrate_data_to_sd(
-            ctx.device.install_dir.clone(),
-            ctx.device.data_dir.clone(),
-        )?;
+        migrate_data_to_sd(ctx.device.install_dir.clone(), ctx.device.data_dir.clone())?;
 
         if ctx.device.install_dir != ctx.device.data_dir {
-            let manager =
-                SettingsManager::new(ctx.device.data_dir.clone(), get_current_version());
+            let manager = SettingsManager::new(ctx.device.data_dir.clone(), get_current_version());
             *ctx.settings = manager.load();
         }
 

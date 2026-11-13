@@ -280,6 +280,15 @@ mod tests {
 
     use crate::input::codes::{EV_KEY, KEY_HOME, KEY_UP, VAL_PRESS};
 
+    /// Registers a fifo `File` for readable readiness.
+    ///
+    /// The `File` owns its descriptor, so it stays open and unchanged until
+    /// the `AsyncFd` is dropped, satisfying `register_with_interest`'s safety
+    /// contract.
+    fn watch_fifo(file: File) -> AsyncFd<File> {
+        unsafe { AsyncFd::register_with_interest(file, Interest::READABLE) }.expect("watch fifo")
+    }
+
     /// The reader must report one forwarded event and a clean EOF exit once
     /// the write end closes, not a silent `Ok(())`: a dead device must be
     /// visible in the log.
@@ -309,7 +318,7 @@ mod tests {
             .custom_flags(libc::O_NONBLOCK)
             .open(&path_str)
             .expect("open fifo");
-        let fd = AsyncFd::with_interest(file, Interest::READABLE).expect("watch fifo");
+        let fd = watch_fifo(file);
         let reader = crate::runtime::spawn(async move {
             read_input_events(
                 fd,
@@ -394,7 +403,7 @@ mod tests {
             .custom_flags(libc::O_NONBLOCK)
             .open(&path_str)
             .expect("open fifo");
-        let fd = AsyncFd::with_interest(file, Interest::READABLE).expect("watch fifo");
+        let fd = watch_fifo(file);
         let reader_path = path_str.clone();
         let reader = crate::runtime::spawn(async move {
             read_input_events(
@@ -448,7 +457,7 @@ mod tests {
             .custom_flags(libc::O_NONBLOCK)
             .open(&path_str)
             .expect("open fifo");
-        let fd = AsyncFd::with_interest(file, Interest::READABLE).expect("watch fifo");
+        let fd = watch_fifo(file);
         let reader_path = path_str.clone();
         let reader = crate::runtime::spawn(async move {
             read_input_events(
@@ -533,7 +542,7 @@ mod tests {
             .custom_flags(libc::O_NONBLOCK)
             .open(&path_str)
             .expect("open fifo");
-        let fd = AsyncFd::with_interest(file, Interest::READABLE).expect("watch fifo");
+        let fd = watch_fifo(file);
         let reader = crate::runtime::spawn(async move {
             read_input_events(
                 fd,
@@ -603,7 +612,7 @@ mod tests {
             .custom_flags(libc::O_NONBLOCK)
             .open(&path_str)
             .expect("open fifo");
-        let fd = AsyncFd::with_interest(file, Interest::READABLE).expect("watch fifo");
+        let fd = watch_fifo(file);
         let reader = crate::runtime::spawn(async move {
             read_input_events(
                 fd,

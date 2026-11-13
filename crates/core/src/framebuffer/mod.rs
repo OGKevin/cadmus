@@ -348,10 +348,10 @@ pub trait Framebuffer {
     }
 
     fn draw_triangle(&mut self, triangle: &[Point], color: Color) {
-        let mut x_min = ::std::i32::MAX;
-        let mut x_max = ::std::i32::MIN;
-        let mut y_min = ::std::i32::MAX;
-        let mut y_max = ::std::i32::MIN;
+        let mut x_min = i32::MAX;
+        let mut x_max = i32::MIN;
+        let mut y_min = i32::MAX;
+        let mut y_max = i32::MIN;
 
         for p in triangle.iter() {
             if p.x < x_min {
@@ -393,7 +393,7 @@ pub trait Framebuffer {
                 let inside = ac.cross(ap).is_sign_positive() != s_ab
                     && bc.cross(bp).is_sign_positive() == s_ab;
 
-                let mut dmin = ::std::f32::MAX;
+                let mut dmin = f32::MAX;
                 let mut nearest = None;
 
                 for &(u, v) in &[(a, b), (b, c), (a, c)] {
@@ -513,5 +513,21 @@ impl<T: Framebuffer + ?Sized> Framebuffer for Box<T> {
     }
     fn height(&self) -> u32 {
         (**self).height()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn draw_triangle_stays_within_triangle_bounds() {
+        let mut pixmap = Pixmap::new(16, 16, 1);
+        let triangle = [Point::new(2, 2), Point::new(10, 2), Point::new(2, 10)];
+
+        pixmap.draw_triangle(&triangle, BLACK);
+
+        assert_ne!(pixmap.get_pixel(4, 4), WHITE);
+        assert_eq!(pixmap.get_pixel(15, 15), WHITE);
     }
 }

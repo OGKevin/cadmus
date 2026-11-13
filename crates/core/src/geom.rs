@@ -280,7 +280,7 @@ pub fn nearest_segment_point(p: Vec2, a: Vec2, b: Vec2) -> (Vec2, f32) {
     let l2 = ab.dot(ab);
 
     // Will not happen in practice
-    if l2 < ::std::f32::EPSILON {
+    if l2 < f32::EPSILON {
         return (a, 0.0);
     }
 
@@ -1366,7 +1366,7 @@ impl Region {
 
 #[cfg(test)]
 mod tests {
-    use super::{LinearDir, divide};
+    use super::{LinearDir, Vec2, divide, nearest_segment_point};
 
     #[test]
     fn test_linear_dir_opposite() {
@@ -1440,5 +1440,16 @@ mod tests {
         assert_eq!(pt3.rdist2(&rect), 9);
         assert_eq!(pt4.rdist2(&rect), 5);
         assert_eq!(pt5.rdist2(&rect), 1);
+    }
+
+    #[test]
+    fn nearest_segment_point_degenerate_segment_returns_endpoint() {
+        let a = Vec2::new(4.0, 6.0);
+        let b = Vec2::new(4.0, 6.0);
+        let p = Vec2::new(5.0, 7.0);
+        let (n, t) = nearest_segment_point(p, a, b);
+        assert_eq!(n.x, a.x);
+        assert_eq!(n.y, a.y);
+        assert_eq!(t, 0.0);
     }
 }
