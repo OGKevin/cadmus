@@ -1,5 +1,46 @@
 # Changelog
 
+## [0.13.0](https://github.com/OGKevin/cadmus/compare/v0.12.0...v0.13.0) (2026-11-13)
+
+### ⚠ BREAKING CHANGES
+
+- **ui:** The main menu's Rotate, Gyroscope, and Button Scheme submenus are gone; they are merged into one Rotation submenu. Button Scheme moved inside the Rotation submenu as "Buttons". The Gyroscope options are renamed: "Portrait" is now "Auto Portrait", "Landscape" is "Auto Landscape", and "Ignore" is replaced by picking a fixed angle, which now locks rotation for gyroscope devices.
+
+### Features
+
+- **core:** add Sleep inhibit for test top menu ([#1125](https://github.com/OGKevin/cadmus/issues/1125)) ([3c18fd2](https://github.com/OGKevin/cadmus/commit/3c18fd25ccb945478842e1b8b9198112bafc7ddd))
+- **core:** show third-party versions on System Info ([#1129](https://github.com/OGKevin/cadmus/issues/1129)) ([7ce9bad](https://github.com/OGKevin/cadmus/commit/7ce9badd180cc38832ea9dd121ef05f741916af5))
+- **core:** Unix signals for quit and restart ([#1119](https://github.com/OGKevin/cadmus/issues/1119)) ([acf39b8](https://github.com/OGKevin/cadmus/commit/acf39b8c7969b1ab525567d3997df222cbf210fa))
+- **dictionary:** store the index in its own database ([#1111](https://github.com/OGKevin/cadmus/issues/1111)) ([3f6a950](https://github.com/OGKevin/cadmus/commit/3f6a9504522631aa8015a19655a7d7930f85215f))
+- **epub:** prefer the nav table of contents ([#1073](https://github.com/OGKevin/cadmus/issues/1073)) ([d052bd0](https://github.com/OGKevin/cadmus/commit/d052bd045a69a45cc0744b3fc260a61646992b17))
+- **HTML:** replace manual XmlParser with xml5ever ([#599](https://github.com/OGKevin/cadmus/issues/599)) ([3a66835](https://github.com/OGKevin/cadmus/commit/3a668353be70525e2cfab866db996823bf740611))
+- **importer:** import ComicInfo.xml metadata ([#1134](https://github.com/OGKevin/cadmus/issues/1134)) ([ee39593](https://github.com/OGKevin/cadmus/commit/ee39593769330a7e32f962e4ea2f3364e27a0aa4)), closes [#824](https://github.com/OGKevin/cadmus/issues/824)
+- **input:** Hotplug all input devices ([#1140](https://github.com/OGKevin/cadmus/issues/1140)) ([6c9a6f0](https://github.com/OGKevin/cadmus/commit/6c9a6f0c31d10460d9b5890a1f12d621755b79f9))
+- **kobo:** record deep-idle wake sources ([#1183](https://github.com/OGKevin/cadmus/issues/1183)) ([84a5457](https://github.com/OGKevin/cadmus/commit/84a5457c9b6df38cf3c312feaa6f13ffd0b60a82))
+- **runtime:** name Tokio threads cadmus-rt ([#1083](https://github.com/OGKevin/cadmus/issues/1083)) ([fbdecb4](https://github.com/OGKevin/cadmus/commit/fbdecb4efd475c205a5731e86a9fa23d70e1691b))
+- **settings:** expose import metadata-kinds in UI ([#1132](https://github.com/OGKevin/cadmus/issues/1132)) ([980192a](https://github.com/OGKevin/cadmus/commit/980192a4ef9029df5f6e3abdf4ea19a1a76938d5))
+- **sketch:** add eraser, undo, and redo ([#1177](https://github.com/OGKevin/cadmus/issues/1177)) ([dbb6187](https://github.com/OGKevin/cadmus/commit/dbb6187cdc7224a9bd4adf7e17f7878a9aec5698))
+
+### Bug Fixes
+
+- **deps:** update rust crate zip to v9 [security] ([#1101](https://github.com/OGKevin/cadmus/issues/1101)) ([339c230](https://github.com/OGKevin/cadmus/commit/339c230669b765be95e6b6b850320761ef37b64c))
+- **html:** keep punctuation attached after hyphenation ([#1145](https://github.com/OGKevin/cadmus/issues/1145)) ([2a586e7](https://github.com/OGKevin/cadmus/commit/2a586e7160be2ae64d2e7ff883052f1e81484e99))
+- **import:** re-extract metadata on forced import ([#1133](https://github.com/OGKevin/cadmus/issues/1133)) ([c1e11a4](https://github.com/OGKevin/cadmus/commit/c1e11a42bc66d24d1c2aa32b124d71501a72171d)), closes [#824](https://github.com/OGKevin/cadmus/issues/824)
+- **input:** remap touch dims after rotation ([#1108](https://github.com/OGKevin/cadmus/issues/1108)) ([9bed877](https://github.com/OGKevin/cadmus/commit/9bed877f63f61311ad423ff4c1306eadcfa88273))
+- **ota:** close the view when cancel lands during wifi acquire ([#1079](https://github.com/OGKevin/cadmus/issues/1079)) ([847fb24](https://github.com/OGKevin/cadmus/commit/847fb24a41b38e6c030a34b524a89c37b16826c3))
+- **sd card:** right storage path ([#1151](https://github.com/OGKevin/cadmus/issues/1151)) ([18cb4a7](https://github.com/OGKevin/cadmus/commit/18cb4a723dbfc66c160ef4919d28b21ea328e23e))
+- **storybook:** inject Next 16 parentRenderTree ([#1112](https://github.com/OGKevin/cadmus/issues/1112)) ([5e0bd62](https://github.com/OGKevin/cadmus/commit/5e0bd62d1661d9f1b09e333dcdd306a64f93e7b1))
+- **suspend:** cap deep-idle retries and fall back to classic ([#1203](https://github.com/OGKevin/cadmus/issues/1203)) ([43f184e](https://github.com/OGKevin/cadmus/commit/43f184e4bf047b3dc8c5e9f378562e46fa8a45c9))
+- **thirdparty:** pin html5ever submodule to cadmus branch ([#1143](https://github.com/OGKevin/cadmus/issues/1143)) ([d24fe49](https://github.com/OGKevin/cadmus/commit/d24fe49f8593b5e252af3f467db879c2741f973f))
+
+### Performance Improvements
+
+- **dictionary:** batch index inserts into multi-row statements ([#1205](https://github.com/OGKevin/cadmus/issues/1205)) ([26ec5f1](https://github.com/OGKevin/cadmus/commit/26ec5f1a06df75b413eb433a47c5c577a64c4cc8))
+
+### Code Refactoring
+
+- **ui:** unify orientation settings into one Rotation submenu ([#1185](https://github.com/OGKevin/cadmus/issues/1185)) ([df2692f](https://github.com/OGKevin/cadmus/commit/df2692f57c46e2942d3118a72912452853358a66))
+
 ## [0.12.0](https://github.com/OGKevin/cadmus/compare/v0.11.0...v0.12.0) (2026-10-05)
 
 ### ⚠ BREAKING CHANGES
