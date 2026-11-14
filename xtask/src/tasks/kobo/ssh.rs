@@ -288,9 +288,10 @@ pub(crate) fn decide_host_key(status: KnownHostStatus, accept_new: bool) -> Host
 /// Reads the known_hosts entries for `host:port`.
 ///
 /// Only a missing file counts as an empty key list; any other read or parse
-/// error is propagated so an unreadable known_hosts fails closed. A host that
-/// is recorded under a different algorithm is reported as a mismatch instead
-/// of being treated as unknown, so `--accept-new` cannot overwrite it.
+/// error is propagated so an unreadable known_hosts fails closed. A matching
+/// recorded key wins even when other keys are recorded for the same host, and
+/// a host recorded only under a different algorithm is reported as a mismatch
+/// instead of being treated as unknown, so `--accept-new` cannot overwrite it.
 fn known_host_status(
     host: &str,
     port: u16,
@@ -313,16 +314,16 @@ fn known_host_status(
     if recorded.is_empty() {
         return Ok(KnownHostStatus::Unknown);
     }
-    if recorded.iter().any(|(_, recorded)| {
-        recorded.algorithm() == key.algorithm() && recorded.key_data() != key.key_data()
-    }) {
-        return Ok(KnownHostStatus::KeyChanged);
-    }
     if recorded
         .iter()
         .any(|(_, recorded)| recorded.key_data() == key.key_data())
     {
         return Ok(KnownHostStatus::Matched);
+    }
+    if recorded.iter().any(|(_, recorded)| {
+        recorded.algorithm() == key.algorithm() && recorded.key_data() != key.key_data()
+    }) {
+        return Ok(KnownHostStatus::KeyChanged);
     }
 
     Ok(KnownHostStatus::AlgorithmMismatch)
@@ -881,6 +882,27 @@ mod tests {
             known_host_status("kobo", 22, &public_key(ED_B), &path).unwrap(),
             KnownHostStatus::KeyChanged
         );
+        assert_eq!(
+            known_host_status("kobo", 22, &public_key(EC_C), &path).unwrap(),
+            KnownHostStatus::AlgorithmMismatch
+        );
+    }
+
+    #[test]
+    fn known_host_status_accepts_either_of_two_recorded_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = known_hosts_file(
+            dir.path(),
+            &format!("kobo ssh-ed25519 {ED_A}\nkobo ssh-ed25519 {ED_B}\n"),
+        );
+
+        for recorded in [ED_A, ED_B] {
+            assert_eq!(
+                known_host_status("kobo", 22, &public_key(recorded), &path).unwrap(),
+                KnownHostStatus::Matched,
+                "{recorded}"
+            );
+        }
         assert_eq!(
             known_host_status("kobo", 22, &public_key(EC_C), &path).unwrap(),
             KnownHostStatus::AlgorithmMismatch
