@@ -149,6 +149,10 @@ test("deploy argv is minimal without optional flags", () => {
     "--ip",
     "192.168.1.128",
   ]);
+  assert.deepEqual(
+    deployArgs({ identitiesOnly: false, acceptNew: false, restart: false }),
+    ["kobo", "deploy"],
+  );
 });
 
 test("deploy argv forwards features, restart, and ssh options", () => {
@@ -160,6 +164,7 @@ test("deploy argv forwards features, restart, and ssh options", () => {
       port: 2222,
       user: "root",
       identity: "/keys/id_ed25519",
+      identitiesOnly: true,
       knownHosts: "/tmp/known_hosts",
       acceptNew: true,
       sshConfig: "/tmp/ssh_config",
@@ -178,6 +183,7 @@ test("deploy argv forwards features, restart, and ssh options", () => {
       "root",
       "--identity",
       "/keys/id_ed25519",
+      "--identities-only",
       "--known-hosts",
       "/tmp/known_hosts",
       "--accept-new",
@@ -216,6 +222,17 @@ test("restart argv forwards ssh options", () => {
     "192.168.1.128",
     "--accept-new",
   ]);
+  assert.deepEqual(restartArgs({ ip: "192.168.1.128", identitiesOnly: true }), [
+    "kobo",
+    "restart",
+    "--ip",
+    "192.168.1.128",
+    "--identities-only",
+  ]);
+  assert.deepEqual(
+    restartArgs({ ip: "192.168.1.128", identitiesOnly: false }),
+    ["kobo", "restart", "--ip", "192.168.1.128"],
+  );
 });
 
 test("schemas accept the documented fields and reject unknown ones", () => {
@@ -227,6 +244,7 @@ test("schemas accept the documented fields and reject unknown ones", () => {
       port: 2222,
       user: "root",
       identity: "/keys/id_ed25519",
+      identitiesOnly: true,
       knownHosts: "/tmp/known_hosts",
       acceptNew: true,
       sshConfig: "/tmp/ssh_config",
@@ -234,6 +252,9 @@ test("schemas accept the documented fields and reject unknown ones", () => {
   );
   assert.doesNotThrow(() =>
     restartInputSchema.parse({ ip: "kobo.local", acceptNew: true }),
+  );
+  assert.doesNotThrow(() =>
+    restartInputSchema.parse({ ip: "kobo.local", identitiesOnly: false }),
   );
   assert.throws(
     () => restartInputSchema.parse({ ip: "kobo.local", features: "tracing" }),

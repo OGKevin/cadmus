@@ -40,7 +40,7 @@ pub(crate) struct Settings {
     /// honour `ProxyCommand` and expand its `%h`/`%p`/`%u` tokens.
     config: russh_config::Config,
     pub user: String,
-    /// Key files tried in order when the agent does not succeed.
+    /// Key files tried in order before falling back to none, password, and ssh-agent.
     pub identities: Vec<PathBuf>,
     pub known_hosts: PathBuf,
     /// Learn unknown host keys instead of rejecting them.

@@ -15,12 +15,13 @@ logic in `xtask/src/tasks/kobo/`, not here.
   relaunches it.
 
 Both tools accept the SSH passthroughs `port`, `user`, `identity`,
-`knownHosts`, `acceptNew`, and `sshConfig`; the CLI resolves them on top of
-`~/.ssh/config`. `ip` is optional: when omitted, `cadmuscli` falls back to the
-`KOBO_IP` environment variable (set it in `devenv.local.nix`).
-`KOBO_PASSWORD` is inherited from the environment and is never passed as an
-argument. Both tools are already in the tool catalog, so there is nothing to
-load by hand.
+`identitiesOnly`, `knownHosts`, `acceptNew`, and `sshConfig`; the CLI resolves
+them on top of `~/.ssh/config`, and `IdentitiesOnly` in `ssh_config` is not
+read unless `identitiesOnly` is passed. `ip` is optional: when omitted,
+`cadmuscli` falls back to the `KOBO_IP` environment variable (set it in
+`devenv.local.nix`). `KOBO_PASSWORD` is inherited from the environment and is
+never passed as an argument. Both tools are already in the tool catalog, so
+there is nothing to load by hand.
 
 Parse `execute` input with Zod (`.strict()`). Do not rely on the JSON schema
 alone. Host names use `hostSchema` in `plugins/cadmus.kobo/common.ts`.

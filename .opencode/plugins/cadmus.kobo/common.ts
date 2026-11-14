@@ -12,6 +12,7 @@ const sshOptionsShape = {
   port: z.number().int().min(1).max(65535).optional(),
   user: z.string().min(1).optional(),
   identity: z.string().min(1).optional(),
+  identitiesOnly: z.boolean().optional(),
   knownHosts: z.string().min(1).optional(),
   acceptNew: z.boolean().optional(),
   sshConfig: z.string().min(1).optional(),
@@ -40,6 +41,7 @@ type SshInput = {
   port?: number;
   user?: string;
   identity?: string;
+  identitiesOnly?: boolean;
   knownHosts?: string;
   acceptNew?: boolean;
   sshConfig?: string;
@@ -67,6 +69,7 @@ export function sshFlags(input: SshInput): string[] {
   if (input.port !== undefined) flags.push("--port", String(input.port));
   if (input.user !== undefined) flags.push("--user", input.user);
   if (input.identity !== undefined) flags.push("--identity", input.identity);
+  if (input.identitiesOnly === true) flags.push("--identities-only");
   if (input.knownHosts !== undefined) {
     flags.push("--known-hosts", input.knownHosts);
   }

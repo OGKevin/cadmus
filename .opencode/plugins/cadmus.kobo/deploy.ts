@@ -57,7 +57,12 @@ export function createDeployTool(root: string) {
         identity: {
           type: "string",
           description:
-            "Private key file (default: ssh_config IdentityFile, then the usual ~/.ssh keys)",
+            "Private key file, tried before ssh_config IdentityFile and the usual ~/.ssh keys",
+        },
+        identitiesOnly: {
+          type: "boolean",
+          description:
+            "Only use configured identity files and matching ssh-agent keys; never offer unrelated agent identities (IdentitiesOnly in ssh_config is not read)",
         },
         knownHosts: {
           type: "string",
