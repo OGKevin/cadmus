@@ -2,12 +2,12 @@
 
 The plugin in `plugins/cadmus.kobo/` registers the `cadmus.kobo` tools for
 working with a Kobo over SSH. It is a thin argv wrapper: both tools shell out
-to `cadmuscli kobo` and return its output. Keep SSH, SFTP, build, and restart
+to `cadmuscli kobo` and return its output. Keep SSH, rsync, build, and restart
 logic in `xtask/src/tasks/kobo/`, not here.
 
 - `cadmus.kobo.deploy` runs `cadmuscli kobo deploy [--ip <host>]`, which builds
   the pinned `test,kobo` feature set (plus optional extras such as `tracing`),
-  assembles `dist/`, and uploads it over SFTP to
+  assembles `dist/`, and syncs it with rsync to
   `/mnt/onboard/.adds/cadmus-tst`. Set `restart: true` to append `--restart`
   and relaunch Cadmus in the same call.
 - `cadmus.kobo.restart` runs `cadmuscli kobo restart [--ip <host>]`, which sends

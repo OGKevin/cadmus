@@ -1,15 +1,15 @@
 //! `cadmuscli kobo` — deploy and restart Cadmus on a Kobo over SSH.
 //!
-//! `deploy` cross-compiles the test feature set, assembles `dist/`, and
-//! uploads it over SFTP. `restart` sends `SIGUSR1` to the Cadmus process whose
-//! working directory is [`INSTALL_DIR`]. Both share the SSH transport in
-//! [`ssh`], which resolves `~/.ssh/config`, host keys, and authentication in
-//! process so the plugin never shells out to `ssh` or `rsync`.
+//! `deploy` cross-compiles the test feature set, assembles `dist/`, and syncs
+//! it with rsync's delta protocol. `restart` sends `SIGUSR1` to the Cadmus
+//! process whose working directory is [`INSTALL_DIR`]. Both use the native
+//! `russh` connection built by [`ssh`], which resolves `~/.ssh/config`, host
+//! keys, and authentication in process.
 
 mod deploy;
 mod restart;
+mod rsync;
 mod ssh;
-mod upload;
 
 use std::path::PathBuf;
 
@@ -31,7 +31,7 @@ pub struct KoboArgs {
 
 #[derive(Debug, Subcommand)]
 pub enum KoboCommand {
-    /// Build the test feature set, assemble `dist/`, and upload it over SFTP
+    /// Build the test feature set, assemble `dist/`, and sync it with rsync
     /// to `/mnt/onboard/.adds/cadmus-tst` (the only supported deployment).
     Deploy(DeployArgs),
     /// Restart the Cadmus process running from the test install.

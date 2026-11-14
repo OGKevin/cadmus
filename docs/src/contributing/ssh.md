@@ -43,11 +43,14 @@ Quit and Restart is in [Event System](event-system.md).
 
 ## Deploying and restarting from the host
 
-`cadmuscli` talks SSH directly, so neither `ssh` nor `rsync` has to be
-installed on the host:
+`cadmuscli` runs the rsync delta algorithm in process and carries it over its
+native `russh` connection. The host needs neither `ssh` nor `rsync`; the Kobo
+needs a compatible `rsync`.
+Only changed blocks of a file are sent, and files the distribution
+does not contain are left alone:
 
 ```sh
-# Cross-compile the test feature set, assemble dist/, and upload it.
+# Cross-compile the test feature set, assemble dist/, and sync it.
 cadmuscli kobo deploy --ip 192.168.1.128
 
 # Upload and restart in one step.

@@ -1,5 +1,5 @@
 //! `cadmuscli kobo deploy` — build the test feature set, assemble `dist/`,
-//! and upload it to the device.
+//! and sync it to the device.
 //!
 //! With `--restart` the same authenticated connection then restarts Cadmus,
 //! so a deploy and the relaunch it needs stay one command.
@@ -12,9 +12,9 @@ use crate::tasks::dist::{self, DistArgs};
 use crate::tasks::util::workspace;
 
 use super::ssh;
-use super::{DeployArgs, INSTALL_DIR, deploy_features, restart, upload};
+use super::{DeployArgs, INSTALL_DIR, deploy_features, restart, rsync};
 
-/// Builds, assembles, uploads, and optionally restarts.
+/// Builds, assembles, syncs, and optionally restarts.
 pub(crate) async fn run(args: DeployArgs) -> Result<()> {
     let settings = ssh::resolve(&args.ssh).await?;
     let features = deploy_features(args.features.as_deref())?;
@@ -30,16 +30,9 @@ pub(crate) async fn run(args: DeployArgs) -> Result<()> {
 
     blocking(|| dist::run(DistArgs { test: false })).await?;
 
-    println!("Uploading dist/ to {} ({INSTALL_DIR})…", settings.host());
+    println!("Syncing dist/ to {} ({INSTALL_DIR})…", settings.host());
     let mut handle = ssh::connect(&settings).await?;
-    upload::run(
-        &mut handle,
-        settings.host(),
-        settings.port(),
-        &root.join("dist"),
-        &upload::manifest_path(&root),
-    )
-    .await?;
+    rsync::run(&mut handle, &root.join("dist")).await?;
 
     if args.restart {
         restart::restart(&mut handle, settings.host()).await
