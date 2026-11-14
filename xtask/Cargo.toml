@@ -15,26 +15,35 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1"
 build-deps = { path = "../crates/build-deps" }
-clap = { version = "4", features = ["derive"] }
+bytesize = { workspace = true }
+clap = { version = "4", features = ["derive", "env"] }
 clap_complete = "4"
 flate2 = "1"
 io_tee = { workspace = true }
+oc-rsync-core = { workspace = true }
 reqwest = { version = "0.13", default-features = false, features = [
     "blocking",
     "json",
     "rustls",
 ] }
+russh = { workspace = true }
+russh-config = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.11"
 tar = "0.4"
+tempfile = "3"
+tokio = { workspace = true, features = [
+    "fs",
+    "io-util",
+    "macros",
+    "rt-multi-thread",
+    "sync",
+] }
 toml = { version = "1.1.6", default-features = false, features = ["parse", "serde"] }
 zip = { version = "9", default-features = false, features = ["deflate"] }
 walkdir = "2"
 wildmatch = "2"
-
-[dev-dependencies]
-tempfile = "3"
 
 [lints]
 workspace = true
