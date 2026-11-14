@@ -64,7 +64,8 @@ pub struct SshOptions {
     pub identity: Vec<PathBuf>,
 
     /// Only use the configured identity files and matching ssh-agent keys;
-    /// never offer unrelated agent identities.
+    /// never offer unrelated agent identities (`IdentitiesOnly` in ssh_config
+    /// is not read).
     #[arg(long)]
     pub identities_only: bool,
 

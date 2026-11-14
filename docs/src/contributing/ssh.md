@@ -61,9 +61,11 @@ cadmuscli kobo restart --ip 192.168.1.128
 `KOBO_IP` is used; inside devenv, set it once in `devenv.local.nix` (see
 [Development Environment Setup](devenv-setup.md#local-configuration)). Both
 commands also take `--port`, `--user`, `--identity` (repeatable),
-`--identities-only`, `--known-hosts`, `--accept-new`, and `--ssh-config`. Each flag overrides the
-matching `ssh_config(5)` entry; the defaults are port 22, user `root`,
-`~/.ssh/known_hosts`, and `~/.ssh/config`. `deploy --features tracing` adds
+`--known-hosts`, `--accept-new`, and `--ssh-config`; when supplied, each
+overrides the matching `ssh_config(5)` entry, with defaults of port 22, user
+`root`, `~/.ssh/known_hosts`, and `~/.ssh/config`. Pass `--identities-only`
+explicitly to skip unrelated agent keys (`IdentitiesOnly` in `ssh_config` is
+not read). `deploy --features tracing` adds
 Cargo features on top of the pinned `test,kobo` pair. The first connect needs
 `--accept-new` (or one manual `ssh`) to record the host key, and
 `KOBO_PASSWORD` enables password login.

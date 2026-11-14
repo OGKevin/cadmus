@@ -313,14 +313,16 @@ fn known_host_status(
     if recorded.is_empty() {
         return Ok(KnownHostStatus::Unknown);
     }
-    if recorded.iter().any(|(_, recorded)| recorded == key) {
-        return Ok(KnownHostStatus::Matched);
+    if recorded.iter().any(|(_, recorded)| {
+        recorded.algorithm() == key.algorithm() && recorded.key_data() != key.key_data()
+    }) {
+        return Ok(KnownHostStatus::KeyChanged);
     }
     if recorded
         .iter()
-        .any(|(_, recorded)| recorded.algorithm() == key.algorithm())
+        .any(|(_, recorded)| recorded.key_data() == key.key_data())
     {
-        return Ok(KnownHostStatus::KeyChanged);
+        return Ok(KnownHostStatus::Matched);
     }
 
     Ok(KnownHostStatus::AlgorithmMismatch)
@@ -537,8 +539,36 @@ where
         return Ok(false);
     };
 
-    let matches_configured =
-        |identity: &russh::keys::agent::AgentIdentity| configured.contains(&identity.public_key());
+    for identity in select_agent_identities(&identities, configured, identities_only) {
+        let hash = handle.best_supported_rsa_hash().await?.flatten();
+        let result = handle
+            .authenticate_publickey_with(user, identity.public_key().into_owned(), hash, agent)
+            .await;
+        if matches!(result, Ok(auth) if auth.success()) {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
+
+/// Orders agent identities so keys matching `configured` come first, and drops
+/// unrelated agent keys when `identities_only` is set.
+///
+/// Compares key material via `key_data()` rather than `PublicKey` equality so
+/// a `.pub` comment never prevents matching an agent identity decoded without
+/// one.
+fn select_agent_identities<'a>(
+    identities: &'a [russh::keys::agent::AgentIdentity],
+    configured: &[russh::keys::PublicKey],
+    identities_only: bool,
+) -> Vec<&'a russh::keys::agent::AgentIdentity> {
+    let matches_configured = |identity: &russh::keys::agent::AgentIdentity| {
+        let key = identity.public_key();
+        configured
+            .iter()
+            .any(|configured| configured.key_data() == key.key_data())
+    };
     let mut ordered: Vec<_> = identities
         .iter()
         .filter(|identity| matches_configured(identity))
@@ -550,18 +580,7 @@ where
                 .filter(|identity| !matches_configured(identity)),
         );
     }
-
-    for identity in ordered {
-        let hash = handle.best_supported_rsa_hash().await?.flatten();
-        let result = handle
-            .authenticate_publickey_with(user, identity.public_key().into_owned(), hash, agent)
-            .await;
-        if matches!(result, Ok(auth) if auth.success()) {
-            return Ok(true);
-        }
-    }
-
-    Ok(false)
+    ordered
 }
 
 /// Tries each configured key file in order.
@@ -987,5 +1006,41 @@ mod tests {
         opts.identities_only = true;
 
         assert!(resolve(&opts).await.unwrap().identities_only);
+    }
+
+    #[tokio::test]
+    async fn configured_agent_identity_matches_across_distinct_comments() {
+        let dir = tempfile::tempdir().unwrap();
+        let key_path = dir.path().join("id_ed25519");
+        std::fs::write(
+            dir.path().join("id_ed25519.pub"),
+            format!("ssh-ed25519 {ED_A} reader@laptop\n"),
+        )
+        .unwrap();
+
+        let configured = configured_public_key(&key_path).await.unwrap().unwrap();
+        assert_eq!(configured.comment().as_str().unwrap(), "reader@laptop");
+
+        let unrelated = russh::keys::agent::AgentIdentity::PublicKey {
+            key: public_key(ED_B),
+            comment: "unrelated@agent".to_string(),
+        };
+        let matching = russh::keys::agent::AgentIdentity::PublicKey {
+            key: public_key(ED_A),
+            comment: "agent@workstation".to_string(),
+        };
+        let identities = [unrelated, matching];
+
+        let strict = select_agent_identities(&identities, std::slice::from_ref(&configured), true);
+        assert_eq!(strict.len(), 1);
+        assert_eq!(strict[0].comment(), "agent@workstation");
+
+        let ordered =
+            select_agent_identities(&identities, std::slice::from_ref(&configured), false);
+        let comments: Vec<_> = ordered
+            .into_iter()
+            .map(russh::keys::agent::AgentIdentity::comment)
+            .collect();
+        assert_eq!(comments, vec!["agent@workstation", "unrelated@agent"]);
     }
 }

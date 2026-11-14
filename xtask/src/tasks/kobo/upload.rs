@@ -84,7 +84,7 @@ pub(crate) fn plan(dist: &Path) -> Result<Vec<UploadEntry>> {
     Ok(dirs)
 }
 
-/// What the last deploy uploaded, keyed `host:remote path`.
+/// What the last deploy uploaded, keyed `[host]:port:remote`.
 ///
 /// The hash is computed on the host, so skipping costs one SFTP stat per
 /// remote file. A same-size edit made on the device outside deploy is not
@@ -367,10 +367,10 @@ async fn replace_file<O: ReplaceOps>(ops: &O, staging: &str, remote: &str) -> Re
     if ops.exists(&backup).await? {
         ops.remove(&backup).await?;
     }
-    ops.rename(remote, &backup)
-        .await
-        .map_err(|error| error.source)
-        .with_context(|| format!("failed to move {remote} aside"))?;
+    if let Err(error) = ops.rename(remote, &backup).await {
+        let _ = ops.remove(staging).await;
+        return Err(error.source).with_context(|| format!("failed to move {remote} aside"));
+    }
 
     match ops.rename(staging, remote).await {
         Ok(()) => {
@@ -503,42 +503,44 @@ mod tests {
 
     #[tokio::test]
     async fn replace_renames_directly_when_the_target_is_absent() {
-        let ops = FakeOps::with_files(&["/dev/cadmus.cadmus-tmp.1"]);
+        let staging = staging_path("/dev/cadmus");
+        let ops = FakeOps::with_files(&[staging.as_str()]);
 
-        replace_file(&ops, "/dev/cadmus.cadmus-tmp.1", "/dev/cadmus")
-            .await
-            .unwrap();
+        replace_file(&ops, &staging, "/dev/cadmus").await.unwrap();
 
         assert!(ops.contains("/dev/cadmus"));
-        assert_eq!(
-            ops.renames(),
-            vec![(
-                "/dev/cadmus.cadmus-tmp.1".to_string(),
-                "/dev/cadmus".to_string()
-            )]
-        );
+        assert_eq!(ops.renames(), vec![(staging, "/dev/cadmus".to_string())]);
     }
 
     #[tokio::test]
     async fn replace_swaps_in_the_new_file_and_drops_the_backup() {
-        let ops = FakeOps::with_files(&["/dev/cadmus", "/dev/cadmus.cadmus-tmp.1"]);
+        let staging = staging_path("/dev/cadmus");
+        let backup = backup_path("/dev/cadmus");
+        let ops = FakeOps::with_files(&["/dev/cadmus", staging.as_str()]);
 
-        replace_file(&ops, "/dev/cadmus.cadmus-tmp.1", "/dev/cadmus")
-            .await
-            .unwrap();
+        replace_file(&ops, &staging, "/dev/cadmus").await.unwrap();
 
         assert!(ops.contains("/dev/cadmus"));
-        assert!(!ops.contains("/dev/cadmus.cadmus-tmp.1"));
-        assert!(!ops.contains("/dev/cadmus.cadmus-bak.1"));
-        assert_eq!(ops.renames().len(), 3);
+        assert!(!ops.contains(&staging));
+        assert!(!ops.contains(&backup));
+        assert_eq!(
+            ops.renames(),
+            vec![
+                (staging.clone(), "/dev/cadmus".to_string()),
+                ("/dev/cadmus".to_string(), backup),
+                (staging, "/dev/cadmus".to_string()),
+            ]
+        );
     }
 
     #[tokio::test]
     async fn replace_restores_the_old_file_when_promotion_fails() {
-        let mut ops = FakeOps::with_files(&["/dev/cadmus", "/dev/cadmus.cadmus-tmp.1"]);
+        let staging = staging_path("/dev/cadmus");
+        let backup = backup_path("/dev/cadmus");
+        let mut ops = FakeOps::with_files(&["/dev/cadmus", staging.as_str()]);
         ops.fail_promote = true;
 
-        let error = replace_file(&ops, "/dev/cadmus.cadmus-tmp.1", "/dev/cadmus")
+        let error = replace_file(&ops, &staging, "/dev/cadmus")
             .await
             .unwrap_err();
 
@@ -547,21 +549,24 @@ mod tests {
             "{error}"
         );
         assert!(ops.contains("/dev/cadmus"));
-        assert!(!ops.contains("/dev/cadmus.cadmus-bak.1"));
+        assert!(!ops.contains(&staging));
+        assert!(!ops.contains(&backup));
     }
 
     #[tokio::test]
     async fn replace_keeps_the_target_on_an_unrelated_rename_error() {
-        let mut ops = FakeOps::with_files(&["/dev/cadmus", "/dev/cadmus.cadmus-tmp.1"]);
+        let staging = staging_path("/dev/cadmus");
+        let mut ops = FakeOps::with_files(&["/dev/cadmus", staging.as_str()]);
         ops.hard_error = true;
 
-        let error = replace_file(&ops, "/dev/cadmus.cadmus-tmp.1", "/dev/cadmus")
+        let error = replace_file(&ops, &staging, "/dev/cadmus")
             .await
             .unwrap_err();
 
         let chain = format!("{error:#}");
         assert!(chain.contains("connection lost"), "{chain}");
         assert!(ops.contains("/dev/cadmus"));
+        assert!(!ops.contains(&staging));
         assert_eq!(ops.renames().len(), 1);
     }
 
