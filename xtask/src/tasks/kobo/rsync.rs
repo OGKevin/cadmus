@@ -34,6 +34,7 @@ pub(crate) async fn run(handle: &mut Handle<Handler>, dist: &Path) -> Result<()>
 }
 
 async fn run_plan(handle: &mut Handle<Handler>, plan: TransferPlan) -> Result<()> {
+    let destination = plan.destination;
     let channel = handle
         .channel_open_session()
         .await
@@ -76,7 +77,7 @@ async fn run_plan(handle: &mut Handle<Handler>, plan: TransferPlan) -> Result<()
     };
 
     println!(
-        "Synced {} changed files to {INSTALL_DIR} ({} literal, {} matched, {} sent, {} received)",
+        "Synced {} changed files to {destination} ({} literal, {} matched, {} sent, {} received)",
         stats.files_transferred,
         ByteSize(stats.literal_data),
         ByteSize(stats.matched_data),
@@ -88,6 +89,7 @@ async fn run_plan(handle: &mut Handle<Handler>, plan: TransferPlan) -> Result<()
 
 struct TransferPlan {
     remote_command: String,
+    destination: String,
     local: ServerConfig,
 }
 
@@ -112,6 +114,7 @@ fn build_plan(dist: &Path, destination: &str) -> Result<TransferPlan> {
     local.connection.client_mode = true;
     Ok(TransferPlan {
         remote_command,
+        destination: destination.to_owned(),
         local,
     })
 }
@@ -163,7 +166,7 @@ impl Outcome {
 }
 
 struct BridgeReader {
-    rx: tokio_mpsc::Receiver<Vec<u8>>,
+    rx: tokio_mpsc::Receiver<Option<Vec<u8>>>,
     buffered: Vec<u8>,
     offset: usize,
 }
@@ -175,11 +178,11 @@ impl Read for BridgeReader {
         }
         if self.offset >= self.buffered.len() {
             match self.rx.blocking_recv() {
-                Some(chunk) => {
+                Some(Some(chunk)) => {
                     self.buffered = chunk;
                     self.offset = 0;
                 }
-                None => return Ok(0),
+                Some(None) | None => return Ok(0),
             }
         }
         let available = &self.buffered[self.offset..];
@@ -247,7 +250,7 @@ fn spawn_bridge(
     Arc<Mutex<Outcome>>,
     JoinHandle<()>,
 ) {
-    let (data_tx, data_rx) = tokio_mpsc::channel::<Vec<u8>>(64);
+    let (data_tx, data_rx) = tokio_mpsc::channel::<Option<Vec<u8>>>(64);
     let (write_tx, mut write_rx) = tokio_mpsc::channel::<Vec<u8>>(64);
     let outcome = Arc::new(Mutex::new(Outcome::default()));
     let state = Arc::clone(&outcome);
@@ -257,12 +260,16 @@ fn spawn_bridge(
         let mut channel = channel;
         let mut write_open = true;
         let mut pending = None;
+        let mut remote_eof = false;
+        let mut remote_exit_status = None;
         loop {
             tokio::select! {
                 message = channel.wait(), if pending.is_none() => {
                     match message {
                         Some(ChannelMsg::Data { data }) => {
-                            pending = Some(data.to_vec());
+                            if !remote_eof {
+                                pending = Some(Some(data.to_vec()));
+                            }
                         }
                         Some(ChannelMsg::ExtendedData { data, .. }) => {
                             if let Ok(mut outcome) = state.lock() {
@@ -270,8 +277,12 @@ fn spawn_bridge(
                             }
                         }
                         Some(ChannelMsg::ExitStatus { exit_status }) => {
+                            remote_exit_status = Some(exit_status);
                             if let Ok(mut outcome) = state.lock() {
                                 outcome.exit_status = Some(exit_status);
+                            }
+                            if remote_eof && !write_open && pending.is_none() {
+                                break;
                             }
                         }
                         Some(ChannelMsg::Failure) => {
@@ -281,7 +292,12 @@ fn spawn_bridge(
                             let _ = channel.close().await;
                             break;
                         }
-                        Some(ChannelMsg::Eof) => {}
+                        Some(ChannelMsg::Eof) => {
+                            remote_eof = true;
+                            if pending.is_none() {
+                                pending = Some(None);
+                            }
+                        }
                         Some(_) => {}
                         None => break,
                     }
@@ -291,6 +307,9 @@ fn spawn_bridge(
                         Ok(permit) => {
                             if let Some(data) = pending.take() {
                                 permit.send(data);
+                            }
+                            if remote_eof && !write_open && remote_exit_status.is_some() {
+                                break;
                             }
                         }
                         Err(_) => break,
@@ -308,6 +327,10 @@ fn spawn_bridge(
                         None => {
                             write_open = false;
                             writer = None;
+                            let _ = channel.eof().await;
+                            if remote_eof && pending.is_none() && remote_exit_status.is_some() {
+                                break;
+                            }
                         }
                     }
                 }
@@ -336,25 +359,66 @@ mod tests {
     use crate::tasks::kobo::SshOptions;
     use crate::tasks::kobo::ssh;
 
+    struct AcceptAnyKey;
+
+    impl russh::client::Handler for AcceptAnyKey {
+        type Error = russh::Error;
+
+        async fn check_server_key(
+            &mut self,
+            _: &russh::keys::PublicKeyOrCertificate,
+        ) -> Result<bool, Self::Error> {
+            Ok(true)
+        }
+    }
+
+    async fn connect_test_server<S>(server: S) -> (Handle<AcceptAnyKey>, JoinHandle<io::Result<()>>)
+    where
+        S: russh::server::Server<Handler = S>
+            + russh::server::Handler<Error = russh::Error>
+            + Send
+            + 'static,
+    {
+        use std::time::Duration;
+
+        use russh::keys::{Algorithm, PrivateKey, key::safe_rng};
+
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let address = listener.local_addr().unwrap();
+        let host_key = PrivateKey::random(&mut safe_rng(), Algorithm::Ed25519).unwrap();
+        let running = tokio::spawn(async move {
+            let mut server = server;
+            server
+                .run_on_socket(
+                    Arc::new(russh::server::Config {
+                        auth_rejection_time: Duration::ZERO,
+                        inactivity_timeout: None,
+                        keys: vec![host_key],
+                        ..Default::default()
+                    }),
+                    &listener,
+                )
+                .await
+        });
+
+        let mut handle = russh::client::connect(
+            Arc::new(russh::client::Config::default()),
+            address,
+            AcceptAnyKey,
+        )
+        .await
+        .unwrap();
+        assert!(handle.authenticate_none("test").await.unwrap().success());
+        (handle, running)
+    }
+
     #[tokio::test]
     async fn rejected_exec_closes_the_bridge_and_reader() {
         use std::time::Duration;
 
-        use russh::keys::{Algorithm, PrivateKey, PublicKeyOrCertificate, key::safe_rng};
-        use russh::server::{Auth, ChannelOpenHandle, Msg as ServerMsg, Server as _, Session};
-
-        struct AcceptAnyKey;
-
-        impl russh::client::Handler for AcceptAnyKey {
-            type Error = russh::Error;
-
-            async fn check_server_key(
-                &mut self,
-                _: &PublicKeyOrCertificate,
-            ) -> Result<bool, Self::Error> {
-                Ok(true)
-            }
-        }
+        use russh::server::{Auth, ChannelOpenHandle, Msg as ServerMsg, Session};
 
         struct RejectExec;
 
@@ -394,34 +458,7 @@ mod tests {
             }
         }
 
-        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
-            .await
-            .unwrap();
-        let address = listener.local_addr().unwrap();
-        let host_key = PrivateKey::random(&mut safe_rng(), Algorithm::Ed25519).unwrap();
-        let running = tokio::spawn(async move {
-            let mut server = RejectExec;
-            server
-                .run_on_socket(
-                    Arc::new(russh::server::Config {
-                        auth_rejection_time: Duration::ZERO,
-                        inactivity_timeout: None,
-                        keys: vec![host_key],
-                        ..Default::default()
-                    }),
-                    &listener,
-                )
-                .await
-        });
-
-        let mut handle = russh::client::connect(
-            Arc::new(russh::client::Config::default()),
-            address,
-            AcceptAnyKey,
-        )
-        .await
-        .unwrap();
-        assert!(handle.authenticate_none("test").await.unwrap().success());
+        let (handle, running) = connect_test_server(RejectExec).await;
         let channel = handle.channel_open_session().await.unwrap();
         channel.exec(true, "rsync --server").await.unwrap();
 
@@ -442,6 +479,81 @@ mod tests {
         .unwrap();
         assert_eq!(read.unwrap(), 0);
         drop(writer);
+        running.abort();
+    }
+
+    #[tokio::test]
+    async fn half_closed_channel_does_not_stall_the_bridge() {
+        use std::time::Duration;
+
+        use russh::server::{Auth, ChannelOpenHandle, Msg as ServerMsg, Session};
+
+        struct HalfClose;
+
+        impl russh::server::Server for HalfClose {
+            type Handler = Self;
+
+            fn new_client(&mut self, _: Option<std::net::SocketAddr>) -> Self {
+                Self
+            }
+        }
+
+        impl russh::server::Handler for HalfClose {
+            type Error = russh::Error;
+
+            async fn auth_none(&mut self, _: &str) -> Result<Auth, Self::Error> {
+                Ok(Auth::Accept)
+            }
+
+            async fn channel_open_session(
+                &mut self,
+                _: russh::Channel<ServerMsg>,
+                reply: ChannelOpenHandle,
+                _: &mut Session,
+            ) -> Result<(), Self::Error> {
+                reply.accept().await;
+                Ok(())
+            }
+
+            async fn exec_request(
+                &mut self,
+                channel: russh::ChannelId,
+                _: &[u8],
+                session: &mut Session,
+            ) -> Result<(), Self::Error> {
+                session.channel_success(channel)?;
+                session.data(channel, &b"payload"[..])?;
+                session.eof(channel)?;
+                session.exit_status_request(channel, 0)?;
+                Ok(())
+            }
+
+            async fn channel_eof(
+                &mut self,
+                channel: russh::ChannelId,
+                session: &mut Session,
+            ) -> Result<(), Self::Error> {
+                session.close(channel)?;
+                Ok(())
+            }
+        }
+
+        let (handle, running) = connect_test_server(HalfClose).await;
+        let channel = handle.channel_open_session().await.unwrap();
+        channel.exec(true, "rsync --server").await.unwrap();
+
+        let (mut reader, writer, outcome, bridge) = spawn_bridge(channel);
+        let read = std::thread::spawn(move || {
+            let mut bytes = Vec::new();
+            reader.read_to_end(&mut bytes).map(|_| bytes)
+        });
+        drop(writer);
+        tokio::time::timeout(Duration::from_secs(5), bridge)
+            .await
+            .expect("the bridge must stop after both sides reach EOF")
+            .unwrap();
+        assert_eq!(outcome.lock().unwrap().exit_status, Some(0));
+        assert_eq!(read.join().unwrap().unwrap(), b"payload");
         running.abort();
     }
 
@@ -494,7 +606,7 @@ mod tests {
     #[test]
     fn reader_drains_oversized_chunks_across_reads() {
         let (tx, rx) = tokio_mpsc::channel(1);
-        tx.try_send(vec![1, 2, 3]).unwrap();
+        tx.try_send(Some(vec![1, 2, 3])).unwrap();
         let mut reader = BridgeReader {
             rx,
             buffered: Vec::new(),
