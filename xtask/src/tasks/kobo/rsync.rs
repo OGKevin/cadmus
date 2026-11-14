@@ -163,7 +163,7 @@ impl Outcome {
 }
 
 struct BridgeReader {
-    rx: std::sync::mpsc::Receiver<Vec<u8>>,
+    rx: tokio_mpsc::Receiver<Vec<u8>>,
     buffered: Vec<u8>,
     offset: usize,
 }
@@ -174,12 +174,12 @@ impl Read for BridgeReader {
             return Ok(0);
         }
         if self.offset >= self.buffered.len() {
-            match self.rx.recv() {
-                Ok(chunk) => {
+            match self.rx.blocking_recv() {
+                Some(chunk) => {
                     self.buffered = chunk;
                     self.offset = 0;
                 }
-                Err(_) => return Ok(0),
+                None => return Ok(0),
             }
         }
         let available = &self.buffered[self.offset..];
@@ -247,7 +247,7 @@ fn spawn_bridge(
     Arc<Mutex<Outcome>>,
     JoinHandle<()>,
 ) {
-    let (data_tx, data_rx) = std::sync::mpsc::sync_channel(64);
+    let (data_tx, data_rx) = tokio_mpsc::channel::<Vec<u8>>(64);
     let (write_tx, mut write_rx) = tokio_mpsc::channel::<Vec<u8>>(64);
     let outcome = Arc::new(Mutex::new(Outcome::default()));
     let state = Arc::clone(&outcome);
@@ -256,14 +256,13 @@ fn spawn_bridge(
     let task = tokio::spawn(async move {
         let mut channel = channel;
         let mut write_open = true;
+        let mut pending = None;
         loop {
             tokio::select! {
-                message = channel.wait() => {
+                message = channel.wait(), if pending.is_none() => {
                     match message {
                         Some(ChannelMsg::Data { data }) => {
-                            if data_tx.send(data.to_vec()).is_err() {
-                                break;
-                            }
+                            pending = Some(data.to_vec());
                         }
                         Some(ChannelMsg::ExtendedData { data, .. }) => {
                             if let Ok(mut outcome) = state.lock() {
@@ -279,10 +278,22 @@ fn spawn_bridge(
                             if let Ok(mut outcome) = state.lock() {
                                 outcome.failure = Some("the server rejected the command request".to_owned());
                             }
+                            let _ = channel.close().await;
+                            break;
                         }
                         Some(ChannelMsg::Eof) => {}
                         Some(_) => {}
                         None => break,
+                    }
+                }
+                permit = data_tx.reserve(), if pending.is_some() => {
+                    match permit {
+                        Ok(permit) => {
+                            if let Some(data) = pending.take() {
+                                permit.send(data);
+                            }
+                        }
+                        Err(_) => break,
                     }
                 }
                 outgoing = write_rx.recv(), if write_open => {
@@ -326,6 +337,115 @@ mod tests {
     use crate::tasks::kobo::ssh;
 
     #[tokio::test]
+    async fn rejected_exec_closes_the_bridge_and_reader() {
+        use std::time::Duration;
+
+        use russh::keys::{Algorithm, PrivateKey, PublicKeyOrCertificate, key::safe_rng};
+        use russh::server::{Auth, ChannelOpenHandle, Msg as ServerMsg, Server as _, Session};
+
+        struct AcceptAnyKey;
+
+        impl russh::client::Handler for AcceptAnyKey {
+            type Error = russh::Error;
+
+            async fn check_server_key(
+                &mut self,
+                _: &PublicKeyOrCertificate,
+            ) -> Result<bool, Self::Error> {
+                Ok(true)
+            }
+        }
+
+        struct RejectExec;
+
+        impl russh::server::Server for RejectExec {
+            type Handler = Self;
+
+            fn new_client(&mut self, _: Option<std::net::SocketAddr>) -> Self {
+                Self
+            }
+        }
+
+        impl russh::server::Handler for RejectExec {
+            type Error = russh::Error;
+
+            async fn auth_none(&mut self, _: &str) -> Result<Auth, Self::Error> {
+                Ok(Auth::Accept)
+            }
+
+            async fn channel_open_session(
+                &mut self,
+                _: russh::Channel<ServerMsg>,
+                reply: ChannelOpenHandle,
+                _: &mut Session,
+            ) -> Result<(), Self::Error> {
+                reply.accept().await;
+                Ok(())
+            }
+
+            async fn exec_request(
+                &mut self,
+                channel: russh::ChannelId,
+                _: &[u8],
+                session: &mut Session,
+            ) -> Result<(), Self::Error> {
+                session.channel_failure(channel)?;
+                Ok(())
+            }
+        }
+
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let address = listener.local_addr().unwrap();
+        let host_key = PrivateKey::random(&mut safe_rng(), Algorithm::Ed25519).unwrap();
+        let running = tokio::spawn(async move {
+            let mut server = RejectExec;
+            server
+                .run_on_socket(
+                    Arc::new(russh::server::Config {
+                        auth_rejection_time: Duration::ZERO,
+                        inactivity_timeout: None,
+                        keys: vec![host_key],
+                        ..Default::default()
+                    }),
+                    &listener,
+                )
+                .await
+        });
+
+        let mut handle = russh::client::connect(
+            Arc::new(russh::client::Config::default()),
+            address,
+            AcceptAnyKey,
+        )
+        .await
+        .unwrap();
+        assert!(handle.authenticate_none("test").await.unwrap().success());
+        let channel = handle.channel_open_session().await.unwrap();
+        channel.exec(true, "rsync --server").await.unwrap();
+
+        let (mut reader, writer, outcome, bridge) = spawn_bridge(channel);
+        tokio::time::timeout(Duration::from_secs(5), bridge)
+            .await
+            .expect("the bridge must stop after the command is rejected")
+            .unwrap();
+        assert_eq!(
+            outcome.lock().unwrap().failure.as_deref(),
+            Some("the server rejected the command request")
+        );
+        let read = std::thread::spawn(move || {
+            let mut byte = [0u8; 1];
+            reader.read(&mut byte)
+        })
+        .join()
+        .unwrap();
+        assert_eq!(read.unwrap(), 0);
+        drop(writer);
+        running.abort();
+    }
+
+    #[tokio::test]
     #[ignore = "requires a local OpenSSH server and rsync"]
     async fn localhost_transfer_round_trip() {
         let user = std::env::var("USER").unwrap();
@@ -344,14 +464,17 @@ mod tests {
         let mut handle = ssh::connect(&settings).await.unwrap();
         let source = tempfile::tempdir().unwrap();
         let destination = tempfile::tempdir().unwrap();
-        std::fs::write(source.path().join("example.txt"), b"native russh").unwrap();
+        let payload = (0..4 * 1024 * 1024)
+            .map(|offset| (offset % 251) as u8)
+            .collect::<Vec<_>>();
+        std::fs::write(source.path().join("example.txt"), &payload).unwrap();
 
         let plan = build_plan(source.path(), destination.path().to_str().unwrap()).unwrap();
         run_plan(&mut handle, plan).await.unwrap();
 
         assert_eq!(
             std::fs::read(destination.path().join("example.txt")).unwrap(),
-            b"native russh"
+            payload
         );
     }
 
@@ -370,8 +493,8 @@ mod tests {
 
     #[test]
     fn reader_drains_oversized_chunks_across_reads() {
-        let (tx, rx) = std::sync::mpsc::sync_channel(1);
-        tx.send(vec![1, 2, 3]).unwrap();
+        let (tx, rx) = tokio_mpsc::channel(1);
+        tx.try_send(vec![1, 2, 3]).unwrap();
         let mut reader = BridgeReader {
             rx,
             buffered: Vec::new(),
