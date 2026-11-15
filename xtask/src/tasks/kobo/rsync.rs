@@ -33,7 +33,10 @@ pub(crate) async fn run(handle: &mut Handle<Handler>, dist: &Path) -> Result<()>
     run_plan(handle, build_plan(dist, INSTALL_DIR)?).await
 }
 
-async fn run_plan(handle: &mut Handle<Handler>, plan: TransferPlan) -> Result<()> {
+async fn run_plan<H>(handle: &mut Handle<H>, plan: TransferPlan) -> Result<()>
+where
+    H: russh::client::Handler<Error = anyhow::Error> + Send + Sync + 'static,
+{
     let destination = plan.destination;
     let channel = handle
         .channel_open_session()
@@ -259,6 +262,7 @@ fn spawn_bridge(
     let task = tokio::spawn(async move {
         let mut channel = channel;
         let mut write_open = true;
+        let mut data_open = true;
         let mut pending = None;
         let mut remote_eof = false;
         let mut remote_exit_status = None;
@@ -267,7 +271,7 @@ fn spawn_bridge(
                 message = channel.wait(), if pending.is_none() => {
                     match message {
                         Some(ChannelMsg::Data { data }) => {
-                            if !remote_eof {
+                            if data_open && !remote_eof {
                                 pending = Some(Some(data.to_vec()));
                             }
                         }
@@ -281,7 +285,9 @@ fn spawn_bridge(
                             if let Ok(mut outcome) = state.lock() {
                                 outcome.exit_status = Some(exit_status);
                             }
-                            if remote_eof && !write_open && pending.is_none() {
+                            if !data_open
+                                || (remote_eof && !write_open && pending.is_none())
+                            {
                                 break;
                             }
                         }
@@ -294,7 +300,7 @@ fn spawn_bridge(
                         }
                         Some(ChannelMsg::Eof) => {
                             remote_eof = true;
-                            if pending.is_none() {
+                            if data_open && pending.is_none() {
                                 pending = Some(None);
                             }
                         }
@@ -302,7 +308,7 @@ fn spawn_bridge(
                         None => break,
                     }
                 }
-                permit = data_tx.reserve(), if pending.is_some() => {
+                permit = data_tx.reserve(), if data_open && pending.is_some() => {
                     match permit {
                         Ok(permit) => {
                             if let Some(data) = pending.take() {
@@ -312,7 +318,13 @@ fn spawn_bridge(
                                 break;
                             }
                         }
-                        Err(_) => break,
+                        Err(_) => {
+                            pending = None;
+                            data_open = false;
+                            if remote_exit_status.is_some() {
+                                break;
+                            }
+                        }
                     }
                 }
                 outgoing = write_rx.recv(), if write_open => {
@@ -328,6 +340,9 @@ fn spawn_bridge(
                             write_open = false;
                             writer = None;
                             let _ = channel.eof().await;
+                            if !data_open && remote_exit_status.is_some() {
+                                break;
+                            }
                             if remote_eof && pending.is_none() && remote_exit_status.is_some() {
                                 break;
                             }
@@ -362,12 +377,12 @@ mod tests {
     struct AcceptAnyKey;
 
     impl russh::client::Handler for AcceptAnyKey {
-        type Error = russh::Error;
+        type Error = anyhow::Error;
 
         async fn check_server_key(
             &mut self,
             _: &russh::keys::PublicKeyOrCertificate,
-        ) -> Result<bool, Self::Error> {
+        ) -> Result<bool> {
             Ok(true)
         }
     }
@@ -554,6 +569,132 @@ mod tests {
             .unwrap();
         assert_eq!(outcome.lock().unwrap().exit_status, Some(0));
         assert_eq!(read.join().unwrap().unwrap(), b"payload");
+        running.abort();
+    }
+
+    #[tokio::test]
+    async fn reader_loss_still_records_exit_status() {
+        use std::time::Duration;
+
+        use russh::server::{Auth, ChannelOpenHandle, Msg as ServerMsg, Session};
+
+        struct ReaderLoss;
+
+        impl russh::server::Server for ReaderLoss {
+            type Handler = Self;
+
+            fn new_client(&mut self, _: Option<std::net::SocketAddr>) -> Self {
+                Self
+            }
+        }
+
+        impl russh::server::Handler for ReaderLoss {
+            type Error = russh::Error;
+
+            async fn auth_none(&mut self, _: &str) -> Result<Auth, Self::Error> {
+                Ok(Auth::Accept)
+            }
+
+            async fn channel_open_session(
+                &mut self,
+                _: russh::Channel<ServerMsg>,
+                reply: ChannelOpenHandle,
+                _: &mut Session,
+            ) -> Result<(), Self::Error> {
+                reply.accept().await;
+                Ok(())
+            }
+
+            async fn exec_request(
+                &mut self,
+                channel: russh::ChannelId,
+                _: &[u8],
+                session: &mut Session,
+            ) -> Result<(), Self::Error> {
+                session.channel_success(channel)?;
+                session.data(channel, &b"payload"[..])?;
+                let handle = session.handle();
+                tokio::spawn(async move {
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    let _ = handle.exit_status_request(channel, 42).await;
+                    let _ = handle.close(channel).await;
+                });
+                Ok(())
+            }
+        }
+
+        let (handle, running) = connect_test_server(ReaderLoss).await;
+        let channel = handle.channel_open_session().await.unwrap();
+        channel.exec(true, "rsync --server").await.unwrap();
+
+        let (reader, writer, outcome, bridge) = spawn_bridge(channel);
+        drop(reader);
+        tokio::time::timeout(Duration::from_secs(5), bridge)
+            .await
+            .expect("the bridge must stop after the remote closes")
+            .unwrap();
+        assert_eq!(outcome.lock().unwrap().exit_status, Some(42));
+        drop(writer);
+        running.abort();
+    }
+
+    #[tokio::test]
+    async fn nonzero_exit_status_fails_run_plan() {
+        use russh::server::{Auth, ChannelOpenHandle, Msg as ServerMsg, Session};
+
+        struct NonzeroExit;
+
+        impl russh::server::Server for NonzeroExit {
+            type Handler = Self;
+
+            fn new_client(&mut self, _: Option<std::net::SocketAddr>) -> Self {
+                Self
+            }
+        }
+
+        impl russh::server::Handler for NonzeroExit {
+            type Error = russh::Error;
+
+            async fn auth_none(&mut self, _: &str) -> Result<Auth, Self::Error> {
+                Ok(Auth::Accept)
+            }
+
+            async fn channel_open_session(
+                &mut self,
+                _: russh::Channel<ServerMsg>,
+                reply: ChannelOpenHandle,
+                _: &mut Session,
+            ) -> Result<(), Self::Error> {
+                reply.accept().await;
+                Ok(())
+            }
+
+            async fn exec_request(
+                &mut self,
+                channel: russh::ChannelId,
+                _: &[u8],
+                session: &mut Session,
+            ) -> Result<(), Self::Error> {
+                session.channel_success(channel)?;
+                session.data(channel, &b"not an rsync stream"[..])?;
+                session.eof(channel)?;
+                session.exit_status_request(channel, 42)?;
+                session.close(channel)?;
+                Ok(())
+            }
+        }
+
+        let (mut handle, running) = connect_test_server(NonzeroExit).await;
+        let source = tempfile::tempdir().unwrap();
+        std::fs::write(source.path().join("example.txt"), b"payload").unwrap();
+        let plan = build_plan(source.path(), "/tmp/does-not-matter").unwrap();
+
+        let error = run_plan(&mut handle, plan).await.unwrap_err();
+        let message = format!("{error:#}");
+        assert!(
+            message.contains("rsync on the device exited with status 42"),
+            "{message}"
+        );
         running.abort();
     }
 
