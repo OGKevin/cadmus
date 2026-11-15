@@ -5,6 +5,7 @@
 
 use xtask_lib::run;
 
-fn main() -> anyhow::Result<()> {
-    run()
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    run().await
 }

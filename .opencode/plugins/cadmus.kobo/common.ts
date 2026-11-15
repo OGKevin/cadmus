@@ -1,57 +1,51 @@
 import { spawn } from "node:child_process";
-import { existsSync, readdirSync, realpathSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "../../node_modules/zod/index.js";
 
-export const INSTALL_DIR = "/mnt/onboard/.adds/cadmus-tst";
-export const FEATURES = "test,kobo";
-
 const HOST_PATTERN = /^[A-Za-z0-9._:%-]+$/;
-const FEATURE_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 export const hostSchema = z.string().regex(HOST_PATTERN, "invalid host");
 
+const sshOptionsShape = {
+  port: z.number().int().min(1).max(65535).optional(),
+  user: z.string().min(1).optional(),
+  identity: z.string().min(1).optional(),
+  identitiesOnly: z.boolean().optional(),
+  knownHosts: z.string().min(1).optional(),
+  acceptNew: z.boolean().optional(),
+  sshConfig: z.string().min(1).optional(),
+};
+
 export const deployInputSchema = z
   .object({
-    ip: hostSchema,
+    ip: hostSchema.optional(),
     features: z.string().optional(),
+    restart: z.boolean().optional(),
+    ...sshOptionsShape,
   })
   .strict();
 
-export const restartInputSchema = z.object({ ip: hostSchema }).strict();
+export const restartInputSchema = z
+  .object({
+    ip: hostSchema.optional(),
+    ...sshOptionsShape,
+  })
+  .strict();
 
 export type DeployInput = z.infer<typeof deployInputSchema>;
 export type RestartInput = z.infer<typeof restartInputSchema>;
 
-/**
- * Cargo features for a cadmus-tst binary.
- *
- * `test,kobo` is always first so the install and data paths stay on the test
- * tree. Extra names are appended; repeats of the required pair are dropped.
- */
-export function cargoFeatures(extra?: string): string {
-  const required = FEATURES.split(",");
-  const extras = (extra ?? "")
-    .split(",")
-    .map((feature) => feature.trim())
-    .filter((feature) => feature.length > 0);
-  for (const feature of extras) {
-    if (!FEATURE_PATTERN.test(feature)) {
-      throw new Error(`invalid feature: ${feature}`);
-    }
-  }
-  const seen = new Set(required);
-  const features = [...required];
-  for (const feature of extras) {
-    if (seen.has(feature)) continue;
-    seen.add(feature);
-    features.push(feature);
-  }
-  return features.join(",");
-}
-
-const SSH_OPTIONS = "-o BatchMode=yes -o ConnectTimeout=15";
+type SshInput = {
+  port?: number;
+  user?: string;
+  identity?: string;
+  identitiesOnly?: boolean;
+  knownHosts?: string;
+  acceptNew?: boolean;
+  sshConfig?: string;
+};
 
 const FALLBACK_BIN_DIRS = [
   "/run/current-system/sw/bin",
@@ -65,56 +59,42 @@ const FALLBACK_BIN_DIRS = [
 export type RunResult = { code: number; output: string };
 
 /**
- * Rsync arguments for the test install.
+ * SSH flags forwarded to `cadmuscli kobo` for both subcommands.
  *
- * Files are only ever added or overwritten. Deploy never deletes from the
- * device, so a reader's own fonts, dictionaries, or stylesheets stay put even
- * when the distribution stops shipping a file that shares their directory.
- *
- * Owner and group are never transferred: `/mnt/onboard` is a FAT filesystem,
- * where rsync's chown fails with `Operation not permitted`.
- *
- * IPv6 hosts are bracketed because rsync splits host and path on a colon.
+ * The CLI applies them on top of `~/.ssh/config` and its own defaults, so the
+ * plugin never reads an ssh config itself.
  */
-export function rsyncArgs(ip: string, files: string[]) {
-  return [
-    "-rc",
-    "--no-owner",
-    "--no-group",
-    "-e",
-    sshCommand(),
-    ...files,
-    `root@${rsyncHost(ip)}:${INSTALL_DIR}`,
-  ];
+export function sshFlags(input: SshInput): string[] {
+  const flags: string[] = [];
+  if (input.port !== undefined) flags.push("--port", String(input.port));
+  if (input.user !== undefined) flags.push("--user", input.user);
+  if (input.identity !== undefined) flags.push("--identity", input.identity);
+  if (input.identitiesOnly === true) flags.push("--identities-only");
+  if (input.knownHosts !== undefined) {
+    flags.push("--known-hosts", input.knownHosts);
+  }
+  if (input.acceptNew === true) flags.push("--accept-new");
+  if (input.sshConfig !== undefined)
+    flags.push("--ssh-config", input.sshConfig);
+  return flags;
 }
 
-/**
- * Remote shell rsync runs for the transfer.
- *
- * rsync resolves this with `execvp`, so a bare `ssh` needs ssh on the child
- * PATH. Resolving it here keeps the transfer independent of the PATH the host
- * hands the plugin.
- */
-export function sshCommand() {
-  return `${quoteForRsync(resolveBin("ssh"))} ${SSH_OPTIONS}`;
+/** Arguments for `cadmuscli kobo deploy`. */
+export function deployArgs(input: DeployInput): string[] {
+  const args = ["kobo", "deploy"];
+  if (input.ip !== undefined) args.push("--ip", input.ip);
+  if (input.features !== undefined) args.push("--features", input.features);
+  if (input.restart === true) args.push("--restart");
+  args.push(...sshFlags(input));
+  return args;
 }
 
-/**
- * Quotes a path for rsync's `-e` value.
- *
- * rsync splits that value on whitespace, honouring single or double quotes, so
- * an executable under a directory with a space in it needs quoting. rsync does
- * not honour backslash escapes, hence quotes.
- */
-export function quoteForRsync(path: string) {
-  if (!/[\s'"]/.test(path)) return path;
-  if (!path.includes("'")) return `'${path}'`;
-  if (!path.includes('"')) return `"${path}"`;
-  throw new Error(`cannot quote an ssh path holding both quote kinds: ${path}`);
-}
-
-function rsyncHost(ip: string) {
-  return ip.includes(":") ? `[${ip}]` : ip;
+/** Arguments for `cadmuscli kobo restart`. */
+export function restartArgs(input: RestartInput): string[] {
+  const args = ["kobo", "restart"];
+  if (input.ip !== undefined) args.push("--ip", input.ip);
+  args.push(...sshFlags(input));
+  return args;
 }
 
 function pathDirs() {
@@ -188,12 +168,6 @@ export async function runInShell(
     cwd: root,
     ...options,
   });
-}
-
-export function distEntries(root: string) {
-  return readdirSync(join(root, "dist"), { withFileTypes: true })
-    .filter((entry) => !entry.name.startsWith("."))
-    .map((entry) => join("dist", entry.name));
 }
 
 export function report(name: string, result: RunResult) {
