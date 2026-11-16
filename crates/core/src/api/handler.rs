@@ -30,7 +30,7 @@ pub(super) struct PublicRpc {
     pub inhibitor: Arc<Inhibitor>,
     /// Uppermost directory `FileOps` may read. `None` is unrestricted.
     pub file_root: Option<Arc<PathBuf>>,
-    /// Caps how many file payloads are buffered at once.
+    /// Caps how many `GetFile` streams may be open at once.
     pub file_limit: Arc<Semaphore>,
 }
 

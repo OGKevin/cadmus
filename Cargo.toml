@@ -16,7 +16,6 @@ async-trait = "0.1"
 async_zip = { version = "0.0.19", default-features = false, features = ["deflate", "tokio"] }
 blake3 = "1"
 buffa = { version = "0.9", default-features = false, features = ["std", "json"] }
-buffa-descriptor = { version = "0.9", default-features = false, features = ["std"] }
 buffa-types = { version = "0.9", default-features = false, features = ["std", "json"] }
 bytes = "1"
 bytesize = "2"

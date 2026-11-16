@@ -183,7 +183,8 @@ pub use self::setting_value::SettingValue;
 ///   [`Category`]. On tab switch the active editor is returned here and the target is pulled
 ///   out, avoiding a full view-tree rebuild on every navigation. The [`Category::Libraries`]
 ///   editor is included and stays current because every library mutation calls
-///   `rebuild_library_rows` before returning.
+///   `rebuild_library_rows`, and `SettingsEvent::LibrariesChanged` refreshes it when the
+///   API changes the list off-screen.
 pub struct SettingsEditor {
     id: Id,
     rect: Rectangle,
@@ -437,6 +438,16 @@ impl View for SettingsEditor {
                 unimplemented!(
                     "The settings navigation bar should not be resizable which means this event is not expected to be send."
                 )
+            }
+            Event::Settings(SettingsEvent::LibrariesChanged) => {
+                if let Some(editor) = self
+                    .editors
+                    .get_mut(&Category::Libraries)
+                    .and_then(|editor| editor.downcast_mut::<CategoryEditor>())
+                {
+                    editor.libraries_changed(rq, context).await;
+                }
+                true
             }
             Event::ToggleNear(ViewId::MainMenu, rect) => {
                 toggle_main_menu(self, *rect, None, rq, context);

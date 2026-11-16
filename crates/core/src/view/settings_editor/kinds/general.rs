@@ -2,7 +2,7 @@
 
 use super::{
     InputSettingKind, SettingData, SettingIdentity, SettingKind, SettingsFetchData, TextMode,
-    ToggleSettings, WidgetKind,
+    ToggleSettings, WidgetKind, parse_number,
 };
 use crate::device::AppContext;
 use crate::fl;
@@ -14,6 +14,7 @@ use crate::view::{Bus, EntryId, EntryKind, Event, ToggleEvent, ViewId};
 use anyhow::Error;
 use std::fs;
 use std::path::Path;
+use std::time::Duration;
 
 /// Language and locale selection setting
 pub struct Locale;
@@ -181,8 +182,20 @@ impl InputSettingKind for WifiIdleTimeout {
         }
     }
 
+    /// `parse_number` admits values outside the `Duration` range, which would
+    /// panic on the Wi-Fi idle poll, so reject them here.
+    fn validate_text(&self, text: &str) -> Result<(), &'static str> {
+        let value = parse_number(text)?;
+        Duration::try_from_secs_f32((value * 60.0).max(0.0))
+            .map(|_| ())
+            .map_err(|_| "value out of range")
+    }
+
     fn apply_text(&self, text: &str, settings: &mut Settings) -> String {
-        if let Ok(value) = text.parse::<f32>() {
+        if let Ok(value) = text.parse::<f32>()
+            && value.is_finite()
+            && Duration::try_from_secs_f32((value * 60.0).max(0.0)).is_ok()
+        {
             settings.wifi_idle_timeout = value;
             settings.sanitize_wifi_idle_timeout();
         }

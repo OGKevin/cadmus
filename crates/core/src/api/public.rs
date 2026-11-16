@@ -9,6 +9,7 @@ use crate::settings::WifiMode;
 use crate::view::{Event, Hub, NotificationEvent, ViewId};
 use secrecy::SecretString;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::sync::atomic::Ordering;
 use thiserror::Error;
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
@@ -32,7 +33,7 @@ pub(super) const BIND: SocketAddr = if cfg!(test) {
 
 /// Why the public listener did not stay up.
 #[derive(Debug, Error)]
-pub(crate) enum StartError {
+pub(super) enum StartError {
     /// Wi-Fi mode is Off, so no lease was taken.
     #[error("wifi is off")]
     WifiOff,
@@ -52,9 +53,9 @@ pub(crate) enum StartError {
 
 /// Companion Wi-Fi lease and bound port handed back to the main loop.
 pub(super) struct BoundListener {
-    pub addr: SocketAddr,
-    pub lease: WifiLease,
-    pub listener: TcpListener,
+    pub(super) addr: SocketAddr,
+    pub(super) lease: WifiLease,
+    pub(super) listener: TcpListener,
 }
 
 /// Listener start that has not reported back yet.
@@ -63,17 +64,17 @@ pub(super) struct BoundListener {
 /// [`turn_on`] and the [`Command::ListenerBound`] command; dropping it cancels
 /// the job, so a stop or suspend never races the start.
 pub(super) struct PendingStart {
-    pub job: Job<()>,
+    pub(super) job: Job<()>,
 }
 
 /// Public listener job, companion Wi-Fi lease, optional mDNS, and site locale.
 pub(super) struct Running {
-    pub job: Job<()>,
-    pub lease: WifiLease,
-    pub mdns: Option<crate::mdns::Registration>,
+    pub(super) job: Job<()>,
+    pub(super) lease: WifiLease,
+    pub(super) mdns: Option<crate::mdns::Registration>,
     #[cfg(test)]
-    pub local_addr: SocketAddr,
-    pub locale: cadmus_api_proto::cadmus::api::shared::v1::Locale,
+    pub(super) local_addr: SocketAddr,
+    pub(super) locale: cadmus_api_proto::cadmus::api::shared::v1::Locale,
 }
 
 /// Start or stop the public companion listener from the main-menu switch.
@@ -104,7 +105,7 @@ fn notify_not_online(hub: &Hub) {
 /// Wi-Fi bring-up, so awaiting it here would park the main loop for the whole
 /// acquire timeout. The job reports back through [`Command::ListenerBound`],
 /// and the loop finishes the start in [`finish_start`].
-#[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(addr = %addr, fresh_token)))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(addr = %addr, fresh_token = fresh_token)))]
 pub(super) async fn turn_on(
     hub: &Hub,
     context: &mut AppContext,
@@ -119,8 +120,8 @@ pub(super) async fn turn_on(
     }
     if fresh_token || context.api.token.is_none() {
         context.api.token = Some(SecretString::from(new_token()?));
+        context.api.auth_failures.store(0, Ordering::Relaxed);
     }
-    context.api.auth_failures = 0;
     let generation = context.api.begin_start();
     let tx = context.api.sender();
     let hub_for_job = hub.clone();
@@ -178,14 +179,14 @@ pub(super) async fn finish_start(
         Ok(bound) => bound,
         Err(error) => {
             context.api.token = None;
-            context.api.auth_failures = 0;
+            context.api.auth_failures.store(0, Ordering::Relaxed);
             tracing::warn!(error = %error, "public api did not start");
             return;
         }
     };
     if let Err(error) = complete_start(hub, context, bound).await {
         context.api.token = None;
-        context.api.auth_failures = 0;
+        context.api.auth_failures.store(0, Ordering::Relaxed);
         tracing::warn!(error = %error, "public api did not start");
     }
 }
@@ -216,22 +217,27 @@ async fn complete_start(
     let path = format!("/{}/companion/", serve::locale_dir(locale));
     context.mdns.start();
     let mdns = if addr.ip().is_unspecified() {
-        context.mdns.register(crate::mdns::Service {
-            ty: crate::mdns::ServiceType::tcp(
-                crate::mdns::Subsystem::parse("companion").expect("companion is a valid subsystem"),
-            ),
-            instance: crate::mdns::Instance::Hostname,
-            port: local_addr.port(),
-            txt: crate::mdns::TxtRecords::from_pairs([
-                ("vers".into(), "1".into()),
-                ("path".into(), path),
-            ]),
-            ip,
-        })
+        match crate::mdns::Subsystem::parse("companion") {
+            Ok(subsystem) => context.mdns.register(crate::mdns::Service {
+                ty: crate::mdns::ServiceType::tcp(subsystem),
+                instance: crate::mdns::Instance::Hostname,
+                port: local_addr.port(),
+                txt: crate::mdns::TxtRecords::from_pairs([
+                    ("vers".into(), "1".into()),
+                    ("path".into(), path),
+                ]),
+                ip,
+            }),
+            Err(error) => {
+                tracing::warn!(error = %error, "invalid mdns subsystem for the public api");
+                None
+            }
+        }
     } else {
         None
     };
     let file_root = super::file_root(context);
+    let auth_failures = std::sync::Arc::clone(&context.api.auth_failures);
     let job = Job::spawn(move |cancel| async move {
         serve::listen(
             cancel,
@@ -241,6 +247,7 @@ async fn complete_start(
                 site_root: Some(root),
                 scope: serve::Scope::Public,
                 file_root,
+                auth_failures,
             },
             tx,
             hub_for_job,
@@ -266,17 +273,17 @@ async fn complete_start(
 
 /// Stop the public listener and forget the token.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-pub(crate) async fn turn_off(context: &mut AppContext) {
+pub(super) async fn turn_off(context: &mut AppContext) {
     context.api.token = None;
-    context.api.auth_failures = 0;
     stop(&mut context.api).await;
+    context.api.auth_failures.store(0, Ordering::Relaxed);
 }
 
 /// Close the public listener and drop the companion Wi-Fi lease. The token stays for resume.
 ///
 /// The job is joined so the listen port is free before the device sleeps.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-pub(crate) async fn suspend(context: &mut AppContext) {
+pub(super) async fn suspend(context: &mut AppContext) {
     if context.api.token.is_none() {
         return;
     }
@@ -292,7 +299,7 @@ pub(super) async fn resume(hub: &Hub, context: &mut AppContext) -> EventOutcome 
     }
     if let Err(error) = turn_on(hub, context, BIND, false).await {
         context.api.token = None;
-        context.api.auth_failures = 0;
+        context.api.auth_failures.store(0, Ordering::Relaxed);
         tracing::warn!(error = %error, "public api did not resume");
     }
     EventOutcome::Handled
@@ -334,16 +341,16 @@ fn site_root(context: &AppContext) -> std::path::PathBuf {
     context.device.install_path("website")
 }
 
-/// Four decimal digits the user types into the companion client.
+/// Six decimal digits the user types into the companion client.
 ///
 /// The value is the bearer token for the public listener, drawn from the OS
 /// CSPRNG so it cannot be predicted from a seed. The auth failure limit closes
-/// the guessing window that a four-digit space would otherwise leave open.
+/// the guessing window that a six-digit space would otherwise leave open.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
 fn new_token() -> Result<String, StartError> {
     let mut bytes = [0u8; 4];
     getrandom::fill(&mut bytes).map_err(StartError::Rng)?;
-    Ok(format!("{:04}", u32::from_le_bytes(bytes) % 10_000))
+    Ok(format!("{:06}", u32::from_le_bytes(bytes) % 1_000_000))
 }
 
 /// Address to put in the mDNS A record, if Wi-Fi has one.
@@ -364,10 +371,10 @@ mod tests {
     use super::new_token;
 
     #[test]
-    fn tokens_are_four_decimal_digits() {
+    fn tokens_are_six_decimal_digits() {
         for _ in 0..8 {
             let token = new_token().expect("os randomness");
-            assert_eq!(token.len(), 4);
+            assert_eq!(token.len(), 6);
             assert!(token.bytes().all(|byte| byte.is_ascii_digit()));
         }
     }

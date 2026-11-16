@@ -22,6 +22,8 @@ use crate::device::{AppContext, DeviceRuntime, EventOutcome};
 use crate::runtime::Job;
 use crate::view::{Bus, Event, Hub};
 use secrecy::SecretString;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -29,11 +31,9 @@ use tokio::sync::mpsc;
 use std::net::SocketAddr;
 
 #[cfg(test)]
-pub(crate) use settings::toggle_value;
+use settings::toggle_value;
 
-pub(crate) use cadmus_api_proto::cadmus::api::shared::v1 as proto;
-#[cfg(test)]
-pub(crate) use public::StartError;
+use cadmus_api_proto::cadmus::api::shared::v1 as proto;
 
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(5);
 const JOIN_TIMEOUT: Duration = Duration::from_secs(2);
@@ -41,7 +41,7 @@ pub(crate) const LEASE_NAME: &str = "public-api";
 
 /// Bad-token requests the public listener tolerates before it shuts down.
 ///
-/// Three strikes are enough to cover a mistyped four-digit token, and few
+/// Three strikes are enough to cover a mistyped six-digit token, and few
 /// enough that guessing the whole space is hopeless.
 const MAX_AUTH_FAILURES: u32 = 3;
 
@@ -51,7 +51,7 @@ enum Command {
     Status(status::Command),
     /// Settings catalog or a setting change.
     Settings(settings::Command),
-    /// A request presented a token the listener rejected.
+    /// A request presented a bearer credential the listener rejected.
     AuthFailed,
     /// The public listener finished taking Wi-Fi and binding.
     ListenerBound {
@@ -68,8 +68,11 @@ pub(crate) struct ApiSession {
     private: Option<Job<()>>,
     /// Bearer token for the public listener. Kept across suspend.
     token: Option<SecretString>,
-    /// Rejected tokens since the public listener last started.
-    auth_failures: u32,
+    /// Rejected credentials since the public listener last minted a token.
+    ///
+    /// Listeners increment this synchronously before answering, so a locked
+    /// out listener rejects requests before the main loop drains the notice.
+    auth_failures: Arc<AtomicU32>,
     /// Job that is taking the Wi-Fi lease and binding the port, if any.
     pending_start: Option<public::PendingStart>,
     /// Bumped per start attempt so a superseded result is ignored.
@@ -92,7 +95,7 @@ impl ApiSession {
             public: None,
             private: None,
             token: None,
-            auth_failures: 0,
+            auth_failures: Arc::new(AtomicU32::new(0)),
             pending_start: None,
             start_generation: 0,
             tx,
@@ -162,6 +165,10 @@ pub async fn handle_event(
             public::suspend(context).await;
             EventOutcome::Continue
         }
+        Event::PrepareShare | Event::Share => {
+            public::turn_off(context).await;
+            EventOutcome::Continue
+        }
         _ => EventOutcome::Continue,
     }
 }
@@ -172,11 +179,10 @@ pub async fn handle_event(
 /// the menu switch. It binds loopback only, so a dev machine never exposes
 /// file and settings RPCs to the LAN, and the loopback address skips mDNS.
 #[cfg(feature = "emulator")]
-pub(crate) async fn turn_on_default(
-    hub: &Hub,
-    context: &mut AppContext,
-) -> Result<(), public::StartError> {
-    public::turn_on(hub, context, DEBUG_BIND, true).await
+pub(crate) async fn turn_on_default(hub: &Hub, context: &mut AppContext) {
+    if let Err(error) = public::turn_on(hub, context, DEBUG_BIND, true).await {
+        tracing::warn!(error = %error, "debug emulator companion did not start");
+    }
 }
 
 #[cfg(feature = "emulator")]
@@ -185,25 +191,31 @@ const DEBUG_BIND: std::net::SocketAddr =
 
 /// Uppermost directory the file RPCs may read on this device.
 ///
-/// Kobo builds confine browsing to the parent of `/mnt/onboard/.adds`; other
-/// builds stay inside the device install directory so a LAN client can never
-/// read the host filesystem.
+/// Kobo builds confine browsing to `/mnt/onboard`, where books, default
+/// libraries, and user sleep images live. Tests keep the temporary install
+/// root so they never touch a real card. Other builds stay inside the device
+/// install directory so a LAN client can never read the host filesystem.
 #[cfg(feature = "kobo")]
-fn file_root(context: &AppContext) -> Option<std::path::PathBuf> {
-    use crate::device::DevicePaths as _;
+fn file_root(_context: &AppContext) -> Option<std::path::PathBuf> {
+    cfg_select! {
+        test => {
+            use crate::device::DevicePaths as _;
 
-    context
-        .device
-        .install_dir()
-        .parent()
-        .map(std::path::Path::to_path_buf)
+            _context
+                .device
+                .install_dir()
+                .parent()
+                .map(std::path::Path::to_path_buf)
+        }
+        _ => Some(std::path::PathBuf::from(crate::settings::INTERNAL_CARD_ROOT)),
+    }
 }
 
 /// Uppermost directory the file RPCs may read on this device.
 ///
-/// Kobo builds confine browsing to the parent of `/mnt/onboard/.adds`; other
-/// builds stay inside the device install directory so a LAN client can never
-/// read the host filesystem.
+/// Kobo builds confine browsing to `/mnt/onboard`; other builds stay inside
+/// the device install directory so a LAN client can never read the host
+/// filesystem.
 #[cfg(not(feature = "kobo"))]
 fn file_root(context: &AppContext) -> Option<std::path::PathBuf> {
     use crate::device::DevicePaths as _;
@@ -226,6 +238,7 @@ pub async fn shutdown(context: &mut AppContext) {
     context.api.token = None;
     public::stop(&mut context.api).await;
     private::stop(&mut context.api).await;
+    context.api.auth_failures.store(0, Ordering::Relaxed);
 }
 
 /// Reply to queued listener commands on the main loop.
@@ -249,12 +262,9 @@ async fn drain(
                 public::finish_start(hub, context, generation, result).await;
             }
             Command::AuthFailed => {
-                context.api.auth_failures = context.api.auth_failures.saturating_add(1);
-                if context.api.auth_failures >= MAX_AUTH_FAILURES {
-                    tracing::warn!(
-                        failures = context.api.auth_failures,
-                        "public api disabled after repeated bad tokens"
-                    );
+                let failures = context.api.auth_failures.load(Ordering::Relaxed);
+                if failures >= MAX_AUTH_FAILURES {
+                    tracing::warn!(failures, "public api disabled after repeated bad tokens");
                     public::turn_off(context).await;
                 }
             }

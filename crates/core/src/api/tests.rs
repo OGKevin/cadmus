@@ -1,14 +1,16 @@
 //! API tests: listeners, bearer auth, settings round trips, and static files.
 
-use super::public::{suspend, turn_off, turn_on};
+use super::public::{StartError, suspend, turn_off, turn_on};
 use super::*;
 use crate::device::DevicePaths;
 use crate::device::test_harness::DeviceRuntimeHarness;
 use crate::device::wifi::{Essid, NetworkInfo};
 use crate::document::file_extension::FileExtension;
+use crate::fl;
 use crate::i18n::DEFAULT_LOCALE;
 use crate::i18n::I18nDisplay;
 use crate::settings::WifiMode;
+#[cfg(feature = "emulator")]
 use crate::view::EntryId;
 use connectrpc::ConnectError;
 use secrecy::ExposeSecret;
@@ -96,12 +98,15 @@ where
         .expect("api request panicked")
 }
 
-/// A bearer header derived from `token` by flipping its last nibble.
+/// A bearer header derived from `token` by flipping its last digit.
 fn wrong_token(token: &str) -> String {
     let mut bytes = token.as_bytes().to_vec();
-    let last = bytes.last_mut().expect("token");
+    let last = bytes.last_mut().expect("token is not empty");
     *last = if *last == b'0' { b'1' } else { b'0' };
-    format!("Bearer {}", String::from_utf8(bytes).expect("hex token"))
+    format!(
+        "Bearer {}",
+        String::from_utf8(bytes).expect("a decimal token stays valid UTF-8")
+    )
 }
 
 #[cfg(feature = "emulator")]
@@ -257,21 +262,20 @@ async fn settings_update_applies_on_the_main_loop_and_leaves_wifi_alone() {
     rx.await.unwrap().expect("update applied");
     assert!(!harness.context.settings.sleep_cover);
 
-    let (tx, rx) = oneshot::channel();
-    harness
-        .context
-        .api
-        .tx
-        .send(Command::Settings(settings::Command::Update {
-            id: sid(proto::SettingIdentityKind::SETTING_IDENTITY_KIND_UNSPECIFIED),
-            value: settings::choice_value("off", &[]),
-            reply: tx,
-        }))
-        .unwrap();
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::Api, hub, bus, context, runtime)
-    });
-    assert!(rx.await.unwrap().is_err());
+    let catalog = send_list(&mut harness).await;
+    let wifi_labels = [
+        fl!("settings-wifi-mode-off"),
+        fl!("settings-wifi-mode-always-on"),
+        fl!("settings-wifi-mode-auto"),
+    ];
+    assert!(
+        catalog
+            .categories
+            .iter()
+            .flat_map(|category| &category.settings)
+            .all(|setting| !wifi_labels.contains(&setting.label)),
+        "the settings catalog must not expose the Wi-Fi mode row"
+    );
     assert_eq!(harness.context.settings.wifi, WifiMode::AlwaysOn);
     assert!(holds_public_api_lease(&harness));
 }
@@ -432,6 +436,41 @@ async fn text_update_rejects_values_the_setting_cannot_store() {
     )
     .await
     .expect("number saved");
+    assert_eq!(harness.context.settings.wifi_idle_timeout, 15.5);
+
+    let auto_suspend = harness.context.settings.auto_suspend;
+    assert!(
+        update_text(
+            &mut harness,
+            proto::SettingIdentityKind::SETTING_IDENTITY_KIND_AUTO_SUSPEND,
+            "1e30"
+        )
+        .await
+        .is_err()
+    );
+    assert_eq!(harness.context.settings.auto_suspend, auto_suspend);
+
+    let auto_power_off = harness.context.settings.auto_power_off;
+    assert!(
+        update_text(
+            &mut harness,
+            proto::SettingIdentityKind::SETTING_IDENTITY_KIND_AUTO_POWER_OFF,
+            "1e30"
+        )
+        .await
+        .is_err()
+    );
+    assert_eq!(harness.context.settings.auto_power_off, auto_power_off);
+
+    assert!(
+        update_text(
+            &mut harness,
+            proto::SettingIdentityKind::SETTING_IDENTITY_KIND_WIFI_IDLE_TIMEOUT,
+            "1e30"
+        )
+        .await
+        .is_err()
+    );
     assert_eq!(harness.context.settings.wifi_idle_timeout, 15.5);
 
     assert!(
@@ -1278,6 +1317,126 @@ async fn settings_rpc_rejects_a_missing_bearer_token() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn three_bad_bearer_credentials_shut_the_public_listener_down() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    arm_wifi(&mut harness, WifiMode::Auto);
+    start(&mut harness, "127.0.0.1:0".parse().unwrap())
+        .await
+        .unwrap();
+    let addr = harness.context.api.local_addr().unwrap();
+    let token = exposed_token(&harness).expect("token");
+    for _ in 0..MAX_AUTH_FAILURES {
+        let wrong = wrong_token(&token);
+        let status = http_status(addr, Some(&wrong)).await;
+        assert!(status.contains("401"), "wrong token status: {status}");
+    }
+    let valid = format!("Bearer {token}");
+    let locked = http_status(addr, Some(&valid)).await;
+    assert!(
+        locked.contains("503"),
+        "a locked listener rejects even the valid token before the main loop drains: {locked}"
+    );
+    assert!(harness.context.api.is_on());
+    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, context, runtime)
+    });
+    assert!(!harness.context.api.is_on());
+    assert!(!holds_public_api_lease(&harness));
+    assert!(tokio::net::TcpStream::connect(addr).await.is_err());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn headerless_requests_do_not_trip_the_lockout() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    arm_wifi(&mut harness, WifiMode::Auto);
+    start(&mut harness, "127.0.0.1:0".parse().unwrap())
+        .await
+        .unwrap();
+    let addr = harness.context.api.local_addr().unwrap();
+    for _ in 0..(MAX_AUTH_FAILURES + 3) {
+        let missing =
+            drive_request(&mut harness, async move { http_status(addr, None).await }).await;
+        assert!(missing.contains("401"), "missing token status: {missing}");
+    }
+    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, context, runtime)
+    });
+    assert!(harness.context.api.is_on());
+    assert!(holds_public_api_lease(&harness));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn bad_token_strikes_survive_suspend_and_resume() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    arm_wifi(&mut harness, WifiMode::Auto);
+    start(&mut harness, "127.0.0.1:0".parse().unwrap())
+        .await
+        .unwrap();
+    let token = exposed_token(&harness).expect("token");
+    let addr = harness.context.api.local_addr().unwrap();
+    for _ in 0..(MAX_AUTH_FAILURES - 1) {
+        let wrong = wrong_token(&token);
+        let status = drive_request(&mut harness, async move {
+            http_status(addr, Some(&wrong)).await
+        })
+        .await;
+        assert!(status.contains("401"), "wrong token status: {status}");
+    }
+    crate::poll_parts!(harness, |_hub, _bus, _rq, context, _runtime| {
+        suspend(context)
+    });
+    assert!(!holds_public_api_lease(&harness));
+    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
+        handle_event(&Event::ApiResume, hub, bus, context, runtime)
+    });
+    drive_listener_start(&mut harness).await;
+    assert_eq!(exposed_token(&harness), Some(token.clone()));
+    let addr = harness.context.api.local_addr().unwrap();
+    let wrong = wrong_token(&token);
+    let status = http_status(addr, Some(&wrong)).await;
+    assert!(status.contains("401"), "wrong token status: {status}");
+    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, context, runtime)
+    });
+    assert!(
+        !harness.context.api.is_on(),
+        "the third strike survives resume"
+    );
+    assert!(!holds_public_api_lease(&harness));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn settings_writes_fail_while_storage_is_shared() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    arm_wifi(&mut harness, WifiMode::AlwaysOn);
+    start(&mut harness, "127.0.0.1:0".parse().unwrap())
+        .await
+        .unwrap();
+    assert!(harness.context.settings.sleep_cover);
+    harness.context.shared = true;
+    let catalog = send_list(&mut harness).await;
+    assert!(!catalog.categories.is_empty(), "listing still works");
+    let error = send_update(
+        &mut harness,
+        sid(proto::SettingIdentityKind::SETTING_IDENTITY_KIND_SLEEP_COVER),
+        toggle_value(false),
+    )
+    .await
+    .expect_err("shared storage refuses writes");
+    assert_eq!(error.code, connectrpc::ErrorCode::Unavailable);
+    assert!(harness.context.settings.sleep_cover);
+    harness.context.shared = false;
+    send_update(
+        &mut harness,
+        sid(proto::SettingIdentityKind::SETTING_IDENTITY_KIND_SLEEP_COVER),
+        toggle_value(false),
+    )
+    .await
+    .expect("writes resume after the share ends");
+    assert!(!harness.context.settings.sleep_cover);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn status_reports_the_compile_time_version() {
     let mut harness = DeviceRuntimeHarness::new().await;
     arm_wifi(&mut harness, WifiMode::Auto);
@@ -1562,9 +1721,12 @@ async fn http_exchange(addr: SocketAddr, req: &str) -> String {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let mut stream = tokio::net::TcpStream::connect(addr).await.unwrap();
     stream.write_all(req.as_bytes()).await.unwrap();
-    let mut buf = vec![0u8; 4096];
-    let n = stream.read(&mut buf).await.unwrap();
-    String::from_utf8_lossy(&buf[..n]).to_string()
+    let mut buf = Vec::new();
+    tokio::time::timeout(Duration::from_secs(5), stream.read_to_end(&mut buf))
+        .await
+        .expect("response read timed out")
+        .unwrap();
+    String::from_utf8_lossy(&buf).to_string()
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -1609,11 +1771,21 @@ async fn library_removal_keeps_the_selection_valid() {
         .expect("remove library below the selection");
     assert_eq!(harness.context.settings.selected_library, 1);
 
-    harness.context.settings.selected_library = 1;
+    let library_home = harness.context.library.home.clone();
+    let error = send_remove_library(&mut harness, lid(1))
+        .await
+        .expect_err("the selected library cannot be removed");
+    assert_eq!(error.code, connectrpc::ErrorCode::FailedPrecondition);
+    assert_eq!(harness.context.settings.selected_library, 1);
+    assert_eq!(harness.context.settings.libraries.len(), 2);
+    assert_eq!(harness.context.library.home, library_home);
+
+    harness.context.settings.selected_library = 0;
     send_remove_library(&mut harness, lid(1))
         .await
-        .expect("remove the selected library");
+        .expect("remove a library below the selection");
     assert_eq!(harness.context.settings.selected_library, 0);
+    assert_eq!(harness.context.settings.libraries.len(), 1);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -1649,9 +1821,11 @@ async fn library_updates_resolve_by_path_key() {
         std::path::absolute(alpha_dir.path()).unwrap().as_path()
     );
 
+    harness.context.settings.selected_library = 1;
     send_remove_library(&mut harness, lid(0))
         .await
         .expect("remove the library before alpha");
+    assert_eq!(harness.context.settings.selected_library, 0);
 
     let alpha_id = proto::SettingId {
         kind: proto::SettingIdentityKind::SETTING_IDENTITY_KIND_LIBRARY_INFO.into(),
@@ -1688,4 +1862,72 @@ async fn library_updates_resolve_by_path_key() {
     .await
     .expect_err("stale key rejected");
     assert_eq!(error.code, connectrpc::ErrorCode::FailedPrecondition);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn remove_library_requires_a_library_setting_id() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    arm_wifi(&mut harness, WifiMode::AlwaysOn);
+    start(&mut harness, "127.0.0.1:0".parse().unwrap())
+        .await
+        .unwrap();
+    let before = harness.context.settings.libraries.len();
+    let error = send_remove_library(
+        &mut harness,
+        sid(proto::SettingIdentityKind::SETTING_IDENTITY_KIND_SLEEP_COVER),
+    )
+    .await
+    .expect_err("a non-library setting id is refused");
+    assert_eq!(error.code, connectrpc::ErrorCode::InvalidArgument);
+    assert_eq!(harness.context.settings.libraries.len(), before);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn duplicate_library_paths_resolve_by_index_and_key() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    arm_wifi(&mut harness, WifiMode::AlwaysOn);
+    start(&mut harness, "127.0.0.1:0".parse().unwrap())
+        .await
+        .unwrap();
+
+    let shared_dir = tempfile::tempdir().unwrap();
+    send_add_library(
+        &mut harness,
+        library_payload("Alpha", shared_dir.path().to_str().unwrap(), ""),
+    )
+    .await
+    .expect("add alpha");
+    send_add_library(
+        &mut harness,
+        library_payload("Beta", shared_dir.path().to_str().unwrap(), ""),
+    )
+    .await
+    .expect("add beta");
+    let key = std::path::absolute(shared_dir.path())
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    let beta_index = harness.context.settings.libraries.len() - 1;
+
+    let beta_id = proto::SettingId {
+        kind: proto::SettingIdentityKind::SETTING_IDENTITY_KIND_LIBRARY_INFO.into(),
+        index: Some(u32::try_from(beta_index).unwrap()),
+        key: Some(key),
+        ..Default::default()
+    };
+    send_update(
+        &mut harness,
+        beta_id,
+        library_update("Second", shared_dir.path().to_str().unwrap(), ""),
+    )
+    .await
+    .expect("update the library the id addresses");
+    assert_eq!(
+        harness.context.settings.libraries[beta_index].name,
+        "Second"
+    );
+    assert_eq!(
+        harness.context.settings.libraries[beta_index - 1].name,
+        "Alpha"
+    );
 }

@@ -479,9 +479,10 @@ impl<R: Rtc> AlarmManager<R> {
         if let Some(step) = self.rtc.take_pending_step()? {
             for alarm in self.scheduled_alarms.values_mut() {
                 alarm.wake_time = match alarm.when {
-                    AlarmWhen::In(_) | AlarmWhen::At(ClockInstant::Rtc(_)) => {
-                        alarm.wake_time + step
-                    }
+                    AlarmWhen::In(_) | AlarmWhen::At(ClockInstant::Rtc(_)) => alarm
+                        .wake_time
+                        .checked_add_signed(step)
+                        .unwrap_or(DateTime::<Utc>::MAX_UTC),
                     AlarmWhen::At(ClockInstant::Civil(civil)) => self.rtc.to_rtc(civil)?,
                 };
             }
@@ -511,7 +512,9 @@ impl<R: Rtc> AlarmManager<R> {
         now: DateTime<Utc>,
     ) -> Result<(), Error> {
         let wake_time = match when {
-            AlarmWhen::In(duration) => now + duration,
+            AlarmWhen::In(duration) => now
+                .checked_add_signed(duration)
+                .unwrap_or(DateTime::<Utc>::MAX_UTC),
             AlarmWhen::At(instant) => self.resolve_instant(instant)?,
         };
         tracing::debug!(

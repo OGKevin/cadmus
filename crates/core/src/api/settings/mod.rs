@@ -21,10 +21,10 @@ use std::future::Future;
 use tokio::sync::oneshot;
 
 #[cfg(test)]
-pub(crate) use values::{checks_value, choice_value, library_value, path_value, toggle_value};
+pub(super) use values::{checks_value, choice_value, library_value, path_value, toggle_value};
 
 /// Settings work a listener asks the main loop to do.
-pub(crate) enum Command {
+pub(super) enum Command {
     /// Return the companion settings catalog.
     List {
         reply: oneshot::Sender<Result<SettingsCatalog, ConnectError>>,
@@ -62,7 +62,19 @@ impl Command {
     }
 }
 
+/// Why mutating RPCs fail while the device storage is shared over USB.
+const STORAGE_SHARED: &str = "device storage is shared over USB";
+
+/// Connected clients get this instead of a settings write during USB share.
+#[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
+fn unavailable_shared() -> ConnectError {
+    ConnectError::unavailable(STORAGE_SHARED)
+}
+
 /// Drain one List or Update on the main loop.
+///
+/// USB mass storage unmounts `/mnt/onboard`, so a settings write would land on
+/// the rootfs mountpoint; mutating commands fail while the storage is shared.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
 pub(super) async fn handle(
     command: Command,
@@ -77,15 +89,27 @@ pub(super) async fn handle(
             let _ = reply.send(Ok(catalog));
         }
         Command::Update { id, value, reply } => {
-            let result = update(&id, &value, hub, bus, context, runtime).await;
+            let result = if context.shared {
+                Err(unavailable_shared())
+            } else {
+                update(&id, &value, hub, bus, context, runtime).await
+            };
             let _ = reply.send(result);
         }
         Command::AddLibrary { library, reply } => {
-            let result = add_library(&library, hub, context, runtime).await;
+            let result = if context.shared {
+                Err(unavailable_shared())
+            } else {
+                add_library(&library, hub, context, runtime).await
+            };
             let _ = reply.send(result);
         }
         Command::RemoveLibrary { id, reply } => {
-            let result = remove_library(&id, hub, context, runtime).await;
+            let result = if context.shared {
+                Err(unavailable_shared())
+            } else {
+                remove_library(&id, hub, context, runtime).await
+            };
             let _ = reply.send(result);
         }
     }

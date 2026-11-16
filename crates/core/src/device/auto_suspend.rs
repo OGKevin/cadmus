@@ -13,8 +13,10 @@ use crate::device::suspend::clear_deferred_suspend;
 /// Converts Auto Suspend minutes to a chrono duration of at least one second.
 fn auto_suspend_chrono_duration(minutes: f32) -> ChronoDuration {
     let secs = (minutes * 60.0).max(0.0);
-    let duration = ChronoDuration::from_std(std::time::Duration::from_secs_f32(secs))
-        .unwrap_or_else(|_| ChronoDuration::milliseconds(((secs * 1000.0) as i64).max(1)));
+    let duration = std::time::Duration::try_from_secs_f32(secs)
+        .ok()
+        .and_then(|duration| ChronoDuration::from_std(duration).ok())
+        .unwrap_or_else(|| ChronoDuration::milliseconds(((secs * 1000.0) as i64).max(1)));
     if duration.num_seconds() < 1 {
         ChronoDuration::seconds(1)
     } else {

@@ -1,5 +1,5 @@
 use build_deps::api_codegen::{
-    category_id_proto_source, extension_proto_source, locale_proto_source,
+    category_id_proto_source, extension_proto_source, locale_impls_rust, locale_proto_source,
     setting_identity_kind_proto_source, text_mode_proto_source,
 };
 use std::fs;
@@ -13,12 +13,24 @@ fn main() {
     let locale_dir = out.join("cadmus/api/shared/v1");
     fs::create_dir_all(&locale_dir).expect("locale proto dir");
 
+    if !proto.join("gnostic/openapiv3/annotations.proto").is_file() {
+        build_deps::ensure_submodules(&manifest.join("../.."))
+            .expect("initialize proto submodules");
+    }
+
     let locale_proto = locale_dir.join("locale.proto");
     fs::write(
         &locale_proto,
         locale_proto_source(&manifest.join("../../docs/po")),
     )
     .expect("write locale.proto");
+
+    let locale_impls = out.join("locale_impls.rs");
+    fs::write(
+        &locale_impls,
+        locale_impls_rust(&manifest.join("../../docs/po")),
+    )
+    .expect("write locale_impls.rs");
 
     let extension_proto = locale_dir.join("extension.proto");
     fs::write(&extension_proto, extension_proto_source()).expect("write extension.proto");

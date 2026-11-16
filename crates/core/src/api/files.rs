@@ -1,15 +1,19 @@
 //! Device filesystem RPCs shared by public and private listeners.
 
 use super::handler::PublicRpc;
+use super::serve::FILE_CHUNK_BYTES;
 use crate::document::file_extension::{FileExtension, UnknownFileExtension};
 use cadmus_api_proto::cadmus::api::shared::v1::{
-    DirectoryEntry, DirectoryListing, Extension, FileContents, FileOps, GetFileRequest,
+    DirectoryEntry, DirectoryListing, Extension, FileChunk, FileOps, GetFileRequest,
     ListDirectoryRequest,
 };
-use connectrpc::{ConnectError, Encodable, RequestContext, ServiceRequest, ServiceResult};
+use connectrpc::{
+    ConnectError, Encodable, RequestContext, ServiceRequest, ServiceResult, ServiceStream,
+};
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use tokio::io::AsyncReadExt;
+use tokio::sync::OwnedSemaphorePermit;
 
 include!(concat!(env!("OUT_DIR"), "/api_extension_impls.rs"));
 
@@ -43,31 +47,37 @@ impl FileOps for PublicRpc {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    fn get_file<'a>(
-        &'a self,
+    fn get_file(
+        &self,
         _ctx: RequestContext,
         request: ServiceRequest<'_, GetFileRequest>,
-    ) -> impl Future<Output = ServiceResult<impl Encodable<FileContents> + Send + use<'a>>> + Send
-    {
+    ) -> impl Future<Output = ServiceResult<ServiceStream<impl Encodable<FileChunk> + Send + use<>>>>
+    + Send {
         let owned = request.to_owned_message();
+        let file_root = self.file_root.clone();
+        let file_limit = std::sync::Arc::clone(&self.file_limit);
         async move {
-            let _permit = self
-                .file_limit
-                .acquire()
+            let permit = file_limit
+                .acquire_owned()
                 .await
                 .map_err(|_| ConnectError::unavailable("api stopped"))?;
-            get_device_file(self.file_root.as_deref().map(PathBuf::as_path), &owned.path)
-                .await
-                .and_then(connectrpc::Response::ok)
+            file_chunks(
+                file_root.as_deref().map(PathBuf::as_path),
+                &owned.path,
+                permit,
+            )
+            .await
+            .and_then(connectrpc::Response::stream_ok)
         }
     }
 }
 
 /// Lists immediate children of `path`.
 ///
-/// An empty `path` starts at the process current directory. An empty
-/// `extensions` list returns directories only. Otherwise directories and files
-/// whose suffix matches one of `extensions` are included.
+/// An empty `path` starts at the listener file root when one is set, otherwise
+/// at the process current directory. An empty `extensions` list returns
+/// directories only. Otherwise directories and files whose suffix matches one
+/// of `extensions` are included.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(path = path, extensions = extensions.len())))]
 async fn list_device_directory(
     root: Option<&Path>,
@@ -75,7 +85,8 @@ async fn list_device_directory(
     extensions: &[FileExtension],
 ) -> Result<DirectoryListing, ConnectError> {
     let requested = if path.trim().is_empty() {
-        PathBuf::from(".")
+        root.map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."))
     } else {
         PathBuf::from(path)
     };
@@ -115,7 +126,7 @@ async fn list_device_directory(
             ..Default::default()
         });
     }
-    entries.sort_by_key(|entry| entry.name.to_lowercase());
+    entries.sort_by_key(|entry| (!entry.directory, entry.name.to_lowercase()));
 
     Ok(DirectoryListing {
         path: canonical.to_string_lossy().into_owned(),
@@ -170,9 +181,32 @@ async fn confine(root: Option<&Path>, path: &Path) -> Result<(), ConnectError> {
     }
 }
 
-/// Bytes of any regular file, at most 32 MiB.
+/// Read position of [`file_chunks`].
+enum ChunkState {
+    /// Reads continue; `content_type` is still pending for the first chunk.
+    Reading {
+        file: tokio::fs::File,
+        remaining: u64,
+        content_type: Option<&'static str>,
+        _permit: OwnedSemaphorePermit,
+    },
+    /// The stream is over; the read permit is released.
+    Done,
+}
+
+/// Streams a regular file in [`FILE_CHUNK_BYTES`]-sized [`FileChunk`]s, at most 32 MiB.
+///
+/// The read permit lives in the stream state, so the concurrency cap holds for
+/// the whole transfer until EOF or the client drops the stream. A zero-byte
+/// file yields one empty chunk carrying its content type, and a file that grows
+/// past the cap ends the stream with `resource_exhausted` instead of silently
+/// truncating.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(path = path)))]
-async fn get_device_file(root: Option<&Path>, path: &str) -> Result<FileContents, ConnectError> {
+async fn file_chunks(
+    root: Option<&Path>,
+    path: &str,
+    permit: OwnedSemaphorePermit,
+) -> Result<ServiceStream<FileChunk>, ConnectError> {
     if path.trim().is_empty() {
         return Err(ConnectError::invalid_argument("invalid path"));
     }
@@ -200,19 +234,74 @@ async fn get_device_file(root: Option<&Path>, path: &str) -> Result<FileContents
     let file = tokio::fs::File::open(&canonical)
         .await
         .map_err(|_| ConnectError::not_found("file not found"))?;
-    let mut content = Vec::new();
-    file.take(MAX_FILE_BYTES + 1)
-        .read_to_end(&mut content)
-        .await
-        .map_err(|_| ConnectError::not_found("file not found"))?;
-    if content.len() as u64 > MAX_FILE_BYTES {
-        return Err(ConnectError::resource_exhausted("file too large"));
-    }
-    Ok(FileContents {
-        content,
-        content_type: super::serve::content_type(&canonical).to_string(),
-        ..Default::default()
-    })
+    let stream = futures_lite::stream::unfold(
+        ChunkState::Reading {
+            file,
+            remaining: MAX_FILE_BYTES,
+            content_type: Some(super::serve::content_type(&canonical)),
+            _permit: permit,
+        },
+        |state| async move {
+            let (mut file, remaining, content_type, _permit) = match state {
+                ChunkState::Reading {
+                    file,
+                    remaining,
+                    content_type,
+                    _permit,
+                } => (file, remaining, content_type, _permit),
+                ChunkState::Done => return None,
+            };
+            let read_limit = if remaining == 0 {
+                1
+            } else {
+                remaining.min(FILE_CHUNK_BYTES as u64) as usize
+            };
+            let mut data = vec![0u8; read_limit];
+            match AsyncReadExt::read(&mut file, &mut data).await {
+                Ok(0) => {
+                    let content_type = content_type?;
+                    Some((
+                        Ok(FileChunk {
+                            content_type: content_type.to_string(),
+                            ..Default::default()
+                        }),
+                        ChunkState::Done,
+                    ))
+                }
+                Ok(_) if remaining == 0 => {
+                    tracing::warn!("api file grew past the size cap");
+                    Some((
+                        Err(ConnectError::resource_exhausted("file too large")),
+                        ChunkState::Done,
+                    ))
+                }
+                Ok(read) => {
+                    data.truncate(read);
+                    Some((
+                        Ok(FileChunk {
+                            data,
+                            content_type: content_type.unwrap_or_default().to_string(),
+                            ..Default::default()
+                        }),
+                        ChunkState::Reading {
+                            file,
+                            remaining: remaining - read as u64,
+                            content_type: None,
+                            _permit,
+                        },
+                    ))
+                }
+                Err(error) => {
+                    tracing::warn!(error = %error, "api file read failed");
+                    Some((
+                        Err(ConnectError::internal("file read failed")),
+                        ChunkState::Done,
+                    ))
+                }
+            }
+        },
+    );
+    Ok(Box::pin(stream))
 }
 
 /// Cadmus [`FileExtension`] for this path, if the suffix is known.
@@ -225,7 +314,12 @@ fn path_file_extension(path: &Path) -> Option<FileExtension> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Extension, FileExtension, get_device_file, list_device_directory};
+    use super::{Extension, FileExtension, file_chunks, list_device_directory};
+    use crate::api::serve::FILE_CHUNK_BYTES;
+    use futures_lite::StreamExt as _;
+    use std::path::Path;
+    use std::sync::Arc;
+    use tokio::sync::Semaphore;
 
     #[tokio::test]
     async fn list_directory_empty_path_lists_dirs_and_rejects_files() {
@@ -252,6 +346,19 @@ mod tests {
             connectrpc::ErrorCode::InvalidArgument,
             "{error}"
         );
+    }
+
+    #[tokio::test]
+    async fn list_directory_empty_path_starts_at_the_file_root() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir(root.path().join("shelf")).unwrap();
+        let listing = list_device_directory(Some(root.path()), "", &[])
+            .await
+            .expect("root lists");
+        let root = std::fs::canonicalize(root.path()).unwrap();
+        assert_eq!(Path::new(&listing.path), root.as_path());
+        assert!(listing.entries.iter().any(|entry| entry.name == "shelf"));
+        assert_eq!(listing.parent, "");
     }
 
     #[tokio::test]
@@ -286,12 +393,37 @@ mod tests {
         assert!(dirs.contains(&"subdir"));
         assert_eq!(files, ["book.epub", "photo.png"]);
         assert_eq!(
+            listing.entries.first().map(|entry| entry.directory),
+            Some(true),
+            "directories sort before files"
+        );
+        assert_eq!(
             listing.parent,
             dir.path()
                 .parent()
                 .map(|parent| parent.to_string_lossy().into_owned())
                 .unwrap_or_default()
         );
+    }
+
+    /// Drains every chunk [`file_chunks`] yields for `path`.
+    async fn collected_file(
+        root: Option<&Path>,
+        path: &str,
+    ) -> Result<(Vec<u8>, String), connectrpc::ConnectError> {
+        let limit = Arc::new(Semaphore::new(1));
+        let permit = Arc::clone(&limit).acquire_owned().await.unwrap();
+        let mut stream = file_chunks(root, path, permit).await?;
+        let mut content = Vec::new();
+        let mut content_type = String::new();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk?;
+            if content_type.is_empty() {
+                content_type = chunk.content_type;
+            }
+            content.extend_from_slice(&chunk.data);
+        }
+        Ok((content, content_type))
     }
 
     #[tokio::test]
@@ -302,20 +434,20 @@ mod tests {
         let epub = dir.path().join("book.epub");
         std::fs::write(&epub, b"epub-bytes").unwrap();
 
-        let file = get_device_file(None, png.to_str().unwrap())
+        let (content, content_type) = collected_file(None, png.to_str().unwrap())
             .await
             .expect("png reads");
-        assert_eq!(file.content, b"png-bytes");
-        assert_eq!(file.content_type, "image/png");
+        assert_eq!(content, b"png-bytes");
+        assert_eq!(content_type, "image/png");
 
-        let book = get_device_file(None, epub.to_str().unwrap())
+        let (content, content_type) = collected_file(None, epub.to_str().unwrap())
             .await
             .expect("epub reads");
-        assert_eq!(book.content, b"epub-bytes");
-        assert_eq!(book.content_type, "application/epub+zip");
+        assert_eq!(content, b"epub-bytes");
+        assert_eq!(content_type, "application/epub+zip");
 
         let missing = dir.path().join("missing.png");
-        let missing_error = get_device_file(None, missing.to_str().unwrap())
+        let missing_error = collected_file(None, missing.to_str().unwrap())
             .await
             .expect_err("missing rejected");
         assert_eq!(
@@ -326,21 +458,79 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn get_file_streams_large_files_across_chunk_boundaries() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("large.bin");
+        let content: Vec<u8> = (0..(FILE_CHUNK_BYTES * 2 + 17))
+            .map(|index| (index % 251) as u8)
+            .collect();
+        std::fs::write(&path, &content).unwrap();
+        let (bytes, _) = collected_file(None, path.to_str().unwrap())
+            .await
+            .expect("stream reads");
+        assert_eq!(bytes, content);
+    }
+
+    #[tokio::test]
+    async fn get_file_reports_the_content_type_of_empty_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("empty.epub");
+        std::fs::write(&path, b"").unwrap();
+        let limit = Arc::new(Semaphore::new(1));
+        let permit = Arc::clone(&limit).acquire_owned().await.unwrap();
+        let mut stream = file_chunks(None, path.to_str().unwrap(), permit)
+            .await
+            .expect("stream opens");
+        let chunk = stream
+            .next()
+            .await
+            .expect("one metadata chunk")
+            .expect("metadata chunk is ok");
+        assert!(chunk.data.is_empty());
+        assert_eq!(chunk.content_type, "application/epub+zip");
+        assert!(
+            stream.next().await.is_none(),
+            "the stream ends after the metadata chunk"
+        );
+    }
+
+    #[tokio::test]
+    async fn get_file_holds_its_read_permit_until_the_stream_ends() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("book.epub");
+        std::fs::write(&path, b"epub-bytes").unwrap();
+        let limit = Arc::new(Semaphore::new(1));
+        let permit = Arc::clone(&limit).acquire_owned().await.unwrap();
+        let mut stream = file_chunks(None, path.to_str().unwrap(), permit)
+            .await
+            .expect("stream opens");
+        assert!(
+            Arc::clone(&limit).try_acquire_owned().is_err(),
+            "the open stream holds the read permit"
+        );
+        while stream.next().await.is_some() {}
+        assert!(
+            Arc::clone(&limit).try_acquire_owned().is_ok(),
+            "the permit returns after the stream ends"
+        );
+    }
+
+    #[tokio::test]
     async fn file_root_rejects_paths_outside_it() {
         let root = tempfile::tempdir().unwrap();
         let outside = tempfile::tempdir().unwrap();
         std::fs::write(root.path().join("inside.txt"), b"inside").unwrap();
         std::fs::write(outside.path().join("outside.txt"), b"outside").unwrap();
 
-        let inside = get_device_file(
+        let (inside, _) = collected_file(
             Some(root.path()),
             root.path().join("inside.txt").to_str().unwrap(),
         )
         .await
         .expect("inside the root");
-        assert_eq!(inside.content, b"inside");
+        assert_eq!(inside, b"inside");
 
-        let error = get_device_file(
+        let error = collected_file(
             Some(root.path()),
             outside.path().join("outside.txt").to_str().unwrap(),
         )

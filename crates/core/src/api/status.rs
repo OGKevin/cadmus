@@ -12,7 +12,7 @@ use std::sync::Arc;
 use tokio::sync::oneshot;
 
 /// Status work a listener asks the main loop to do.
-pub(crate) enum Command {
+pub(super) enum Command {
     /// Locale, hostname, and compile-time version.
     Get {
         reply: oneshot::Sender<Result<DeviceStatus, ConnectError>>,

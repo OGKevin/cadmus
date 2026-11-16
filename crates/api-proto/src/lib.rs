@@ -17,47 +17,41 @@ use cadmus::api::shared::v1::Locale;
 
 /// Site directory for a [`Locale`] (`en`, `fr`, `pt-BR`).
 ///
-/// Proto names are `LOCALE_<CODE>` with hyphens turned into underscores.
-/// This undoes that so `GetStatus.locale` and `site/<dir>/` stay the same
-/// codes as `docs/po/*.po`, which name the site directories — the language
-/// subtag is lowercased and the region subtag keeps its case.
-/// `LOCALE_UNSPECIFIED` maps to `en`.
+/// The mapping is generated at build time from the `docs/po/*.po` stems, the
+/// same names the site directories use, so a region or script subtag keeps its
+/// exact case. `LOCALE_UNSPECIFIED` maps to `en`.
 pub fn locale_dir(locale: Locale) -> String {
-    locale_dir_from_proto_name(locale.proto_name())
+    locale.site_dir().unwrap_or("en").to_string()
 }
 
-/// Site directory for a proto locale name (`LOCALE_EN`, `LOCALE_PT_BR`).
-fn locale_dir_from_proto_name(name: &str) -> String {
-    let name = name
-        .strip_prefix("LOCALE_")
-        .filter(|name| *name != "UNSPECIFIED")
-        .unwrap_or("EN");
-    match name.split_once('_') {
-        Some((language, region)) => format!("{}-{region}", language.to_ascii_lowercase()),
-        None => name.to_ascii_lowercase(),
-    }
-}
-
-/// [`Locale`] for a site directory or BCP-47 language subtag.
+/// [`Locale`] for a site directory or BCP-47 language tag, or `None`.
 ///
-/// `fr` becomes `LOCALE_FR`. Unknown names, including device `en-GB` when
-/// the site only has `en`, become `LOCALE_EN`.
-pub fn locale_from_dir(dir: &str) -> Locale {
-    let name = format!("LOCALE_{}", dir.to_ascii_uppercase().replace('-', "_"));
-    Locale::from_proto_name(&name).unwrap_or(Locale::LOCALE_EN)
+/// `fr` becomes `LOCALE_FR` and `pt-BR` becomes `LOCALE_PT_BR`. Unknown names,
+/// including device `en-GB` when the site only has `en`, return `None`.
+pub fn locale_from_dir(dir: &str) -> Option<Locale> {
+    locale_from_site_dir(dir)
 }
+
+include!(concat!(env!("OUT_DIR"), "/locale_impls.rs"));
 
 #[cfg(test)]
 mod tests {
-    use super::Locale;
-    use super::locale_dir;
-    use super::locale_dir_from_proto_name;
+    use super::{Locale, locale_dir, locale_from_dir};
 
     #[test]
     fn locale_dir_keeps_the_region_case() {
         assert_eq!(locale_dir(Locale::LOCALE_EN), "en");
         assert_eq!(locale_dir(Locale::LOCALE_FR), "fr");
         assert_eq!(locale_dir(Locale::LOCALE_UNSPECIFIED), "en");
-        assert_eq!(locale_dir_from_proto_name("LOCALE_PT_BR"), "pt-BR");
+    }
+
+    #[test]
+    fn locale_round_trips_exact_site_directories() {
+        for locale in [Locale::LOCALE_EN, Locale::LOCALE_FR] {
+            let dir = locale_dir(locale);
+            assert_eq!(locale_from_dir(&dir), Some(locale), "{dir}");
+        }
+        assert_eq!(locale_from_dir("en-GB"), None);
+        assert_eq!(locale_from_dir("pt-BR"), None);
     }
 }

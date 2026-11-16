@@ -75,24 +75,36 @@ pub(super) async fn remove_library(
     context: &mut AppContext,
     runtime: &mut DeviceRuntime<'_>,
 ) -> Result<(), ConnectError> {
+    if id.kind.as_known() != Some(proto::SettingIdentityKind::SETTING_IDENTITY_KIND_LIBRARY_INFO) {
+        return Err(ConnectError::invalid_argument("setting is not a library"));
+    }
     let index = library_index(context, id)
         .ok_or_else(|| ConnectError::failed_precondition("stale library id"))?;
     libraries::remove_library(index, hub, context, runtime).await
 }
 
-/// Resolve a LibraryInfo row id. Path keys survive removals; the positional
-/// index is a legacy fallback and only counts while it still points inside
-/// the list.
+/// Resolve a LibraryInfo row id.
+///
+/// A row id that carries an index must still name a library whose path equals
+/// `key`. A stale pair fails instead of resolving to another library with the
+/// same path, so an edit cannot land on a duplicate. A key alone resolves by
+/// path, and an index alone resolves by position.
 fn library_index(context: &AppContext, id: &proto::SettingId) -> Option<usize> {
-    if let Some(key) = id.key.as_deref() {
-        return context
-            .settings
-            .libraries
+    let libraries = &context.settings.libraries;
+    match (id.key.as_deref(), id.index) {
+        (Some(key), Some(index)) => {
+            let index = usize::try_from(index).ok()?;
+            let library = libraries.get(index)?;
+            (absolute_path_text(&library.path) == key).then_some(index)
+        }
+        (Some(key), None) => libraries
             .iter()
-            .position(|library| absolute_path_text(&library.path) == key);
+            .position(|library| absolute_path_text(&library.path) == key),
+        (None, index) => {
+            let index = usize::try_from(index?).ok()?;
+            (index < libraries.len()).then_some(index)
+        }
     }
-    let index = usize::try_from(id.index?).ok()?;
-    (index < context.settings.libraries.len()).then_some(index)
 }
 
 /// Dispatch by identity, then by value kind.

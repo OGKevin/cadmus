@@ -43,6 +43,7 @@ pub(super) async fn start(hub: &Hub, context: &mut AppContext) {
     let hub_for_job = hub.clone();
     let inhibitor = std::sync::Arc::clone(&context.inhibitor);
     let file_root = super::file_root(context);
+    let auth_failures = std::sync::Arc::clone(&context.api.auth_failures);
     let job = Job::spawn(move |cancel| async move {
         serve::listen(
             cancel,
@@ -52,6 +53,7 @@ pub(super) async fn start(hub: &Hub, context: &mut AppContext) {
                 site_root: None,
                 scope: serve::Scope::Internal,
                 file_root,
+                auth_failures,
             },
             tx,
             hub_for_job,

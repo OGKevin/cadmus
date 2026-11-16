@@ -7,14 +7,14 @@ import "cadmus/api/shared/v1/extension.proto";
 // Device filesystem reads shared by the public companion listener and the
 // private loopback API.
 service FileOps {
-  // Immediate children of a directory. Empty path starts at the process cwd.
+  // Immediate children of a directory. Empty path starts at the file root.
   rpc ListDirectory(ListDirectoryRequest) returns (DirectoryListing);
-  // Bytes of a regular file, at most 32 MiB.
-  rpc GetFile(GetFileRequest) returns (FileContents);
+  // Bytes of a regular file, at most 32 MiB, streamed in 64 KiB chunks in order.
+  rpc GetFile(GetFileRequest) returns (stream FileChunk);
 }
 
 message ListDirectoryRequest {
-  // Empty starts at the process current directory.
+  // Empty starts at the listener file root.
   string path = 1;
   // Known Cadmus file types. Empty lists directories only. Otherwise
   // directories plus matching files.
@@ -26,9 +26,10 @@ message GetFileRequest {
   string path = 1;
 }
 
-message FileContents {
+// One slice of a file. `content_type` is set on the first chunk only.
+message FileChunk {
   // File bytes.
-  bytes content = 1;
+  bytes data = 1;
   // MIME type inferred from the suffix, e.g. "image/png".
   string content_type = 2;
 }
