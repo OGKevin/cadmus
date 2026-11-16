@@ -130,6 +130,18 @@ Patch HTML uses `diff-cover` (see `devenv.nix` scripts).
 - **`run-emulator`** — ensures the documentation EPUB exists, then runs `cargo run -p cadmus --features emulator`
 - **`install-importer`** — runs `cargo install --path crates/importer`
 
+## sccache
+
+devenv sets `RUSTC_WRAPPER=sccache`. If setup or a compile panics inside
+sccache, retry that command with the wrapper unset:
+
+```bash
+devenv shell -- env -u RUSTC_WRAPPER cadmuscli setup
+```
+
+If the failure is a client/server version mismatch after an upgrade, run
+`cadmus-sccache restart` first (see `docs/src/contributing/devenv-setup.md`).
+
 ## Common mistakes
 
 | Mistake                                                       | Result                                                                | Fix                                                                                  |
