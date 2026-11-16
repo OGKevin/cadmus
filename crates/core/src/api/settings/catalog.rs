@@ -81,24 +81,37 @@ pub(super) async fn remove_library(
     context: &mut AppContext,
     runtime: &mut DeviceRuntime<'_>,
 ) -> Result<(), ConnectError> {
+    if id.kind.as_known() != Some(proto::SettingIdentityKind::SETTING_IDENTITY_KIND_LIBRARY_INFO) {
+        return Err(ConnectError::invalid_argument("setting is not a library"));
+    }
     let index = library_index(context, id)
         .ok_or_else(|| ConnectError::failed_precondition("stale library id"))?;
     libraries::remove_library(index, hub, context, runtime).await
 }
 
-/// Resolve a LibraryInfo row id. Path keys survive removals; the positional
-/// index is a legacy fallback and only counts while it still points inside
-/// the list.
+/// Resolve a LibraryInfo row id.
+///
+/// An in-bounds index whose path still equals `key` wins, so two libraries
+/// that share a path resolve to the one the client addressed. Otherwise the
+/// path key survives removals, and the positional index is a legacy fallback
+/// that only counts while it still points inside the list.
 fn library_index(context: &AppContext, id: &proto::SettingId) -> Option<usize> {
+    let libraries = &context.settings.libraries;
+    if let (Some(key), Some(index)) = (id.key.as_deref(), id.index)
+        && let Some(library) = usize::try_from(index)
+            .ok()
+            .and_then(|index| libraries.get(index))
+        && absolute_path_text(&library.path) == key
+    {
+        return usize::try_from(index).ok();
+    }
     if let Some(key) = id.key.as_deref() {
-        return context
-            .settings
-            .libraries
+        return libraries
             .iter()
             .position(|library| absolute_path_text(&library.path) == key);
     }
     let index = usize::try_from(id.index?).ok()?;
-    (index < context.settings.libraries.len()).then_some(index)
+    (index < libraries.len()).then_some(index)
 }
 
 /// Dispatch by identity, then by value kind.

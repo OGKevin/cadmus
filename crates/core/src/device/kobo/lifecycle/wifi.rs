@@ -205,7 +205,7 @@ fn handle_might_disable_wifi(context: &mut AppContext) -> EventOutcome {
         tracing::Span::current().record("timeout_secs", timeout_secs);
     }
 
-    if elapsed < Duration::from_secs_f32(timeout_secs.max(0.0)) {
+    if elapsed < Duration::try_from_secs_f32(timeout_secs.max(0.0)).unwrap_or(Duration::MAX) {
         tracing::trace!(
             idle_secs = elapsed.as_secs_f32(),
             timeout_secs,

@@ -509,6 +509,13 @@ pub struct Settings {
     pub locale: Option<LanguageIdentifier>,
 }
 
+/// Longest timeout the settings editor accepts: one year in seconds.
+///
+/// RTC scheduling adds a timeout to the current wall clock and the Linux wake
+/// lock adds it to a monotonic instant; both panic near their type limits, so
+/// timeouts stay far below them.
+pub(crate) const MAX_TIMEOUT_SECONDS: f32 = 365.0 * 86_400.0;
+
 impl Settings {
     /// Normalizes unsupported settings values loaded from disk.
     pub fn sanitize(&mut self) -> bool {
@@ -527,6 +534,14 @@ impl Settings {
             return true;
         }
         false
+    }
+
+    /// Soft-suspend grace delay, capped at [`MAX_TIMEOUT_SECONDS`].
+    ///
+    /// A hand-edited `Settings.toml` can hold a value the monotonic wake lock
+    /// cannot add to `Instant::now()`, so clamp it into the accepted range.
+    pub(crate) fn autosleep_grace_duration(&self) -> std::time::Duration {
+        std::time::Duration::from_secs_f32(self.autosleep_grace.clamp(0.0, MAX_TIMEOUT_SECONDS))
     }
 }
 

@@ -160,7 +160,7 @@ impl<D: Device> Context<D> {
         inhibitor.apply_settings(
             settings.autosleep_mode,
             settings.indicate_autosleep_led,
-            std::time::Duration::from_secs_f32(settings.autosleep_grace.max(0.0)),
+            settings.autosleep_grace_duration(),
         );
         wifi_session.set_inhibitor(std::sync::Arc::clone(&inhibitor));
         Context {
@@ -541,7 +541,7 @@ pub mod test_helpers {
         inhibitor.apply_settings(
             context.settings.autosleep_mode,
             context.settings.indicate_autosleep_led,
-            std::time::Duration::from_secs_f32(context.settings.autosleep_grace.max(0.0)),
+            context.settings.autosleep_grace_duration(),
         );
         context.wifi_session.set_inhibitor(Arc::clone(&inhibitor));
         context.inhibitor = inhibitor;

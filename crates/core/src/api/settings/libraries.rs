@@ -9,7 +9,7 @@ use crate::fl;
 use crate::i18n::I18nDisplay;
 use crate::settings::{FinishedAction, LibrarySettings};
 use crate::view::settings_editor::kinds::SettingIdentity;
-use crate::view::{EntryId, Event, Hub};
+use crate::view::{Event, Hub};
 use connectrpc::ConnectError;
 use std::path::{Path, PathBuf};
 
@@ -127,6 +127,13 @@ pub(super) fn absolute_path_text(path: &Path) -> String {
         .to_string()
 }
 
+/// Redraw every open Libraries editor after the row list changed.
+#[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
+fn notify_libraries_changed(hub: &Hub) {
+    hub.send(Event::Settings(crate::view::settings_editor::SettingsEvent::LibrariesChanged).into())
+        .ok();
+}
+
 /// Append a library from an AddLibrary request.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
 pub(super) async fn add_library(
@@ -160,20 +167,16 @@ pub(super) async fn add_library(
         ..Default::default()
     });
     let index = context.settings.libraries.len() - 1;
-    hub.send(
-        Event::Settings(crate::view::settings_editor::SettingsEvent::UpdateValue {
-            kind: SettingIdentity::LibraryInfo(index),
-            value: context.settings.libraries[index].path.display().to_string(),
-        })
-        .into(),
-    )
-    .ok();
+    notify_libraries_changed(hub);
     save(context, runtime).await;
     Ok(library_row(index, &context.settings))
 }
 
-#[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(index = index)))]
 /// Remove one library by index.
+///
+/// The active library is refused: `context.library` and the Home shelf point at
+/// it, and the API cannot rebuild them while another view covers Home.
+#[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(index = index)))]
 pub(super) async fn remove_library(
     index: usize,
     hub: &Hub,
@@ -188,20 +191,23 @@ pub(super) async fn remove_library(
             "cannot remove the last library",
         ));
     }
-    context.settings.libraries.remove(index);
     let selection = context.settings.selected_library;
+    if selection == index {
+        return Err(ConnectError::failed_precondition(
+            "cannot remove the selected library",
+        ));
+    }
+    context.settings.libraries.remove(index);
     if selection > index {
         context.settings.selected_library = selection - 1;
-    } else if selection == index {
-        context.settings.selected_library = 0;
-        hub.send(Event::Select(EntryId::LoadLibrary(0)).into()).ok();
     }
+    notify_libraries_changed(hub);
     save(context, runtime).await;
     Ok(())
 }
 
-#[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(index = index)))]
 /// Edit one library by index.
+#[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(index = index)))]
 pub(super) async fn update_library(
     index: usize,
     value: &proto::SettingValue,
@@ -229,14 +235,7 @@ pub(super) async fn update_library(
     library.name = name.to_string();
     library.path = path;
     library.finished = finished;
-    hub.send(
-        Event::Settings(crate::view::settings_editor::SettingsEvent::UpdateValue {
-            kind: SettingIdentity::LibraryInfo(index),
-            value: library.path.display().to_string(),
-        })
-        .into(),
-    )
-    .ok();
+    notify_libraries_changed(hub);
     save(context, runtime).await;
     Ok(library_row(index, &context.settings))
 }

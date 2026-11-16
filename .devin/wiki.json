@@ -86,7 +86,17 @@
     },
     {
       "title": "Crate Structure",
-      "purpose": "Document the Rust workspace layout: each crate (cadmus-core, cadmus, emulator, importer, fetcher, xtask, build-deps), their roles, the binaries they produce, and the inter-crate dependency graph. Cover shared workspace dependencies such as rustls and the release-minsized build profile. The build-deps crate is shared between cadmus-core's build.rs and xtask, and owns all thirdparty C/C++ build orchestration (native and Kobo recipes, MuPDF source preparation, mupdf_wrapper compilation).",
+      "purpose": "Document the Rust workspace layout: each crate (cadmus-core, cadmus, cadmus-api-proto, emulator, importer, fetcher, xtask, build-deps), their roles, the binaries they produce, and the inter-crate dependency graph. Cover shared workspace dependencies such as rustls and the release-minsized build profile. The build-deps crate is shared between cadmus-core's build.rs and xtask, and owns all thirdparty C/C++ build orchestration (native and Kobo recipes, MuPDF source preparation, mupdf_wrapper compilation). cadmus-api-proto holds the ConnectRPC types and OpenAPI document generated from proto/ and the api_enums.json manifest.",
+      "parent": "Contributor Guide",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Companion API",
+      "purpose": "Document the ConnectRPC backend API: the on-demand public companion listener (LAN, bearer-authenticated, mDNS-advertised) and the always-on private loopback listener, the shared cadmus.api.shared.v1 services (Status, Settings, FileOps) versus loopback-only cadmus.api.internal.v1, the command-and-wake main-loop dispatch, the bearer token and three-strike lockout, Wi-Fi lease and suspend/resume lifecycle, and the build-time codegen from proto/ plus crates/build-deps/src/api_enums.json (Rust enums, proto enums, mapping code, and the OpenAPI document).",
       "parent": "Contributor Guide",
       "page_notes": [
         {

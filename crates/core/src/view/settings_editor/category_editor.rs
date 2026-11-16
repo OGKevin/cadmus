@@ -23,6 +23,7 @@ use super::category::Category;
 use super::library_editor::LibraryEditor;
 use super::refresh_rate_by_kind_editor::RefreshRateByKindEditor;
 use super::setting_row::SettingRow;
+use super::setting_value::SettingsEvent;
 use std::path::PathBuf;
 use tracing::Instrument;
 
@@ -343,6 +344,32 @@ impl CategoryEditor {
 
         self.current_page = 0;
         self.update_rows_list(rq, context).await;
+    }
+
+    /// Refreshes the Libraries rows after the library list changed off-screen.
+    ///
+    /// Closes overlays that act on a row, since their indices are now stale.
+    #[inline]
+    pub(super) async fn libraries_changed(
+        &mut self,
+        rq: &mut RenderQueue,
+        context: &mut AppContext,
+    ) {
+        self.close_library_overlays(rq);
+        self.rebuild_library_rows(rq, context).await;
+    }
+
+    /// Closes the library editor and value menu overlays, if open.
+    #[inline]
+    fn close_library_overlays(&mut self, rq: &mut RenderQueue) {
+        for view_id in [ViewId::LibraryEditor, ViewId::SettingsValueMenu] {
+            let Some(index) = locate_by_id(self, view_id) else {
+                continue;
+            };
+            let rect = *self.children[index].rect();
+            self.children.remove(index);
+            rq.add(RenderData::expose(rect, UpdateMode::Gui));
+        }
     }
 
     #[inline]
@@ -958,6 +985,14 @@ impl View for CategoryEditor {
             Event::UpdateLibrary(index, library) => {
                 self.handle_update_library_event(*index, library, rq, context)
                     .await
+            }
+            Event::Settings(SettingsEvent::LibrariesChanged) => {
+                if self.category == Category::Libraries {
+                    self.libraries_changed(rq, context).await;
+                    true
+                } else {
+                    false
+                }
             }
             Event::OpenNamedInput {
                 view_id,

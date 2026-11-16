@@ -132,6 +132,9 @@ message PathValue {
 
 // One library in the Libraries category.
 message LibraryValue {
+  // Removal uses Settings.RemoveLibrary; the old flag field stays reserved.
+  reserved 4;
+  reserved "remove";
   // Display name.
   string name = 1;
   // Directory that holds books.

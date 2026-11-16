@@ -37,6 +37,7 @@ jobs:
             cargo:
               - '**/*.rs'
               - 'crates/core/i18n/**'
+              - 'crates/build-deps/src/api_enums*.json'
               - 'docs/po/**'
               - 'proto/**'
               - 'Cargo.*'

@@ -3,7 +3,7 @@
 
 use super::Command;
 use super::handler::PublicRpc;
-use crate::device::inhibitor::{Inhibitor, Kind, SoftSuspendName};
+use crate::device::inhibitor::{Inhibitor, InhibitorGuard, Kind, SoftSuspendName};
 use crate::view::{Event, Hub};
 use bytes::Bytes;
 use cadmus_api_proto::cadmus::api::shared::v1::{FileOpsExt, Locale, SettingsExt, StatusExt};
@@ -12,7 +12,8 @@ use cadmus_api_proto::locale_from_dir;
 pub(super) use cadmus_api_proto::locale_dir;
 use connectrpc::{ConnectError, ConnectRpcService, Router};
 use http::{HeaderMap, Method, Request, Response, StatusCode};
-use http_body_util::{Either, Full};
+use http_body::{Body, Frame, SizeHint};
+use http_body_util::{BodyExt, Full, StreamBody};
 use hyper::body::Incoming;
 use hyper_util::rt::{TokioExecutor, TokioIo, TokioTimer};
 use hyper_util::server::conn::auto::Builder;
@@ -25,8 +26,10 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
+use tokio::io::AsyncReadExt;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Semaphore, mpsc};
 use tokio_util::sync::CancellationToken;
@@ -41,6 +44,19 @@ const MAX_FILE_READS: usize = 4;
 const HEADER_READ_TIMEOUT: Duration = Duration::from_secs(30);
 const HTTP2_KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(60);
 const HTTP2_KEEP_ALIVE_TIMEOUT: Duration = Duration::from_secs(20);
+/// HTTP/2 streams one connection may run at once.
+const HTTP2_MAX_CONCURRENT_STREAMS: u32 = 16;
+/// Longest a connection may sit without a pending request after its first.
+const IDLE_CONNECTION_TIMEOUT: Duration = Duration::from_secs(90);
+/// How often connection deadlines are checked.
+const CONNECTION_SWEEP_INTERVAL: Duration = Duration::from_secs(1);
+/// Bytes per streamed file chunk.
+///
+/// Chunk size trades read syscalls and framing overhead against worst-case
+/// buffering, not throughput. 64 KiB keeps at most [`MAX_FILE_READS`] streams
+/// at 256 KiB of chunk buffers on a 512 MB device; larger chunks would raise
+/// that peak without changing wire throughput on Wi-Fi.
+pub(super) const FILE_CHUNK_BYTES: usize = 64 * 1024;
 
 /// Bind a reuseaddr TCP listener on `addr`.
 ///
@@ -121,7 +137,180 @@ unsafe fn set_ipv6_only_off(fd: std::os::fd::RawFd) -> std::io::Result<()> {
     }
 }
 
-type RespBody = Either<connectrpc::ConnectRpcBody, Full<Bytes>>;
+type RespBody = ActiveBody;
+
+/// Error type shared by the response body halves.
+type BoxError = Box<dyn std::error::Error + Send + Sync>;
+
+/// Any response body, boxed with the shared error type.
+type BoxedBody = Pin<Box<dyn Body<Data = Bytes, Error = BoxError> + Send>>;
+
+/// RPC or static-file response body before it carries connection activity.
+type InnerBody = BoxedBody;
+
+/// In-flight request marker; decrements its connection's counter on drop.
+struct InFlight {
+    activity: Arc<ConnectionActivity>,
+}
+
+impl InFlight {
+    fn new(activity: Arc<ConnectionActivity>) -> Self {
+        activity.request_started();
+        Self { activity }
+    }
+}
+
+impl Drop for InFlight {
+    fn drop(&mut self) {
+        self.activity.request_finished();
+    }
+}
+
+/// Response body that keeps its connection marked active until dropped.
+struct ActiveBody {
+    inner: BoxedBody,
+    _in_flight: InFlight,
+}
+
+impl ActiveBody {
+    /// Wraps `body`, counting it as in flight until the body is dropped.
+    fn new(body: InnerBody, in_flight: InFlight) -> Self {
+        Self {
+            inner: body,
+            _in_flight: in_flight,
+        }
+    }
+}
+
+impl Body for ActiveBody {
+    type Data = Bytes;
+    type Error = BoxError;
+
+    fn poll_frame(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<Frame<Bytes>, BoxError>>> {
+        self.get_mut().inner.as_mut().poll_frame(cx)
+    }
+
+    fn is_end_stream(&self) -> bool {
+        self.inner.is_end_stream()
+    }
+
+    fn size_hint(&self) -> SizeHint {
+        self.inner.size_hint()
+    }
+}
+
+/// RPC response body that holds the soft-suspend lease until it ends.
+///
+/// Streaming handlers return their `ServiceStream` before any chunk is read,
+/// so the lease must live with the body, not with the handler future. Auth
+/// rejections answer without a lease.
+struct LeasedBody {
+    inner: connectrpc::ConnectRpcBody,
+    _lease: Option<InhibitorGuard>,
+}
+
+/// Wraps an RPC response body with a body that owns `lease`.
+fn leased_response(
+    response: Response<connectrpc::ConnectRpcBody>,
+    lease: Option<InhibitorGuard>,
+) -> Response<LeasedBody> {
+    let (parts, body) = response.into_parts();
+    Response::from_parts(
+        parts,
+        LeasedBody {
+            inner: body,
+            _lease: lease,
+        },
+    )
+}
+
+impl Body for LeasedBody {
+    type Data = Bytes;
+    type Error = Infallible;
+
+    fn poll_frame(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<Frame<Bytes>, Infallible>>> {
+        Pin::new(&mut self.get_mut().inner).poll_frame(cx)
+    }
+
+    fn is_end_stream(&self) -> bool {
+        self.inner.is_end_stream()
+    }
+
+    fn size_hint(&self) -> SizeHint {
+        self.inner.size_hint()
+    }
+}
+
+/// Boxes a body with the shared error type.
+fn boxed_body<B>(body: B) -> BoxedBody
+where
+    B: Body<Data = Bytes> + Send + 'static,
+    B::Error: Into<BoxError>,
+{
+    Box::pin(body.map_err(Into::into))
+}
+
+/// Per-connection request activity for the connection sweep.
+struct ConnectionActivity {
+    /// Whether any request reached this connection.
+    started: AtomicBool,
+    /// Requests whose response body is still pending.
+    active: AtomicUsize,
+    /// Monotonic milliseconds since process start when the connection was accepted.
+    accepted_ms: AtomicU64,
+    /// Monotonic milliseconds since process start when the last response body
+    /// finished. Zero before any.
+    finished_ms: AtomicU64,
+}
+
+impl ConnectionActivity {
+    fn new() -> Self {
+        Self {
+            started: AtomicBool::new(false),
+            active: AtomicUsize::new(0),
+            accepted_ms: AtomicU64::new(now_ms()),
+            finished_ms: AtomicU64::new(0),
+        }
+    }
+
+    fn request_started(&self) {
+        self.started.store(true, Ordering::Relaxed);
+        self.active.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn request_finished(&self) {
+        self.active.fetch_sub(1, Ordering::Relaxed);
+        self.finished_ms.store(now_ms(), Ordering::Relaxed);
+    }
+
+    /// Whether the connection outlived its deadline with nothing in flight.
+    fn expired(&self) -> bool {
+        let now = now_ms();
+        if !self.started.load(Ordering::Relaxed) {
+            return now.saturating_sub(self.accepted_ms.load(Ordering::Relaxed))
+                >= HEADER_READ_TIMEOUT.as_millis() as u64;
+        }
+        let finished = self.finished_ms.load(Ordering::Relaxed);
+        self.active.load(Ordering::Relaxed) == 0
+            && finished > 0
+            && now.saturating_sub(finished) >= IDLE_CONNECTION_TIMEOUT.as_millis() as u64
+    }
+}
+
+/// Monotonic milliseconds since process start for connection deadlines.
+///
+/// Wall-clock jumps, such as the NTP `settimeofday` on Wi-Fi bring-up, must
+/// neither expire nor extend a connection.
+fn now_ms() -> u64 {
+    static START: std::sync::LazyLock<Instant> = std::sync::LazyLock::new(Instant::now);
+    START.elapsed().as_millis() as u64
+}
 
 /// Which RPC surface a listener exposes.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -153,6 +342,8 @@ pub(super) struct ListenConfig {
     pub scope: Scope,
     /// Uppermost directory `FileOps` may read. `None` is unrestricted.
     pub file_root: Option<PathBuf>,
+    /// Rejected bearer credentials, shared with the main loop's session.
+    pub auth_failures: Arc<AtomicU32>,
 }
 
 /// RPCs both listeners serve, all from `cadmus.api.shared.v1`.
@@ -193,10 +384,12 @@ pub(super) async fn listen(
         tx,
         hub,
         inhibitor,
+        failures: config.auth_failures,
     };
     let app = AppService {
         rpc,
         root: config.site_root.map(Arc::new),
+        activity: Arc::new(ConnectionActivity::new()),
     };
     let mut http = Builder::new(TokioExecutor::new());
     http.http1()
@@ -206,7 +399,8 @@ pub(super) async fn listen(
     http.http2()
         .timer(TokioTimer::new())
         .keep_alive_interval(HTTP2_KEEP_ALIVE_INTERVAL)
-        .keep_alive_timeout(HTTP2_KEEP_ALIVE_TIMEOUT);
+        .keep_alive_timeout(HTTP2_KEEP_ALIVE_TIMEOUT)
+        .max_concurrent_streams(HTTP2_MAX_CONCURRENT_STREAMS);
     let permits = Arc::new(Semaphore::new(MAX_CONNECTIONS));
     let mut connections = tokio::task::JoinSet::new();
     let accept = match AcceptIo::from_listener(listener) {
@@ -244,11 +438,13 @@ pub(super) async fn listen(
     connections.abort_all();
 }
 
-/// Serves one accepted connection until it closes or the listener cancels.
+/// Serves one accepted connection until it closes, idles out, or the listener cancels.
 ///
-/// The permit bounds how many connections run at once; the soft-suspend lease
-/// is taken per request inside [`Auth`] so an idle keep-alive socket holds no
-/// wake lease.
+/// The permit bounds how many connections run at once. Silent or partial-preface
+/// peers are dropped after the header timeout, and a connection that finishes its
+/// last request is dropped after [`IDLE_CONNECTION_TIMEOUT`], so neither can hold
+/// a permit forever. The soft-suspend lease is taken per request inside [`Auth`]
+/// so an idle keep-alive socket holds no wake lease.
 #[cfg_attr(
     feature = "tracing",
     tracing::instrument(
@@ -265,13 +461,26 @@ async fn serve_connection(
     _permit: tokio::sync::OwnedSemaphorePermit,
     stream: TcpStream,
 ) {
+    let app = app.for_connection();
+    let activity = Arc::clone(&app.activity);
     let io = TokioIo::new(stream);
     let service = TowerToHyperService::new(app);
     let conn = http.serve_connection(io, service);
     tokio::pin!(conn);
-    tokio::select! {
-        _ = cancel.cancelled() => {}
-        _ = conn.as_mut() => {}
+    let mut sweep = tokio::time::interval(CONNECTION_SWEEP_INTERVAL);
+    sweep.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    sweep.tick().await;
+    loop {
+        tokio::select! {
+            _ = cancel.cancelled() => break,
+            _ = conn.as_mut() => break,
+            _ = sweep.tick() => {
+                if activity.expired() {
+                    tracing::debug!("api connection dropped: silent or idle");
+                    break;
+                }
+            }
+        }
     }
 }
 
@@ -396,6 +605,9 @@ fn accept_failure_is_benign(error: &std::io::Error) -> bool {
 }
 
 /// Device language if that site directory exists, otherwise English.
+///
+/// The full BCP-47 tag is tried first so a regional site such as `pt-BR` wins
+/// over its bare language, then the language subtag, then English.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
 pub(super) async fn site_locale(
     root: &Path,
@@ -404,17 +616,20 @@ pub(super) async fn site_locale(
     let Some(locale) = locale else {
         return Locale::LOCALE_EN;
     };
-    let kind = locale_from_dir(locale.language.as_str());
-    let dir = locale_dir(kind);
-    if tokio::fs::metadata(root.join(dir))
-        .await
-        .map(|meta| meta.is_dir())
-        .unwrap_or(false)
-    {
-        kind
-    } else {
-        Locale::LOCALE_EN
+    let tags = [locale.to_string(), locale.language.to_string()];
+    for tag in &tags {
+        let Some(candidate) = locale_from_dir(tag) else {
+            continue;
+        };
+        if tokio::fs::metadata(root.join(locale_dir(candidate)))
+            .await
+            .map(|meta| meta.is_dir())
+            .unwrap_or(false)
+        {
+            return candidate;
+        }
     }
+    Locale::LOCALE_EN
 }
 
 #[derive(Clone)]
@@ -425,10 +640,11 @@ struct Auth {
     tx: mpsc::UnboundedSender<Command>,
     hub: Hub,
     inhibitor: Arc<Inhibitor>,
+    failures: Arc<AtomicU32>,
 }
 
 impl Service<Request<Incoming>> for Auth {
-    type Response = Response<connectrpc::ConnectRpcBody>;
+    type Response = Response<LeasedBody>;
     type Error = Infallible;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
@@ -442,13 +658,27 @@ impl Service<Request<Incoming>> for Auth {
         let path = req.uri().path().to_owned();
         if let Some(token) = self.token.as_ref()
             && !open_status(&path)
-            && !bearer_matches(token.expose_secret(), req.headers())
         {
-            report_auth_failure(&self.tx, &self.hub);
-            let response =
-                ConnectError::unauthenticated("unauthorized").into_http_response(req.headers());
-            log_access(scope, &method, &path, response.status(), Duration::ZERO);
-            return Box::pin(async { Ok(response) });
+            if self.failures.load(Ordering::Relaxed) >= super::MAX_AUTH_FAILURES {
+                report_auth_failure(&self.tx, &self.hub);
+                let response =
+                    ConnectError::unavailable("api stopped").into_http_response(req.headers());
+                log_access(scope, &method, &path, response.status(), Duration::ZERO);
+                return Box::pin(async { Ok(leased_response(response, None)) });
+            }
+            match presented_bearer(req.headers()) {
+                Some(presented) if bearer_matches(token.expose_secret(), presented) => {}
+                presented => {
+                    if presented.is_some() {
+                        self.failures.fetch_add(1, Ordering::Relaxed);
+                        report_auth_failure(&self.tx, &self.hub);
+                    }
+                    let response = ConnectError::unauthenticated("unauthorized")
+                        .into_http_response(req.headers());
+                    log_access(scope, &method, &path, response.status(), Duration::ZERO);
+                    return Box::pin(async { Ok(leased_response(response, None)) });
+                }
+            }
         }
         let lease = match self
             .inhibitor
@@ -464,14 +694,15 @@ impl Service<Request<Incoming>> for Auth {
                 let response =
                     ConnectError::unavailable("api stopped").into_http_response(req.headers());
                 log_access(scope, &method, &path, response.status(), Duration::ZERO);
-                return Box::pin(async { Ok(response) });
+                return Box::pin(async { Ok(leased_response(response, None)) });
             }
         };
         let mut inner = self.inner.clone();
         Box::pin(async move {
-            let _soft_suspend = lease;
             let started = Instant::now();
-            let result = Service::call(&mut inner, req).await;
+            let result = Service::call(&mut inner, req)
+                .await
+                .map(|response| leased_response(response, Some(lease)));
             if let Ok(response) = &result {
                 log_access(scope, &method, &path, response.status(), started.elapsed());
             }
@@ -505,10 +736,10 @@ fn open_status(path: &str) -> bool {
         .ends_with("/cadmus.api.shared.v1.Status/GetStatus")
 }
 
-/// Tells the main loop that a request presented a bad token.
+/// Tells the main loop that a request presented a bad credential.
 ///
-/// The loop owns the shared failure count and shuts the listener down once
-/// the limit is reached, so a LAN attacker cannot keep guessing.
+/// The loop shuts the listener down once the shared count reaches
+/// [`super::MAX_AUTH_FAILURES`], while [`Auth`] already rejects requests.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
 fn report_auth_failure(tx: &mpsc::UnboundedSender<Command>, hub: &Hub) {
     if tx.send(Command::AuthFailed).is_ok() {
@@ -516,16 +747,22 @@ fn report_auth_failure(tx: &mpsc::UnboundedSender<Command>, hub: &Hub) {
     }
 }
 
-/// Constant-time Bearer compare. Every build authenticates.
+/// Bearer credential a request presents, when it presents one at all.
+///
+/// A missing header, a non-`Bearer` scheme, or an empty `Bearer ` credential
+/// all return `None`, so only real guesses count as strikes.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-fn bearer_matches(expected: &str, headers: &HeaderMap) -> bool {
-    let Some(presented) = headers
+fn presented_bearer(headers: &HeaderMap) -> Option<&str> {
+    headers
         .get(http::header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.strip_prefix("Bearer "))
-    else {
-        return false;
-    };
+        .filter(|token| !token.is_empty())
+}
+
+/// Constant-time Bearer compare. Every build authenticates.
+#[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
+fn bearer_matches(expected: &str, presented: &str) -> bool {
     let expected = expected.as_bytes();
     let presented = presented.as_bytes();
     if expected.len() != presented.len() {
@@ -542,6 +779,18 @@ fn bearer_matches(expected: &str, headers: &HeaderMap) -> bool {
 struct AppService {
     rpc: Auth,
     root: Option<Arc<PathBuf>>,
+    activity: Arc<ConnectionActivity>,
+}
+
+impl AppService {
+    /// Copy for one accepted connection with a fresh activity gate.
+    fn for_connection(&self) -> AppService {
+        AppService {
+            rpc: self.rpc.clone(),
+            root: self.root.clone(),
+            activity: Arc::new(ConnectionActivity::new()),
+        }
+    }
 }
 
 impl Service<Request<Incoming>> for AppService {
@@ -554,9 +803,17 @@ impl Service<Request<Incoming>> for AppService {
     }
 
     fn call(&mut self, req: Request<Incoming>) -> Self::Future {
+        let in_flight = InFlight::new(Arc::clone(&self.activity));
         let rpc = self.rpc.clone();
         let root = self.root.clone();
-        Box::pin(async move { respond(rpc, root.as_deref().map(PathBuf::as_path), req).await })
+        Box::pin(async move {
+            let response = respond(rpc, root.as_deref().map(PathBuf::as_path), req).await?;
+            let (parts, body) = response.into_parts();
+            Ok(Response::from_parts(
+                parts,
+                ActiveBody::new(body, in_flight),
+            ))
+        })
     }
 }
 
@@ -574,7 +831,7 @@ async fn respond(
     mut rpc: Auth,
     root: Option<&Path>,
     req: Request<Incoming>,
-) -> Result<Response<RespBody>, Infallible> {
+) -> Result<Response<InnerBody>, Infallible> {
     let method = req.method().clone();
     let path = req.uri().path().to_string();
     let response = if path == OPENAPI_PATH {
@@ -582,7 +839,7 @@ async fn respond(
     } else if path.starts_with(RPC_PREFIX) {
         let response = Service::call(&mut rpc, req).await?;
         let (parts, body) = response.into_parts();
-        Response::from_parts(parts, Either::Left(body))
+        Response::from_parts(parts, boxed_body(body))
     } else if let Some(root) = root {
         static_file(root, req).await
     } else {
@@ -599,7 +856,7 @@ async fn respond(
 
 /// Public OpenAPI document. No bearer token: the protos are public docs.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-fn openapi(method: &http::Method) -> Response<RespBody> {
+fn openapi(method: &http::Method) -> Response<InnerBody> {
     if method != http::Method::GET && method != http::Method::HEAD {
         return empty(StatusCode::METHOD_NOT_ALLOWED);
     }
@@ -613,13 +870,13 @@ fn openapi(method: &http::Method) -> Response<RespBody> {
         .status(StatusCode::OK)
         .header(http::header::CONTENT_TYPE, "application/json")
         .header(http::header::CONTENT_LENGTH, spec.len())
-        .body(Either::Right(Full::new(body)))
+        .body(boxed_body(Full::new(body)))
         .unwrap_or_else(|_| empty(StatusCode::INTERNAL_SERVER_ERROR))
 }
 
-/// GET/HEAD a file under the site root. 404 when the path escapes.
+/// GET/HEAD a file under the site root, streamed in [`FILE_CHUNK_BYTES`] frames. 404 when the path escapes.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-async fn static_file(root: &Path, req: Request<Incoming>) -> Response<RespBody> {
+async fn static_file(root: &Path, req: Request<Incoming>) -> Response<InnerBody> {
     let method = req.method().clone();
     if method != http::Method::GET && method != http::Method::HEAD {
         return empty(StatusCode::METHOD_NOT_ALLOWED);
@@ -634,34 +891,63 @@ async fn static_file(root: &Path, req: Request<Incoming>) -> Response<RespBody> 
     if meta.len() > MAX_FILE_BYTES {
         return empty(StatusCode::PAYLOAD_TOO_LARGE);
     }
-    let bytes = if method == http::Method::HEAD {
-        Bytes::new()
+    let body = if method == http::Method::HEAD {
+        boxed_body(Full::new(Bytes::new()))
     } else {
-        match tokio::fs::read(&path).await {
-            Ok(bytes) => Bytes::from(bytes),
+        let file = match tokio::fs::File::open(&path).await {
+            Ok(file) => file,
             Err(_) => return empty(StatusCode::NOT_FOUND),
-        }
-    };
-    let len = if method == http::Method::HEAD {
-        meta.len()
-    } else {
-        bytes.len() as u64
+        };
+        boxed_body(StreamBody::new(file_frames(file.take(meta.len()))))
     };
     Response::builder()
         .status(StatusCode::OK)
         .header(http::header::CONTENT_TYPE, content_type(&path))
-        .header(http::header::CONTENT_LENGTH, len)
-        .body(Either::Right(Full::new(bytes)))
+        .header(http::header::CONTENT_LENGTH, meta.len())
+        .body(body)
         .unwrap_or_else(|_| empty(StatusCode::INTERNAL_SERVER_ERROR))
+}
+
+/// Read position of [`file_frames`].
+enum FrameState<R> {
+    /// Reading continues.
+    Reading(R),
+    /// The previous read failed; the stream ends.
+    Done,
+}
+
+/// [`FILE_CHUNK_BYTES`] frames of `reader` for a streamed response body.
+fn file_frames<R>(
+    reader: R,
+) -> impl futures_lite::stream::Stream<Item = Result<Frame<Bytes>, std::io::Error>> + Send
+where
+    R: tokio::io::AsyncRead + Unpin + Send + 'static,
+{
+    futures_lite::stream::unfold(FrameState::Reading(reader), |state| async move {
+        let FrameState::Reading(mut reader) = state else {
+            return None;
+        };
+        let mut buf = vec![0u8; FILE_CHUNK_BYTES];
+        match tokio::io::AsyncReadExt::read(&mut reader, &mut buf).await {
+            Ok(0) => None,
+            Ok(read) => {
+                buf.truncate(read);
+                Some((
+                    Ok(Frame::data(Bytes::from(buf))),
+                    FrameState::Reading(reader),
+                ))
+            }
+            Err(error) => Some((Err(error), FrameState::Done)),
+        }
+    })
 }
 
 /// Empty HTTP response with `status`.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-fn empty(status: StatusCode) -> Response<RespBody> {
-    Response::builder()
-        .status(status)
-        .body(Either::Right(Full::new(Bytes::new())))
-        .expect("empty response")
+fn empty(status: StatusCode) -> Response<InnerBody> {
+    let mut response = Response::new(boxed_body(Full::new(Bytes::new())));
+    *response.status_mut() = status;
+    response
 }
 
 /// Resolve a URL path under `root`. Rejects `..` and storybook.
@@ -759,7 +1045,10 @@ pub(super) fn content_type(path: &Path) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{accept_failure_is_benign, bearer_matches, safe_segments};
+    use super::{
+        Locale, accept_failure_is_benign, bearer_matches, presented_bearer, safe_segments,
+        site_locale,
+    };
     use http::{HeaderMap, HeaderValue, header};
     use std::io::{Error, ErrorKind};
 
@@ -770,26 +1059,28 @@ mod tests {
     }
 
     #[test]
+    fn presented_bearer_only_counts_a_non_empty_bearer_credential() {
+        assert_eq!(
+            presented_bearer(&authorization("Bearer 123456")),
+            Some("123456")
+        );
+        assert_eq!(presented_bearer(&HeaderMap::new()), None);
+        assert_eq!(presented_bearer(&authorization("Bearer123456")), None);
+        assert_eq!(presented_bearer(&authorization("Bearer ")), None);
+        assert_eq!(presented_bearer(&authorization("Basic 123456")), None);
+    }
+
+    #[test]
     fn bearer_matches_only_accepts_the_exact_token() {
         let token = "a1b2c3d4e5f60718293a4b5c6d7e8f90";
-        assert!(bearer_matches(
-            token,
-            &authorization(&format!("Bearer {token}"))
-        ));
-        assert!(!bearer_matches(token, &HeaderMap::new()));
+        assert!(bearer_matches(token, token));
+        assert!(!bearer_matches(token, "a1b2c3d4e5f60718293a4b5c6d7e8f91"));
+        assert!(!bearer_matches(token, "a1b2c3d4e5f60718293a4b5c6d7e8f90ff"));
+        assert!(!bearer_matches(token, ""));
         assert!(!bearer_matches(
             token,
-            &authorization("Bearera1b2c3d4e5f60718293a4b5c6d7e8f90")
+            "Bearer a1b2c3d4e5f60718293a4b5c6d7e8f90"
         ));
-        assert!(!bearer_matches(
-            token,
-            &authorization("Bearer a1b2c3d4e5f60718293a4b5c6d7e8f91")
-        ));
-        assert!(!bearer_matches(
-            token,
-            &authorization("Bearer a1b2c3d4e5f60718293a4b5c6d7e8f90ff")
-        ));
-        assert!(!bearer_matches(token, &authorization("Bearer ")));
     }
 
     #[test]
@@ -812,5 +1103,22 @@ mod tests {
         assert!(safe_segments("/en/%2e%2e/secret").is_none());
         assert!(safe_segments("/storybook/index.html").is_none());
         assert!(safe_segments("/en/storybook").is_none());
+    }
+
+    #[tokio::test]
+    async fn site_locale_tries_the_full_tag_then_the_language() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir(root.path().join("fr")).unwrap();
+        let regional: unic_langid::LanguageIdentifier = "fr-CA".parse().unwrap();
+        assert_eq!(
+            site_locale(root.path(), Some(&regional)).await,
+            Locale::LOCALE_FR
+        );
+        let absent: unic_langid::LanguageIdentifier = "pt-BR".parse().unwrap();
+        assert_eq!(
+            site_locale(root.path(), Some(&absent)).await,
+            Locale::LOCALE_EN
+        );
+        assert_eq!(site_locale(root.path(), None).await, Locale::LOCALE_EN);
     }
 }

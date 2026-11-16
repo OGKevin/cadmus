@@ -11,6 +11,7 @@ use crate::device::suspend::{cancel_suspend_if_pending, has_task};
 use crate::device::test_harness::DeviceRuntimeHarness;
 use crate::frontlight::{Frontlight, LightLevel};
 use crate::settings::IntermissionDisplay;
+use crate::view::EntryId;
 use chrono::TimeZone;
 use std::time::Duration;
 
@@ -1914,4 +1915,49 @@ async fn full_inhibit_cleared_flushes_explicit_while_sleep_held() {
     });
     assert!(harness.context.deferred_suspend.is_none());
     assert!(has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn finish_cycle_emits_api_resume_only_while_the_companion_is_on() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+    });
+    harness.with_parts(|hub, _bus, rq, context, runtime| {
+        finish_cycle(context, runtime.tasks, runtime.view.as_mut(), hub, rq);
+    });
+    let events = harness.drain_hub();
+    assert!(
+        events
+            .iter()
+            .all(|event| !matches!(event, Event::ApiResume)),
+        "no companion, no resume"
+    );
+
+    harness.context.settings.wifi = crate::settings::WifiMode::AlwaysOn;
+    harness
+        .context
+        .wifi_session
+        .set_mode(crate::settings::WifiMode::AlwaysOn);
+    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
+        crate::api::handle_event(
+            &Event::Select(EntryId::ToggleCompanion),
+            hub,
+            bus,
+            context,
+            runtime,
+        )
+    });
+    assert!(harness.context.api.is_on());
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+    });
+    harness.with_parts(|hub, _bus, rq, context, runtime| {
+        finish_cycle(context, runtime.tasks, runtime.view.as_mut(), hub, rq);
+    });
+    let events = harness.drain_hub();
+    assert!(
+        events.iter().any(|event| matches!(event, Event::ApiResume)),
+        "the companion resumes after the cycle"
+    );
 }

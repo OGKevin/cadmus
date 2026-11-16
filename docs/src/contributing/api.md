@@ -9,18 +9,20 @@ Cadmus serves two cleartext
 
 | Listener | Bind                                      | Starts                | Token                                                     | Site files |
 | -------- | ----------------------------------------- | --------------------- | --------------------------------------------------------- | ---------- |
-| Public   | `[::]:80`, dual-stack (emulator IPv4 `0`) | Companion menu switch | 4-digit `Authorization: Bearer` on settings/file RPCs     | Yes        |
+| Public   | `[::]:80`, dual-stack (emulator IPv4 `0`) | Companion menu switch | 6-digit `Authorization: Bearer` on settings/file RPCs     | Yes        |
 | Private  | `127.0.0.1:8474` (tests: port 0)          | Process startup       | No                                                        | No         |
 
 The public listener accepts IPv4 and IPv6 on one socket and falls back to IPv4
 where the host has no IPv6. The private listener is loopback-only and is not
 advertised over mDNS, which cannot scope a record to loopback.
 
-Every build authenticates. The token is the four-digit code the user reads off
+Every build authenticates. The token is the six-digit code the user reads off
 the device and types into the companion client; it comes from the OS CSPRNG,
 lives in memory only, and survives suspend so a resume keeps the same token.
-Three rejected tokens in one session shut the public listener down; the switch
-has to be turned on again.
+Three rejected credentials on one token shut the public listener down; the
+switch has to be turned on again. The count is enforced in the listener
+synchronously and survives suspend/resume, and a request without a `Bearer`
+credential is answered `401` without counting as a strike.
 
 The debug emulator never binds the LAN: its startup companion session binds
 `127.0.0.1:0`, which also skips mDNS. Opening Companion from the emulator menu
@@ -53,15 +55,21 @@ oneshot. Each wait holds a
 <a href="/api/cadmus_core/device/inhibitor/soft_suspend/enum.SoftSuspendName.html#variant.Api">`SoftSuspendName::Api`</a>
 lease on the worker and attaches the same lease to the hub message so autosleep
 does not run before the main loop answers. The listener takes the same lease per
-RPC request, so an idle keep-alive socket holds none. `ListDirectory` and
-`GetFile` use `tokio::fs` on the RPC task; `GetFile` streams through a
-`take(32 MiB + 1)` bound and at most four reads buffer concurrently.
+RPC request, so an idle keep-alive socket holds none; the lease lives with the
+response body, so a streamed `GetFile` keeps it until the last chunk. `ListDirectory` and
+`GetFile` use `tokio::fs` on the RPC task. `GetFile` is a server-streaming RPC:
+it yields 64 KiB `FileChunk`s up to 32 MiB and holds one of four read permits
+for the whole stream until EOF or the client drops it. Static site files stream
+in 64 KiB frames under the same size cap.
 
 Kobo confines file RPCs to `/mnt/onboard`; every other build confines them to
-the device install directory, so a LAN client can never browse the host.
+the device install directory, so a LAN client can never browse the host. An
+empty `ListDirectory` path resolves to that root; `GetFile` rejects it.
 
-The listener accepts at most 16 connections, requires request headers within
-30 s, and pings idle HTTP/2 connections every 60 s with a 20 s timeout.
+The listener accepts at most 16 connections, requires a first request within
+30 s, caps HTTP/2 at 16 concurrent streams, and closes a connection that stays
+idle for 90 s after its last response, so silent or idle peers cannot hold
+every permit. HTTP/2 connections are pinged every 60 s with a 20 s timeout.
 
 The public listener takes the Wi-Fi lease and binds the port in a job, not on
 the main loop: on Kobo the lease only completes once the `NetUp` handler runs
@@ -82,9 +90,13 @@ when those callers exist. `crates/api-proto/build.rs` compiles every Cadmus
 once in [`crates/build-deps/src/api_enums.json`](../../../crates/build-deps/src/api_enums.json),
 validated by `api_enums.schema.json`. That manifest carries the Rust shape
 (derives, attributes, payload types, `cfg`) and the proto number of every
-variant. The `cadmus-core` build script generates the Rust enums from it and
-the `api-proto` build script generates the `.proto` enums and mapping code, so
-adding a variant is one manifest entry with the next free number.
+variant. The `crates/core/build.rs` script generates the Rust enums and the
+Rust ↔ proto mapping files (`api_extension_impls.rs`, `api_identity_id.rs`,
+`api_category_id.rs`, `api_text_mode.rs`); the `crates/api-proto/build.rs`
+script generates the `.proto` enums and the ConnectRPC types, so adding a
+variant is one manifest entry with the next free number. Removed variants keep
+their number and name in `reserved_numbers` / `reserved_names`, which the
+generator emits as proto `reserved` statements and never reuses.
 
 `Locale` is not in the manifest: `api-proto` generates it from `docs/po/*.po`
 plus English, the same source as `website/scripts/generate-locales.mjs`.

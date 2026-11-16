@@ -690,9 +690,7 @@ async fn start_debug_session(context: &mut AppContext, hub: &Hub) {
     context.online = true;
     context.wifi_session.notify_online();
     hub.send(Event::Device(DeviceEvent::NetUp).into()).ok();
-    if let Err(error) = crate::api::turn_on_default(hub, context).await {
-        tracing::warn!(error = %error, "debug emulator companion did not start");
-    }
+    crate::api::turn_on_default(hub, context).await;
 }
 
 impl DeviceLifecycle for EmulatorDevice {

@@ -45,6 +45,16 @@
           "description": "When present, the generated enum also gets `all() -> &'static [Self]` with this doc.",
           "type": "string"
         },
+        "reserved_numbers": {
+          "description": "Protobuf numbers kept reserved; no active variant may use them.",
+          "type": "array",
+          "items": { "type": "integer", "minimum": 1 }
+        },
+        "reserved_names": {
+          "description": "Rust variant names kept reserved; emitted as `{PREFIX}_{SCREAMING_SNAKE}` proto names, and no active variant may use them.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
         "variants": {
           "type": "array",
           "minItems": 1,
