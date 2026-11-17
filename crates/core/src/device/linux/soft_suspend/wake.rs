@@ -386,13 +386,18 @@ impl UnlockInner {
 
         self.begin_sysfs_write();
         let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        if state.paused || !self.has_holders() {
+        if state.paused {
             drop(state);
             self.end_sysfs_write();
             return;
         }
         let paths = state.paths.clone();
         drop(state);
+        if !self.has_holders() {
+            self.reconcile_after_resume_lock(&paths, grace);
+            self.end_sysfs_write();
+            return;
+        }
         tracing::debug!(
             wake_lock = WAKE_LOCK_NAME,
             "soft-suspend retaking kernel wake lock"

@@ -52,6 +52,7 @@ pub use error::InhibitorError;
 pub use guard::InhibitorGuard;
 pub use kind::Kind;
 pub use soft_suspend::SoftSuspendName;
+#[cfg(any(test, feature = "kobo", docsrs))]
 pub(crate) use soft_suspend::WakeLockPauseOutcome;
 
 use crate::device::battery::{Battery, FakeBattery};
