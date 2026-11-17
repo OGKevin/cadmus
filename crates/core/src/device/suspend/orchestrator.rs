@@ -126,8 +126,8 @@ fn arm_deep_idle_lease(context: &mut AppContext) -> bool {
 
 /// Restores autosleep mode and disarms kernel deep idle when leaving a DeepIdle leg.
 ///
-/// Re-takes the nested `"sleep-inhibit"` wake lock if Sleep holders remain
-/// (menu still open after kernel wake).
+/// Re-acquires the shared `cadmus` wake lock when any SoftSuspend holder
+/// remains (menu still open after kernel wake).
 fn leave_deep_idle_if_needed(context: &mut AppContext) {
     let Some(cycle) = context.suspend.as_mut() else {
         return;
@@ -146,7 +146,7 @@ fn leave_deep_idle_if_needed(context: &mut AppContext) {
             tracing::error!(error = %error, "power_manager() failed while leaving deep idle");
         }
     }
-    context.inhibitor.resume_sleep_wake_lock();
+    context.inhibitor.resume_soft_suspend_wake_lock();
 }
 
 /// Converts auto-power-off days from settings to a chrono duration (minimum one second).
@@ -628,6 +628,17 @@ async fn enter_sleep(
         return EventOutcome::Handled;
     }
 
+    if context.suspend.is_some()
+        && abort_cycle_for_full_inhibit(context, runtime.tasks, runtime.view.as_mut(), hub, rq)
+    {
+        return EventOutcome::Handled;
+    }
+
+    if context.inhibitor.full_active() {
+        tracing::warn!("refusing suspend entry while Full inhibit active");
+        return EventOutcome::Handled;
+    }
+
     if let Some(SuspendKind::DeepIdle) = context.suspend.as_ref().map(|c| c.kind) {
         if let Some(outcome) = schedule_alarms_before_sleep(context, runtime).await {
             return outcome;
@@ -810,7 +821,6 @@ async fn log_wake_source(context: &mut AppContext, state: &DeepIdleWaitState) {
 
 /// Arms mem autosleep, kernel deep idle, and periodic [`Event::PollDeepIdleWait`] polling.
 async fn start_deep_idle_wait(hub: &Hub, context: &mut AppContext, tasks: &mut Vec<DeviceTask>) {
-    context.inhibitor.pause_sleep_wake_lock();
     let before = Local::now();
     tracing::info!(
         "{}",
@@ -840,6 +850,7 @@ async fn start_deep_idle_wait(hub: &Hub, context: &mut AppContext, tasks: &mut V
     nix::unistd::sync();
     #[cfg(target_os = "linux")]
     let interrupt_baseline = read_interrupt_snapshot(context).await;
+    context.inhibitor.pause_soft_suspend_wake_lock();
     if let Some(cycle) = context.suspend.as_mut() {
         cycle.cycle_lease = None;
         cycle.phase = SuspendPhase::InSleep {
@@ -881,6 +892,10 @@ async fn poll_deep_idle_wait(
     else {
         return EventOutcome::Handled;
     };
+
+    if abort_cycle_for_full_inhibit(context, runtime.tasks, runtime.view.as_mut(), hub, rq) {
+        return EventOutcome::Handled;
+    }
 
     match wake::resolve_wait(context, &state) {
         PollResult::StillWaiting => {
@@ -1145,7 +1160,7 @@ async fn perform_suspend_resume(
         framebuffer_dims = ?context.device.framebuffer().dims(),
         "display state before suspend"
     );
-    context.inhibitor.pause_sleep_wake_lock();
+    context.inhibitor.pause_soft_suspend_wake_lock();
     match context.device.power_manager() {
         Ok(power) => {
             if let Err(error) = power.suspend() {
@@ -1183,7 +1198,7 @@ async fn perform_suspend_resume(
             tracing::error!(error = %error, "power_manager() initialization failed for resume");
         }
     }
-    context.inhibitor.resume_sleep_wake_lock();
+    context.inhibitor.resume_soft_suspend_wake_lock();
     tracing::debug!(
         rotation = context.display.rotation,
         dims = ?context.display.dims,
@@ -1286,8 +1301,9 @@ pub(crate) async fn start_cycle_from_auto(
 /// is true, sets
 /// [`Context::deferred_suspend`](crate::context::Context::deferred_suspend)
 /// and returns without a cycle. SoftSuspend-only and Sleep holders do not defer
-/// this explicit path; Sleep's nested `"sleep-inhibit"` wake lock is paused for
-/// the cycle. Auto Suspend uses [`start_cycle_from_auto`], which also
+/// this explicit path. Their shared kernel `cadmus` wake lock is suppressed
+/// later, at the actual kernel-sleep boundary, and restored on wake while
+/// holders remain. Auto Suspend uses [`start_cycle_from_auto`], which also
 /// defers on Sleep.
 pub(crate) async fn start_cycle(
     context: &mut AppContext,
@@ -1307,8 +1323,6 @@ pub(crate) async fn start_cycle(
         tracing::debug!("deferring suspend while Full inhibit active");
         return;
     }
-
-    context.inhibitor.pause_sleep_wake_lock();
 
     cancel_auto_suspend_alarm(context);
     cancel_suspend_rtcs(context);
@@ -1371,6 +1385,27 @@ pub(crate) async fn start_cycle(
     );
 }
 
+/// Aborts an active cycle when `Kind::Full` was acquired after it started.
+///
+/// Returns whether a cycle was aborted and the explicit suspend intent queued
+/// for the Full-release flush. OTA can acquire Full from a worker while a cycle
+/// is preparing or polling, so kernel sleep must not cross a live Full holder.
+fn abort_cycle_for_full_inhibit(
+    context: &mut AppContext,
+    tasks: &mut Vec<DeviceTask>,
+    view: &mut dyn View,
+    hub: &Hub,
+    rq: &mut RenderQueue,
+) -> bool {
+    if !context.inhibitor.full_active() || context.suspend.is_none() {
+        return false;
+    }
+    tracing::warn!("Full inhibit acquired during suspend cycle; aborting kernel sleep");
+    finish_cycle(context, tasks, view, hub, rq);
+    queue_deferred_suspend(context, DeferredSuspend::Explicit);
+    true
+}
+
 /// End the cycle and return to interactive use (frontlight, wifi-at-rest, AutoSuspend).
 pub(in crate::device::suspend) fn finish_cycle(
     context: &mut AppContext,
@@ -1384,7 +1419,7 @@ pub(in crate::device::suspend) fn finish_cycle(
     });
     leave_deep_idle_if_needed(context);
     context.suspend = None;
-    context.inhibitor.resume_sleep_wake_lock();
+    context.inhibitor.resume_soft_suspend_wake_lock();
     context.set_frontlight(context.settings.frontlight);
     if context.settings.wifi.wants_radio_at_rest() {
         context.wifi_session.set_desired_radio_on(true);
@@ -1450,7 +1485,7 @@ pub(in crate::device::suspend) fn cancel_prepare(
     });
     leave_deep_idle_if_needed(context);
     context.suspend = None;
-    context.inhibitor.resume_sleep_wake_lock();
+    context.inhibitor.resume_soft_suspend_wake_lock();
     if let Some(index) = locate::<Intermission>(view) {
         let rect = *view.child(index).rect();
         view.children_mut().remove(index);

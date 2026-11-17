@@ -23,4 +23,17 @@ pub trait SoftSuspendKind: SoftSuspendBackend {
     /// On Linux this collapses onto the shared `cadmus` wake lock; on NoOp it
     /// only updates the in-process holder tracker.
     fn acquire_lease(&self, name: LeaseName) -> Lease;
+
+    /// Releases the kernel wake lock for a Cadmus suspend sleep window.
+    ///
+    /// Holder accounting stays intact: leases acquired or dropped while paused
+    /// still update the tracker, but do not write the kernel wake-lock nodes.
+    /// NoOp backends have no kernel lock and do nothing.
+    fn pause_wake_lock(&self);
+
+    /// Ends a Cadmus suspend sleep window.
+    ///
+    /// Re-acquires the kernel wake lock when any SoftSuspend holder is still
+    /// alive. NoOp backends have no kernel lock and do nothing.
+    fn resume_wake_lock(&self);
 }

@@ -68,4 +68,8 @@ impl SoftSuspendKind for NoOpSoftSuspendKind {
     fn acquire_lease(&self, name: LeaseName) -> Lease {
         self.tracker.acquire(name)
     }
+
+    fn pause_wake_lock(&self) {}
+
+    fn resume_wake_lock(&self) {}
 }

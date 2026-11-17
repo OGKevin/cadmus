@@ -22,9 +22,9 @@
 //! Named Sleep holders (`"main-menu"`, tests, …) are **not** SoftSuspend names.
 //! The nested wake lock is always [`SLEEP_INHIBIT_NAME`] (`"sleep-inhibit"`) so
 //! the kernel `cadmus` lock stays taken for the whole Sleep window, even if no
-//! other SoftSuspend lease is held. An explicit
-//! [`start_cycle`](crate::device::suspend::start_cycle) pauses that nested lock
-//! for the cycle so DeepIdle / Classic sleep is not pinned.
+//! other SoftSuspend lease is held. The suspend orchestrator releases the
+//! shared `cadmus` lock for the kernel-sleep window without dropping this
+//! nested lease; restoring the cycle re-acquires it while holders remain.
 //!
 //! Sleep drives no status LED. Battery gating happens in
 //! [`Inhibitor`](super::Inhibitor) **before**
@@ -49,12 +49,6 @@ use std::sync::{Arc, Mutex};
 /// is active. Distinct from caller names such as `"main-menu"`.
 const SLEEP_INHIBIT_NAME: &str = "sleep-inhibit";
 
-/// Nested `"sleep-inhibit"` lease plus whether an explicit cycle paused it.
-struct SleepWake {
-    lease: Option<Lease>,
-    paused: bool,
-}
-
 /// Shared side-effect state for the Sleep 0→1 / 1→0 transitions.
 ///
 /// Held by the [`LeaseObserver`] and, on kobo/tests/docsrs, by
@@ -62,7 +56,7 @@ struct SleepWake {
 /// construction.
 struct SleepInhibitResources {
     soft_suspend: Arc<dyn SoftSuspendKind>,
-    wake: Mutex<SleepWake>,
+    wake_lease: Mutex<Option<Lease>>,
     /// Optional callback after the last Sleep holder drops (Kobo posts
     /// [`Event::InhibitCleared`](crate::view::Event::InhibitCleared) with
     /// [`Kind::Sleep`](super::Kind::Sleep)).
@@ -73,10 +67,7 @@ impl SleepInhibitResources {
     fn new(soft_suspend: Arc<dyn SoftSuspendKind>) -> Arc<Self> {
         Arc::new(Self {
             soft_suspend,
-            wake: Mutex::new(SleepWake {
-                lease: None,
-                paused: false,
-            }),
+            wake_lease: Mutex::new(None),
             on_last_release: Mutex::new(None),
         })
     }
@@ -89,50 +80,18 @@ impl SleepInhibitResources {
             .lock()
             .unwrap_or_else(|e| e.into_inner()) = Some(notify);
     }
-
-    /// Drops only the nested `"sleep-inhibit"` lease.
-    ///
-    /// Other SoftSuspend holders (`wifi`, `input`, …) keep their own leases.
-    /// Named Sleep holders stay alive; [`Self::resume`] re-takes this lease if
-    /// any remain.
-    #[cfg(any(feature = "kobo", docsrs))]
-    fn pause(&self) {
-        let mut wake = self.wake.lock().unwrap_or_else(|e| e.into_inner());
-        wake.paused = true;
-        wake.lease = None;
-    }
-
-    /// Clears the pause flag and re-takes `"sleep-inhibit"` when Sleep holders remain.
-    ///
-    /// Does not touch other SoftSuspend leases. If `holders_alive` is false,
-    /// only the pause flag is cleared so a later first acquire can take the lock.
-    #[cfg(any(feature = "kobo", docsrs))]
-    fn resume(&self, holders_alive: bool) {
-        let mut wake = self.wake.lock().unwrap_or_else(|e| e.into_inner());
-        wake.paused = false;
-        if holders_alive && wake.lease.is_none() {
-            wake.lease = Some(
-                self.soft_suspend
-                    .acquire_lease(LeaseName::new(SLEEP_INHIBIT_NAME)),
-            );
-        }
-    }
 }
 
 impl LeaseObserver for SleepInhibitResources {
     fn on_first_acquire(&self, _name: &LeaseName) {
-        let mut wake = self.wake.lock().unwrap_or_else(|e| e.into_inner());
-        if wake.paused {
-            return;
-        }
-        wake.lease = Some(
+        *self.wake_lease.lock().unwrap_or_else(|e| e.into_inner()) = Some(
             self.soft_suspend
                 .acquire_lease(LeaseName::new(SLEEP_INHIBIT_NAME)),
         );
     }
 
     fn on_last_release(&self, _name: &LeaseName) {
-        self.wake.lock().unwrap_or_else(|e| e.into_inner()).lease = None;
+        *self.wake_lease.lock().unwrap_or_else(|e| e.into_inner()) = None;
         if let Some(notify) = self
             .on_last_release
             .lock()
@@ -187,21 +146,5 @@ impl SleepInhibitState {
     #[cfg(any(test, feature = "kobo", docsrs))]
     pub(super) fn sleep_active(&self) -> bool {
         !self.tracker.is_empty()
-    }
-
-    /// Drops the nested `"sleep-inhibit"` wake lock without releasing Sleep holders.
-    ///
-    /// Explicit suspend calls this so DeepIdle can drop its cycle lease as the
-    /// last *Sleep* SoftSuspend holder. Other SoftSuspend names (`wifi`,
-    /// `input`, …) stay held. Named Sleep leases stay alive.
-    #[cfg(any(feature = "kobo", docsrs))]
-    pub(super) fn pause_wake_lock(&self) {
-        self.resources.pause();
-    }
-
-    /// Re-takes `"sleep-inhibit"` if any Sleep holder is still alive.
-    #[cfg(any(feature = "kobo", docsrs))]
-    pub(super) fn resume_wake_lock(&self) {
-        self.resources.resume(!self.tracker.is_empty());
     }
 }
