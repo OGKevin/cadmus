@@ -9,6 +9,15 @@ let
   inherit (pkgs.stdenv) isLinux;
   inherit (pkgs.stdenv) isDarwin;
 
+  # `otelcol-contrib` 0.155.0 pins a `cockroachdb/swiss` revision that stopped
+  # compiling with Go 1.27, nixpkgs' default. nixpkgs pins the older builder for
+  # packages that have not caught up yet (see `teleport_18`); do the same until
+  # the collector release bumps that dependency.
+  otelcol = (pkgs.opentelemetry-collector-releases.override {
+    buildGoModule = pkgs.buildGo126Module;
+    go = pkgs.go_1_26;
+  }).otelcol-contrib;
+
   # Single source for the Rust toolchain pin; Renovate's custom.regex manager
   # (renovate.jsonc) bumps it together with the CI `toolchain:` pins.
   rustVersion = "1.100.0";
@@ -76,9 +85,8 @@ let
   # Build the stable Rust toolchain the way devenv does, with the lib-symlink
   # fix applied. Replicates devenv's `channel != "nixpkgs"` wiring so the fix
   # can wrap the derivation before devenv sees it.
-  darwinRustToolchainFix = pkgs.lib.optionalAttrs isDarwin {
-    rustToolchain =
-      let
+  darwinRustToolchainFix = pkgs.lib.optionalAttrs isDarwin (
+    let
         rustOverlaySrc = inputs.rust-overlay;
         rustBin = rustOverlaySrc.lib.mkRustBin { } pkgs.buildPackages;
 
@@ -107,6 +115,7 @@ let
           "cargo"
           "clippy"
           "llvm-tools-preview"
+          "rust-src"
           "rustc"
           "rustfmt"
         ];
@@ -145,9 +154,14 @@ let
           inherit (toolchain._manifest) version date;
           selectedComponents = allSelectedComponents;
         };
-      in
-      fixRustToolchainLibSymlink profile;
-  };
+    in
+    {
+      rustToolchain = fixRustToolchainLibSymlink profile;
+      # devenv leaves `RUST_SRC_PATH` unset when `toolchainPackage` is an
+      # override, so point it at the sources merged into our toolchain.
+      rustSrcPath = "${toolchain.rust-src}/lib/rustlib/src/rust/library";
+    }
+  );
 
   # cargo-diff-tools with Rust 1.70 for clap v2 compatibility.
   # Pinned nixpkgs still defaults fetchCrate to the crates.io API, which
@@ -533,21 +547,26 @@ in
     # sccache does not create parent directories, and an unopenable log path
     # makes server startup fail, which fails the build.
     SCCACHE_ERROR_LOG = "${config.devenv.state}/sccache-server.log";
+  }
+  // pkgs.lib.optionalAttrs isDarwin {
+    # devenv only derives this when it builds the toolchain itself, so an
+    # overridden `toolchainPackage` (see `darwinRustToolchainFix`) leaves it
+    # null; use the `rust-src` component merged into our toolchain.
+    RUST_SRC_PATH = pkgs.lib.mkForce darwinRustToolchainFix.rustSrcPath;
   };
 
   services.opentelemetry-collector = {
     enable = true;
+    package = otelcol;
     settings = {
+      # Literal base ports: the module reads these to allocate the listener
+      # ports, so they must not reference the resolved values.
       receivers.otlp.protocols = {
-        grpc.endpoint = "0.0.0.0:${toString otelPorts.grpc.value}";
-        http.endpoint = "0.0.0.0:${toString otelPorts.http.value}";
+        grpc.endpoint = "0.0.0.0:4317";
+        http.endpoint = "0.0.0.0:4318";
       };
 
       processors.batch = { };
-
-      # The module's own default wins at normal priority while the values are
-      # equal; force the allocated port so a moved port is not a conflict.
-      extensions.health_check.endpoint = pkgs.lib.mkForce "localhost:${toString otelPorts.health.value}";
 
       exporters = {
         "otlp/tempo" = {
@@ -560,7 +579,7 @@ in
         };
 
         prometheus = {
-          endpoint = "0.0.0.0:${toString otelPorts.metrics.value}";
+          endpoint = "0.0.0.0:${toString otelPorts.exporter.value}";
         };
 
         debug = {
@@ -612,7 +631,7 @@ in
         job_name = "otel-collector";
         static_configs = [
           {
-            targets = [ "localhost:${toString otelPorts.metrics.value}" ];
+            targets = [ "localhost:${toString otelPorts.exporter.value}" ];
           }
         ];
       }
@@ -629,17 +648,10 @@ in
 
   # Processes for Grafana, Tempo, and Loki
   processes = {
+    # The module allocates the health, OTLP and self-metrics listener ports
+    # from the base ports in `settings`, and derives its own readiness probe.
     opentelemetry-collector = {
-      ports = {
-        grpc.allocate = 4317;
-        http.allocate = 4318;
-        metrics.allocate = 8889;
-        health.allocate = 13133;
-      };
-
-      # The upstream module pins the probe to the hardcoded health extension
-      # port; point it at the allocated one instead.
-      ready.http.get.port = pkgs.lib.mkForce otelPorts.health.value;
+      ports.exporter.allocate = 8889;
 
       after = [
         "devenv:processes:tempo"
@@ -814,8 +826,8 @@ in
     pyroscope = {
       ports.http.allocate = 4040;
 
-      # Pyroscope's /ready returns 503 forever in 2.3.1 ("Metastore not
-      # ready"), so readiness is the TCP listener on the declared port.
+      # Pyroscope's /ready stays 503 for about a minute after start while the
+      # metastore and ingester warm up, so readiness is its TCP listener.
       shutdown.grace = 20;
 
       exec = ''
@@ -1342,12 +1354,15 @@ in
     echo "Build cache (sccache, incremental compilation disabled):"
     echo "  cadmus-sccache        - stats|reset|restart|log"
     echo ""
-
-     echo "Linking rust source for stable access"
-     # rm first: `ln -fs` follows an existing symlink-to-directory and tries to
-     # create the link inside it, which fails on the read-only nix store.
-     rm -f ${config.env.DEVENV_STATE}/rust-lib-src
-     ln -s ${config.env.RUST_SRC_PATH} ${config.env.DEVENV_STATE}/rust-lib-src
+  ''
+  # devenv leaves `RUST_SRC_PATH` unset when the toolchain has its own sysroot
+  # and no known source path; nothing to link in that case.
+  + pkgs.lib.optionalString (config.env.RUST_SRC_PATH != null) ''
+    echo "Linking rust source for stable access"
+    # rm first: `ln -fs` follows an existing symlink-to-directory and tries to
+    # create the link inside it, which fails on the read-only nix store.
+    rm -f ${config.env.DEVENV_STATE}/rust-lib-src
+    ln -s ${config.env.RUST_SRC_PATH} ${config.env.DEVENV_STATE}/rust-lib-src
   '';
 
   # https://devenv.sh/tests/

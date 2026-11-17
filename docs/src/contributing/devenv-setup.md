@@ -366,8 +366,9 @@ endpoint, naming the process and log file on failure.
 
 Loki's `/ready` returns 503 for the first ~15 seconds after an idle period
 ("Ingester not ready"); its probe allows six failures at a five-second period
-before marking it unhealthy. Pyroscope's `/ready` never succeeds in 2.3.1, so
-readiness is its TCP listener instead.
+before marking it unhealthy. Pyroscope's `/ready` stays 503 for about a minute
+after start while its metastore and ingester warm up, so its readiness probe is
+the TCP listener.
 
 ### Ports change between runs
 
