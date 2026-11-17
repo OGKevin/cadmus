@@ -27,29 +27,35 @@ Hold the returned
 <a href="/api/cadmus_core/device/inhibitor/struct.InhibitorGuard.html">`InhibitorGuard`</a>
 for the lifetime of the work or UI. Dropping it releases the lease.
 
-- **`Kind::SoftSuspend`** keeps the Linux wake lock held while work runs.
-  Examples: input handling, import tasks, and main-loop work.
-  `WifiSession` holds `SoftSuspendName::Wifi` internally while it has Wi-Fi
-  leases such as `"ota-download"`. Explicit Auto Suspend / power-button sleep
-  can still run: at the kernel-sleep boundary the shared `cadmus` lock is
-  released immediately and re-acquired on wake while any holder remains.
-- **`Kind::Sleep`** blocks opportunistic autosleep and Auto Suspend without
-  blocking user exits or explicit suspend (menu Suspend, power button, cover).
-  The nested `"sleep-inhibit"` lease stays tracked through preparation and the
-  explicit cycle. At the kernel-sleep boundary it is suppressed with every
-  other SoftSuspend holder; kernel wake and `finish_cycle` re-acquire the
-  shared `cadmus` lock if holders remain (top menu still open).
-  Live AutoPowerOff is not
-  blocked. No battery gate, no status LED, last drop does not post
-  `FullInhibitCleared`. cadmus-test holds this kind while the top menu
-  (`ViewId::MainMenu`) is open:
+- <a href="/api/cadmus_core/device/inhibitor/enum.Kind.html#variant.SoftSuspend">`Kind::SoftSuspend`</a>
+  keeps the Linux wake lock held while work runs. Examples: input handling,
+  import tasks, and main-loop work.
+  <a href="/api/cadmus_core/device/wifi/struct.WifiSession.html">`WifiSession`</a>
+  holds
+  <a href="/api/cadmus_core/device/inhibitor/enum.SoftSuspendName.html#variant.Wifi">`SoftSuspendName::Wifi`</a>
+  internally while it has Wi-Fi leases such as `"ota-download"`. Explicit Auto
+  Suspend / power-button sleep can still run: at the kernel-sleep boundary the
+  shared `cadmus` lock is released immediately and re-acquired on wake while
+  any holder remains.
+- <a href="/api/cadmus_core/device/inhibitor/enum.Kind.html#variant.Sleep">`Kind::Sleep`</a>
+  blocks opportunistic autosleep and Auto Suspend without blocking user exits
+  or explicit suspend (menu Suspend, power button, cover). The nested
+  `"sleep-inhibit"` lease stays tracked through preparation and the explicit
+  cycle. At the kernel-sleep boundary it is suppressed with every other
+  SoftSuspend holder; kernel wake and `finish_cycle` re-acquire the shared
+  `cadmus` lock if holders remain (top menu still open). Live AutoPowerOff is
+  not blocked. No battery gate, no status LED, last drop does not post
+  <a href="/api/cadmus_core/view/enum.Event.html#variant.FullInhibitCleared">`FullInhibitCleared`</a>.
+  cadmus-test holds this kind while the top menu
+  (<a href="/api/cadmus_core/view/enum.ViewId.html#variant.MainMenu">`ViewId::MainMenu`</a>)
+  is open:
 
   ```rust
   let _guard = inhibitor.acquire(Kind::Sleep, "main-menu")?;
   ```
 
-- **`Kind::Full`** is used for critical sections such as OTA install (`"ota"`).
-  On Kobo it blocks
+- <a href="/api/cadmus_core/device/inhibitor/enum.Kind.html#variant.Full">`Kind::Full`</a>
+  is used for critical sections such as OTA install (`"ota"`). On Kobo it blocks
   <a href="/api/cadmus_core/device/suspend/orchestrator/fn.start_cycle.html">`start_cycle`</a>,
   menu power-off/restart/reboot/quit/switch-install and long-press power-off.
   A live `RtcAlarmFired(AutoPowerOff)` event is ignored while Full is active.

@@ -185,6 +185,11 @@ impl UnlockInner {
         self.cv.notify_all();
     }
 
+    /// Blocks until no lease acquisition or sysfs write is in flight.
+    ///
+    /// Pins cover tracker acquisitions and writers cover sysfs writes. Both
+    /// decrement under the state mutex and notify the condvar, so the predicate
+    /// cannot change between the check and [`Condvar::wait`].
     fn wait_for_sysfs_writers(&self) {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         while self.pins.load(Ordering::SeqCst) != 0 || self.writers.load(Ordering::SeqCst) != 0 {
@@ -192,16 +197,7 @@ impl UnlockInner {
         }
     }
 
-    fn take_wake_lock(&self) {
-        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        if state.paused {
-            return;
-        }
-        let paths = state.paths.clone();
-        state.due_at = None;
-        self.cv.notify_one();
-        drop(state);
-        let locked = write_sysfs_applied(&paths.wake_lock, WAKE_LOCK_NAME);
+    fn commit_lock_write(&self, paths: &SoftSuspendPaths, locked: bool) {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         if state.paused {
             drop(state);
@@ -215,6 +211,26 @@ impl UnlockInner {
         } else if locked {
             state.held = true;
         }
+    }
+
+    fn commit_unlock_write(&self, unlocked: bool) {
+        if unlocked {
+            let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            state.held = false;
+        }
+    }
+
+    fn take_wake_lock(&self) {
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if state.paused {
+            return;
+        }
+        let paths = state.paths.clone();
+        state.due_at = None;
+        self.cv.notify_one();
+        drop(state);
+        let locked = write_sysfs_applied(&paths.wake_lock, WAKE_LOCK_NAME);
+        self.commit_lock_write(&paths, locked);
     }
 
     fn release_wake_lock_now(&self) {
@@ -233,10 +249,7 @@ impl UnlockInner {
             wake_lock = WAKE_LOCK_NAME,
             "soft-suspend writing wake_unlock"
         );
-        if write_sysfs_applied(&paths.wake_unlock, WAKE_LOCK_NAME) {
-            let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            state.held = false;
-        }
+        self.commit_unlock_write(write_sysfs_applied(&paths.wake_unlock, WAKE_LOCK_NAME));
         self.end_sysfs_write();
     }
 
@@ -285,14 +298,10 @@ impl UnlockInner {
         drop(state);
         tracing::debug!(
             wake_lock = WAKE_LOCK_NAME,
-            "soft-suspend pausing kernel wake lock for suspend cycle"
+            "soft-suspend dropping kernel wake lock"
         );
         let unlocked = write_sysfs_applied(&paths.wake_unlock, WAKE_LOCK_NAME);
-        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        if unlocked && state.paused {
-            state.held = false;
-        }
-        drop(state);
+        self.commit_unlock_write(unlocked);
         self.end_sysfs_write();
     }
 
@@ -323,25 +332,10 @@ impl UnlockInner {
         drop(state);
         tracing::debug!(
             wake_lock = WAKE_LOCK_NAME,
-            "soft-suspend resuming kernel wake lock after suspend cycle"
+            "soft-suspend retaking kernel wake lock"
         );
         let locked = write_sysfs_applied(&paths.wake_lock, WAKE_LOCK_NAME);
-        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        if state.paused {
-            drop(state);
-            let unlocked = write_sysfs_applied(&paths.wake_unlock, WAKE_LOCK_NAME);
-            let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            if unlocked {
-                state.held = false;
-            } else if locked {
-                state.held = true;
-            }
-        } else {
-            if locked {
-                state.held = true;
-            }
-            drop(state);
-        }
+        self.commit_lock_write(&paths, locked);
         self.end_sysfs_write();
     }
 
@@ -463,10 +457,15 @@ impl WakeLock {
         self.tracker.holders()
     }
 
+    /// Releases `cadmus` and suppresses wake-lock writes until [`Self::resume`].
+    ///
+    /// Lease tracking stays active, so holders acquired or dropped while paused
+    /// are still reflected when the lock is restored.
     pub(crate) fn pause(&self) {
         self.armer.unlock.pause();
     }
 
+    /// Ends suppression and retakes `cadmus` when any lease remains.
     pub(crate) fn resume(&self) {
         self.armer.unlock.resume(!self.tracker.is_empty());
     }

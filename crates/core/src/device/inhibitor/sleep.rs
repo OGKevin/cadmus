@@ -40,6 +40,10 @@ const SLEEP_INHIBIT_NAME: &str = "sleep-inhibit";
 /// Shared side-effect state for the Sleep 0→1 / 1→0 transitions.
 struct SleepInhibitResources {
     soft_suspend: Arc<dyn SoftSuspendKind>,
+    /// Nested `"sleep-inhibit"` lease, present while Sleep holders exist.
+    ///
+    /// Generic SoftSuspend suppression keeps this lease alive through an
+    /// explicit cycle, so no separate paused flag is needed.
     wake_lease: Mutex<Option<Lease>>,
 }
 
