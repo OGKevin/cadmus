@@ -56,6 +56,10 @@ const SLEEP_INHIBIT_NAME: &str = "sleep-inhibit";
 /// construction.
 struct SleepInhibitResources {
     soft_suspend: Arc<dyn SoftSuspendKind>,
+    /// Nested `"sleep-inhibit"` lease, present while Sleep holders exist.
+    ///
+    /// Generic SoftSuspend suppression keeps this lease alive through an
+    /// explicit cycle, so no separate paused flag is needed.
     wake_lease: Mutex<Option<Lease>>,
     /// Optional callback after the last Sleep holder drops (Kobo posts
     /// [`Event::InhibitCleared`](crate::view::Event::InhibitCleared) with

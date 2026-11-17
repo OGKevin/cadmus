@@ -1388,8 +1388,8 @@ pub(crate) async fn start_cycle(
 /// Aborts an active cycle when `Kind::Full` was acquired after it started.
 ///
 /// Returns whether a cycle was aborted and the explicit suspend intent queued
-/// for the Full-release flush. OTA can acquire Full from a worker while a cycle
-/// is preparing or polling, so kernel sleep must not cross a live Full holder.
+/// for the Full-release flush. A worker can acquire Full after a cycle starts,
+/// so kernel sleep must not cross a live Full holder.
 fn abort_cycle_for_full_inhibit(
     context: &mut AppContext,
     tasks: &mut Vec<DeviceTask>,
