@@ -88,9 +88,16 @@ Once inside the devenv shell, these commands are available:
 | `cadmuscli dist`            | Assemble the Kobo distribution directory                    |
 | `cadmuscli bundle`          | Package KoboRoot.tgz for installation                       |
 | `cadmus-dev-otel`           | Run emulator with tracing and profiling enabled             |
-| `devenv up`                 | Start observability stack (Grafana, Tempo, Loki)            |
+| `cadmus-process-status`     | Print stack URLs, process state, and health probes          |
+| `devenv up`                 | Start the supervised stack (observability + docs site)      |
+| `devenv down`               | Stop the stack                                              |
+| `devenv processes wait`     | Block until every process is ready                          |
+| `devenv processes status`   | Show the phase of one process (`status <name>`)             |
+| `devenv processes attach`   | Stream process status and logs until Ctrl-C                 |
 | `cadmuscli docs`            | Build docs site (mdBook, API docs, website)                 |
-| `cadmus-docs-serve`         | Serve website locally on port 3000                          |
+| `cadmus-docs-serve`         | Next dev server through `devenv up website`                 |
+| `cadmus-storybook`          | Storybook through `devenv up storybook`                     |
+| `cadmus-docs-mdbook`        | mdBook preview through `devenv up mdbook`                   |
 | `cadmus-docs-preview`       | `wrangler dev` for `website/out` (Workers, matches CI)      |
 | `cadmus-translate`          | Generate the docs translation template (.pot)               |
 | `cadmus-test-coverage`      | Run tests with coverage instrumentation                     |
@@ -273,23 +280,48 @@ libraries because MuPDF's build system doesn't properly detect them on Darwin.
 The devenv includes a full observability stack for development:
 
 ```bash
-# Start all services
+# Start all services in the foreground
 devenv up
 
-# In another terminal, run the instrumented emulator
+# In another terminal, check readiness, URLs, and health
+cadmus-process-status --wait
+
+# Then run the instrumented emulator
 cadmus-dev-otel
 ```
 
-Services available after `devenv up`:
+Every service port is allocated by devenv. When a base port is already taken
+(another worktree, `next dev`, a stray listener), devenv moves the service and
+every consumer — service configs, Grafana datasources, probes, and the `*_URL`
+environment variables — to the next free port together. There is no
+`strict_ports`: a conflict never turns into a startup error.
 
-| Service        | URL                     | Purpose                    |
-| -------------- | ----------------------- | -------------------------- |
-| Grafana        | <http://localhost:3000> | Dashboards and exploration |
-| Tempo          | <http://localhost:3200> | Distributed tracing        |
-| Loki           | <http://localhost:3100> | Log aggregation            |
-| Prometheus     | <http://localhost:9090> | Metrics                    |
-| OTLP Collector | <http://localhost:4318> | Telemetry ingestion        |
-| Pyroscope      | <http://localhost:4040> | Continuous profiling       |
+| Service        | Base port | Purpose                    | Environment variable          |
+| -------------- | --------- | -------------------------- | ----------------------------- |
+| Grafana        | 3000      | Dashboards and exploration | `GRAFANA_URL`                 |
+| Tempo          | 3200      | Distributed tracing        | `TEMPO_URL`                   |
+| Loki           | 3100      | Log aggregation            | `LOKI_URL`                    |
+| Prometheus     | 9090      | Metrics                    | `PROMETHEUS_URL`              |
+| OTLP Collector | 4318      | Telemetry ingestion        | `OTEL_EXPORTER_OTLP_ENDPOINT` |
+| Pyroscope      | 4040      | Continuous profiling       | `PYROSCOPE_SERVER_URL`        |
+
+Base ports apply when no manager is running. The resolved ports come from the
+shell banner, `cadmus-process-status`, or the environment variables — do not
+hardcode them in bookmarks or scripts.
+
+### Docs site processes
+
+The documentation site tools are supervised processes too, so they restart on
+crash and report readiness:
+
+| Process     | Base port | Start it with                              |
+| ----------- | --------- | ------------------------------------------ |
+| `website`   | 3001      | `devenv up website` / `cadmus-docs-serve`  |
+| `mdbook`    | 3002      | `devenv up mdbook` / `cadmus-docs-mdbook`  |
+| `storybook` | 6006      | `devenv up storybook` / `cadmus-storybook` |
+
+`devenv up` (no argument) starts these alongside the observability stack.
+`devenv up <name>` starts a single process in the background.
 
 For more details on telemetry, see [Telemetry](telemetry/index.md).
 
@@ -317,6 +349,38 @@ cadmuscli setup
 ```
 
 Then retry the build or `cadmuscli run-emulator`.
+
+### A stack process never becomes ready
+
+`devenv processes status <name>` prints the phase (`starting`, `ready`,
+`exited`, `gave_up`, …). Logs live under `$DEVENV_STATE/logs/`:
+
+```bash
+devenv processes logs <name> --lines 200
+# or
+tail -f "$DEVENV_STATE/logs/<name>.stdout.log"
+```
+
+`cadmus-process-status` reports every process phase and probes each health
+endpoint, naming the process and log file on failure.
+
+Loki's `/ready` returns 503 for the first ~15 seconds after an idle period
+("Ingester not ready"); its probe allows six failures at a five-second period
+before marking it unhealthy. Pyroscope's `/ready` never succeeds in 2.3.1, so
+readiness is its TCP listener instead.
+
+### Ports change between runs
+
+Ports are stable only while the process manager runs. Starting or stopping
+`devenv up` makes direnv reload the shell (devenv watches the manager pid
+file), so `$GRAFANA_URL`, `$LOKI_URL`, … follow the running stack. Without a
+manager, the environment reports the base ports.
+
+### `grafana` / `tempo` / `loki` / `pyroscope` are not on `PATH`
+
+The service CLIs are no longer installed into the shell. Debug through
+`cadmus-process-status` and the process logs, or fetch a CLI ad hoc with
+`nix shell nixpkgs#tempo`.
 
 ## Local Configuration
 

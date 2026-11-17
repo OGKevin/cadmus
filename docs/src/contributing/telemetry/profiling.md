@@ -61,7 +61,9 @@ Both profile streams are pushed to the configured Pyroscope server.
 ## Local development
 
 The `cadmus-dev-otel` command starts the emulator with profiling enabled and
-the local Pyroscope service available at <http://localhost:4040>.
+the local Pyroscope service available at `$PYROSCOPE_SERVER_URL` (base port
+4040; devenv allocates upward when it is taken). The shell banner and
+`cadmus-process-status` print the resolved URL.
 
 With the full devenv stack running, traces go to Tempo, logs go to Loki, and
 profiles go to Pyroscope. That makes it possible to correlate a single run

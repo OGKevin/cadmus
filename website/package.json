@@ -11,6 +11,7 @@
     "storybook": "storybook dev -p 6006",
     "prebuild-storybook": "node scripts/generate-locales.mjs",
     "build-storybook": "storybook build --output-dir storybook-static",
+    "pretypecheck": "next typegen",
     "typecheck": "node scripts/generate-version.mjs && node scripts/generate-locales.mjs && tsc --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

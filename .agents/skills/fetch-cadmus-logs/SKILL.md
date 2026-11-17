@@ -1,7 +1,7 @@
 ---
 name: fetch-cadmus-logs
 description: Fetch Cadmus application logs from Loki by run ID. Use when asked to look up logs for a specific run, debug a device session, or find log output for a given run ID.
-compatibility: Requires curl and a running Loki instance at http://localhost:3100
+compatibility: Requires curl and a running Loki instance ($LOKI_URL, base port 3100)
 ---
 
 # Fetch Cadmus Logs by Run ID
@@ -20,8 +20,8 @@ Cadmus uses two distinct pipelines:
 
 | Source                              | What it contains                                                                                                 | How to query                         |
 | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| **Loki** (`http://localhost:3100`)  | `tracing`-bridge log records (third-party crate logs like `reqwest`, `i18n_embed`)                               | LogQL via `/loki/api/v1/query_range` |
-| **Tempo** (`http://localhost:3200`) | Spans and span events from `#[tracing::instrument]` — this is where cadmus-core importer, library, db spans live | `/api/traces/<traceID>`              |
+| **Loki** (`$LOKI_URL`, base 3100)   | `tracing`-bridge log records (third-party crate logs like `reqwest`, `i18n_embed`)                               | LogQL via `/loki/api/v1/query_range` |
+| **Tempo** (`$TEMPO_URL`, base 3200) | Spans and span events from `#[tracing::instrument]` — this is where cadmus-core importer, library, db spans live | `/api/traces/<traceID>`              |
 
 **Important:** Cadmus application logic (`cadmus_core::*`) emits structured
 spans via `tracing::instrument`, not log records. These appear in **Tempo**, not
@@ -36,10 +36,13 @@ To find third-party log noise or connectivity errors, query Loki.
 ### Base URL
 
 ```text
-http://localhost:3100
+${LOKI_URL:-http://localhost:3100}
 ```
 
-Override with the `LOKI_URL` environment variable if the instance is elsewhere.
+A running devenv stack may allocate a port above 3100 when the base port is
+taken. The resolved value is in `$LOKI_URL` (`devenv shell -- printenv
+LOKI_URL` from outside the shell). The 3100 fallback is for a bare Loki that
+was not started by devenv.
 
 ### Query logs for a run ID
 
@@ -119,13 +122,16 @@ curl -sG "${LOKI_URL}/loki/api/v1/query_range" \
 ### Tempo Base URL
 
 ```text
-http://localhost:3200
+${TEMPO_URL:-http://localhost:3200}
 ```
+
+Same allocation caveat as Loki: a devenv stack may use a port above 3200.
+`devenv shell -- printenv TEMPO_URL` reports the resolved value.
 
 ### Find a trace by run ID
 
 ```bash
-curl -sG "http://localhost:3200/api/search" \
+curl -sG "${TEMPO_URL:-http://localhost:3200}/api/search" \
   --data-urlencode "tags=cadmus.run_id=<run-id>" \
   --data-urlencode "limit=5" \
   | jq -r '.traces[] | "\(.traceID) \(.rootName)"'
@@ -135,14 +141,14 @@ curl -sG "http://localhost:3200/api/search" \
 
 ```bash
 TRACE_ID="<traceID>"
-curl -s "http://localhost:3200/api/traces/${TRACE_ID}" \
+curl -s "${TEMPO_URL:-http://localhost:3200}/api/traces/${TRACE_ID}" \
   | jq -r '.batches[].scopeSpans[].spans[] | "\(.name) | \(.attributes[] | "\(.key)=\(.value.stringValue // .value.intValue)")"'
 ```
 
 ### Find error spans
 
 ```bash
-curl -s "http://localhost:3200/api/traces/${TRACE_ID}" | jq -r '
+curl -s "${TEMPO_URL:-http://localhost:3200}/api/traces/${TRACE_ID}" | jq -r '
   .batches[].scopeSpans[].spans[]
   | select(.status.code == "STATUS_CODE_ERROR")
   | {name, status, events: .events}
@@ -155,7 +161,7 @@ fields like `error` which contain the database error string.
 ### Filter spans by name
 
 ```bash
-curl -s "http://localhost:3200/api/traces/${TRACE_ID}" | jq -r '
+curl -s "${TEMPO_URL:-http://localhost:3200}/api/traces/${TRACE_ID}" | jq -r '
   .batches[].scopeSpans[].spans[]
   | select(.name | test("scan_entries|flush_to_db|batch_insert|run"))
   | "\(.name) | \(.attributes[] | select(.key | test("count|library_id|home")) | "\(.key)=\(.value.stringValue // .value.intValue)")"
