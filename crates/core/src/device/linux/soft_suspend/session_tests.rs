@@ -375,4 +375,110 @@ mod session {
         thread::sleep(Duration::from_millis(50));
         assert_eq!(unlock_name(&paths), WAKE_LOCK_NAME);
     }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn pause_unlocks_immediately_with_live_holder_and_grace() {
+        let (_dir, paths) = temp_paths();
+        let inhibitor = Inhibitor::with_paths(
+            paths.clone(),
+            None,
+            std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
+        );
+        inhibitor.set_autosleep_grace(Duration::from_secs(60));
+        let _thumbnail = inhibitor
+            .acquire(Kind::SoftSuspend, SoftSuspendName::Thumbnail)
+            .unwrap();
+
+        inhibitor.pause_soft_suspend_wake_lock();
+
+        assert_eq!(unlock_name(&paths), WAKE_LOCK_NAME);
+        assert_eq!(inhibitor.len(), 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn acquire_while_paused_is_tracked_and_locked_on_resume() {
+        let (_dir, paths) = temp_paths();
+        let inhibitor = Inhibitor::with_paths(
+            paths.clone(),
+            None,
+            std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
+        );
+        let _thumbnail = inhibitor
+            .acquire(Kind::SoftSuspend, SoftSuspendName::Thumbnail)
+            .unwrap();
+        inhibitor.pause_soft_suspend_wake_lock();
+        fs::write(&paths.wake_lock, "").expect("clear lock");
+
+        let _wifi = inhibitor
+            .acquire(Kind::SoftSuspend, SoftSuspendName::Wifi)
+            .unwrap();
+
+        assert_eq!(inhibitor.len(), 2);
+        assert_eq!(
+            fs::read_to_string(&paths.wake_lock).expect("read").trim(),
+            ""
+        );
+        inhibitor.resume_soft_suspend_wake_lock();
+        assert_eq!(
+            fs::read_to_string(&paths.wake_lock).expect("read").trim(),
+            WAKE_LOCK_NAME
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn resume_with_no_live_holders_leaves_wake_lock_unlocked() {
+        let (_dir, paths) = temp_paths();
+        let inhibitor = Inhibitor::with_paths(
+            paths.clone(),
+            None,
+            std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
+        );
+        let thumbnail = inhibitor
+            .acquire(Kind::SoftSuspend, SoftSuspendName::Thumbnail)
+            .unwrap();
+        inhibitor.pause_soft_suspend_wake_lock();
+        fs::write(&paths.wake_lock, "").expect("clear lock");
+        fs::write(&paths.wake_unlock, "").expect("clear unlock");
+
+        drop(thumbnail);
+        inhibitor.resume_soft_suspend_wake_lock();
+
+        assert!(inhibitor.is_empty());
+        assert_eq!(
+            fs::read_to_string(&paths.wake_lock).expect("read").trim(),
+            ""
+        );
+        assert_eq!(unlock_name(&paths), "");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn repeated_pause_and_resume_are_idempotent() {
+        let (_dir, paths) = temp_paths();
+        let inhibitor = Inhibitor::with_paths(
+            paths.clone(),
+            None,
+            std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
+        );
+        let _thumbnail = inhibitor
+            .acquire(Kind::SoftSuspend, SoftSuspendName::Thumbnail)
+            .unwrap();
+
+        inhibitor.pause_soft_suspend_wake_lock();
+        fs::write(&paths.wake_unlock, "").expect("clear unlock");
+        inhibitor.pause_soft_suspend_wake_lock();
+        assert_eq!(unlock_name(&paths), "");
+
+        fs::write(&paths.wake_lock, "").expect("clear lock");
+        inhibitor.resume_soft_suspend_wake_lock();
+        assert_eq!(
+            fs::read_to_string(&paths.wake_lock).expect("read").trim(),
+            WAKE_LOCK_NAME
+        );
+        fs::write(&paths.wake_lock, "").expect("clear lock");
+        inhibitor.resume_soft_suspend_wake_lock();
+        assert_eq!(
+            fs::read_to_string(&paths.wake_lock).expect("read").trim(),
+            ""
+        );
+    }
 }

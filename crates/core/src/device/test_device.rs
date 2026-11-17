@@ -206,6 +206,8 @@ struct TestPowerState {
     arm_deep_idle_calls: u32,
     disarm_deep_idle_calls: u32,
     suspend_fails: bool,
+    wake_lock_probe: Option<PathBuf>,
+    wake_lock_at_suspend: Option<String>,
 }
 
 /// Assertable power manager test double.
@@ -258,6 +260,21 @@ impl TestPowerManager {
     pub fn was_resume_called(&self) -> bool {
         self.resume_call_count() > 0
     }
+
+    /// Captures a sysfs wake-lock node at the moment `suspend` is called.
+    pub fn set_wake_lock_probe(&self, path: PathBuf) {
+        if let Ok(mut state) = self.state.lock() {
+            state.wake_lock_probe = Some(path);
+        }
+    }
+
+    /// Wake-lock node contents observed by the last `suspend` probe.
+    pub fn wake_lock_at_suspend(&self) -> Option<String> {
+        self.state
+            .lock()
+            .ok()
+            .and_then(|state| state.wake_lock_at_suspend.clone())
+    }
 }
 
 impl Default for TestPowerManager {
@@ -268,13 +285,21 @@ impl Default for TestPowerManager {
 
 impl crate::device::power::PowerManager for TestPowerManager {
     fn suspend(&self) -> Result<(), crate::device::power::PowerError> {
-        let fails = match self.state.lock() {
+        let (fails, probe) = match self.state.lock() {
             Ok(mut state) => {
                 state.suspend_calls += 1;
-                state.suspend_fails
+                (state.suspend_fails, state.wake_lock_probe.clone())
             }
-            Err(_) => false,
+            Err(_) => (false, None),
         };
+        if let Some(path) = probe {
+            let value = std::fs::read_to_string(path)
+                .ok()
+                .map(|value| value.trim().to_owned());
+            if let Ok(mut state) = self.state.lock() {
+                state.wake_lock_at_suspend = value;
+            }
+        }
         if fails {
             return Err(crate::device::power::PowerError::Io(
                 std::io::Error::from_raw_os_error(16),

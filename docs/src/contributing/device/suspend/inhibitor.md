@@ -15,11 +15,11 @@ Overview of how this relates to
 
 ## Kinds
 
-| Kind                                                                                             | Wake lock                      | Blocks [explicit suspend](orchestrator.md) on Kobo | Blocks opportunistic [soft suspend](soft-suspend.md) | Blocks Kobo user exits |
-| ------------------------------------------------------------------------------------------------ | ------------------------------ | -------------------------------------------------- | ---------------------------------------------------- | ---------------------- |
-| <a href="/api/cadmus_core/device/inhibitor/enum.Kind.html#variant.SoftSuspend">`SoftSuspend`</a> | Yes (Linux)                    | **No**                                             | **Yes** (while guard held)                           | No                     |
-| <a href="/api/cadmus_core/device/inhibitor/enum.Kind.html#variant.Sleep">`Sleep`</a>             | Yes (nested `"sleep-inhibit"`) | **No**                                             | **Yes**                                              | No                     |
-| <a href="/api/cadmus_core/device/inhibitor/enum.Kind.html#variant.Full">`Full`</a>               | Yes (nested `"full-inhibit"`)  | **Yes**                                            | **Yes**                                              | Yes                    |
+| Kind                                                                                             | Wake lock                                   | Blocks [explicit suspend](orchestrator.md) on Kobo | Blocks opportunistic [soft suspend](soft-suspend.md) | Blocks Kobo user exits |
+| ------------------------------------------------------------------------------------------------ | ------------------------------------------- | -------------------------------------------------- | ---------------------------------------------------- | ---------------------- |
+| <a href="/api/cadmus_core/device/inhibitor/enum.Kind.html#variant.SoftSuspend">`SoftSuspend`</a> | Yes (Linux; suppressed during kernel sleep) | **No**                                             | **Yes** (while guard held)                           | No                     |
+| <a href="/api/cadmus_core/device/inhibitor/enum.Kind.html#variant.Sleep">`Sleep`</a>             | Yes (nested `"sleep-inhibit"`)              | **No**                                             | **Yes**                                              | No                     |
+| <a href="/api/cadmus_core/device/inhibitor/enum.Kind.html#variant.Full">`Full`</a>               | Yes (nested `"full-inhibit"`)               | **Yes**                                            | **Yes**                                              | Yes                    |
 
 ## Keep the device awake
 
@@ -31,14 +31,14 @@ for the lifetime of the work or UI. Dropping it releases the lease.
   Examples: input handling, import tasks, and main-loop work.
   `WifiSession` holds `SoftSuspendName::Wifi` internally while it has Wi-Fi
   leases such as `"ota-download"`. Explicit Auto Suspend / power-button sleep
-  can still run.
+  can still run: at the kernel-sleep boundary the shared `cadmus` lock is
+  released immediately and re-acquired on wake while any holder remains.
 - **`Kind::Sleep`** blocks opportunistic autosleep and Auto Suspend without
   blocking user exits or explicit suspend (menu Suspend, power button, cover).
-  Explicit `start_cycle` pauses the nested `"sleep-inhibit"` wake lock for
-  kernel sleep so DeepIdle / Classic sleep is not pinned. Pause drops only
-  that nested lease; other SoftSuspend holders (`wifi`, `input`, …) stay
-  held. Kernel wake and `finish_cycle` re-take `"sleep-inhibit"` if Sleep
-  holders remain (top menu still open).
+  The nested `"sleep-inhibit"` lease stays tracked through preparation and the
+  explicit cycle. At the kernel-sleep boundary it is suppressed with every
+  other SoftSuspend holder; kernel wake and `finish_cycle` re-acquire the
+  shared `cadmus` lock if holders remain (top menu still open).
   Live AutoPowerOff is not
   blocked. No battery gate, no status LED, last drop does not post
   `FullInhibitCleared`. cadmus-test holds this kind while the top menu
@@ -79,8 +79,12 @@ queues `Context::deferred_suspend` as **Explicit** and returns without a cycle.
 The Auto Suspend path
 (<a href="/api/cadmus_core/device/suspend/orchestrator/fn.start_cycle_from_auto.html">`start_cycle_from_auto`</a>)
 queues **Auto** while Full or Sleep is held. Explicit `start_cycle` (cover,
-power button, menu Suspend) still runs during Sleep. Nested `"sleep-inhibit"`
-is paused for kernel sleep and re-taken on wake if Sleep holders remain.
+power button, menu Suspend) still runs during Sleep. The shared `cadmus` lock
+is suppressed at the kernel-sleep boundary and re-acquired on wake if any
+SoftSuspend holder remains, including the nested `"sleep-inhibit"` lease while
+Sleep holders remain. If a worker acquires Full after a cycle starts, the
+orchestrator aborts the cycle before kernel sleep and queues Explicit deferred
+intent.
 
 When the last Full holder drops, Kobo posts
 <a href="/api/cadmus_core/view/enum.Event.html#variant.FullInhibitCleared">`Event::FullInhibitCleared`</a>;

@@ -35,13 +35,13 @@ pub enum Kind {
     /// [`FULL_INHIBIT_MIN_CAPACITY_PERCENT`](crate::device::inhibitor::FULL_INHIBIT_MIN_CAPACITY_PERCENT)
     /// or cannot be read.
     Full,
-    /// Nested wake lock `"sleep-inhibit"` (paused during explicit suspend); defers Auto `start_cycle` only.
+    /// Nested wake lock `"sleep-inhibit"`; defers Auto `start_cycle` only.
     ///
     /// Blocks opportunistic autosleep and Auto Suspend. Does not block user
     /// exits, explicit suspend (menu Suspend, power button, cover), or live
-    /// AutoPowerOff. Explicit suspend pauses only the nested `"sleep-inhibit"`
-    /// lease; other SoftSuspend holders stay held. No battery gate, no status
-    /// LED. Last drop does not post
+    /// AutoPowerOff. The explicit kernel-sleep window suppresses the shared
+    /// `cadmus` lock without dropping this lease or any other SoftSuspend
+    /// holder. No battery gate, no status LED. Last drop does not post
     /// [`Event::FullInhibitCleared`](crate::view::Event::FullInhibitCleared).
     Sleep,
 }

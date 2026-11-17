@@ -121,4 +121,12 @@ impl SoftSuspendKind for LinuxSoftSuspendKind {
     fn acquire_lease(&self, name: LeaseName) -> Lease {
         self.wake.acquire(name)
     }
+
+    fn pause_wake_lock(&self) {
+        self.wake.pause();
+    }
+
+    fn resume_wake_lock(&self) {
+        self.wake.resume();
+    }
 }

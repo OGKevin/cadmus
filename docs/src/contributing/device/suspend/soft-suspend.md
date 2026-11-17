@@ -63,6 +63,10 @@ On Linux the live kind:
 - Writes `/sys/power/autosleep` (`off` / `freeze` / `mem`)
 - Maps lease tracker 0→1 to `wake_lock cadmus`, 1→0 to deferred `wake_unlock`
   after **autosleep grace** (new lease during grace cancels pending unlock)
+- Suppresses the shared lock for a Cadmus explicit-suspend sleep window without
+  dropping any lease: `wake_unlock` is written immediately (grace bypassed),
+  acquire/release transitions still update holder accounting, and resume
+  re-locks only when holders remain
 - Optionally drives `soft-indicate` on the shared
   <a href="/api/cadmus_core/device/leds/struct.StatusLed.html">`StatusLed`</a>
   arbiter ([priorities in Inhibitor doc](inhibitor.md#status-led-arbiter))
