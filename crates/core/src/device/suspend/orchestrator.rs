@@ -694,18 +694,27 @@ async fn enter_sleep(
     }
 
     if pause_wake_lock_async(context).await == WakeLockPauseOutcome::BlockedByFull {
-        abort_cycle_for_full_inhibit(context, runtime.tasks, runtime.view.as_mut(), hub, rq).await;
+        finish_blocked_cycle(context, runtime.tasks, runtime.view.as_mut(), hub, rq).await;
         return EventOutcome::Handled;
     }
 
-    let (before, after) = perform_suspend_resume(hub, context, runtime).await;
-    if abort_cycle_for_full_inhibit(context, runtime.tasks, runtime.view.as_mut(), hub, rq).await {
-        return EventOutcome::Handled;
+    match perform_suspend_resume(hub, context, runtime).await {
+        ClassicSuspendOutcome::BlockedByFull => {
+            finish_blocked_cycle(context, runtime.tasks, runtime.view.as_mut(), hub, rq).await;
+            EventOutcome::Handled
+        }
+        ClassicSuspendOutcome::Slept { before, after } => {
+            if abort_cycle_for_full_inhibit(context, runtime.tasks, runtime.view.as_mut(), hub, rq)
+                .await
+            {
+                return EventOutcome::Handled;
+            }
+            if let Some(cycle) = context.suspend.as_mut() {
+                cycle.phase = SuspendPhase::PostWakeDebounce;
+            }
+            handle_post_wake(before, after, hub, bus, rq, context, runtime).await
+        }
     }
-    if let Some(cycle) = context.suspend.as_mut() {
-        cycle.phase = SuspendPhase::PostWakeDebounce;
-    }
-    handle_post_wake(before, after, hub, bus, rq, context, runtime).await
 }
 
 /// Arms AutoPowerOff and CalendarUpdate RTC alarms before kernel sleep; may exit for power-off.
@@ -1183,6 +1192,14 @@ fn log_soft_suspend_holders(context: &AppContext, at: &str) {
     );
 }
 
+enum ClassicSuspendOutcome {
+    Slept {
+        before: chrono::DateTime<Local>,
+        after: chrono::DateTime<Local>,
+    },
+    BlockedByFull,
+}
+
 /// Classic blocking `power.suspend` / `resume` and WakeDebounce arming.
 ///
 /// A refusal is logged with the same kernel-side wake state the deep-idle
@@ -1193,7 +1210,7 @@ async fn perform_suspend_resume(
     hub: &Hub,
     context: &mut AppContext,
     runtime: &mut DeviceRuntime<'_>,
-) -> (chrono::DateTime<Local>, chrono::DateTime<Local>) {
+) -> ClassicSuspendOutcome {
     let before = Local::now();
     tracing::info!(
         "{}",
@@ -1208,9 +1225,9 @@ async fn perform_suspend_resume(
     );
     if pause_wake_lock_async(context).await == WakeLockPauseOutcome::BlockedByFull {
         tracing::warn!("refusing classic suspend while Full inhibit active");
-        let after = Local::now();
-        return (before, after);
+        return ClassicSuspendOutcome::BlockedByFull;
     }
+
     match context.device.power_manager() {
         Ok(power) => {
             if let Err(error) = power.suspend() {
@@ -1260,7 +1277,7 @@ async fn perform_suspend_resume(
     tracing::debug!(pending_tasks = ?pending_task_ids, "task state after wake");
     let _ = hub;
     schedule_wake_debounce_alarm(context);
-    (before, after)
+    ClassicSuspendOutcome::Slept { before, after }
 }
 
 /// Checks RTC alarms that fired during classic sleep; may chain debounce, calendar, or power-off.

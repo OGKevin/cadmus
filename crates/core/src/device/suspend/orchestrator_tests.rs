@@ -130,9 +130,10 @@ async fn handle_post_wake_auto_power_off_exit() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn perform_suspend_resume_schedules_wake_debounce() {
     let mut harness = DeviceRuntimeHarness::new().await;
-    let (_before, _after) = crate::poll_parts!(harness, |hub, _bus, _rq, context, runtime| {
+    let outcome = crate::poll_parts!(harness, |hub, _bus, _rq, context, runtime| {
         perform_suspend_resume(hub, context, runtime)
     });
+    assert!(matches!(outcome, ClassicSuspendOutcome::Slept { .. }));
     assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::WakeDebounce));
     let power = harness.context.device.power_manager_for_test();
     assert!(power.was_suspend_called());
@@ -2071,9 +2072,52 @@ async fn full_acquired_before_deep_idle_sleep_finishes_cycle() {
         harness.context.deferred_suspend,
         Some(DeferredSuspend::Explicit)
     );
+    assert!(
+        !wake_unlock_written(&paths).await,
+        "pause must not suppress the lock while Full is active"
+    );
+    assert!(wake_lock_held(&paths).await);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn full_acquired_before_classic_suspend_finishes_cycle() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    let (_dir, paths) = install_armed_soft_suspend(&mut harness);
+    harness.context.inhibitor.set_mode(AutosleepMode::Off);
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+    });
+    let _full = harness
+        .context
+        .inhibitor
+        .acquire(Kind::Full, "ota")
+        .unwrap();
+    tokio::fs::write(&paths.wake_unlock, "")
+        .await
+        .expect("clear unlock");
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
+    });
+
+    let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(
+            &Event::RtcAlarmFired(AlarmType::Suspend),
+            hub,
+            bus,
+            rq,
+            context,
+            runtime,
+        )
+    });
+
+    assert_eq!(outcome, EventOutcome::Handled);
+    assert!(harness.context.suspend.is_none());
     assert_eq!(
-        wake_unlock_written(&paths).await,
-        false,
+        harness.context.deferred_suspend,
+        Some(DeferredSuspend::Explicit)
+    );
+    assert!(
+        !wake_unlock_written(&paths).await,
         "pause must not suppress the lock while Full is active"
     );
     assert!(wake_lock_held(&paths).await);
