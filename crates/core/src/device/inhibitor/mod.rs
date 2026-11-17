@@ -51,6 +51,7 @@ pub use error::InhibitorError;
 pub use guard::InhibitorGuard;
 pub use kind::Kind;
 pub use soft_suspend::SoftSuspendName;
+pub(crate) use soft_suspend::WakeLockPauseOutcome;
 
 use crate::device::battery::{Battery, FakeBattery};
 #[cfg(all(test, target_os = "linux"))]
@@ -107,6 +108,7 @@ impl Inhibitor {
     ) -> Arc<Self> {
         let full = full::FullInhibitState::new(Arc::clone(&soft_suspend), Arc::clone(&status_led));
         let sleep = sleep::SleepInhibitState::new(Arc::clone(&soft_suspend));
+        soft_suspend.set_full_tracker(full.downgrade_tracker());
         Arc::new(Self {
             soft_suspend,
             full,
@@ -199,10 +201,11 @@ impl Inhibitor {
     /// `"full-inhibit"` leases, stays tracked. The kernel `cadmus` lock is
     /// released immediately, bypassing autosleep grace, and acquire/release
     /// transitions do not write the wake-lock nodes until
-    /// [`Self::resume_soft_suspend_wake_lock`].
+    /// [`Self::resume_soft_suspend_wake_lock`]. A live Full holder blocks
+    /// suppression so critical work keeps kernel wake-lock protection.
     #[cfg(any(test, feature = "kobo", docsrs))]
-    pub(crate) fn pause_soft_suspend_wake_lock(&self) {
-        self.soft_suspend.pause_wake_lock();
+    pub(crate) fn pause_soft_suspend_wake_lock(&self) -> WakeLockPauseOutcome {
+        self.soft_suspend.pause_wake_lock()
     }
 
     /// Ends a Cadmus suspend sleep window.

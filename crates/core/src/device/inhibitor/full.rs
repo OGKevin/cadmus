@@ -42,7 +42,7 @@
 
 use super::soft_suspend::SoftSuspendKind;
 use crate::device::leds::{LedPattern, LedPriority, StatusLed, StatusLedGuard};
-use crate::lease::{Lease, LeaseName, LeaseObserver, LeaseTracker};
+use crate::lease::{Lease, LeaseName, LeaseObserver, LeaseTracker, WeakLeaseTracker};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -102,6 +102,7 @@ impl FullInhibitResources {
             .soft_suspend
             .acquire_lease(LeaseName::new(FULL_INHIBIT_NAME));
         *self.wake_lease.lock().unwrap_or_else(|e| e.into_inner()) = Some(wake);
+        self.soft_suspend.resume_wake_lock();
         let guard = self.status_led.install(
             FULL_INHIBIT_NAME,
             LedPriority::FullInhibit,
@@ -177,6 +178,11 @@ impl FullInhibitState {
     #[cfg(any(test, feature = "kobo", docsrs))]
     pub(super) fn set_on_last_release(&self, notify: Arc<dyn Fn() + Send + Sync>) {
         self.resources.set_on_last_release(notify);
+    }
+
+    /// Returns a weak handle to the named Full-holder tracker.
+    pub(super) fn downgrade_tracker(&self) -> WeakLeaseTracker {
+        self.tracker.downgrade()
     }
 
     /// Adds a named Full holder. Nested wake lock / LED start on 0→1 only.

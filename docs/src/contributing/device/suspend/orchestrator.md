@@ -62,7 +62,9 @@ path only. `FullInhibitCleared` flushes Auto through `start_cycle_from_auto`
 (Sleep still defers) and Explicit through `start_cycle`. All SoftSuspend
 holders, including the nested `"sleep-inhibit"` lease, remain tracked while the
 shared `cadmus` wake lock is suppressed for the kernel-sleep window; wake
-restores it when any holder remains — [Inhibitor § Deferred explicit suspend](inhibitor.md#deferred-explicit-suspend).
+restores it when any holder remains. Suppression is refused while a Full holder
+is live. If Full arrives during the window, its nested wake lease immediately
+restores `cadmus` and the cycle aborts before sleep — [Inhibitor § Deferred explicit suspend](inhibitor.md#deferred-explicit-suspend).
 
 ## Kind and phase
 

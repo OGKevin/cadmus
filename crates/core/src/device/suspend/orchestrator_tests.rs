@@ -15,21 +15,24 @@ use chrono::TimeZone;
 use std::path::Path;
 use std::time::Duration;
 
-fn wake_node(path: &Path) -> String {
-    std::fs::read_to_string(path)
+async fn wake_node(path: &Path) -> String {
+    tokio::fs::read_to_string(path)
+        .await
         .expect("read wake node")
         .trim()
         .to_owned()
 }
 
-fn wake_lock_held(paths: &crate::device::linux::soft_suspend::paths::SoftSuspendPaths) -> bool {
-    wake_node(&paths.wake_lock) == crate::device::linux::soft_suspend::WAKE_LOCK_NAME
-}
-
-fn wake_unlock_written(
+async fn wake_lock_held(
     paths: &crate::device::linux::soft_suspend::paths::SoftSuspendPaths,
 ) -> bool {
-    wake_node(&paths.wake_unlock) == crate::device::linux::soft_suspend::WAKE_LOCK_NAME
+    wake_node(&paths.wake_lock).await == crate::device::linux::soft_suspend::WAKE_LOCK_NAME
+}
+
+async fn wake_unlock_written(
+    paths: &crate::device::linux::soft_suspend::paths::SoftSuspendPaths,
+) -> bool {
+    wake_node(&paths.wake_unlock).await == crate::device::linux::soft_suspend::WAKE_LOCK_NAME
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -154,15 +157,20 @@ async fn classic_suspend_unlocks_and_restores_thumbnail_wake_lock() {
         .context
         .device
         .power_manager_for_test()
-        .set_wake_lock_probe(paths.wake_lock.clone());
+        .set_wake_lock_probe(paths.wake_unlock.clone());
     crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
         start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
     });
     crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
         handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
     });
-    assert!(wake_lock_held(&paths));
-    std::fs::write(&paths.wake_lock, "").expect("clear lock");
+    assert!(wake_lock_held(&paths).await);
+    tokio::fs::write(&paths.wake_lock, "")
+        .await
+        .expect("clear lock");
+    tokio::fs::write(&paths.wake_unlock, "")
+        .await
+        .expect("clear unlock");
 
     let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
         handle_event(
@@ -180,11 +188,11 @@ async fn classic_suspend_unlocks_and_restores_thumbnail_wake_lock() {
     assert_eq!(power.suspend_call_count(), 1);
     assert_eq!(
         power.wake_lock_at_suspend().as_deref(),
-        Some(""),
-        "cadmus must be unlocked before the blocking state=mem write"
+        Some(crate::device::linux::soft_suspend::WAKE_LOCK_NAME),
+        "cadmus must be written to wake_unlock before the blocking state=mem write"
     );
     assert!(
-        wake_lock_held(&paths),
+        wake_lock_held(&paths).await,
         "resume must restore cadmus while the thumbnail lease remains"
     );
 }
@@ -1918,7 +1926,7 @@ async fn explicit_deep_idle_unlocks_for_thumbnail_and_relocks_on_wake() {
     crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
         start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
     });
-    assert!(wake_lock_held(&paths));
+    assert!(wake_lock_held(&paths).await);
 
     crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
         handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
@@ -1926,14 +1934,16 @@ async fn explicit_deep_idle_unlocks_for_thumbnail_and_relocks_on_wake() {
 
     assert!(harness.context.inhibitor.has_holders());
     assert!(
-        wake_unlock_written(&paths),
+        wake_unlock_written(&paths).await,
         "kernel sleep must release cadmus even with a live thumbnail lease"
     );
-    std::fs::write(&paths.wake_lock, "").expect("clear lock");
+    tokio::fs::write(&paths.wake_lock, "")
+        .await
+        .expect("clear lock");
 
     pump_deep_idle_wake(&mut harness).await;
     assert!(
-        wake_lock_held(&paths),
+        wake_lock_held(&paths).await,
         "wake must restore cadmus while the thumbnail lease remains"
     );
 }
@@ -1964,7 +1974,7 @@ async fn auto_deep_idle_proceeds_with_only_thumbnail_held() {
             .and_then(|cycle| cycle.deep_idle_wait())
             .is_some()
     );
-    assert!(wake_unlock_written(&paths));
+    assert!(wake_unlock_written(&paths).await);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -1987,8 +1997,10 @@ async fn deep_idle_wake_restores_sleep_inhibit_if_sleep_held() {
         holds_sleep_inhibit(&harness),
         "the Sleep lease stays tracked while its kernel lock is suppressed"
     );
-    assert!(wake_unlock_written(&paths));
-    std::fs::write(&paths.wake_lock, "").expect("clear lock");
+    assert!(wake_unlock_written(&paths).await);
+    tokio::fs::write(&paths.wake_lock, "")
+        .await
+        .expect("clear lock");
 
     pump_deep_idle_wake(&mut harness).await;
     assert!(harness.context.inhibitor.sleep_active());
@@ -1997,7 +2009,7 @@ async fn deep_idle_wake_restores_sleep_inhibit_if_sleep_held() {
         "resume must retain the nested sleep-inhibit lease while Sleep holders remain"
     );
     assert!(
-        wake_lock_held(&paths),
+        wake_lock_held(&paths).await,
         "resume must re-acquire cadmus for the remaining Sleep holder"
     );
 }
@@ -2017,8 +2029,10 @@ async fn cancel_deep_idle_restores_thumbnail_wake_lock() {
     crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
         handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
     });
-    assert!(wake_unlock_written(&paths));
-    std::fs::write(&paths.wake_lock, "").expect("clear lock");
+    assert!(wake_unlock_written(&paths).await);
+    tokio::fs::write(&paths.wake_lock, "")
+        .await
+        .expect("clear lock");
 
     harness.with_parts(|hub, _bus, rq, context, runtime| {
         cancel_suspend_if_pending(context, runtime.tasks, runtime.view.as_mut(), hub, rq);
@@ -2026,9 +2040,43 @@ async fn cancel_deep_idle_restores_thumbnail_wake_lock() {
 
     assert!(harness.context.suspend.is_none());
     assert!(
-        wake_lock_held(&paths),
+        wake_lock_held(&paths).await,
         "cancelling during the wait must restore cadmus for the live thumbnail lease"
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn full_acquired_before_deep_idle_sleep_finishes_cycle() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    let (_dir, paths) = install_armed_soft_suspend(&mut harness);
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+    });
+    let _full = harness
+        .context
+        .inhibitor
+        .acquire(Kind::Full, "ota")
+        .unwrap();
+    tokio::fs::write(&paths.wake_unlock, "")
+        .await
+        .expect("clear unlock");
+
+    let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
+    });
+
+    assert_eq!(outcome, EventOutcome::Handled);
+    assert!(harness.context.suspend.is_none());
+    assert_eq!(
+        harness.context.deferred_suspend,
+        Some(DeferredSuspend::Explicit)
+    );
+    assert_eq!(
+        wake_unlock_written(&paths).await,
+        false,
+        "pause must not suppress the lock while Full is active"
+    );
+    assert!(wake_lock_held(&paths).await);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -2041,14 +2089,20 @@ async fn full_acquired_during_deep_idle_aborts_kernel_sleep() {
     crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
         handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
     });
-    assert!(wake_unlock_written(&paths));
-    std::fs::write(&paths.wake_lock, "").expect("clear lock");
+    assert!(wake_unlock_written(&paths).await);
+    tokio::fs::write(&paths.wake_lock, "")
+        .await
+        .expect("clear lock");
 
     let _full = harness
         .context
         .inhibitor
         .acquire(Kind::Full, "ota")
         .unwrap();
+    assert!(
+        wake_lock_held(&paths).await,
+        "Full acquisition must restore cadmus before the next poll"
+    );
     harness
         .context
         .deep_idle_poll_inject
@@ -2064,7 +2118,7 @@ async fn full_acquired_during_deep_idle_aborts_kernel_sleep() {
         Some(DeferredSuspend::Explicit)
     );
     assert!(
-        wake_lock_held(&paths),
+        wake_lock_held(&paths).await,
         "Full must restore cadmus instead of sleeping over OTA"
     );
 }

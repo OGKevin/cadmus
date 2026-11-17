@@ -20,7 +20,7 @@ use crate::AlarmType;
 use crate::ClockInstant;
 use crate::chrono::{Duration as ChronoDuration, Local, Timelike};
 use crate::device::DeviceHardware as _;
-use crate::device::inhibitor::{Kind, SoftSuspendName};
+use crate::device::inhibitor::{Kind, SoftSuspendName, WakeLockPauseOutcome};
 #[cfg(target_os = "linux")]
 use crate::device::linux::wake_telemetry::InterruptSnapshot;
 use crate::device::power::PowerManager;
@@ -129,6 +129,23 @@ fn arm_deep_idle_lease(context: &mut AppContext) -> bool {
 /// Re-acquires the shared `cadmus` wake lock when any SoftSuspend holder
 /// remains (menu still open after kernel wake).
 fn leave_deep_idle_if_needed(context: &mut AppContext) {
+    leave_deep_idle_core(context);
+    context.inhibitor.resume_soft_suspend_wake_lock();
+}
+
+/// Async variant used by suspend handlers so suppression restoration runs on
+/// the blocking pool rather than the main thread.
+///
+/// TODO(OGKevin): make the suspend pipeline async end-to-end so this split
+/// helper can be removed.
+async fn leave_deep_idle_if_needed_async(context: &mut AppContext) {
+    leave_deep_idle_core(context);
+    resume_wake_lock_async(context).await;
+}
+
+/// Restores autosleep mode and disarms kernel deep idle without touching the
+/// shared wake lock.
+fn leave_deep_idle_core(context: &mut AppContext) {
     let Some(cycle) = context.suspend.as_mut() else {
         return;
     };
@@ -146,7 +163,38 @@ fn leave_deep_idle_if_needed(context: &mut AppContext) {
             tracing::error!(error = %error, "power_manager() failed while leaving deep idle");
         }
     }
-    context.inhibitor.resume_soft_suspend_wake_lock();
+}
+
+/// Pauses the shared wake lock from an async handler.
+///
+/// This is a blocking-pool wrapper, not an async backend method.
+///
+/// TODO(OGKevin): make the suspend pipeline async end-to-end so these wrappers
+/// can be removed.
+async fn pause_wake_lock_async(context: &AppContext) -> WakeLockPauseOutcome {
+    let inhibitor = context.inhibitor.clone();
+    match crate::runtime::spawn_blocking(move || inhibitor.pause_soft_suspend_wake_lock()).await {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            tracing::error!(error = %error, "soft-suspend wake-lock pause task failed");
+            WakeLockPauseOutcome::Paused
+        }
+    }
+}
+
+/// Resumes the shared wake lock from an async handler.
+///
+/// This is a blocking-pool wrapper, not an async backend method.
+///
+/// TODO(OGKevin): make the suspend pipeline async end-to-end so these wrappers
+/// can be removed.
+async fn resume_wake_lock_async(context: &AppContext) {
+    let inhibitor = context.inhibitor.clone();
+    if let Err(error) =
+        crate::runtime::spawn_blocking(move || inhibitor.resume_soft_suspend_wake_lock()).await
+    {
+        tracing::error!(error = %error, "soft-suspend wake-lock resume task failed");
+    }
 }
 
 /// Converts auto-power-off days from settings to a chrono duration (minimum one second).
@@ -516,6 +564,7 @@ async fn reenter_sleep(
     }
     if kind == SuspendKind::DeepIdle && !arm_deep_idle_lease(context) {
         tracing::error!("deep idle reentry failed: could not acquire cycle lease");
+        resume_wake_lock_async(context).await;
         finish_cycle(context, runtime.tasks, runtime.view.as_mut(), hub, rq);
         return EventOutcome::Handled;
     }
@@ -609,6 +658,7 @@ async fn enter_sleep(
 
     if context.suspend.is_some()
         && abort_cycle_for_full_inhibit(context, runtime.tasks, runtime.view.as_mut(), hub, rq)
+            .await
     {
         return EventOutcome::Handled;
     }
@@ -622,7 +672,7 @@ async fn enter_sleep(
         if let Some(outcome) = schedule_alarms_before_sleep(context, runtime).await {
             return outcome;
         }
-        start_deep_idle_wait(hub, context, runtime.tasks).await;
+        start_deep_idle_wait(hub, rq, context, runtime.view.as_mut(), runtime.tasks).await;
         return EventOutcome::Handled;
     }
 
@@ -643,7 +693,15 @@ async fn enter_sleep(
         return outcome;
     }
 
+    if pause_wake_lock_async(context).await == WakeLockPauseOutcome::BlockedByFull {
+        abort_cycle_for_full_inhibit(context, runtime.tasks, runtime.view.as_mut(), hub, rq).await;
+        return EventOutcome::Handled;
+    }
+
     let (before, after) = perform_suspend_resume(hub, context, runtime).await;
+    if abort_cycle_for_full_inhibit(context, runtime.tasks, runtime.view.as_mut(), hub, rq).await {
+        return EventOutcome::Handled;
+    }
     if let Some(cycle) = context.suspend.as_mut() {
         cycle.phase = SuspendPhase::PostWakeDebounce;
     }
@@ -799,7 +857,13 @@ async fn log_wake_source(context: &mut AppContext, state: &DeepIdleWaitState) {
 }
 
 /// Arms mem autosleep, kernel deep idle, and periodic [`Event::PollDeepIdleWait`] polling.
-async fn start_deep_idle_wait(hub: &Hub, context: &mut AppContext, tasks: &mut Vec<DeviceTask>) {
+async fn start_deep_idle_wait(
+    hub: &Hub,
+    rq: &mut RenderQueue,
+    context: &mut AppContext,
+    view: &mut dyn View,
+    tasks: &mut Vec<DeviceTask>,
+) {
     let before = Local::now();
     tracing::info!(
         "{}",
@@ -829,7 +893,10 @@ async fn start_deep_idle_wait(hub: &Hub, context: &mut AppContext, tasks: &mut V
     nix::unistd::sync();
     #[cfg(target_os = "linux")]
     let interrupt_baseline = read_interrupt_snapshot(context).await;
-    context.inhibitor.pause_soft_suspend_wake_lock();
+    if pause_wake_lock_async(context).await == WakeLockPauseOutcome::BlockedByFull {
+        finish_blocked_cycle(context, tasks, view, hub, rq).await;
+        return;
+    }
     if let Some(cycle) = context.suspend.as_mut() {
         cycle.cycle_lease = None;
         cycle.phase = SuspendPhase::InSleep {
@@ -872,7 +939,7 @@ async fn poll_deep_idle_wait(
         return EventOutcome::Handled;
     };
 
-    if abort_cycle_for_full_inhibit(context, runtime.tasks, runtime.view.as_mut(), hub, rq) {
+    if abort_cycle_for_full_inhibit(context, runtime.tasks, runtime.view.as_mut(), hub, rq).await {
         return EventOutcome::Handled;
     }
 
@@ -898,7 +965,7 @@ async fn poll_deep_idle_wait(
                 after.format("Left deep idle on %B %-d, %Y at %H:%M:%S.")
             );
             log_wake_source(context, &state).await;
-            leave_deep_idle_if_needed(context);
+            leave_deep_idle_if_needed_async(context).await;
             schedule_wake_debounce_alarm(context);
             handle_post_wake(
                 state.sleep_started_at(),
@@ -936,7 +1003,7 @@ async fn poll_deep_idle_wait(
                 "{}",
                 after.format("Left deep idle on %B %-d, %Y at %H:%M:%S.")
             );
-            leave_deep_idle_if_needed(context);
+            leave_deep_idle_if_needed_async(context).await;
             if context.suspend.is_none() {
                 return EventOutcome::Handled;
             }
@@ -956,7 +1023,7 @@ async fn poll_deep_idle_wait(
                 finish_cycle(context, runtime.tasks, runtime.view.as_mut(), hub, rq);
                 return EventOutcome::Handled;
             }
-            start_deep_idle_wait(hub, context, runtime.tasks).await;
+            start_deep_idle_wait(hub, rq, context, runtime.view.as_mut(), runtime.tasks).await;
             EventOutcome::Handled
         }
     }
@@ -1139,7 +1206,11 @@ async fn perform_suspend_resume(
         framebuffer_dims = ?context.device.framebuffer().dims(),
         "display state before suspend"
     );
-    context.inhibitor.pause_soft_suspend_wake_lock();
+    if pause_wake_lock_async(context).await == WakeLockPauseOutcome::BlockedByFull {
+        tracing::warn!("refusing classic suspend while Full inhibit active");
+        let after = Local::now();
+        return (before, after);
+    }
     match context.device.power_manager() {
         Ok(power) => {
             if let Err(error) = power.suspend() {
@@ -1177,7 +1248,7 @@ async fn perform_suspend_resume(
             tracing::error!(error = %error, "power_manager() initialization failed for resume");
         }
     }
-    context.inhibitor.resume_soft_suspend_wake_lock();
+    resume_wake_lock_async(context).await;
     tracing::debug!(
         rotation = context.display.rotation,
         dims = ?context.display.dims,
@@ -1364,7 +1435,7 @@ pub(crate) async fn start_cycle(
 /// Returns whether a cycle was aborted and the explicit suspend intent queued
 /// for the Full-release flush. A worker can acquire Full after a cycle starts,
 /// so kernel sleep must not cross a live Full holder.
-fn abort_cycle_for_full_inhibit(
+async fn abort_cycle_for_full_inhibit(
     context: &mut AppContext,
     tasks: &mut Vec<DeviceTask>,
     view: &mut dyn View,
@@ -1375,9 +1446,25 @@ fn abort_cycle_for_full_inhibit(
         return false;
     }
     tracing::warn!("Full inhibit acquired during suspend cycle; aborting kernel sleep");
+    finish_blocked_cycle(context, tasks, view, hub, rq).await;
+    true
+}
+
+/// Ends a cycle whose sleep window was blocked by Full inhibit.
+///
+/// The explicit intent is queued even if the Full holder already released:
+/// its `FullInhibitCleared` event is already in flight and must wake a fresh
+/// cycle rather than leaving the current one half-armed.
+async fn finish_blocked_cycle(
+    context: &mut AppContext,
+    tasks: &mut Vec<DeviceTask>,
+    view: &mut dyn View,
+    hub: &Hub,
+    rq: &mut RenderQueue,
+) {
+    resume_wake_lock_async(context).await;
     finish_cycle(context, tasks, view, hub, rq);
     queue_deferred_suspend(context, DeferredSuspend::Explicit);
-    true
 }
 
 /// End the cycle and return to interactive use (frontlight, wifi-at-rest, AutoSuspend).
