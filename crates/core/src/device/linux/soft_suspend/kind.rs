@@ -8,11 +8,11 @@
 use super::autosleep::AutosleepPolicy;
 use super::paths::SoftSuspendPaths;
 use super::wake::WakeLock;
-use crate::device::inhibitor::soft_suspend::SoftSuspendKind;
+use crate::device::inhibitor::soft_suspend::{SoftSuspendKind, WakeLockPauseOutcome};
 use crate::device::leds::StatusLed;
 use crate::device::soft_suspend::SoftSuspendBackend;
 use crate::device::soft_suspend::mode::AutosleepMode;
-use crate::lease::{Lease, LeaseName};
+use crate::lease::{Lease, LeaseName, WeakLeaseTracker};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -122,8 +122,12 @@ impl SoftSuspendKind for LinuxSoftSuspendKind {
         self.wake.acquire(name)
     }
 
-    fn pause_wake_lock(&self) {
-        self.wake.pause();
+    fn set_full_tracker(&self, tracker: WeakLeaseTracker) {
+        self.wake.set_full_tracker(tracker);
+    }
+
+    fn pause_wake_lock(&self) -> WakeLockPauseOutcome {
+        self.wake.pause()
     }
 
     fn resume_wake_lock(&self) {

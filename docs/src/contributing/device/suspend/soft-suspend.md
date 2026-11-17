@@ -67,6 +67,8 @@ On Linux the live kind:
   dropping any lease: `wake_unlock` is written immediately (grace bypassed),
   acquire/release transitions still update holder accounting, and resume
   re-locks only when holders remain
+- Refuses suppression while a Full holder is live; a Full lease acquired during
+  suppression immediately restores `cadmus` in `wake_lock`
 - Optionally drives `soft-indicate` on the shared
   <a href="/api/cadmus_core/device/leds/struct.StatusLed.html">`StatusLed`</a>
   arbiter ([priorities in Inhibitor doc](inhibitor.md#status-led-arbiter))
