@@ -204,6 +204,12 @@ impl Inhibitor {
         self.full.full_active()
     }
 
+    /// Locks the gate that serializes suspend entry with Full-holder acquisition.
+    #[cfg(any(feature = "kobo", docsrs))]
+    pub(crate) fn lock_full_suspend_gate(&self) -> std::sync::MutexGuard<'_, ()> {
+        self.full.lock_suspend_gate()
+    }
+
     /// Returns whether any [`Kind::Sleep`] holder is active.
     ///
     /// The Auto Suspend path defers while this is true. Explicit `start_cycle`

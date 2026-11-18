@@ -152,6 +152,7 @@ impl LeaseObserver for FullInhibitObserver {
 /// [`FullInhibitResources::on_last_full_holder`].
 pub(super) struct FullInhibitState {
     tracker: LeaseTracker,
+    gate: Mutex<()>,
     #[cfg(any(test, feature = "kobo", docsrs))]
     resources: Arc<FullInhibitResources>,
 }
@@ -166,12 +167,19 @@ impl FullInhibitState {
         let tracker = LeaseTracker::with_observer(observer);
         #[cfg(any(test, feature = "kobo", docsrs))]
         {
-            Self { tracker, resources }
+            Self {
+                tracker,
+                gate: Mutex::new(()),
+                resources,
+            }
         }
         #[cfg(not(any(test, feature = "kobo", docsrs)))]
         {
             drop(resources);
-            Self { tracker }
+            Self {
+                tracker,
+                gate: Mutex::new(()),
+            }
         }
     }
 
@@ -186,8 +194,14 @@ impl FullInhibitState {
         self.tracker.downgrade()
     }
 
+    /// Serializes suspend entry with Full-holder acquisition.
+    pub(super) fn lock_suspend_gate(&self) -> std::sync::MutexGuard<'_, ()> {
+        self.gate.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     /// Adds a named Full holder. Nested wake lock / LED start on 0→1 only.
     pub(super) fn acquire(&self, name: LeaseName) -> Lease {
+        let _gate = self.lock_suspend_gate();
         self.tracker.acquire(name)
     }
 
