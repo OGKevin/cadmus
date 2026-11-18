@@ -18,6 +18,7 @@ Scope-specific conventions live next to the code they govern:
 - [`crates/cadmus/AGENTS.md`](crates/cadmus/AGENTS.md) — binary entry, event loop, shutdown.
 - [`build-scripts/AGENTS.md`](build-scripts/AGENTS.md) — thirdparty patch tiers.
 - [`docs/AGENTS.md`](docs/AGENTS.md) — documentation.
+- [`website/AGENTS.md`](website/AGENTS.md) — documentation site frontend (Next.js).
 - [`.github/workflows/AGENTS.md`](.github/workflows/AGENTS.md) — CI workflows.
 - [`thirdparty/AGENTS.md`](thirdparty/AGENTS.md) — thirdparty submodules.
 

@@ -275,6 +275,12 @@ macOS supports full development capabilities including:
 **MuPDF build**: On macOS, the native build script manually gathers pkg-config CFLAGS for system
 libraries because MuPDF's build system doesn't properly detect them on Darwin.
 
+**Rust source path**: devenv only derives `RUST_SRC_PATH` when it builds the
+toolchain itself, but the macOS toolchain is an override (`darwinRustToolchainFix`
+in `devenv.nix`). The override therefore includes the `rust-src` component and
+forces `RUST_SRC_PATH` to its merged sources, which `rust-analyzer` and
+`cargo doc` need.
+
 ## Observability Stack
 
 The devenv includes a full observability stack for development:
@@ -289,6 +295,9 @@ cadmus-process-status --wait
 # Then run the instrumented emulator
 cadmus-dev-otel
 ```
+
+`cadmus-dev-otel` checks that every observability process reports ready and
+exits with an error if one does not.
 
 Every service port is allocated by devenv. When a base port is already taken
 (another worktree, `next dev`, a stray listener), devenv moves the service and
@@ -321,7 +330,8 @@ crash and report readiness:
 | `storybook` | 6006      | `devenv up storybook` / `cadmus-storybook` |
 
 `devenv up` (no argument) starts these alongside the observability stack.
-`devenv up <name>` starts a single process in the background.
+`devenv up <name>` starts just that process and follows its output; add `-d`
+to run detached.
 
 For more details on telemetry, see [Telemetry](telemetry/index.md).
 
@@ -366,9 +376,11 @@ endpoint, naming the process and log file on failure.
 
 Loki's `/ready` returns 503 for the first ~15 seconds after an idle period
 ("Ingester not ready"); its probe allows six failures at a five-second period
-before marking it unhealthy. Pyroscope's `/ready` stays 503 for about a minute
-after start while its metastore and ingester warm up, so its readiness probe is
-the TCP listener.
+before marking it unhealthy. Pyroscope's readiness probe is its `/ready`
+endpoint: the metastore, segment-writer and ingester rolling-update waits are
+disabled (safe for a single instance) and the metastore's raft state resets on
+every start because the allocated ports move, so `/ready` turns 200 within
+seconds and reports real component health.
 
 ### Ports change between runs
 

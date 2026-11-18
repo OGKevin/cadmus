@@ -157,8 +157,6 @@ let
     in
     {
       rustToolchain = fixRustToolchainLibSymlink profile;
-      # devenv leaves `RUST_SRC_PATH` unset when `toolchainPackage` is an
-      # override, so point it at the sources merged into our toolchain.
       rustSrcPath = "${toolchain.rust-src}/lib/rustlib/src/rust/library";
     }
   );
@@ -646,7 +644,8 @@ in
     ];
   };
 
-  # Processes for Grafana, Tempo, and Loki
+  # Dev-stack processes; every listener port is allocated so concurrent
+  # worktrees move instead of failing.
   processes = {
     # The module allocates the health, OTLP and self-metrics listener ports
     # from the base ports in `settings`, and derives its own readiness probe.
@@ -824,13 +823,42 @@ in
     };
 
     pyroscope = {
-      ports.http.allocate = 4040;
+      ports = {
+        http.allocate = 4040;
+        # dskit binds gRPC unconditionally; without an allocated port two
+        # worktrees collide on the 9095 default and the second one gives up.
+        # The raft metastore (localhost:9099) and gossip port (7946) are other
+        # fixed defaults two worktrees collide on.
+        grpc.allocate = 9095;
+        raft.allocate = 9099;
+        memberlist.allocate = 7946;
+      };
 
-      # Pyroscope's /ready stays 503 for about a minute after start while the
-      # metastore and ingester warm up, so readiness is its TCP listener.
+      # /ready reports real component health: the metastore, segment-writer and
+      # ingester min-ready waits are disabled (single instance) and the raft
+      # state is wiped on start (ports move), so it turns 200 within seconds
+      # and fails when the metastore does.
+      ready = {
+        initial_delay = 3;
+        period = 5;
+        probe_timeout = 3;
+        failure_threshold = 10;
+        http.get = {
+          port = pyroscopePorts.http.value;
+          path = "/ready";
+        };
+      };
+
       shutdown.grace = 20;
 
       exec = ''
+        # The single-node raft stores its voter config in this directory
+        # including the bound port; once the allocator moves the port the
+        # persisted config can never match again and no leader is elected.
+        # Wipe the whole metastore (raft config + index data): partial state
+        # mismatches panic the compaction service. Dev-only state — the
+        # profile index is rebuilt as the emulator pushes.
+        rm -rf ${config.devenv.state}/pyroscope/metastore
         mkdir -p ${config.devenv.state}/pyroscope/{data,data-compactor}
         mkdir -p ${config.devenv.state}/pyroscope/metastore/{data,raft}
         mkdir -p ${config.devenv.state}/pyroscope-sync
@@ -839,6 +867,16 @@ in
           -config.file=${pkgs.writeText "pyroscope.yaml" ''
             server:
               http_listen_port: ${toString pyroscopePorts.http.value}
+              grpc_listen_port: ${toString pyroscopePorts.grpc.value}
+
+            metastore:
+              # The metastore client dials this address; it must track the
+              # moved gRPC port, not the 9095 default.
+              address: 127.0.0.1:${toString pyroscopePorts.grpc.value}
+              raft:
+                server_id: localhost:${toString pyroscopePorts.raft.value}
+                bind_address: localhost:${toString pyroscopePorts.raft.value}
+                advertise_address: localhost:${toString pyroscopePorts.raft.value}
 
             storage:
               backend: filesystem
@@ -854,15 +892,20 @@ in
             memberlist:
               bind_addr:
                 - 127.0.0.1
+              bind_port: ${toString pyroscopePorts.memberlist.value}
               abort_if_cluster_join_fails: false
           ''} \
           -blocks-storage.bucket-store.sync-dir=${config.devenv.state}/pyroscope-sync \
           -metastore.data-dir=${config.devenv.state}/pyroscope/metastore/data \
           -metastore.raft.dir=${config.devenv.state}/pyroscope/metastore/raft \
+          -metastore.min-ready-duration=0 \
+          -segment-writer.min-ready-duration=0 \
+          -ingester.min-ready-duration=0 \
           -target=all \
           -self-profiling.disable-push=true
       '';
     };
+
 
     grafana = {
       ports.http.allocate = 3000;
@@ -1046,7 +1089,8 @@ in
       cadmuscli docs
     '';
 
-    # Serve website locally through the supervised devenv process.
+    # `devenv up` supervises these (readiness, restart on crash); running the
+    # dev command by hand gets neither.
     cadmus-docs-serve.exec = ''
       exec devenv up website
     '';
@@ -1059,8 +1103,8 @@ in
       exec devenv up mdbook
     '';
 
-    # Print the resolved stack URLs, check process state, probe health, and
-    # fail when anything is unhealthy. `--wait` first waits for readiness.
+    # `--wait` blocks for readiness; the script fails unless every process is
+    # up, so it can gate anything that needs the stack.
     cadmus-process-status.exec = ''
       set -e
 
@@ -1109,11 +1153,11 @@ in
         fi
       }
 
-      check otel-collector "http://127.0.0.1:${toString otelPorts.health.value}/"
+      check opentelemetry-collector "http://127.0.0.1:${toString otelPorts.health.value}/"
       check tempo "$TEMPO_URL/ready"
       check loki "$LOKI_URL/ready"
       check prometheus "$PROMETHEUS_URL/-/ready"
-      check pyroscope "$PYROSCOPE_SERVER_URL/"
+      check pyroscope "$PYROSCOPE_SERVER_URL/ready"
       check grafana "$GRAFANA_URL/api/health"
       check website "$WEBSITE_URL/"
       check storybook "$STORYBOOK_URL/"
@@ -1193,19 +1237,28 @@ in
       set -e
 
       echo ""
-      echo "Observability Stack:"
-      echo "  Grafana:    $GRAFANA_URL (admin/admin)"
-      echo "  Tempo:      $TEMPO_URL"
-      echo "  Loki:       $LOKI_URL"
-      echo "  Prometheus: $PROMETHEUS_URL"
-      echo "  Pyroscope:  $PYROSCOPE_SERVER_URL"
-      echo "  OTLP:       $OTEL_EXPORTER_OTLP_ENDPOINT"
+      echo "Stack URLs and health: run 'cadmus-process-status'."
       echo ""
 
       if ! devenv processes wait --timeout 120; then
         echo "Observability stack is not ready. Start it with 'devenv up' in another terminal." >&2
         exit 1
       fi
+
+      # `devenv processes wait` also treats never-started, exited and given-up
+      # processes as settled, so gate on each process actually reporting ready.
+      for name in \
+        opentelemetry-collector tempo loki prometheus pyroscope grafana; do
+        if ! detail=$(devenv processes status "$name" 2>&1); then
+          echo "cadmus-dev-otel: $name is not running ($detail; logs: $DEVENV_STATE/logs/$name.stdout.log)." >&2
+          exit 1
+        fi
+        phase=$(printf '%s\n' "$detail" | sed -n 's/^Phase: *//p')
+        if [ "$phase" != "ready" ]; then
+          echo "cadmus-dev-otel: $name is ''${phase:-unknown} (logs: $DEVENV_STATE/logs/$name.stdout.log)." >&2
+          exit 1
+        fi
+      done
       echo ""
 
       echo "Ensuring documentation is built..."
