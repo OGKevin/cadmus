@@ -3,8 +3,8 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
+    "predev": "node scripts/generate-locales.mjs",
     "dev": "next dev",
-    "prebuild": "node scripts/generate-version.mjs && node scripts/generate-locales.mjs",
     "build": "npm run build-storybook && next build",
     "start": "next start",
     "prestorybook": "node scripts/generate-locales.mjs",

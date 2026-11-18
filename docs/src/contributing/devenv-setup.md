@@ -77,34 +77,34 @@ writes). Release builds never read `GH_TOKEN`.
 
 Once inside the devenv shell, these commands are available:
 
-| Command                     | Description                                                 |
-| --------------------------- | ----------------------------------------------------------- |
-| `cadmuscli setup`           | Build custom SQLite for host and Kobo (run before compile)  |
-| `cadmuscli download-assets` | Download packaged Plato runtime assets                      |
-| `cadmuscli download-fonts`  | Download bundled font files into `fonts/`                   |
-| `cadmuscli test`            | Run the test suite across the feature matrix                |
-| `cadmuscli run-emulator`    | Run the emulator                                            |
-| `cadmuscli build-kobo`      | Cross-compile for Kobo device                               |
-| `cadmuscli dist`            | Assemble the Kobo distribution directory                    |
-| `cadmuscli bundle`          | Package KoboRoot.tgz for installation                       |
-| `cadmus-dev-otel`           | Run emulator with tracing and profiling enabled             |
-| `cadmus-process-status`     | Print stack URLs, process state, and health probes          |
-| `devenv up`                 | Start the supervised stack (observability + docs site)      |
-| `devenv down`               | Stop the stack                                              |
-| `devenv processes wait`     | Block until every process is ready                          |
-| `devenv processes status`   | Show the phase of one process (`status <name>`)             |
-| `devenv processes attach`   | Stream process status and logs until Ctrl-C                 |
-| `cadmuscli docs`            | Build docs site (mdBook, API docs, website)                 |
-| `cadmus-docs-serve`         | Next dev server through `devenv up website`                 |
-| `cadmus-storybook`          | Storybook through `devenv up storybook`                     |
-| `cadmus-docs-mdbook`        | mdBook preview through `devenv up mdbook`                   |
-| `cadmus-docs-preview`       | `wrangler dev` for `website/out` (Workers, matches CI)      |
-| `cadmus-translate`          | Generate the docs translation template (.pot)               |
-| `cadmus-test-coverage`      | Run tests with coverage instrumentation                     |
-| `cadmus-coverage-show`      | Open project-wide HTML coverage report                      |
-| `cadmus-coverage-diff`      | Open patch coverage HTML vs `origin/$CADMUS_DEFAULT_BRANCH` |
-| `cadmus-opencode-check`     | Typecheck and test the OpenCode plugins                     |
-| `cadmus-sccache`            | Inspect or restart the sccache build cache daemon           |
+| Command                     | Description                                                                                                                      |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `cadmuscli setup`           | Build custom SQLite for host and Kobo (run before compile)                                                                       |
+| `cadmuscli download-assets` | Download packaged Plato runtime assets                                                                                           |
+| `cadmuscli download-fonts`  | Download bundled font files into `fonts/`                                                                                        |
+| `cadmuscli test`            | Run the test suite across the feature matrix                                                                                     |
+| `cadmuscli run-emulator`    | Run the emulator                                                                                                                 |
+| `cadmuscli build-kobo`      | Cross-compile for Kobo device                                                                                                    |
+| `cadmuscli dist`            | Assemble the Kobo distribution directory                                                                                         |
+| `cadmuscli bundle`          | Package KoboRoot.tgz for installation                                                                                            |
+| `cadmus-dev-otel`           | Run emulator with tracing and profiling enabled                                                                                  |
+| `cadmus-process-status`     | Print stack URLs, process state, and health probes                                                                               |
+| `devenv up`                 | Start the supervised stack (observability + docs site)                                                                           |
+| `devenv down`               | Stop the stack                                                                                                                   |
+| `devenv processes wait`     | Block until every process is settled (`ready`, `exited`, `not_started`, `gave_up`); verify actual readiness with `status <name>` |
+| `devenv processes status`   | Show the phase of one process (`status <name>`)                                                                                  |
+| `devenv processes attach`   | Stream process status and logs until Ctrl-C                                                                                      |
+| `cadmuscli docs`            | Build docs site (mdBook, API docs, website)                                                                                      |
+| `cadmus-docs-serve`         | Next dev server through `devenv up website`                                                                                      |
+| `cadmus-storybook`          | Storybook through `devenv up storybook`                                                                                          |
+| `cadmus-docs-mdbook`        | mdBook preview through `devenv up mdbook`                                                                                        |
+| `cadmus-docs-preview`       | `wrangler dev` for `website/out` (Workers, matches CI)                                                                           |
+| `cadmus-translate`          | Generate the docs translation template (.pot)                                                                                    |
+| `cadmus-test-coverage`      | Run tests with coverage instrumentation                                                                                          |
+| `cadmus-coverage-show`      | Open project-wide HTML coverage report                                                                                           |
+| `cadmus-coverage-diff`      | Open patch coverage HTML vs `origin/$CADMUS_DEFAULT_BRANCH`                                                                      |
+| `cadmus-opencode-check`     | Typecheck and test the OpenCode plugins                                                                                          |
+| `cadmus-sccache`            | Inspect or restart the sccache build cache daemon                                                                                |
 
 Run `cadmuscli --help` to see all available subcommands, or `cadmuscli <cmd> --help` for
 options on a specific command. `cargo xtask` still works as a debug `cargo run` alias.
@@ -302,8 +302,10 @@ exits with an error if one does not.
 Every service port is allocated by devenv. When a base port is already taken
 (another worktree, `next dev`, a stray listener), devenv moves the service and
 every consumer — service configs, Grafana datasources, probes, and the `*_URL`
-environment variables — to the next free port together. There is no
-`strict_ports`: a conflict never turns into a startup error.
+environment variables — to the next free port together. devenv reserves the
+ports while it evaluates the configuration and releases those reservations
+when it launches the process manager, so a conflict appearing after that
+release can still fail a service's startup.
 
 | Service        | Base port | Purpose                    | Environment variable          |
 | -------------- | --------- | -------------------------- | ----------------------------- |
@@ -316,7 +318,11 @@ environment variables — to the next free port together. There is no
 
 Base ports apply when no manager is running. The resolved ports come from the
 shell banner, `cadmus-process-status`, or the environment variables — do not
-hardcode them in bookmarks or scripts.
+hardcode them in bookmarks or scripts. A shell entered before the manager
+started still reports the base ports: `cadmus-process-status` and
+`cadmus-dev-otel` re-evaluate against the running manager themselves, and
+other consumers follow the refresh recipe in
+[Ports change between runs](#ports-change-between-runs).
 
 ### Docs site processes
 
@@ -378,9 +384,11 @@ Loki's `/ready` returns 503 for the first ~15 seconds after an idle period
 ("Ingester not ready"); its probe allows six failures at a five-second period
 before marking it unhealthy. Pyroscope's readiness probe is its `/ready`
 endpoint: the metastore, segment-writer and ingester rolling-update waits are
-disabled (safe for a single instance) and the metastore's raft state resets on
-every start because the allocated ports move, so `/ready` turns 200 within
-seconds and reports real component health.
+disabled (safe for a single instance). Pyroscope records its allocated Raft
+address and preserves the metastore index and Raft state across same-address
+restarts; when the allocator moves the port, the incompatible index/Raft
+state is removed once on the next start (profile data is separate and stays),
+after which `/ready` turns 200 within seconds.
 
 ### Ports change between runs
 
@@ -388,6 +396,17 @@ Ports are stable only while the process manager runs. Starting or stopping
 `devenv up` makes direnv reload the shell (devenv watches the manager pid
 file), so `$GRAFANA_URL`, `$LOKI_URL`, … follow the running stack. Without a
 manager, the environment reports the base ports.
+
+Shells without the automatic direnv reload (or entered before the manager
+started) keep stale values: `cadmus-process-status` and `cadmus-dev-otel`
+re-evaluate against the running manager when you run them, but every other
+consumer needs a refresh — re-enter the devenv shell (`direnv reload` or
+`devenv shell`), or assign individual variables:
+
+```bash
+LOKI_URL="$(devenv shell -- printenv LOKI_URL)"
+TEMPO_URL="$(devenv shell -- printenv TEMPO_URL)"
+```
 
 ### `grafana` / `tempo` / `loki` / `pyroscope` are not on `PATH`
 

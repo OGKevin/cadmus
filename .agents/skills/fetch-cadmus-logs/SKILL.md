@@ -40,9 +40,16 @@ ${LOKI_URL:-http://localhost:3100}
 ```
 
 A running devenv stack may allocate a port above 3100 when the base port is
-taken. The resolved value is in `$LOKI_URL` (`devenv shell -- printenv
-LOKI_URL` from outside the shell). The 3100 fallback is for a bare Loki that
-was not started by devenv.
+taken. The resolved value is in `$LOKI_URL` — but a shell that was entered
+before the manager started still reports the base port, and can point at
+another worktree's listener. Refresh from the same worktree after startup:
+re-enter the devenv shell (or `direnv reload`), or assign it directly:
+
+```bash
+LOKI_URL="$(devenv shell -- printenv LOKI_URL)"
+```
+
+The 3100 fallback is for a bare Loki that was not started by devenv.
 
 ### Query logs for a run ID
 
@@ -125,8 +132,13 @@ curl -sG "${LOKI_URL}/loki/api/v1/query_range" \
 ${TEMPO_URL:-http://localhost:3200}
 ```
 
-Same allocation caveat as Loki: a devenv stack may use a port above 3200.
-`devenv shell -- printenv TEMPO_URL` reports the resolved value.
+Same allocation caveat as Loki: a devenv stack may use a port above 3200, and
+a shell entered before the manager started reports the stale base value.
+Refresh it the same way: re-enter the devenv shell (or `direnv reload`), or
+
+```bash
+TEMPO_URL="$(devenv shell -- printenv TEMPO_URL)"
+```
 
 ### Find a trace by run ID
 

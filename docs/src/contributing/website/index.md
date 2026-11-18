@@ -50,6 +50,10 @@ starts at 3001, mdBook at 3002, and Storybook at 6006. Read the resolved URLs
 from `$WEBSITE_URL`, `$MDBOOK_URL`, and `$STORYBOOK_URL` (also printed by the
 shell banner and `cadmus-process-status`) — a taken port moves the server.
 
+`cadmus-docs-mdbook` installs the mdbook-mermaid assets itself and serves the
+preview into `docs/book/preview`, so it never races the full `cadmuscli docs`
+build, which owns `docs/book/html`.
+
 **Full-site preview** (matches CI):
 
 ```bash
@@ -65,9 +69,10 @@ wrangler dev              # Workers Static Assets, same as production
 - mdBook user guide: `cd docs && mdbook serve` (port 3000)
 
 Inside devenv, prefer `cadmus-docs-serve`, `cadmus-storybook`, and
-`cadmus-docs-mdbook`. Unlike a bare `npm run dev`, the supervised Next process
-waits for `website:install` and starts on 3001, so it can run alongside
-Grafana on 3000.
+`cadmus-docs-mdbook`. The supervised processes wait for `website:install`,
+start on allocated ports (so they can run alongside Grafana on 3000), and
+generate the website locales first — as does a bare `npm run dev`, through
+its `predev` hook.
 
 Prerequisites: devenv provides `mdbook`, `mdbook-mermaid`, and `npm`; the `website:install`
 devenv task handles `npm install`.

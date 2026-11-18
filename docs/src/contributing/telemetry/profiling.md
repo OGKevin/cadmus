@@ -60,8 +60,12 @@ Both profile streams are pushed to the configured Pyroscope server.
 
 ## Local development
 
-The `cadmus-dev-otel` command starts the emulator with profiling enabled and
-the local Pyroscope service available at `$PYROSCOPE_SERVER_URL` (base port
+Start the supervised observability stack first and confirm it is ready — see
+[Observability Stack](../devenv-setup.md#observability-stack) (`devenv up`,
+then `cadmus-process-status --wait`).
+
+Then `cadmus-dev-otel` starts the emulator with profiling enabled and the
+local Pyroscope service available at `$PYROSCOPE_SERVER_URL` (base port
 4040; devenv allocates upward when it is taken). The shell banner and
 `cadmus-process-status` print the resolved URL.
 

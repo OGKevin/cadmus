@@ -852,16 +852,40 @@ in
       shutdown.grace = 20;
 
       exec = ''
-        # The single-node raft stores its voter config in this directory
-        # including the bound port; once the allocator moves the port the
-        # persisted config can never match again and no leader is elected.
-        # Wipe the whole metastore (raft config + index data): partial state
-        # mismatches panic the compaction service. Dev-only state — the
-        # profile index is rebuilt as the emulator pushes.
-        rm -rf ${config.devenv.state}/pyroscope/metastore
-        mkdir -p ${config.devenv.state}/pyroscope/{data,data-compactor}
-        mkdir -p ${config.devenv.state}/pyroscope/metastore/{data,raft}
-        mkdir -p ${config.devenv.state}/pyroscope-sync
+        set -e
+
+        pyro_state=${pkgs.lib.escapeShellArg "${config.devenv.state}/pyroscope"}
+        metastore_dir="$pyro_state/metastore"
+        raft_dir="$metastore_dir/raft"
+        # Not inside $pyro_state: the filesystem storage backend scans its
+        # direct children as tenants, and a stray file there breaks
+        # store-gateway block synchronization.
+        raft_addr_file="${config.devenv.state}/pyroscope-raft-address"
+        # The raft voter config persisted under $raft_dir includes the bound
+        # port; when the allocator moves the port the stored config can never
+        # match again and no leader is elected. Track the address outside the
+        # metastore and wipe it only when it changed, so same-address
+        # restarts and startup retries keep the index.
+        raft_addr='localhost:${toString pyroscopePorts.raft.value}'
+
+        if [ -f "$raft_addr_file" ] && [ "$(cat "$raft_addr_file")" = "$raft_addr" ]; then
+          :
+        elif [ ! -e "$metastore_dir" ]; then
+          mkdir -p "$pyro_state"
+          printf '%s\n' "$raft_addr" > "$raft_addr_file"
+        else
+          # No address on record (state from the old always-wipe layout) or a
+          # changed address: the metastore index/raft state is incompatible,
+          # so migrate it away once. Profile data under data/ is unrelated
+          # and stays.
+          rm -rf -- "$metastore_dir"
+          mkdir -p "$pyro_state"
+          printf '%s\n' "$raft_addr" > "$raft_addr_file"
+        fi
+
+        mkdir -p "$pyro_state"/{data,data-compactor}
+        mkdir -p "$metastore_dir"/{data,raft}
+        mkdir -p "$pyro_state/pyroscope-sync"
 
         exec ${pkgs.pyroscope}/bin/pyroscope \
           -config.file=${pkgs.writeText "pyroscope.yaml" ''
@@ -895,9 +919,10 @@ in
               bind_port: ${toString pyroscopePorts.memberlist.value}
               abort_if_cluster_join_fails: false
           ''} \
-          -blocks-storage.bucket-store.sync-dir=${config.devenv.state}/pyroscope-sync \
-          -metastore.data-dir=${config.devenv.state}/pyroscope/metastore/data \
-          -metastore.raft.dir=${config.devenv.state}/pyroscope/metastore/raft \
+          -blocks-storage.bucket-store.sync-dir="$pyro_state/pyroscope-sync" \
+          -metastore.data-dir="$metastore_dir/data" \
+          -metastore.raft.dir="$raft_dir" \
+          -metastore.raft.snapshots-dir="$raft_dir" \
           -metastore.min-ready-duration=0 \
           -segment-writer.min-ready-duration=0 \
           -ingester.min-ready-duration=0 \
@@ -989,8 +1014,8 @@ in
       after = [ "website:install" ];
 
       exec = ''
-        npm run prestorybook
-        exec ./node_modules/.bin/storybook dev -p ${toString storybookPorts.http.value}
+        npm run prestorybook &&
+          exec ./node_modules/.bin/storybook dev -p ${toString storybookPorts.http.value}
       '';
     };
 
@@ -1007,7 +1032,11 @@ in
         };
       };
 
-      exec = "exec mdbook serve --hostname 0.0.0.0 --port ${toString mdbookPorts.http.value}";
+      exec = ''
+        mdbook-mermaid install . &&
+          exec mdbook serve --hostname 0.0.0.0 --port ${toString mdbookPorts.http.value} \
+            --dest-dir book/preview
+      '';
     };
   };
 
@@ -1108,11 +1137,23 @@ in
     cadmus-process-status.exec = ''
       set -e
 
-      if [ "''${1:-}" = "--wait" ]; then
-        devenv processes wait --timeout 120
+      # The calling shell may predate the running manager and still carry the
+      # base ports; re-evaluate this script against the live manager so the
+      # URLs below are the ones the stack actually listens on.
+      if [ "''${CADMUS_DEVENV_LIVE_ENV:-}" != 1 ]; then
+        exec devenv shell -- env CADMUS_DEVENV_LIVE_ENV=1 cadmus-process-status "$@"
       fi
 
+      # `devenv processes wait` reports settled — it also counts never-started,
+      # exited and given-up processes — not readiness, and `set -e` must not
+      # cut the report short when it fails.
       status=0
+      if [ "''${1:-}" = "--wait" ]; then
+        devenv processes wait --timeout 120 || {
+          status=1
+          echo "cadmus-process-status: wait did not settle; see process phases below" >&2
+        }
+      fi
 
       echo "URLs:"
       for name in \
@@ -1235,6 +1276,12 @@ in
     # Run emulator with OTEL instrumentation
     cadmus-dev-otel.exec = ''
       set -e
+
+      # Same as `cadmus-process-status`: the emulator must be launched with
+      # the OTLP endpoint the running manager resolved, not a stale shell's.
+      if [ "''${CADMUS_DEVENV_LIVE_ENV:-}" != 1 ]; then
+        exec devenv shell -- env CADMUS_DEVENV_LIVE_ENV=1 cadmus-dev-otel "$@"
+      fi
 
       echo ""
       echo "Stack URLs and health: run 'cadmus-process-status'."
