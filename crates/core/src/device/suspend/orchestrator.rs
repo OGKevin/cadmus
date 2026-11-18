@@ -693,11 +693,6 @@ async fn enter_sleep(
         return outcome;
     }
 
-    if pause_wake_lock_async(context).await == WakeLockPauseOutcome::BlockedByFull {
-        finish_blocked_cycle(context, runtime.tasks, runtime.view.as_mut(), hub, rq).await;
-        return EventOutcome::Handled;
-    }
-
     match perform_suspend_resume(hub, context, runtime).await {
         ClassicSuspendOutcome::BlockedByFull => {
             finish_blocked_cycle(context, runtime.tasks, runtime.view.as_mut(), hub, rq).await;
