@@ -295,6 +295,14 @@ let
   mdbookPorts = config.processes.mdbook.ports;
   storybookPorts = config.processes.storybook.ports;
 
+  # The native manager publishes its pid here; a different pid means the
+  # stack was replaced and every allocated port may have moved.
+  managerPidFile = pkgs.lib.escapeShellArg "${config.devenv.runtime}/processes/native-manager.pid";
+
+  # `devenv processes wait` checks `--timeout` only after a request error, so
+  # a process stuck in `starting` holds the wait open; bound it by wall clock.
+  waitForStack = "${pkgs.coreutils}/bin/timeout 120 devenv processes wait --timeout 120";
+
   # Grafana datasource provisioning
   grafanaDatasources = pkgs.writeText "datasources.yaml" ''
     apiVersion: 1
@@ -860,7 +868,7 @@ in
         # Not inside $pyro_state: the filesystem storage backend scans its
         # direct children as tenants, and a stray file there breaks
         # store-gateway block synchronization.
-        raft_addr_file="${config.devenv.state}/pyroscope-raft-address"
+        raft_addr_file=${pkgs.lib.escapeShellArg "${config.devenv.state}/pyroscope-raft-address"}
         # The raft voter config persisted under $raft_dir includes the bound
         # port; when the allocator moves the port the stored config can never
         # match again and no leader is elected. Track the address outside the
@@ -868,7 +876,15 @@ in
         # restarts and startup retries keep the index.
         raft_addr='localhost:${toString pyroscopePorts.raft.value}'
 
-        if [ -f "$raft_addr_file" ] && [ "$(cat "$raft_addr_file")" = "$raft_addr" ]; then
+        # An unreadable marker must not read as a changed address: that would
+        # delete a metastore that may still match.
+        recorded_addr=
+        if [ -e "$raft_addr_file" ] && ! recorded_addr=$(cat -- "$raft_addr_file"); then
+          echo "pyroscope: cannot read $raft_addr_file; refusing to reset the metastore" >&2
+          exit 1
+        fi
+
+        if [ "$recorded_addr" = "$raft_addr" ]; then
           :
         elif [ ! -e "$metastore_dir" ]; then
           mkdir -p "$pyro_state"
@@ -1032,10 +1048,21 @@ in
         };
       };
 
+      # mdbook-mermaid skips any asset that already exists, so a file cut short
+      # by an interrupted install would never be repaired. Install into a
+      # scratch copy of the book and publish the asset with an atomic rename.
+      # The preview renders outside docs/book, which `docs:build` tracks.
       exec = ''
-        mdbook-mermaid install . &&
-          exec mdbook serve --hostname 0.0.0.0 --port ${toString mdbookPorts.http.value} \
-            --dest-dir book/preview
+        set -e
+        stage=$(mktemp -d .mermaid-install.XXXXXX)
+        trap 'rm -rf -- "$stage"' EXIT
+        cp book.toml "$stage/"
+        mdbook-mermaid install "$stage"
+        mv -f -- "$stage/mermaid.min.js" mermaid.min.js
+        rm -rf -- "$stage"
+        trap - EXIT
+        exec mdbook serve --hostname 0.0.0.0 --port ${toString mdbookPorts.http.value} \
+          --dest-dir ${pkgs.lib.escapeShellArg "${config.devenv.state}/mdbook-preview"}
       '';
     };
   };
@@ -1132,16 +1159,20 @@ in
       exec devenv up mdbook
     '';
 
-    # `--wait` blocks for readiness; the script fails unless every process is
-    # up, so it can gate anything that needs the stack.
+    # `--wait` returns when processes are settled; check phases below to gate
+    # work on actual readiness.
     cadmus-process-status.exec = ''
       set -e
 
+      manager_pid() { cat ${managerPidFile} 2>/dev/null || true; }
+
       # The calling shell may predate the running manager and still carry the
       # base ports; re-evaluate this script against the live manager so the
-      # URLs below are the ones the stack actually listens on.
+      # URLs below are the ones the stack actually listens on. The manager pid
+      # is captured before that evaluation so a replacement is caught below.
       if [ "''${CADMUS_DEVENV_LIVE_ENV:-}" != 1 ]; then
-        exec devenv shell -- env CADMUS_DEVENV_LIVE_ENV=1 cadmus-process-status "$@"
+        exec devenv shell -- env CADMUS_DEVENV_LIVE_ENV=1 \
+          CADMUS_DEVENV_MANAGER_PID="$(manager_pid)" cadmus-process-status "$@"
       fi
 
       # `devenv processes wait` reports settled — it also counts never-started,
@@ -1149,9 +1180,9 @@ in
       # cut the report short when it fails.
       status=0
       if [ "''${1:-}" = "--wait" ]; then
-        devenv processes wait --timeout 120 || {
+        ${waitForStack} || {
           status=1
-          echo "cadmus-process-status: wait did not settle; see process phases below" >&2
+          echo "cadmus-process-status: wait did not settle within 120s; see process phases below" >&2
         }
       fi
 
@@ -1203,6 +1234,11 @@ in
       check website "$WEBSITE_URL/"
       check storybook "$STORYBOOK_URL/"
       check mdbook "$MDBOOK_URL/"
+
+      if [ "$(manager_pid)" != "''${CADMUS_DEVENV_MANAGER_PID-}" ]; then
+        echo "cadmus-process-status: the process manager was replaced while reporting, so the URLs above may be stale; rerun cadmus-process-status" >&2
+        exit 1
+      fi
 
       exit "$status"
     '';
@@ -1277,18 +1313,21 @@ in
     cadmus-dev-otel.exec = ''
       set -e
 
+      manager_pid() { cat ${managerPidFile} 2>/dev/null || true; }
+
       # Same as `cadmus-process-status`: the emulator must be launched with
       # the OTLP endpoint the running manager resolved, not a stale shell's.
       if [ "''${CADMUS_DEVENV_LIVE_ENV:-}" != 1 ]; then
-        exec devenv shell -- env CADMUS_DEVENV_LIVE_ENV=1 cadmus-dev-otel "$@"
+        exec devenv shell -- env CADMUS_DEVENV_LIVE_ENV=1 \
+          CADMUS_DEVENV_MANAGER_PID="$(manager_pid)" cadmus-dev-otel "$@"
       fi
 
       echo ""
       echo "Stack URLs and health: run 'cadmus-process-status'."
       echo ""
 
-      if ! devenv processes wait --timeout 120; then
-        echo "Observability stack is not ready. Start it with 'devenv up' in another terminal." >&2
+      if ! ${waitForStack}; then
+        echo "Observability stack did not settle within 120s. Start it with 'devenv up' in another terminal." >&2
         exit 1
       fi
 
@@ -1311,6 +1350,13 @@ in
       echo "Ensuring documentation is built..."
       devenv tasks run docs:build
       echo ""
+
+      # The docs build can take minutes; a manager replaced meanwhile may have
+      # moved the collector, and the emulator would export to the old port.
+      if [ "$(manager_pid)" != "''${CADMUS_DEVENV_MANAGER_PID-}" ]; then
+        echo "cadmus-dev-otel: the process manager was replaced since startup, so the OTLP endpoint may be stale; rerun cadmus-dev-otel" >&2
+        exit 1
+      fi
 
       echo "Starting instrumented emulator..."
       echo "   Traces will be visible in Grafana → Explore → Tempo"

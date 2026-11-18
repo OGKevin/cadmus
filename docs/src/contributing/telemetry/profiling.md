@@ -64,10 +64,13 @@ Start the supervised observability stack first and confirm it is ready — see
 [Observability Stack](../devenv-setup.md#observability-stack) (`devenv up`,
 then `cadmus-process-status --wait`).
 
-Then `cadmus-dev-otel` starts the emulator with profiling enabled and the
-local Pyroscope service available at `$PYROSCOPE_SERVER_URL` (base port
-4040; devenv allocates upward when it is taken). The shell banner and
-`cadmus-process-status` print the resolved URL.
+Then `cadmus-dev-otel` starts the emulator with profiling enabled. Starting the
+manager refreshes the command's environment, but not a shell that was already
+open; refresh `$PYROSCOPE_SERVER_URL` as described in
+[Ports change between runs](../devenv-setup.md#ports-change-between-runs) before
+using it. The local Pyroscope service uses base port 4040 and devenv allocates
+upward when that port is taken. The shell banner and `cadmus-process-status`
+print the resolved URL.
 
 With the full devenv stack running, traces go to Tempo, logs go to Loki, and
 profiles go to Pyroscope. That makes it possible to correlate a single run

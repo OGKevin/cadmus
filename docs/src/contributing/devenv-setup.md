@@ -77,34 +77,38 @@ writes). Release builds never read `GH_TOKEN`.
 
 Once inside the devenv shell, these commands are available:
 
-| Command                     | Description                                                                                                                      |
-| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `cadmuscli setup`           | Build custom SQLite for host and Kobo (run before compile)                                                                       |
-| `cadmuscli download-assets` | Download packaged Plato runtime assets                                                                                           |
-| `cadmuscli download-fonts`  | Download bundled font files into `fonts/`                                                                                        |
-| `cadmuscli test`            | Run the test suite across the feature matrix                                                                                     |
-| `cadmuscli run-emulator`    | Run the emulator                                                                                                                 |
-| `cadmuscli build-kobo`      | Cross-compile for Kobo device                                                                                                    |
-| `cadmuscli dist`            | Assemble the Kobo distribution directory                                                                                         |
-| `cadmuscli bundle`          | Package KoboRoot.tgz for installation                                                                                            |
-| `cadmus-dev-otel`           | Run emulator with tracing and profiling enabled                                                                                  |
-| `cadmus-process-status`     | Print stack URLs, process state, and health probes                                                                               |
-| `devenv up`                 | Start the supervised stack (observability + docs site)                                                                           |
-| `devenv down`               | Stop the stack                                                                                                                   |
-| `devenv processes wait`     | Block until every process is settled (`ready`, `exited`, `not_started`, `gave_up`); verify actual readiness with `status <name>` |
-| `devenv processes status`   | Show the phase of one process (`status <name>`)                                                                                  |
-| `devenv processes attach`   | Stream process status and logs until Ctrl-C                                                                                      |
-| `cadmuscli docs`            | Build docs site (mdBook, API docs, website)                                                                                      |
-| `cadmus-docs-serve`         | Next dev server through `devenv up website`                                                                                      |
-| `cadmus-storybook`          | Storybook through `devenv up storybook`                                                                                          |
-| `cadmus-docs-mdbook`        | mdBook preview through `devenv up mdbook`                                                                                        |
-| `cadmus-docs-preview`       | `wrangler dev` for `website/out` (Workers, matches CI)                                                                           |
-| `cadmus-translate`          | Generate the docs translation template (.pot)                                                                                    |
-| `cadmus-test-coverage`      | Run tests with coverage instrumentation                                                                                          |
-| `cadmus-coverage-show`      | Open project-wide HTML coverage report                                                                                           |
-| `cadmus-coverage-diff`      | Open patch coverage HTML vs `origin/$CADMUS_DEFAULT_BRANCH`                                                                      |
-| `cadmus-opencode-check`     | Typecheck and test the OpenCode plugins                                                                                          |
-| `cadmus-sccache`            | Inspect or restart the sccache build cache daemon                                                                                |
+| Command                     | Description                                                                     |
+| --------------------------- | ------------------------------------------------------------------------------- |
+| `cadmuscli setup`           | Build custom SQLite for host and Kobo (run before compile)                      |
+| `cadmuscli download-assets` | Download packaged Plato runtime assets                                          |
+| `cadmuscli download-fonts`  | Download bundled font files into `fonts/`                                       |
+| `cadmuscli test`            | Run the test suite across the feature matrix                                    |
+| `cadmuscli run-emulator`    | Run the emulator                                                                |
+| `cadmuscli build-kobo`      | Cross-compile for Kobo device                                                   |
+| `cadmuscli dist`            | Assemble the Kobo distribution directory                                        |
+| `cadmuscli bundle`          | Package KoboRoot.tgz for installation                                           |
+| `cadmus-dev-otel`           | Run emulator with tracing and profiling enabled                                 |
+| `cadmus-process-status`     | Print stack URLs, process state, and health probes                              |
+| `devenv up`                 | Start the supervised stack (observability + docs site)                          |
+| `devenv down`               | Stop the stack                                                                  |
+| `devenv processes wait`     | Wait until every process is settled; readiness must be checked per process      |
+| `devenv processes status`   | Show a process phase; use `devenv processes status <name>` to check for `ready` |
+| `devenv processes attach`   | Stream process status and logs until Ctrl-C                                     |
+| `cadmuscli docs`            | Build docs site (mdBook, API docs, website)                                     |
+| `cadmus-docs-serve`         | Next dev server through `devenv up website`                                     |
+| `cadmus-storybook`          | Storybook through `devenv up storybook`                                         |
+| `cadmus-docs-mdbook`        | mdBook preview through `devenv up mdbook`                                       |
+| `cadmus-docs-preview`       | `wrangler dev` for `website/out` (Workers, matches CI)                          |
+| `cadmus-translate`          | Generate the docs translation template (.pot)                                   |
+| `cadmus-test-coverage`      | Run tests with coverage instrumentation                                         |
+| `cadmus-coverage-show`      | Open project-wide HTML coverage report                                          |
+| `cadmus-coverage-diff`      | Open patch coverage HTML vs `origin/$CADMUS_DEFAULT_BRANCH`                     |
+| `cadmus-opencode-check`     | Typecheck and test the OpenCode plugins                                         |
+| `cadmus-sccache`            | Inspect or restart the sccache build cache daemon                               |
+
+`devenv processes wait` returns when every process is settled. Settled includes
+ready, exited, never-started, and `gave_up` processes; use
+`devenv processes status <name>` to check whether a specific process is ready.
 
 Run `cadmuscli --help` to see all available subcommands, or `cadmuscli <cmd> --help` for
 options on a specific command. `cargo xtask` still works as a debug `cargo run` alias.
@@ -129,13 +133,13 @@ Tasks are defined in `devenv.nix` and can be run with `devenv tasks run <task>`.
 
 ### Available Tasks
 
-| Task                | What it runs                                                      | Dependencies        |
-| ------------------- | ----------------------------------------------------------------- | ------------------- |
-| `cadmuscli:install` | `cargo build -p xtask --release` and link onto PATH               | None                |
-| `website:install`   | `npm install` in `website/`                                       | None                |
-| `opencode:install`  | `npm install` in `.opencode/`                                     | None                |
-| `docs:build`        | `cadmuscli docs --mdbook-only`                                    | `cadmuscli:install` |
-| `build:kobo`        | `cadmuscli build-kobo`                                            | `docs:build`        |
+| Task                | What it runs                                        | Dependencies        |
+| ------------------- | --------------------------------------------------- | ------------------- |
+| `cadmuscli:install` | `cargo build -p xtask --release` and link onto PATH | None                |
+| `website:install`   | `npm install` in `website/`                         | None                |
+| `opencode:install`  | `npm install` in `.opencode/`                       | None                |
+| `docs:build`        | `cadmuscli docs --mdbook-only`                      | `cadmuscli:install` |
+| `build:kobo`        | `cadmuscli build-kobo`                              | `docs:build`        |
 
 `cadmuscli:install` builds the release binary; it does not call `cadmuscli`.
 `website:install` and `opencode:install` only install npm dependencies.
@@ -177,7 +181,7 @@ incremental compiles, so leaving them on turns every dev build into a cache miss
 ## Kobo Build Notes
 
 - Run `cadmuscli setup` before host-side Cargo commands. `cadmuscli
-  build-kobo` also ensures the ARM SQLite artifacts, but running setup up
+build-kobo` also ensures the ARM SQLite artifacts, but running setup up
   front covers both native and device paths.
 - `cadmuscli download-assets` and `cadmuscli download-fonts` must run before `cadmuscli build-kobo`.
 - OTA updates delete Cadmus-owned bundled files before reboot, then Kobo
@@ -407,6 +411,12 @@ consumer needs a refresh — re-enter the devenv shell (`direnv reload` or
 LOKI_URL="$(devenv shell -- printenv LOKI_URL)"
 TEMPO_URL="$(devenv shell -- printenv TEMPO_URL)"
 ```
+
+If the process manager is replaced while `cadmus-process-status` assembles its
+report or while `cadmus-dev-otel` builds the docs, the command stops with a
+retry message rather than using potentially stale ports. Run it again after
+the stack settles. Both commands bound their process wait to 120 seconds so
+they can report a failure instead of waiting indefinitely.
 
 ### `grafana` / `tempo` / `loki` / `pyroscope` are not on `PATH`
 

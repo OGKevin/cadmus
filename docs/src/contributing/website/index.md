@@ -51,8 +51,8 @@ from `$WEBSITE_URL`, `$MDBOOK_URL`, and `$STORYBOOK_URL` (also printed by the
 shell banner and `cadmus-process-status`) — a taken port moves the server.
 
 `cadmus-docs-mdbook` installs the mdbook-mermaid assets itself and serves the
-preview into `docs/book/preview`, so it never races the full `cadmuscli docs`
-build, which owns `docs/book/html`.
+preview under `$DEVENV_STATE/mdbook-preview`, outside `docs/book/html` so it
+does not conflict with the full `cadmuscli docs` build.
 
 **Full-site preview** (matches CI):
 
