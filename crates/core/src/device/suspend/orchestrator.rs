@@ -1225,7 +1225,13 @@ async fn perform_suspend_resume(
 
     match context.device.power_manager() {
         Ok(power) => {
-            if let Err(error) = power.suspend() {
+            let gate = context.inhibitor.lock_full_suspend_gate();
+            if context.inhibitor.full_active() {
+                return ClassicSuspendOutcome::BlockedByFull;
+            }
+            let suspend_result = power.suspend();
+            drop(gate);
+            if let Err(error) = suspend_result {
                 #[cfg(target_os = "linux")]
                 {
                     let kernel_wake_locks = read_power_node("/sys/power/wake_lock").await;
