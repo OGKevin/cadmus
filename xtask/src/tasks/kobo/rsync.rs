@@ -205,6 +205,7 @@ struct BridgeWriter {
 }
 
 const WRITE_BUFFER_SIZE: usize = 32 * 1024;
+const MAX_INBOUND_ITEMS: usize = 64;
 
 impl BridgeWriter {
     fn send(&mut self, bytes: Vec<u8>) -> io::Result<()> {
@@ -276,7 +277,7 @@ fn spawn_bridge(
         let mut write_fut: Option<PendingWrite> = None;
         loop {
             tokio::select! {
-                message = channel.wait(), if channel_open => {
+                message = channel.wait(), if channel_open && (inbound.len() < MAX_INBOUND_ITEMS || write_fut.is_some()) => {
                     match message {
                         Some(ChannelMsg::Data { data }) => {
                             if data_open && !remote_eof {
@@ -313,7 +314,14 @@ fn spawn_bridge(
                             }
                         }
                         Some(_) => {}
-                        None => channel_open = false,
+                        None => {
+                            channel_open = false;
+                            write_open = false;
+                            if data_open && !remote_eof {
+                                remote_eof = true;
+                                inbound.push_back(None);
+                            }
+                        }
                     }
                 }
                 permit = data_tx.reserve(), if data_open && !inbound.is_empty() => {
@@ -322,7 +330,11 @@ fn spawn_bridge(
                             if let Some(data) = inbound.pop_front() {
                                 permit.send(data);
                             }
-                            if remote_eof && !write_open && remote_exit_status.is_some() {
+                            if remote_eof
+                                && !write_open
+                                && inbound.is_empty()
+                                && remote_exit_status.is_some()
+                            {
                                 break;
                             }
                         }
