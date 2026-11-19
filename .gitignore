@@ -54,3 +54,7 @@ cadmus.sqlite
 .idea
 .wrangler
 .cadmus
+
+# Next.js manages this file: its contents differ between `next dev` and
+# `next build`, so it is regenerated rather than tracked.
+website/next-env.d.ts

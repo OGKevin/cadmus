@@ -9,6 +9,15 @@ let
   inherit (pkgs.stdenv) isLinux;
   inherit (pkgs.stdenv) isDarwin;
 
+  # `otelcol-contrib` 0.155.0 pins a `cockroachdb/swiss` revision that stopped
+  # compiling with Go 1.27, nixpkgs' default. nixpkgs pins the older builder for
+  # packages that have not caught up yet (see `teleport_18`); do the same until
+  # the collector release bumps that dependency.
+  otelcol = (pkgs.opentelemetry-collector-releases.override {
+    buildGoModule = pkgs.buildGo126Module;
+    go = pkgs.go_1_26;
+  }).otelcol-contrib;
+
   # Single source for the Rust toolchain pin; Renovate's custom.regex manager
   # (renovate.jsonc) bumps it together with the CI `toolchain:` pins.
   rustVersion = "1.100.0";
@@ -76,9 +85,8 @@ let
   # Build the stable Rust toolchain the way devenv does, with the lib-symlink
   # fix applied. Replicates devenv's `channel != "nixpkgs"` wiring so the fix
   # can wrap the derivation before devenv sees it.
-  darwinRustToolchainFix = pkgs.lib.optionalAttrs isDarwin {
-    rustToolchain =
-      let
+  darwinRustToolchainFix = pkgs.lib.optionalAttrs isDarwin (
+    let
         rustOverlaySrc = inputs.rust-overlay;
         rustBin = rustOverlaySrc.lib.mkRustBin { } pkgs.buildPackages;
 
@@ -107,6 +115,7 @@ let
           "cargo"
           "clippy"
           "llvm-tools-preview"
+          "rust-src"
           "rustc"
           "rustfmt"
         ];
@@ -145,9 +154,12 @@ let
           inherit (toolchain._manifest) version date;
           selectedComponents = allSelectedComponents;
         };
-      in
-      fixRustToolchainLibSymlink profile;
-  };
+    in
+    {
+      rustToolchain = fixRustToolchainLibSymlink profile;
+      rustSrcPath = "${toolchain.rust-src}/lib/rustlib/src/rust/library";
+    }
+  );
 
   # cargo-diff-tools with Rust 1.70 for clap v2 compatibility.
   # Pinned nixpkgs still defaults fetchCrate to the crates.io API, which
@@ -269,6 +281,28 @@ let
     doCheck = true;
   };
 
+  # Base ports only; devenv allocates upward from these when the manager runs
+  # (and falls back to the base port otherwise). Every config, probe, env var
+  # and banner below reads the resolved `.value`, so a port taken by another
+  # worktree moves the service and its consumers together.
+  tempoPorts = config.processes.tempo.ports;
+  lokiPorts = config.processes.loki.ports;
+  pyroscopePorts = config.processes.pyroscope.ports;
+  grafanaPorts = config.processes.grafana.ports;
+  prometheusPorts = config.processes.prometheus.ports;
+  otelPorts = config.processes.opentelemetry-collector.ports;
+  websitePorts = config.processes.website.ports;
+  mdbookPorts = config.processes.mdbook.ports;
+  storybookPorts = config.processes.storybook.ports;
+
+  # The native manager publishes its pid here; a different pid means the
+  # stack was replaced and every allocated port may have moved.
+  managerPidFile = pkgs.lib.escapeShellArg "${config.devenv.runtime}/processes/native-manager.pid";
+
+  # `devenv processes wait` checks `--timeout` only after a request error, so
+  # a process stuck in `starting` holds the wait open; bound it by wall clock.
+  waitForStack = "${pkgs.coreutils}/bin/timeout 120 devenv processes wait --timeout 120";
+
   # Grafana datasource provisioning
   grafanaDatasources = pkgs.writeText "datasources.yaml" ''
     apiVersion: 1
@@ -276,28 +310,28 @@ let
       - name: Tempo
         type: tempo
         access: proxy
-        url: http://localhost:3200
+        url: http://localhost:${toString tempoPorts.http.value}
         isDefault: false
         editable: true
 
       - name: Loki
         type: loki
         access: proxy
-        url: http://localhost:3100
+        url: http://localhost:${toString lokiPorts.http.value}
         isDefault: false
         editable: true
 
       - name: Prometheus
         type: prometheus
         access: proxy
-        url: http://localhost:9090
+        url: http://localhost:${toString prometheusPorts.main.value}
         isDefault: true
         editable: true
 
       - name: Pyroscope
         type: grafana-pyroscope-datasource
         access: proxy
-        url: http://localhost:4040
+        url: http://localhost:${toString pyroscopePorts.http.value}
         isDefault: false
         editable: true
   '';
@@ -369,12 +403,6 @@ in
     pkgs.openjpeg
     pkgs.jbig2dec
     pkgs.gumbo
-
-    # Observability tools (for OTEL instrumentation in dev mode)
-    pkgs.grafana
-    pkgs.tempo
-    pkgs.grafana-loki
-    pkgs.pyroscope
 
     # SQLx CLI for database migrations and compile-time query verification
     pkgs.sqlx-cli
@@ -459,8 +487,17 @@ in
 
     RUST_LOG = "cadmus_core=trace,cadmus=trace";
     RUST_BACKTRACE = "1";
-    OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost:4318";
-    PYROSCOPE_SERVER_URL = "http://localhost:4040";
+    # Resolved from `processes.*.ports` so the shell and the running stack
+    # agree even when a base port is taken. Docs point at these, not literals.
+    OTEL_EXPORTER_OTLP_ENDPOINT = "http://127.0.0.1:${toString otelPorts.http.value}";
+    PYROSCOPE_SERVER_URL = "http://127.0.0.1:${toString pyroscopePorts.http.value}";
+    LOKI_URL = "http://127.0.0.1:${toString lokiPorts.http.value}";
+    TEMPO_URL = "http://127.0.0.1:${toString tempoPorts.http.value}";
+    PROMETHEUS_URL = "http://127.0.0.1:${toString prometheusPorts.main.value}";
+    GRAFANA_URL = "http://127.0.0.1:${toString grafanaPorts.http.value}";
+    WEBSITE_URL = "http://127.0.0.1:${toString websitePorts.http.value}";
+    MDBOOK_URL = "http://127.0.0.1:${toString mdbookPorts.http.value}";
+    STORYBOOK_URL = "http://127.0.0.1:${toString storybookPorts.http.value}";
     NEXTEST_NO_TESTS = "pass";
 
     # Default branch for patch coverage (cadmus-coverage-diff). Override in devenv.local.nix.
@@ -516,11 +553,20 @@ in
     # sccache does not create parent directories, and an unopenable log path
     # makes server startup fail, which fails the build.
     SCCACHE_ERROR_LOG = "${config.devenv.state}/sccache-server.log";
+  }
+  // pkgs.lib.optionalAttrs isDarwin {
+    # devenv only derives this when it builds the toolchain itself, so an
+    # overridden `toolchainPackage` (see `darwinRustToolchainFix`) leaves it
+    # null; use the `rust-src` component merged into our toolchain.
+    RUST_SRC_PATH = pkgs.lib.mkForce darwinRustToolchainFix.rustSrcPath;
   };
 
   services.opentelemetry-collector = {
     enable = true;
+    package = otelcol;
     settings = {
+      # Literal base ports: the module reads these to allocate the listener
+      # ports, so they must not reference the resolved values.
       receivers.otlp.protocols = {
         grpc.endpoint = "0.0.0.0:4317";
         http.endpoint = "0.0.0.0:4318";
@@ -530,16 +576,16 @@ in
 
       exporters = {
         "otlp/tempo" = {
-          endpoint = "localhost:4327";
+          endpoint = "localhost:${toString tempoPorts.otlpGrpc.value}";
           tls.insecure = true;
         };
 
         "otlphttp/loki" = {
-          endpoint = "http://localhost:3100/otlp";
+          endpoint = "http://localhost:${toString lokiPorts.http.value}/otlp";
         };
 
         prometheus = {
-          endpoint = "0.0.0.0:8889";
+          endpoint = "0.0.0.0:${toString otelPorts.exporter.value}";
         };
 
         debug = {
@@ -591,7 +637,7 @@ in
         job_name = "otel-collector";
         static_configs = [
           {
-            targets = [ "localhost:8889" ];
+            targets = [ "localhost:${toString otelPorts.exporter.value}" ];
           }
         ];
       }
@@ -599,24 +645,55 @@ in
         job_name = "prometheus";
         static_configs = [
           {
-            targets = [ "localhost:9090" ];
+            targets = [ "localhost:${toString prometheusPorts.main.value}" ];
           }
         ];
       }
     ];
   };
 
-  # Processes for Grafana, Tempo, and Loki
+  # Dev-stack processes; every listener port is allocated so concurrent
+  # worktrees move instead of failing.
   processes = {
+    # The module allocates the health, OTLP and self-metrics listener ports
+    # from the base ports in `settings`, and derives its own readiness probe.
+    opentelemetry-collector = {
+      ports.exporter.allocate = 8889;
+
+      after = [
+        "devenv:processes:tempo"
+        "devenv:processes:loki"
+      ];
+    };
+
     tempo = {
+      ports = {
+        http.allocate = 3200;
+        grpc.allocate = 9096;
+        otlpGrpc.allocate = 4327;
+        otlpHttp.allocate = 4328;
+      };
+
+      ready = {
+        initial_delay = 3;
+        period = 5;
+        probe_timeout = 3;
+        http.get = {
+          port = tempoPorts.http.value;
+          path = "/ready";
+        };
+      };
+
+      shutdown.grace = 20;
+
       exec = ''
         mkdir -p ${config.devenv.state}/tempo/{traces,wal,live-store,shutdown-marker}
 
-        ${pkgs.tempo}/bin/tempo \
+        exec ${pkgs.tempo}/bin/tempo \
           -config.file=${pkgs.writeText "tempo.yaml" ''
             server:
-              http_listen_port: 3200
-              grpc_listen_port: 9096
+              http_listen_port: ${toString tempoPorts.http.value}
+              grpc_listen_port: ${toString tempoPorts.grpc.value}
               grpc_server_max_recv_msg_size: 104857600
               grpc_server_max_send_msg_size: 104857600
 
@@ -625,9 +702,9 @@ in
                 otlp:
                   protocols:
                     grpc:
-                      endpoint: 0.0.0.0:4327
+                      endpoint: 0.0.0.0:${toString tempoPorts.otlpGrpc.value}
                     http:
-                      endpoint: 0.0.0.0:4328
+                      endpoint: 0.0.0.0:${toString tempoPorts.otlpHttp.value}
 
             live_store:
               wal:
@@ -675,16 +752,36 @@ in
     };
 
     loki = {
+      ports = {
+        http.allocate = 3100;
+        grpc.allocate = 9097;
+      };
+
+      # The first probe after an idle period gets 503 ("Ingester not ready:
+      # waiting for 15s after being ready"), so allow time and retries.
+      ready = {
+        initial_delay = 10;
+        period = 5;
+        probe_timeout = 3;
+        failure_threshold = 6;
+        http.get = {
+          port = lokiPorts.http.value;
+          path = "/ready";
+        };
+      };
+
+      shutdown.grace = 20;
+
       exec = ''
         mkdir -p ${config.devenv.state}/loki/{index,cache,chunks,wal,compactor}
 
-        ${pkgs.grafana-loki}/bin/loki \
+        exec ${pkgs.grafana-loki}/bin/loki \
           -config.file=${pkgs.writeText "loki.yaml" ''
             auth_enabled: false
 
             server:
-              http_listen_port: 3100
-              grpc_listen_port: 9097
+              http_listen_port: ${toString lokiPorts.http.value}
+              grpc_listen_port: ${toString lokiPorts.grpc.value}
 
             common:
               path_prefix: ${config.devenv.state}/loki
@@ -734,15 +831,92 @@ in
     };
 
     pyroscope = {
-      exec = ''
-        mkdir -p ${config.devenv.state}/pyroscope/{data,data-compactor}
-        mkdir -p ${config.devenv.state}/pyroscope/metastore/{data,raft}
-        mkdir -p ${config.devenv.state}/pyroscope-sync
+      ports = {
+        http.allocate = 4040;
+        # dskit binds gRPC unconditionally; without an allocated port two
+        # worktrees collide on the 9095 default and the second one gives up.
+        # The raft metastore (localhost:9099) and gossip port (7946) are other
+        # fixed defaults two worktrees collide on.
+        grpc.allocate = 9095;
+        raft.allocate = 9099;
+        memberlist.allocate = 7946;
+      };
 
-        ${pkgs.pyroscope}/bin/pyroscope \
+      # /ready reports real component health: the metastore, segment-writer and
+      # ingester min-ready waits are disabled (single instance) and the raft
+      # state is wiped on start (ports move), so it turns 200 within seconds
+      # and fails when the metastore does.
+      ready = {
+        initial_delay = 3;
+        period = 5;
+        probe_timeout = 3;
+        failure_threshold = 10;
+        http.get = {
+          port = pyroscopePorts.http.value;
+          path = "/ready";
+        };
+      };
+
+      shutdown.grace = 20;
+
+      exec = ''
+        set -e
+
+        pyro_state=${pkgs.lib.escapeShellArg "${config.devenv.state}/pyroscope"}
+        metastore_dir="$pyro_state/metastore"
+        raft_dir="$metastore_dir/raft"
+        # Not inside $pyro_state: the filesystem storage backend scans its
+        # direct children as tenants, and a stray file there breaks
+        # store-gateway block synchronization.
+        raft_addr_file=${pkgs.lib.escapeShellArg "${config.devenv.state}/pyroscope-raft-address"}
+        # The raft voter config persisted under $raft_dir includes the bound
+        # port; when the allocator moves the port the stored config can never
+        # match again and no leader is elected. Track the address outside the
+        # metastore and wipe it only when it changed, so same-address
+        # restarts and startup retries keep the index.
+        raft_addr='localhost:${toString pyroscopePorts.raft.value}'
+
+        # An unreadable marker must not read as a changed address: that would
+        # delete a metastore that may still match.
+        recorded_addr=
+        if [ -e "$raft_addr_file" ] && ! recorded_addr=$(cat -- "$raft_addr_file"); then
+          echo "pyroscope: cannot read $raft_addr_file; refusing to reset the metastore" >&2
+          exit 1
+        fi
+
+        if [ "$recorded_addr" = "$raft_addr" ]; then
+          :
+        elif [ ! -e "$metastore_dir" ]; then
+          mkdir -p "$pyro_state"
+          printf '%s\n' "$raft_addr" > "$raft_addr_file"
+        else
+          # No address on record (state from the old always-wipe layout) or a
+          # changed address: the metastore index/raft state is incompatible,
+          # so migrate it away once. Profile data under data/ is unrelated
+          # and stays.
+          rm -rf -- "$metastore_dir"
+          mkdir -p "$pyro_state"
+          printf '%s\n' "$raft_addr" > "$raft_addr_file"
+        fi
+
+        mkdir -p "$pyro_state"/{data,data-compactor}
+        mkdir -p "$metastore_dir"/{data,raft}
+        mkdir -p "$pyro_state/pyroscope-sync"
+
+        exec ${pkgs.pyroscope}/bin/pyroscope \
           -config.file=${pkgs.writeText "pyroscope.yaml" ''
             server:
-              http_listen_port: 4040
+              http_listen_port: ${toString pyroscopePorts.http.value}
+              grpc_listen_port: ${toString pyroscopePorts.grpc.value}
+
+            metastore:
+              # The metastore client dials this address; it must track the
+              # moved gRPC port, not the 9095 default.
+              address: 127.0.0.1:${toString pyroscopePorts.grpc.value}
+              raft:
+                server_id: localhost:${toString pyroscopePorts.raft.value}
+                bind_address: localhost:${toString pyroscopePorts.raft.value}
+                advertise_address: localhost:${toString pyroscopePorts.raft.value}
 
             storage:
               backend: filesystem
@@ -758,17 +932,42 @@ in
             memberlist:
               bind_addr:
                 - 127.0.0.1
+              bind_port: ${toString pyroscopePorts.memberlist.value}
               abort_if_cluster_join_fails: false
           ''} \
-          -blocks-storage.bucket-store.sync-dir=${config.devenv.state}/pyroscope-sync \
-          -metastore.data-dir=${config.devenv.state}/pyroscope/metastore/data \
-          -metastore.raft.dir=${config.devenv.state}/pyroscope/metastore/raft \
+          -blocks-storage.bucket-store.sync-dir="$pyro_state/pyroscope-sync" \
+          -metastore.data-dir="$metastore_dir/data" \
+          -metastore.raft.dir="$raft_dir" \
+          -metastore.raft.snapshots-dir="$raft_dir" \
+          -metastore.min-ready-duration=0 \
+          -segment-writer.min-ready-duration=0 \
+          -ingester.min-ready-duration=0 \
           -target=all \
           -self-profiling.disable-push=true
       '';
     };
 
+
     grafana = {
+      ports.http.allocate = 3000;
+
+      ready = {
+        initial_delay = 3;
+        probe_timeout = 5;
+        failure_threshold = 10;
+        http.get = {
+          port = grafanaPorts.http.value;
+          path = "/api/health";
+        };
+      };
+
+      after = [
+        "devenv:processes:tempo"
+        "devenv:processes:loki"
+        "devenv:processes:prometheus"
+        "devenv:processes:pyroscope"
+      ];
+
       exec = ''
         mkdir -p ${config.devenv.state}/grafana/data
         mkdir -p ${config.devenv.state}/grafana/logs
@@ -783,14 +982,87 @@ in
         export GF_PATHS_LOGS=${config.devenv.state}/grafana/logs
         export GF_PATHS_PLUGINS=${config.devenv.state}/grafana/plugins
         export GF_PATHS_PROVISIONING=${config.devenv.state}/grafana/provisioning
-        export GF_SERVER_HTTP_PORT=3000
+        export GF_SERVER_HTTP_PORT=${toString grafanaPorts.http.value}
         export GF_AUTH_ANONYMOUS_ENABLED=true
         export GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
         export GF_SECURITY_ADMIN_PASSWORD=admin
 
-        ${pkgs.grafana}/bin/grafana server \
+        exec ${pkgs.grafana}/bin/grafana server \
           --homepath ${pkgs.grafana}/share/grafana \
           --config ${pkgs.grafana}/share/grafana/conf/defaults.ini
+      '';
+    };
+
+    website = {
+      cwd = "${config.devenv.root}/website";
+      ports.http.allocate = 3001;
+
+      ready = {
+        initial_delay = 10;
+        failure_threshold = 10;
+        http.get = {
+          port = websitePorts.http.value;
+          path = "/";
+        };
+      };
+
+      after = [ "website:install" ];
+
+      exec = "exec npm run dev -- --port ${toString websitePorts.http.value}";
+    };
+
+    # `npm run storybook` pins `-p 6006`, so pass the allocated port to the
+    # binary directly after running its locale prerequisite.
+    storybook = {
+      cwd = "${config.devenv.root}/website";
+      ports.http.allocate = 6006;
+
+      ready = {
+        initial_delay = 15;
+        failure_threshold = 20;
+        timeout = 300;
+        http.get = {
+          port = storybookPorts.http.value;
+          path = "/";
+        };
+      };
+
+      after = [ "website:install" ];
+
+      exec = ''
+        npm run prestorybook &&
+          exec ./node_modules/.bin/storybook dev -p ${toString storybookPorts.http.value}
+      '';
+    };
+
+    mdbook = {
+      cwd = "${config.devenv.root}/docs";
+      ports.http.allocate = 3002;
+
+      ready = {
+        initial_delay = 5;
+        failure_threshold = 10;
+        http.get = {
+          port = mdbookPorts.http.value;
+          path = "/";
+        };
+      };
+
+      # mdbook-mermaid skips any asset that already exists, so a file cut short
+      # by an interrupted install would never be repaired. Install into a
+      # scratch copy of the book and publish the asset with an atomic rename.
+      # The preview renders outside docs/book, which `docs:build` tracks.
+      exec = ''
+        set -e
+        stage=$(mktemp -d .mermaid-install.XXXXXX)
+        trap 'rm -rf -- "$stage"' EXIT
+        cp book.toml "$stage/"
+        mdbook-mermaid install "$stage"
+        mv -f -- "$stage/mermaid.min.js" mermaid.min.js
+        rm -rf -- "$stage"
+        trap - EXIT
+        exec mdbook serve --hostname 0.0.0.0 --port ${toString mdbookPorts.http.value} \
+          --dest-dir ${pkgs.lib.escapeShellArg "${config.devenv.state}/mdbook-preview"}
       '';
     };
   };
@@ -873,13 +1145,102 @@ in
       cadmuscli docs
     '';
 
-    # Serve website locally (run cadmuscli docs --mdbook-only first to build mdBook)
+    # `devenv up` supervises these (readiness, restart on crash); running the
+    # dev command by hand gets neither.
     cadmus-docs-serve.exec = ''
-      echo "Starting website dev server..."
-      echo "Note: run 'cadmuscli docs --mdbook-only' first to build mdBook output."
+      exec devenv up website
+    '';
+
+    cadmus-storybook.exec = ''
+      exec devenv up storybook
+    '';
+
+    cadmus-docs-mdbook.exec = ''
+      exec devenv up mdbook
+    '';
+
+    # `--wait` returns when processes are settled; check phases below to gate
+    # work on actual readiness.
+    cadmus-process-status.exec = ''
+      set -e
+
+      manager_pid() { cat ${managerPidFile} 2>/dev/null || true; }
+
+      # The calling shell may predate the running manager and still carry the
+      # base ports; re-evaluate this script against the live manager so the
+      # URLs below are the ones the stack actually listens on. The manager pid
+      # is captured before that evaluation so a replacement is caught below.
+      if [ "''${CADMUS_DEVENV_LIVE_ENV:-}" != 1 ]; then
+        exec devenv shell -- env CADMUS_DEVENV_LIVE_ENV=1 \
+          CADMUS_DEVENV_MANAGER_PID="$(manager_pid)" cadmus-process-status "$@"
+      fi
+
+      # `devenv processes wait` reports settled — it also counts never-started,
+      # exited and given-up processes — not readiness, and `set -e` must not
+      # cut the report short when it fails.
+      status=0
+      if [ "''${1:-}" = "--wait" ]; then
+        ${waitForStack} || {
+          status=1
+          echo "cadmus-process-status: wait did not settle within 120s; see process phases below" >&2
+        }
+      fi
+
+      echo "URLs:"
+      for name in \
+        OTEL_EXPORTER_OTLP_ENDPOINT PYROSCOPE_SERVER_URL LOKI_URL TEMPO_URL \
+        PROMETHEUS_URL GRAFANA_URL WEBSITE_URL MDBOOK_URL STORYBOOK_URL; do
+        printf '  %-26s %s\n' "$name" "$(printenv "$name" || true)"
+      done
       echo ""
-      cd website
-      npm run dev
+
+      echo "Processes:"
+      for name in \
+        opentelemetry-collector tempo loki prometheus pyroscope grafana \
+        website storybook mdbook; do
+        if detail=$(devenv processes status "$name" 2>&1); then
+          phase=$(printf '%s\n' "$detail" | sed -n 's/^Phase: *//p')
+          printf '  %-26s %s\n' "$name" "$phase"
+          if [ "$phase" != "ready" ]; then
+            status=1
+          fi
+        else
+          printf '  %-26s not running (%s; logs: $DEVENV_STATE/logs/%s.stdout.log)\n' \
+            "$name" "$detail" "$name"
+          status=1
+        fi
+      done
+      echo ""
+
+      echo "Health:"
+      check() {
+        label=$1
+        url=$2
+        if curl -fsS --max-time 5 "$url" >/dev/null; then
+          printf '  %-26s ok\n' "$label"
+        else
+          printf '  %-26s FAILED (%s; logs: $DEVENV_STATE/logs/%s.stdout.log)\n' \
+            "$label" "$url" "$label"
+          status=1
+        fi
+      }
+
+      check opentelemetry-collector "http://127.0.0.1:${toString otelPorts.health.value}/"
+      check tempo "$TEMPO_URL/ready"
+      check loki "$LOKI_URL/ready"
+      check prometheus "$PROMETHEUS_URL/-/ready"
+      check pyroscope "$PYROSCOPE_SERVER_URL/ready"
+      check grafana "$GRAFANA_URL/api/health"
+      check website "$WEBSITE_URL/"
+      check storybook "$STORYBOOK_URL/"
+      check mdbook "$MDBOOK_URL/"
+
+      if [ "$(manager_pid)" != "''${CADMUS_DEVENV_MANAGER_PID-}" ]; then
+        echo "cadmus-process-status: the process manager was replaced while reporting, so the URLs above may be stale; rerun cadmus-process-status" >&2
+        exit 1
+      fi
+
+      exit "$status"
     '';
 
     # Full static export via Workers (matches CI). Run cadmuscli docs first.
@@ -952,27 +1313,56 @@ in
     cadmus-dev-otel.exec = ''
       set -e
 
+      manager_pid() { cat ${managerPidFile} 2>/dev/null || true; }
+
+      # Same as `cadmus-process-status`: the emulator must be launched with
+      # the OTLP endpoint the running manager resolved, not a stale shell's.
+      if [ "''${CADMUS_DEVENV_LIVE_ENV:-}" != 1 ]; then
+        exec devenv shell -- env CADMUS_DEVENV_LIVE_ENV=1 \
+          CADMUS_DEVENV_MANAGER_PID="$(manager_pid)" cadmus-dev-otel "$@"
+      fi
+
       echo ""
-      echo "Observability Stack:"
-      echo "  Grafana:    http://localhost:3000 (admin/admin)"
-      echo "  Tempo:      http://localhost:3200"
-      echo "  Loki:       http://localhost:3100"
-      echo "  Prometheus: http://localhost:9090"
-      echo "  Pyroscope:  http://localhost:4040"
-      echo "  OTLP:       http://localhost:4318"
+      echo "Stack URLs and health: run 'cadmus-process-status'."
+      echo ""
+
+      if ! ${waitForStack}; then
+        echo "Observability stack did not settle within 120s. Start it with 'devenv up' in another terminal." >&2
+        exit 1
+      fi
+
+      # `devenv processes wait` also treats never-started, exited and given-up
+      # processes as settled, so gate on each process actually reporting ready.
+      for name in \
+        opentelemetry-collector tempo loki prometheus pyroscope grafana; do
+        if ! detail=$(devenv processes status "$name" 2>&1); then
+          echo "cadmus-dev-otel: $name is not running ($detail; logs: $DEVENV_STATE/logs/$name.stdout.log)." >&2
+          exit 1
+        fi
+        phase=$(printf '%s\n' "$detail" | sed -n 's/^Phase: *//p')
+        if [ "$phase" != "ready" ]; then
+          echo "cadmus-dev-otel: $name is ''${phase:-unknown} (logs: $DEVENV_STATE/logs/$name.stdout.log)." >&2
+          exit 1
+        fi
+      done
       echo ""
 
       echo "Ensuring documentation is built..."
       devenv tasks run docs:build
       echo ""
 
+      # The docs build can take minutes; a manager replaced meanwhile may have
+      # moved the collector, and the emulator would export to the old port.
+      if [ "$(manager_pid)" != "''${CADMUS_DEVENV_MANAGER_PID-}" ]; then
+        echo "cadmus-dev-otel: the process manager was replaced since startup, so the OTLP endpoint may be stale; rerun cadmus-dev-otel" >&2
+        exit 1
+      fi
+
       echo "Starting instrumented emulator..."
       echo "   Traces will be visible in Grafana → Explore → Tempo"
       echo "   Heap profiles will be visible in Grafana → Explore → Pyroscope"
       echo ""
 
-      export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318"
-      export PYROSCOPE_SERVER_URL="http://localhost:4040"
       cadmuscli run-emulator --features telemetry,test
     '';
 
@@ -1034,7 +1424,7 @@ in
     echo "Available commands:"
     echo "  cadmus-docs-build     - Build complete documentation portal"
     echo "  cadmus-docs-preview   - wrangler dev for website/out (Workers, matches CI)"
-    echo "  cadmus-docs-serve     - Serve website locally (http://localhost:3000)"
+    echo "  cadmus-docs-serve     - Serve website locally ($WEBSITE_URL)"
     echo "  cadmus-translate      - Regenerate docs/po/messages.pot (translations on Crowdin)"
     echo "  cadmuscli run-emulator - Run the emulator (after setup)"
     echo "  cargo test            - Run tests (after setup)"
@@ -1088,21 +1478,37 @@ in
   ''
   + ''
     echo "Observability (OTEL):"
-    echo "  devenv up            - Start all services (inc. observability stack)"
-    echo "  cadmus-dev-otel      - Build & run emulator with OTEL enabled"
+    echo "  devenv up                - Start all services (inc. observability stack)"
+    echo "  cadmus-process-status    - Print URLs, process state and health"
+    echo "  cadmus-dev-otel          - Build & run emulator with OTEL enabled"
     echo ""
-    echo "  After 'devenv up', visit http://localhost:3000 for Grafana"
-    echo "  Pyroscope profiling UI: http://localhost:4040"
+    echo "  Grafana:    $GRAFANA_URL (admin/admin)"
+    echo "  Tempo:      $TEMPO_URL"
+    echo "  Loki:       $LOKI_URL"
+    echo "  Prometheus: $PROMETHEUS_URL"
+    echo "  Pyroscope:  $PYROSCOPE_SERVER_URL"
+    echo "  OTLP:       $OTEL_EXPORTER_OTLP_ENDPOINT"
+    echo ""
+    echo "  Ports are allocated: with a manager running, 'devenv up' and this"
+    echo "  shell print the same resolved ports; otherwise the base ports apply."
+    echo ""
+    echo "Docs site:"
+    echo "  cadmus-docs-serve        - Next dev server ($WEBSITE_URL)"
+    echo "  cadmus-storybook         - Storybook ($STORYBOOK_URL)"
+    echo "  cadmus-docs-mdbook       - mdBook preview ($MDBOOK_URL)"
     echo ""
     echo "Build cache (sccache, incremental compilation disabled):"
     echo "  cadmus-sccache        - stats|reset|restart|log"
     echo ""
-
-     echo "Linking rust source for stable access"
-     # rm first: `ln -fs` follows an existing symlink-to-directory and tries to
-     # create the link inside it, which fails on the read-only nix store.
-     rm -f ${config.env.DEVENV_STATE}/rust-lib-src
-     ln -s ${config.env.RUST_SRC_PATH} ${config.env.DEVENV_STATE}/rust-lib-src
+  ''
+  # devenv leaves `RUST_SRC_PATH` unset when the toolchain has its own sysroot
+  # and no known source path; nothing to link in that case.
+  + pkgs.lib.optionalString (config.env.RUST_SRC_PATH != null) ''
+    echo "Linking rust source for stable access"
+    # rm first: `ln -fs` follows an existing symlink-to-directory and tries to
+    # create the link inside it, which fails on the read-only nix store.
+    rm -f ${config.env.DEVENV_STATE}/rust-lib-src
+    ln -s ${config.env.RUST_SRC_PATH} ${config.env.DEVENV_STATE}/rust-lib-src
   '';
 
   # https://devenv.sh/tests/

@@ -39,9 +39,20 @@ to preserve the reader's locale.
 
 ```bash
 devenv shell
-cadmuscli docs        # full static site → website/out/
-cadmus-docs-serve       # Next.js dev server → http://localhost:3000
+cadmuscli docs          # full static site → website/out/
+cadmus-docs-serve       # Next.js dev server through `devenv up website`
+cadmus-storybook        # Storybook through `devenv up storybook`
+cadmus-docs-mdbook      # mdBook preview through `devenv up mdbook`
 ```
+
+The dev servers are supervised devenv processes with allocated ports: Next
+starts at 3001, mdBook at 3002, and Storybook at 6006. Read the resolved URLs
+from `$WEBSITE_URL`, `$MDBOOK_URL`, and `$STORYBOOK_URL` (also printed by the
+shell banner and `cadmus-process-status`) — a taken port moves the server.
+
+`cadmus-docs-mdbook` installs the mdbook-mermaid assets itself and serves the
+preview under `$DEVENV_STATE/mdbook-preview`, outside `docs/book/html` so it
+does not conflict with the full `cadmuscli docs` build.
 
 **Full-site preview** (matches CI):
 
@@ -51,12 +62,17 @@ wrangler dev              # Workers Static Assets, same as production
 # or: cadmus-docs-preview
 ```
 
-**Fast iteration**:
+**Fast iteration** (without devenv supervision):
 
-- Website UI: `cd website && npm run dev`
+- Website UI: `cd website && npm run dev` (port 3000)
 - Storybook: `cd website && npm run storybook` (port 6006)
-- `cadmus-docs-serve` reminds you to run `cadmuscli docs --mdbook-only` first if guide
-  content is missing
+- mdBook user guide: `cd docs && mdbook serve` (port 3000)
+
+Inside devenv, prefer `cadmus-docs-serve`, `cadmus-storybook`, and
+`cadmus-docs-mdbook`. The supervised processes wait for `website:install`,
+start on allocated ports (so they can run alongside Grafana on 3000), and
+generate the website locales first — as does a bare `npm run dev`, through
+its `predev` hook.
 
 Prerequisites: devenv provides `mdbook`, `mdbook-mermaid`, and `npm`; the `website:install`
 devenv task handles `npm install`.
@@ -76,7 +92,8 @@ from their own components rather than inlining markup.
 Preview components locally:
 
 ```bash
-cd website && npm run storybook   # http://localhost:6006
+cadmus-storybook                  # devenv process, port 6006 base ($STORYBOOK_URL)
+cd website && npm run storybook   # without devenv: http://localhost:6006
 ```
 
 Run `cd website && npm run lint` before opening a PR.
