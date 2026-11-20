@@ -58,9 +58,12 @@ Clippy runs with `-D warnings` — all warnings are errors:
 cadmuscli clippy
 ```
 
-Clippy runs across every feature flag combination in CI. When adding a new
-feature flag, update `.github/workflows/cargo.yml` to include the new matrix
-entries.
+Clippy runs across every feature flag combination in CI. The matrix is
+generated from the workspace manifests by `cadmuscli ci matrix`, so a new
+feature flag under `crates/` is included automatically; do not add matrix
+entries to `.github/workflows/cargo.yml` by hand. Update the expected entry
+count in `scan_workspace_includes_runtime_features_on_ubuntu`
+(`xtask/src/tasks/util/matrix.rs`) when you add one.
 
 ### Key Conventions
 

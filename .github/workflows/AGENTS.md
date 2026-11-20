@@ -148,7 +148,7 @@ tree is never executed (data for reviewdog / `git` diff only), and keep
 Pin every third-party action to a full commit SHA with a version comment:
 
 ```yaml
-uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+uses: actions/checkout@<full-commit-sha> # <version>
 ```
 
 Renovate updates both the SHA and the comment. Bare SHAs without a comment are

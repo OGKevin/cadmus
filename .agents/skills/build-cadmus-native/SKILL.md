@@ -5,57 +5,40 @@ description: Build Cadmus on Linux and macOS hosts using cadmuscli. Use when ask
 
 # Build Cadmus on Native Hosts (Linux / macOS)
 
-## Critical prerequisite: generate the documentation EPUB
+## Prerequisites
 
-`cadmus-core` embeds the user documentation at compile time via `rust-embed`.
-The macro points to `docs/book/epub/Cadmus Documentation.epub`. If that file
-is missing, **every** `cargo check`, `cargo build`, or `cargo test` that
-touches `cadmus-core` will fail with:
+Run commands from the repository root. The devenv shell provides the required
+build and documentation tools.
 
-```text
-error: #[derive(RustEmbed)] folder '…/docs/book/epub/' does not exist.
-error[E0599]: no associated function named `get` found for struct `DocumentationAssets`
-```
+### Documentation EPUB
 
-### Generate the EPUB
+`cadmus-core` embeds `docs/book/epub/Cadmus Documentation.epub` at compile time.
+Generate it before any command that compiles `cadmus-core`, including
+`cadmuscli clippy`, `cadmuscli test`, and direct Cargo commands. Only
+`cadmuscli run-emulator` builds a missing EPUB automatically:
 
 ```bash
 cadmuscli docs --mdbook-only
 ```
 
-This installs mdBook and mdbook-epub (if missing), builds the mdBook sources,
-and writes `docs/book/epub/Cadmus Documentation.epub`. You only need to rerun
-it when documentation sources change.
-
-## One-time setup
+This uses the devenv-provided documentation tools (see the `docs` skill); it
+does not install them. Rerun it after documentation changes.
 
 ### Custom SQLite
 
-**Required before any native compile** — `libsqlite3-sys` runs before
-`cadmus-core`'s `build.rs`, so the UDL-enabled SQLite library must already
-exist:
+Direct `cargo build`, `cargo check`, and `cargo test` need the UDL-enabled
+SQLite library before `libsqlite3-sys` runs:
 
 ```bash
-cadmuscli setup
+cadmuscli setup --host
 ```
 
-Default (no flags) builds for the host and Kobo targets.
+`cadmuscli test`, `cadmuscli clippy`, and `cadmuscli run-emulator` perform this
+SQLite preflight automatically. Bare `cadmuscli setup` builds both host and Kobo
+targets; use `--host` for native-only work.
 
-### Runtime assets
-
-**Required for Kobo builds** — run both before `cadmuscli build-kobo`:
-
-```bash
-cadmuscli download-assets
-cadmuscli download-fonts
-```
-
-`download-assets` pulls Plato runtime directories (`bin/`, `resources/`,
-`hyphenation-patterns/`). `download-fonts` assembles the `fonts/`.
-
-Other native dependencies (MuPDF, libwebp, and the C wrapper) are built
-automatically by `build.rs` when you run any Cargo command that compiles
-`cadmus-core`. SQLite is the exception — use `cadmuscli setup` first.
+Other native dependencies, including MuPDF, libwebp, and the C wrapper, are
+built automatically by `crates/core/build.rs`.
 
 ## Daily workflow commands
 
@@ -69,14 +52,13 @@ automatically by `build.rs` when you run any Cargo command that compiles
 | View coverage (patch diff)    | `cadmus-coverage-diff` (after test-coverage)                        |
 | Run tests with telemetry      | `cadmuscli test --features "emulator + profiling + test + tracing"` |
 | Run the emulator              | `cadmuscli run-emulator` (builds the EPUB first if missing)         |
-| Install the importer CLI      | `cadmuscli install-importer`                                        |
 | Build docs portal (full)      | `cadmuscli docs`                                                    |
 
 ### A device feature is required
 
 `cadmus-core` emits `compile_error!("A device feature must be enabled")`
 (`crates/core/src/lib.rs`) unless one of `emulator`, `kobo`, or `deviceless`
-is enabled. The merged `cadmus` crate has `default = []`, so plain `cargo
+is enabled. The `cadmus` crate has `default = []`, so plain `cargo
 build`, `--features default`, and `cadmuscli test --features default` all
 fail. For native host development use `emulator` (what `run-emulator` uses);
 use `kobo` only via the `build-kobo` skill (it cross-compiles for ARM).
@@ -122,14 +104,6 @@ cadmuscli test --coverage --features emulator
 This writes `target/coverage/lcov.info`. Project HTML uses `cargo llvm-cov report --html`.
 Patch HTML uses `diff-cover` (see `devenv.nix` scripts).
 
-## What the xtask wrappers do
-
-- **`fmt`** — runs `cargo fmt --check` (or `--apply` in CI) across the workspace
-- **`clippy`** — iterates the full feature matrix; use `--features` to narrow it
-- **`test`** — iterates the test feature matrix; `--coverage` enables llvm-cov instrumentation
-- **`run-emulator`** — ensures the documentation EPUB exists, then runs `cargo run -p cadmus --features emulator`
-- **`install-importer`** — runs `cargo install --path crates/importer`
-
 ## sccache
 
 devenv sets `RUSTC_WRAPPER=sccache`. If setup or a compile panics inside
@@ -141,15 +115,6 @@ devenv shell -- env -u RUSTC_WRAPPER cadmuscli setup
 
 If the failure is a client/server version mismatch after an upgrade, run
 `cadmus-sccache restart` first (see `docs/src/contributing/devenv-setup.md`).
-
-## Common mistakes
-
-| Mistake                                                       | Result                                                                | Fix                                                                                  |
-| ------------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| Running `cargo check` before `cadmuscli docs --mdbook-only`   | `RustEmbed` folder-not-found error                                    | Generate the EPUB first                                                              |
-| Running bare `cargo clippy` / `cargo test` directly           | May miss feature-gated code or use wrong feature combinations         | Prefer `cadmuscli clippy` and `cadmuscli test`                                       |
-| Running `cadmuscli test` without `--features`                 | Runs the full (slow) CI matrix locally                                | Pass `--features emulator` (or `kobo`/`deviceless`) plus any specific combo you need |
-| Running `cargo build` / `cargo test` without a device feature | `compile_error!("A device feature must be enabled")` in `cadmus-core` | Pass `--features emulator` (or `kobo`/`deviceless`)                                  |
 
 ## Platform notes
 

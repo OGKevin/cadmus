@@ -38,11 +38,14 @@ for normal builds.
 
 ## Verification
 
-After regenerating:
+After regenerating, run the normal emulator-feature checks:
 
 ```bash
-cargo check --all-targets
-cargo test --workspace
+cadmuscli clippy --features emulator
+cadmuscli test --features emulator
 ```
 
-Commit the updated `.sqlx/` files alongside the code changes.
+A device feature is required because workspace defaults do not enable one.
+Complete the formatting and Kobo-build steps in the [root verification
+sequence](../../../AGENTS.md#testing), and commit the updated `.sqlx/` files
+alongside the query or migration changes.

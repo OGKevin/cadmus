@@ -4,7 +4,8 @@
 
 - Edit **only** [`en-GB/cadmus_core.ftl`](en-GB/cadmus_core.ftl) when adding or
   changing user-visible strings.
-- Keep message IDs sorted within each comment section.
+- Keep IDs grouped by comment section. Insert new IDs alphabetically in sorted
+  sections; do not reorder unrelated legacy entries just to impose sorting.
 
 ## Other locales
 

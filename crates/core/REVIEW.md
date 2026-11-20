@@ -15,6 +15,7 @@ the code.
 When reviewing code that adds user-facing strings:
 
 - [ ] No `"string literal".to_string()` or `format!("literal")` for user-visible text.
-- [ ] New message IDs added to `cadmus_core.ftl` in the correct sorted section.
+- [ ] New message IDs are in the appropriate `cadmus_core.ftl` comment section,
+      alphabetically within sections that are already sorted.
 - [ ] Parameterised messages use Fluent variable syntax in `.ftl`.
-- [ ] `fl!` macro is used at every call site.
+- [ ] `fl!` is used for literal IDs and `fl_or!` only for runtime IDs.

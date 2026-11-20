@@ -16,12 +16,14 @@ the main thread; spawned tasks run on the worker pool. Blocking a worker stalls
 input and timers, so use an async API or `spawn_blocking` there.
 [`src/input/reader.rs`](src/input/reader.rs) is the `AsyncFd` reference pattern.
 
-Work that outlives the current call — input pipelines, view polling, downloads,
-timers — must be a [`Job`](src/runtime.rs) owned by the subsystem that started
-it, not a bare `runtime::current_handle().spawn`. Dropping the `Job` cancels and
-detaches; `Job::join` awaits completion. Short-lived helpers inside an existing
-job may use `tokio::spawn` when they are tied to a parent `CancellationToken`
-(for example per-finger hold timers under [`GesturePipeline`](src/gesture.rs)).
+Use a [`Job`](src/runtime.rs) for work whose cancellation and lifetime are owned
+by the subsystem that started it. Dropping the `Job` cancels it;
+`Job::join(deadline)` waits up to the deadline, aborts the job only if it has
+not finished, and returns a `JobOutcome`. Detached `runtime::spawn` is allowed
+only when ownership already lives elsewhere, such as a caller-held token or a
+`JoinSet`. Short-lived helpers inside a job may use `tokio::spawn` when tied to
+a parent `CancellationToken` (for example per-finger hold timers under
+[`GesturePipeline`](src/gesture.rs)).
 
 Device handlers are driven through the test harness; see
 [Device handlers](src/device/AGENTS.md).
@@ -32,21 +34,19 @@ A bare `async fn` in a **public** trait warns (`async_fn_in_trait`): callers
 cannot name the future's auto-trait bounds, so adding `Send` later would be a
 breaking change. Pick a form by object safety first, then by `Send`:
 
-- **The trait is used as `dyn`** — `#[async_trait]`, the only form that stays
-  object-safe. A `!Send` default method (boxed future, `self: Arc<Self>`, or a
-  `where Self: Sized` bound) also breaks dyn-compatibility, so dyn traits get no
-  such helper.
-- **Not used as `dyn`, and the future is `Send`** — prefer the stable RPITIT
-  form: declare `fn foo(&self) -> impl Future<Output = T> + Send;` in the trait
-  and `async fn foo(..)` in the impl. The two spellings may mix; no boxing, no
-  dependency, no warning. [`Fingerprint`](src/helpers.rs) and
-  [`DeviceLifecycle`](src/device/mod.rs) do this. `#[trait_variant::make(Name:
-  Send)]` is the alternative when an unboxed bound from a macro is wanted; it is
-  not currently a workspace dependency and can be re-added when a use case
-  appears. It cannot desugar a default body, so those methods need an explicit
-  no-op in each impl.
-- **The future genuinely cannot be `Send`**, as with single-threaded view state —
-  `#[async_trait(?Send)]`, and say why in the trait's doc comment.
+- **The trait is used as `dyn`** — use `#[async_trait]`. Boxed `dyn Future`
+  returns and `self: Arc<Self>` remain dyn-compatible. `where Self: Sized`
+  excludes a method from dynamic dispatch without making the trait itself
+  dyn-incompatible. If the future genuinely cannot be `Send`, as with
+  single-threaded view state, use `#[async_trait(?Send)]` and say why in the
+  trait's doc comment.
+- **Not used as `dyn`, and the future is `Send`** — prefer stable RPITIT:
+  declare `fn foo(&self) -> impl Future<Output = T> + Send;` in the trait and
+  `async fn foo(..)` in the impl. The two spellings may mix; no boxing,
+  dependency, or warning. See [`Fingerprint`](src/helpers.rs).
+- **Not used as `dyn`, and the future cannot be `Send`** — declare
+  `fn foo(&self) -> impl Future<Output = T>;` without the bound and document
+  why. [`DeviceLifecycle::handle_event`](src/device/mod.rs) does this.
 
 ## Return Types
 
@@ -66,7 +66,7 @@ fn write_sysfs(path: &Path, value: &str) -> bool;
 ## View Instrumentation
 
 All `handle_event` and `render` methods in view components must have
-OpenTelemetry tracing attributes, gated behind the `tracing` feature.
+`tracing::instrument` attributes, gated behind the `tracing` feature.
 
 ### `handle_event`
 
@@ -112,8 +112,8 @@ Preference order: fully compilable > `no_run` > `ignore`.
 
 - Use `no_run` when the example compiles but cannot execute (file I/O, network,
   database).
-- Use `ignore` **only** for private/`pub(crate)` items unreachable from the
-  test harness. Add a comment explaining why.
+- Use `ignore` only when the example cannot compile in the doctest harness (for
+  example because it uses `crate::` paths). Add a comment explaining why.
 - Use `#` to hide boilerplate setup lines.
 - Verify with `cargo test --doc`.
 
@@ -152,17 +152,17 @@ when the query that used them is removed.
 
 ## SQL: Query Macros
 
-Use typed macros (`sqlx::query!`, `sqlx::query_as!`, `sqlx::query_scalar!`).
-Never use untyped `sqlx::query()` / `sqlx::query_as()` / `sqlx::query_scalar()`.
+Use typed macros (`sqlx::query!`, `sqlx::query_as!`, `sqlx::query_scalar!`) for
+queries with a static shape; do not use untyped `sqlx::query()`,
+`sqlx::query_as()`, or `sqlx::query_scalar()` for them. Untyped functions are
+allowed only for statements the offline query cache cannot describe, such as
+`PRAGMA` and `VACUUM`, and for dynamic SQL that typed macros cannot represent.
+Document why on the function.
 
-- Use `.flatten()` on `query_scalar!` results for nullable columns
-  (`Option<Option<T>>` → `Option<T>`).
-
-### Exception
-
-Untyped queries are allowed for dynamic SQL (e.g. runtime `ORDER BY` column)
-**only if** the function has unit tests covering every dynamic path, with a
-comment explaining why the typed macro cannot be used.
+- When `fetch_optional` on a nullable `query_scalar!` yields
+  `Option<Option<T>>`, use `.flatten()` to obtain `Option<T>`.
+- Dynamic SQL paths such as runtime-selected `ORDER BY` columns need unit tests
+  for every variant and a comment explaining why a typed macro cannot be used.
 
 ## User-Facing String Translations
 

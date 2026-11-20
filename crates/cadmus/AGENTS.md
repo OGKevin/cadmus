@@ -9,14 +9,16 @@ work belongs.
 
 ## Event loop
 
-The main loop owns the hub channel and the view [`Bus`](../core/src/view/mod.rs);
-events are dispatched to the device lifecycle first, then to the view tree. See
-[`src/app.rs`](src/app.rs).
+The main loop owns the hub channel and the view [`Bus`](../core/src/view/mod.rs).
+Events go to background tasks first, then the device lifecycle, then the view
+tree. See [`src/app.rs`](src/app.rs).
 
 ## Shutdown
 
-On exit, `stop_producers_and_drain` stops every producer, then drains only
-**shutdown-related** events:
+After `background_tasks.stop_all().await`, `stop_producers_and_drain` clears
+device tasks (`tasks.clear()`, which cancels their `Job`s), cancels and joins
+view jobs within `SHUTDOWN_DEADLINE`, then drains only **shutdown-related**
+events:
 
 - the direct exit intents — `Select(Reboot)`, `Select(Restart)`,
   `Select(PowerOff)`, `Select(Quit)`, and `Quit`;
@@ -27,8 +29,9 @@ Every other queued event is dropped. Replaying an arbitrary queued device event
 during teardown would run transitions such as `PrepareShare` (which closes the
 database and enables mass storage) after the process has already begun exiting.
 
-View-owned [`Job`s](../core/src/runtime.rs) are cancelled while each view still
-holds its handle, then moved out and joined within `SHUTDOWN_DEADLINE`.
+Device tasks and view jobs are stopped first so they cannot queue events
+mid-drain. Input stays live, but its events are not shutdown-related and are
+dropped.
 
 See the background task stop/join policy in
 [`../core/src/task/AGENTS.md`](../core/src/task/AGENTS.md).
