@@ -25,9 +25,6 @@ only when ownership already lives elsewhere, such as a caller-held token or a
 a parent `CancellationToken` (for example per-finger hold timers under
 [`GesturePipeline`](src/gesture.rs)).
 
-Device handlers are driven through the test harness; see
-[Device handlers](src/device/AGENTS.md).
-
 ## Async traits
 
 A bare `async fn` in a **public** trait warns (`async_fn_in_trait`): callers
@@ -114,7 +111,6 @@ Preference order: fully compilable > `no_run` > `ignore`.
   database).
 - Use `ignore` only when the example cannot compile in the doctest harness (for
   example because it uses `crate::` paths). Add a comment explaining why.
-- Use `#` to hide boilerplate setup lines.
 - Verify with `cargo test --doc`.
 
 ## Test Context

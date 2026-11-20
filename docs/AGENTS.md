@@ -46,10 +46,6 @@ them from `docs/po/messages.pot`. POT regeneration is not required for
 changes confined to `docs/src/contributing/**`; see
 [`docs/REVIEW.md`](REVIEW.md).
 
-- Clear and direct — get to the point.
-- Include code examples where helpful.
-- Document setup steps precisely.
-
 ## devenv.nix Documentation Sync
 
 When modifying `devenv.nix`, update docs per the devenv section in
@@ -60,7 +56,6 @@ When modifying `devenv.nix`, update docs per the devenv section in
 - Format and lint Markdown with **rumdl** (via `treefmt`); see `.rumdl.toml`.
 - Docs markdown is excluded from Prettier (`.prettierignore`) to preserve i18n
   list nesting.
-- Use code blocks with language tags.
 
 ## API doc links
 

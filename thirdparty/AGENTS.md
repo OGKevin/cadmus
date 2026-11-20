@@ -71,7 +71,5 @@ A Kobo C/C++ library additionally needs:
   `-mcpu=cortex-a9 -mfpu=neon`.
 - Record submodule upgrades as a new gitlink; edit `.gitmodules` only when its
   path, URL, or tracked version changes.
-- Insert new Kobo C/C++ libraries at the correct position in `LIBRARY_NAMES`
-  (respecting the dependency chain).
 - Prefer a patch file over modifying build logic to work around upstream
   issues — patches make the delta explicit and reviewable.

@@ -4,11 +4,8 @@
 
 Follow the Documentation freshness section in [`REVIEW.md`](../../REVIEW.md).
 
-When reviewing changes in this crate (and related app wiring), check that
-`docs/src/` still describes the user-facing and contributor-facing behavior
-accurately — update existing pages, add pages for new surfaces, or justify
-skipping. Keep related samples and docs (for example settings) consistent with
-the code.
+Keep related samples and docs (for example settings) consistent with the code,
+including app wiring outside this crate.
 
 ## User-Facing String Translations
 

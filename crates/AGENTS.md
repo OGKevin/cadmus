@@ -21,14 +21,8 @@
   bounds; prefer the stable RPITIT form. The decision tree lives in
   [`core/AGENTS.md`](core/AGENTS.md).
 - Use `thiserror` for custom error types and `anyhow` for ad-hoc errors.
-- Use iterators over index-based loops.
-- Use `&str` over `String` in function parameters when ownership is not needed.
-- Prefer borrowing over cloning.
 - Inline expressions directly into struct fields — avoid intermediate bindings
   solely to pass them into a struct literal.
-- Avoid `unsafe` unless required and documented.
-- Avoid premature `collect()` — keep iterators lazy.
-- Ensure code compiles without warnings.
 
 ## Visibility
 
