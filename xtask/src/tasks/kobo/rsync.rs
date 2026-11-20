@@ -317,6 +317,9 @@ fn spawn_bridge(
                         None => {
                             channel_open = false;
                             write_open = false;
+                            write_fut = None;
+                            writer = None;
+                            write_rx.close();
                             if data_open && !remote_eof {
                                 remote_eof = true;
                                 inbound.push_back(None);
@@ -1025,6 +1028,97 @@ mod tests {
         engine_result.unwrap();
         bridge_result.unwrap();
 
+        running.abort();
+    }
+
+    #[tokio::test]
+    async fn terminal_close_cancels_pending_write_and_releases_engine() {
+        use std::time::Duration;
+
+        use russh::server::{Auth, ChannelOpenHandle, Msg as ServerMsg, Session};
+
+        struct CloseWithoutReading {
+            first_read: bool,
+        }
+
+        impl CloseWithoutReading {
+            fn new() -> Self {
+                Self { first_read: true }
+            }
+        }
+
+        impl russh::server::Server for CloseWithoutReading {
+            type Handler = Self;
+
+            fn new_client(&mut self, _: Option<std::net::SocketAddr>) -> Self {
+                Self::new()
+            }
+        }
+
+        impl russh::server::Handler for CloseWithoutReading {
+            type Error = russh::Error;
+
+            async fn auth_none(&mut self, _: &str) -> Result<Auth, Self::Error> {
+                Ok(Auth::Accept)
+            }
+
+            async fn channel_open_session(
+                &mut self,
+                _: russh::Channel<ServerMsg>,
+                reply: ChannelOpenHandle,
+                _: &mut Session,
+            ) -> Result<(), Self::Error> {
+                reply.accept().await;
+                Ok(())
+            }
+
+            async fn exec_request(
+                &mut self,
+                channel: russh::ChannelId,
+                _: &[u8],
+                session: &mut Session,
+            ) -> Result<(), Self::Error> {
+                session.channel_success(channel)?;
+                Ok(())
+            }
+
+            async fn data(
+                &mut self,
+                channel: russh::ChannelId,
+                _: &[u8],
+                session: &mut Session,
+            ) -> Result<(), Self::Error> {
+                if self.first_read {
+                    self.first_read = false;
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                    let handle = session.handle();
+                    tokio::spawn(async move {
+                        let _ = handle.close(channel).await;
+                    });
+                }
+                Ok(())
+            }
+        }
+
+        let (handle, running) = connect_test_server(CloseWithoutReading::new()).await;
+        let channel = handle.channel_open_session().await.unwrap();
+        channel.exec(true, "rsync --server").await.unwrap();
+
+        let (_reader, mut writer, _outcome, bridge) = spawn_bridge(channel);
+        let engine = tokio::task::spawn_blocking(move || {
+            let payload = vec![0x5au8; 32 * 1024 * 1024];
+            writer.write_all(&payload)
+        });
+
+        let (engine_result, bridge_result) = tokio::time::timeout(Duration::from_secs(10), async {
+            tokio::join!(engine, bridge)
+        })
+        .await
+        .expect("terminal channel closure must release the pending write");
+        engine_result
+            .unwrap()
+            .expect("the engine must finish queuing its write");
+        bridge_result.unwrap();
         running.abort();
     }
 }
