@@ -63,6 +63,7 @@
 //!     pyroscope_endpoint: None,
 //!     enable_kern_log: false,
 //!     enable_dbus_log: false,
+//!     enable_third_party_log: false,
 //! };
 //!
 //! // Initialize at application startup
@@ -305,6 +306,7 @@ fn is_run_log_entry(entry: &DirEntry) -> bool {
 ///     pyroscope_endpoint: None,
 ///     enable_kern_log: false,
 ///     enable_dbus_log: false,
+///     enable_third_party_log: false,
 /// };
 ///
 /// let log_dir = std::path::PathBuf::from("/mnt/onboard/logs");
@@ -516,7 +518,7 @@ pub fn redirect_log_to_dir(dir: &Path, settings: &LoggingSettings) -> Result<(),
 ///
 /// The function checks for the `RUST_LOG` environment variable first, which
 /// overrides the `level` setting. If `RUST_LOG` is not set, it uses the
-/// level from `LoggingSettings` (defaulting to "info" if empty).
+/// directives from [`filter_directives`].
 ///
 /// # Arguments
 ///
@@ -547,12 +549,63 @@ fn build_filter(settings: &LoggingSettings) -> Result<EnvFilter, Error> {
         return Ok(filter);
     }
 
+    EnvFilter::builder()
+        .parse(filter_directives(settings))
+        .context("invalid logging level")
+}
+
+include!(concat!(env!("OUT_DIR"), "/cadmus_log_targets.rs"));
+
+/// Builds the directive string for `EnvFilter` from settings.
+///
+/// With third-party logging enabled, the level or directive string is used as
+/// is. Otherwise `off` comes first so third-party output is dropped, followed
+/// by one directive per Cadmus target. A full directive string (containing `,`
+/// or `=`) is appended last so the user's directives win. Cadmus targets it
+/// does not name use its bare level (for example `warn`), or `info` when it has
+/// none.
+///
+/// ```text
+/// level = "debug"
+/// => off,article_fetcher=debug,build_deps=debug,cadmus=debug,cadmus_core=debug,...
+///
+/// level = "warn,cadmus_core::view=trace"
+/// => off,article_fetcher=warn,build_deps=warn,cadmus=warn,cadmus_core=warn,...,warn,cadmus_core::view=trace
+///
+/// level = "debug", enable_third_party_log = true
+/// => debug
+/// ```
+fn filter_directives(settings: &LoggingSettings) -> String {
     let level = settings.level.trim();
     let level = if level.is_empty() { "info" } else { level };
 
-    EnvFilter::builder()
-        .parse(level)
-        .context("invalid logging level")
+    if settings.enable_third_party_log {
+        return level.to_owned();
+    }
+
+    let expert = level.contains([',', '=']);
+    let cadmus_level = if expert { bare_level(level) } else { level };
+
+    let mut directives = vec!["off".to_owned()];
+    directives.extend(
+        CADMUS_LOG_TARGETS
+            .iter()
+            .map(|target| format!("{target}={cadmus_level}")),
+    );
+    if expert {
+        directives.push(level.to_owned());
+    }
+    directives.join(",")
+}
+
+/// Returns the level of the first directive without a target (for example
+/// `warn` in `warn,cadmus::view=trace`), or `info` when there is none.
+fn bare_level(directives: &str) -> &str {
+    directives
+        .split(',')
+        .map(str::trim)
+        .find(|directive| !directive.is_empty() && !directive.contains('='))
+        .unwrap_or("info")
 }
 
 #[cfg(test)]
@@ -590,6 +643,7 @@ mod tests {
                     pyroscope_endpoint: None,
                     enable_kern_log: false,
                     enable_dbus_log: false,
+                    enable_third_party_log: false,
                 };
                 init_logging(&settings, dir.path().to_path_buf())
                     .await
@@ -686,6 +740,7 @@ mod tests {
             pyroscope_endpoint: None,
             enable_kern_log: false,
             enable_dbus_log: false,
+            enable_third_party_log: false,
         };
 
         redirect_log_to_dir(redirect_dir.path(), &settings)?;
@@ -728,5 +783,56 @@ mod tests {
         );
 
         Ok(())
+    }
+
+    #[test]
+    fn default_filter_scopes_level_to_cadmus_targets() {
+        let settings = LoggingSettings {
+            level: "debug".to_string(),
+            ..Default::default()
+        };
+        let filter = filter_directives(&settings);
+        assert!(filter.starts_with("off,"));
+        assert!(filter.contains("cadmus_core=debug"));
+        assert!(!filter.contains("xml5ever"));
+        EnvFilter::builder()
+            .parse(&filter)
+            .expect("generated directives must parse");
+    }
+
+    #[test]
+    fn third_party_log_uses_global_level() {
+        let settings = LoggingSettings {
+            level: "debug".to_string(),
+            enable_third_party_log: true,
+            ..Default::default()
+        };
+        assert_eq!(filter_directives(&settings), "debug");
+    }
+
+    #[test]
+    fn expert_directive_is_layered_over_cadmus_filters() {
+        let settings = LoggingSettings {
+            level: "warn,cadmus::view=trace".to_string(),
+            ..Default::default()
+        };
+        let filter = filter_directives(&settings);
+        assert!(filter.starts_with("off,"));
+        assert!(filter.contains(",cadmus_core=warn,"));
+        assert!(filter.ends_with(",warn,cadmus::view=trace"));
+        EnvFilter::builder()
+            .parse(&filter)
+            .expect("layered directives must parse");
+    }
+
+    #[test]
+    fn expert_directive_without_bare_level_defaults_cadmus_to_info() {
+        let settings = LoggingSettings {
+            level: "cadmus::view=trace".to_string(),
+            ..Default::default()
+        };
+        let filter = filter_directives(&settings);
+        assert!(filter.contains(",cadmus_core=info,"));
+        assert!(filter.ends_with(",cadmus::view=trace"));
     }
 }

@@ -925,9 +925,15 @@ enabled = true
 
 ✏️
 
-Minimum log level to record.
+Minimum log level to record for Cadmus crates. Dependency logs are dropped
+unless [`logging.enable-third-party-log`](#loggingenable-third-party-log) is
+enabled.
 
 - Possible values: `"trace"`, `"debug"`, `"info"`, `"warn"`, `"error"`.
+- A full filter directive (for example `"warn,cadmus::view=trace"`) is also
+  accepted. It is applied after the Cadmus defaults, so your directives win.
+  Cadmus crates you do not name log at the plain level in your directive
+  (`warn` in the example), or at `info` if it has none.
 
 <!-- i18n:skip-start -->
 
@@ -1023,6 +1029,26 @@ them to structured logging.
 ```toml
 [logging]
 enable-dbus-log = false
+```
+
+<!-- i18n:skip-end -->
+
+### `logging.enable-third-party-log`
+
+✏️
+
+Records log output from dependencies (for example `xml5ever` or `reqwest`), not
+only from Cadmus crates. With the default of `false`, `logging.level` applies to
+Cadmus crates only, which keeps log files small. Enable it when debugging a
+problem that involves a dependency.
+
+- Default: `false`
+
+<!-- i18n:skip-start -->
+
+```toml
+[logging]
+enable-third-party-log = false
 ```
 
 <!-- i18n:skip-end -->

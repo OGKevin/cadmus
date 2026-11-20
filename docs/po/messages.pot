@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-11-11T11:48:17+01:00\n"
+"POT-Creation-Date: 2026-11-21T09:51:33+01:00\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -1256,7 +1256,7 @@ msgstr ""
 #: src/settings/index.md:1079 src/settings/index.md:1087
 #: src/settings/index.md:1111 src/settings/index.md:1126
 #: src/settings/index.md:1141 src/settings/index.md:1198
-#: src/settings/index.md:1213
+#: src/settings/index.md:1213 src/settings/index.md:1325
 msgid "✏️"
 msgstr ""
 
@@ -2087,143 +2087,170 @@ msgid "`logging.level`"
 msgstr ""
 
 #: src/settings/index.md:1215
-msgid "Minimum log level to record."
+msgid ""
+"Minimum log level to record for Cadmus crates. Dependency logs are dropped "
+"unless [`logging.enable-third-party-log`](#loggingenable-third-party-log) is "
+"enabled."
 msgstr ""
 
-#: src/settings/index.md:1217
+#: src/settings/index.md:1219
 msgid ""
 "Possible values: `\"trace\"`, `\"debug\"`, `\"info\"`, `\"warn\"`, "
 "`\"error\"`."
 msgstr ""
 
-#: src/settings/index.md:1228
+#: src/settings/index.md:1220
+msgid ""
+"A full filter directive (for example `\"warn,cadmus::view=trace\"`) is also "
+"accepted. It is applied after the Cadmus defaults, so your directives win. "
+"Cadmus crates you do not name log at the plain level in your directive "
+"(`warn` in the example), or at `info` if it has none."
+msgstr ""
+
+#: src/settings/index.md:1234
 msgid "`logging.max-files`"
 msgstr ""
 
-#: src/settings/index.md:1230
+#: src/settings/index.md:1236
 msgid ""
 "Number of log files to keep. Only the most recent N files are kept — older "
 "ones are deleted automatically when Cadmus starts."
 msgstr ""
 
-#: src/settings/index.md:1233 src/settings/index.md:1328
+#: src/settings/index.md:1239 src/settings/index.md:1354
 msgid "Default: `3`"
 msgstr ""
 
-#: src/settings/index.md:1234
+#: src/settings/index.md:1240
 msgid "Set to `0` to keep all log files."
 msgstr ""
 
-#: src/settings/index.md:1245
+#: src/settings/index.md:1251
 msgid "`logging.otlp-endpoint`"
 msgstr ""
 
-#: src/settings/index.md:1247
+#: src/settings/index.md:1253
 msgid "✏️ (only when the `tracing` feature is enabled)"
 msgstr ""
 
-#: src/settings/index.md:1249
+#: src/settings/index.md:1255
 msgid "Optional OTLP endpoint for exporting logs to an OpenTelemetry collector."
 msgstr ""
 
-#: src/settings/index.md:1260 src/settings/index.md:1281
+#: src/settings/index.md:1266 src/settings/index.md:1287
 msgid "Environment override:"
 msgstr ""
 
-#: src/settings/index.md:1262
+#: src/settings/index.md:1268
 msgid ""
 "`OTEL_EXPORTER_OTLP_ENDPOINT` takes precedence over `logging.otlp-endpoint`."
 msgstr ""
 
-#: src/settings/index.md:1264
+#: src/settings/index.md:1270
 msgid "`logging.pyroscope-endpoint`"
 msgstr ""
 
-#: src/settings/index.md:1266
+#: src/settings/index.md:1272
 msgid "✏️ (only when the `profiling` feature is enabled)"
 msgstr ""
 
-#: src/settings/index.md:1268
+#: src/settings/index.md:1274
 msgid ""
 "Optional Pyroscope server URL for continuous profiling. When set, Cadmus "
 "starts both a heap profiling agent (via jemalloc) and a CPU profiling agent "
 "(via pprof) that push profiles to this endpoint."
 msgstr ""
 
-#: src/settings/index.md:1283
+#: src/settings/index.md:1289
 msgid ""
 "`PYROSCOPE_SERVER_URL` takes precedence over `logging.pyroscope-endpoint`."
 msgstr ""
 
-#: src/settings/index.md:1285
+#: src/settings/index.md:1291
 msgid "`logging.enable-kern-log`"
 msgstr ""
 
-#: src/settings/index.md:1287 src/settings/index.md:1303
+#: src/settings/index.md:1293 src/settings/index.md:1309
 msgid "🧪 📱 ✏️"
 msgstr ""
 
-#: src/settings/index.md:1289
+#: src/settings/index.md:1295
 msgid ""
 "Captures kernel logs via `logread -F` and forwards them to structured "
 "logging with the target `cadmus_core::logging:kern`."
 msgstr ""
 
-#: src/settings/index.md:1301
+#: src/settings/index.md:1307
 msgid "`logging.enable-dbus-log`"
 msgstr ""
 
-#: src/settings/index.md:1305
+#: src/settings/index.md:1311
 msgid ""
 "Captures D-Bus signals via the built-in zbus-based DbusMonitorTask and "
 "forwards them to structured logging."
 msgstr ""
 
-#: src/settings/index.md:1317
+#: src/settings/index.md:1323
+msgid "`logging.enable-third-party-log`"
+msgstr ""
+
+#: src/settings/index.md:1327
+msgid ""
+"Records log output from dependencies (for example `xml5ever` or `reqwest`), "
+"not only from Cadmus crates. With the default of `false`, `logging.level` "
+"applies to Cadmus crates only, which keeps log files small. Enable it when "
+"debugging a problem that involves a dependency."
+msgstr ""
+
+#: src/settings/index.md:1332
+msgid "Default: `false`"
+msgstr ""
+
+#: src/settings/index.md:1343
 msgid "Settings Retention"
 msgstr ""
 
-#: src/settings/index.md:1319
+#: src/settings/index.md:1345
 msgid ""
 "Cadmus stores each version's settings in a separate file in the `Settings/` "
 "directory (for example, `Settings-v1.2.3.toml`). This ensures backward and "
 "forward compatibility when you upgrade."
 msgstr ""
 
-#: src/settings/index.md:1323
+#: src/settings/index.md:1349
 msgid "`settings-retention`"
 msgstr ""
 
-#: src/settings/index.md:1325
+#: src/settings/index.md:1351
 msgid ""
 "Number of recent version settings files to keep. Only the most recent N "
 "version files are kept. When a new version is saved, older versions beyond "
 "this limit are deleted automatically."
 msgstr ""
 
-#: src/settings/index.md:1329
+#: src/settings/index.md:1355
 msgid "Set to `0` to keep all version files"
 msgstr ""
 
-#: src/settings/index.md:1339
+#: src/settings/index.md:1365
 msgid "`db-backup-retention`"
 msgstr ""
 
-#: src/settings/index.md:1341
+#: src/settings/index.md:1367
 msgid ""
 "Number of database backups to keep. When a new backup is created and the "
 "total would exceed this limit, the oldest backups are deleted automatically."
 msgstr ""
 
-#: src/settings/index.md:1344 src/database-backup.md:76
+#: src/settings/index.md:1370 src/database-backup.md:76
 msgid "Default: `2`"
 msgstr ""
 
-#: src/settings/index.md:1345 src/database-backup.md:77
+#: src/settings/index.md:1371 src/database-backup.md:77
 msgid "Set to `0` to disable backups entirely."
 msgstr ""
 
-#: src/settings/index.md:1347
+#: src/settings/index.md:1373
 msgid "See [Database Backup](../database-backup.md) for more details."
 msgstr ""
 

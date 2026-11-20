@@ -48,6 +48,8 @@ pub enum ToggleSettings {
     ButtonScheme,
     /// Logging enabled setting
     LoggingEnabled,
+    /// Third-party (dependency) logging enabled setting
+    EnableThirdPartyLog,
     /// Sync metadata enable/disable setting
     ImportSyncMetadata,
     /// Kernel logging enabled setting (test + kobo builds only)

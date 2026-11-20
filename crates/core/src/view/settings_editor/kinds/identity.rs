@@ -41,6 +41,7 @@ pub enum SettingIdentity {
     SettingsRetention,
     DbBackupRetention,
     LogLevel,
+    EnableThirdPartyLog,
     ImportSyncMetadata,
     MetadataKinds,
     AllowedKinds,

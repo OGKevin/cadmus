@@ -26,7 +26,7 @@ serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { workspace = true }
 titlecase = "3.6.0"
 unicode-normalization = "0.1.25"
-toml = "1.1.6"
+toml = { workspace = true }
 zip = "9.0.0"
 kl-hyphenate = "0.7.3"
 entities = "1.0.1"
@@ -143,6 +143,7 @@ cc = { workspace = true }
 gethostname = { workspace = true }
 nix = { version = "0.31.0", default-features = false, features = ["user"] }
 serde_json = { workspace = true }
+toml = { workspace = true }
 uuid = { workspace = true }
 
 [features]
