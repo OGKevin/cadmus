@@ -188,7 +188,10 @@ build-kobo` also ensures the ARM SQLite artifacts, but running setup up
 - `cadmuscli docs` must run before `cadmuscli dist` or `cadmuscli kobo deploy`
   when the Companion site should be available on the device: `cadmuscli dist`
   copies `website/out` into `dist/website` and refuses to assemble a release
-  distribution without it.
+  distribution without it. The shared Rust API docs (`_shared/api`) are stored
+  there as `.gz` files only (about 22 MB instead of 131 MB); the device serves
+  them with `Content-Encoding: gzip`, or inflates them for clients that do not
+  accept gzip. `website/out` itself stays uncompressed for the hosted site.
 - OTA updates delete Cadmus-owned bundled files before reboot, then Kobo
   extracts the new `KoboRoot.tgz` over the install directory.
 - User files outside the generated Cadmus-owned asset list must be preserved.

@@ -1475,6 +1475,119 @@ async fn site_files_need_no_token_and_a_valid_bearer_lists_settings() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_bare_locale_path_redirects_to_the_companion_page() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    arm_wifi(&mut harness, WifiMode::Auto);
+    let site = harness.context.device.install_path("website");
+    tokio::fs::create_dir_all(site.join("xx/companion"))
+        .await
+        .unwrap();
+    tokio::fs::write(site.join("xx/companion/index.html"), b"companion")
+        .await
+        .unwrap();
+    start(&mut harness, "127.0.0.1:0".parse().unwrap())
+        .await
+        .unwrap();
+    let addr = harness.context.api.local_addr().unwrap();
+
+    let home = http_get(addr, "/xx/").await.to_ascii_lowercase();
+    assert!(home.starts_with("http/1.1 302"), "{home}");
+    assert!(home.contains("location: /xx/companion/"), "{home}");
+
+    let page = http_get(addr, "/xx/companion/").await;
+    assert!(page.starts_with("HTTP/1.1 200"), "{page}");
+    assert!(page.contains("companion"), "{page}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn gzipped_site_files_are_sent_encoded_or_inflated_by_accept_encoding() {
+    use std::io::Write;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let mut harness = DeviceRuntimeHarness::new().await;
+    arm_wifi(&mut harness, WifiMode::Auto);
+    let shared = harness
+        .context
+        .device
+        .install_path("website")
+        .join("_shared/api");
+    tokio::fs::create_dir_all(&shared).await.unwrap();
+    let page = "<p>api docs</p>".repeat(100);
+    let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+    encoder.write_all(page.as_bytes()).unwrap();
+    let compressed = encoder.finish().unwrap();
+    tokio::fs::write(shared.join("gzip-only.html.gz"), &compressed)
+        .await
+        .unwrap();
+    start(&mut harness, "127.0.0.1:0".parse().unwrap())
+        .await
+        .unwrap();
+    let addr = harness.context.api.local_addr().unwrap();
+
+    async fn raw_get(addr: SocketAddr, accept_encoding: &str, method: &str) -> Vec<u8> {
+        let mut stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+        stream
+            .write_all(
+                format!(
+                    "{method} /en/api/gzip-only.html HTTP/1.1\r\nHost: localhost\r\nAccept-Encoding: {accept_encoding}\r\nConnection: close\r\n\r\n"
+                )
+                .as_bytes(),
+            )
+            .await
+            .unwrap();
+        let mut buf = Vec::new();
+        tokio::time::timeout(Duration::from_secs(5), stream.read_to_end(&mut buf))
+            .await
+            .expect("response read timed out")
+            .unwrap();
+        buf
+    }
+
+    fn split(response: &[u8]) -> (String, &[u8]) {
+        let end = response
+            .windows(4)
+            .position(|window| window == b"\r\n\r\n")
+            .expect("headers end");
+        (
+            String::from_utf8_lossy(&response[..end]).to_ascii_lowercase(),
+            &response[end + 4..],
+        )
+    }
+
+    let encoded = raw_get(addr, "gzip, br", "GET").await;
+    let (headers, body) = split(&encoded);
+    assert!(headers.starts_with("http/1.1 200"), "{headers}");
+    assert!(headers.contains("content-encoding: gzip"), "{headers}");
+    assert!(headers.contains("vary: accept-encoding"), "{headers}");
+    assert!(headers.contains("content-type: text/html"), "{headers}");
+    assert!(
+        headers.contains(&format!("content-length: {}", compressed.len())),
+        "{headers}"
+    );
+    assert_eq!(body, compressed.as_slice());
+
+    let plain = raw_get(addr, "identity", "GET").await;
+    let (headers, body) = split(&plain);
+    assert!(headers.starts_with("http/1.1 200"), "{headers}");
+    assert!(!headers.contains("content-encoding"), "{headers}");
+    assert!(headers.contains("vary: accept-encoding"), "{headers}");
+    assert!(
+        headers.contains(&format!("content-length: {}", page.len())),
+        "{headers}"
+    );
+    assert_eq!(body, page.as_bytes());
+
+    let head = raw_get(addr, "gzip", "HEAD").await;
+    let (headers, body) = split(&head);
+    assert!(headers.contains("content-encoding: gzip"), "{headers}");
+    assert!(
+        headers.contains(&format!("content-length: {}", compressed.len())),
+        "{headers}"
+    );
+    assert!(body.is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn openapi_json_is_served_without_a_token() {
     let mut harness = DeviceRuntimeHarness::new().await;
     arm_wifi(&mut harness, WifiMode::Auto);

@@ -446,7 +446,8 @@ fn create_website_symlinks(root: &Path) -> Result<()> {
 }
 
 /// Replaces duplicated API and Storybook trees in `website/out/` with symlinks
-/// to `website/out/_shared/` after `next build` copies symlink targets.
+/// to `website/out/_shared/` after `next build` copies symlink targets. This
+/// includes the legacy top-level `api`, which Next copies as a full tree.
 fn deduplicate_website_out(root: &Path) -> Result<()> {
     let out_dir = root.join("website/out");
     if !out_dir.exists() {
@@ -485,6 +486,14 @@ fn deduplicate_website_out(root: &Path) -> Result<()> {
                 symlink_relative(&format!("../_shared/{asset}"), &link_path)?;
             }
         }
+    }
+
+    let legacy_api = out_dir.join("api");
+    if shared_out.join("api").exists() {
+        if legacy_api.exists() || legacy_api.symlink_metadata().is_ok() {
+            remove_path_all(&legacy_api)?;
+        }
+        symlink_relative("_shared/api", &legacy_api)?;
     }
 
     Ok(())
@@ -555,6 +564,9 @@ mod tests {
         setup_po_locales(root, &["en", "fr"]);
         setup_duplicate_asset_trees(root, &["en", "fr"], "api");
 
+        fs::create_dir_all(root.join("website/out/api")).unwrap();
+        fs::write(root.join("website/out/api/index.html"), "legacy-api").unwrap();
+
         deduplicate_website_out(root).unwrap();
 
         let shared_api = root.join("website/out/_shared/api");
@@ -568,6 +580,7 @@ mod tests {
             let link = root.join("website/out").join(locale).join("api");
             assert_symlink_to(&link, "../_shared/api");
         }
+        assert_symlink_to(&root.join("website/out/api"), "_shared/api");
     }
 
     #[test]
