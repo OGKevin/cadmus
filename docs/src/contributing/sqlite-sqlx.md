@@ -4,8 +4,10 @@
 
 Cadmus uses [SQLite](https://sqlite.org) as its embedded database and
 [SQLx](https://github.com/launchbadge/sqlx) as the Rust database library.
-SQLx provides **compile-time SQL verification** — every query is checked against
-the real schema before the code ships.
+SQLx's typed macros provide **compile-time SQL verification**: queries written
+with them are checked against the real schema before the code ships. Untyped
+query functions, allowed only for the cases listed under
+[Review rules](#review-rules), are not checked.
 
 ## Runtime databases
 
@@ -86,16 +88,22 @@ talks to a live database.
 
 The following rules are enforced during code review for all SQLx queries.
 
-### Use typed macros only
+### Use typed macros for static queries
 
-Always use the typed macros. Never call the untyped `query()`, `query_as()`, or
-`query_scalar()` functions:
+Use the typed macros for queries with a static shape. Do not call the untyped
+`query()`, `query_as()`, or `query_scalar()` functions for them:
 
 | Goal                                       | Use                   |
 | ------------------------------------------ | --------------------- |
 | `INSERT`, `UPDATE`, `DELETE`, raw `SELECT` | `sqlx::query!`        |
 | `SELECT` mapped into a named struct        | `sqlx::query_as!`     |
 | Single-column `SELECT`                     | `sqlx::query_scalar!` |
+
+The untyped functions are allowed only for statements the offline query cache
+cannot describe, such as `PRAGMA` and `VACUUM`, and for dynamic SQL that typed
+macros cannot represent. Explain why on the function. Dynamic SQL paths, such
+as a runtime-selected `ORDER BY` column, need unit tests covering every
+variant.
 
 When the column is nullable, call `.flatten()` on the result to collapse
 `Option<Option<T>>` into `Option<T>`:

@@ -1,7 +1,7 @@
 ---
 name: fetch-cadmus-logs
-description: Fetch Cadmus application logs from Loki by run ID. Use when asked to look up logs for a specific run, debug a device session, or find log output for a given run ID.
-compatibility: Requires curl and a running Loki instance ($LOKI_URL, base port 3100)
+description: Query Cadmus Loki logs and Tempo traces by run ID. Use when looking up logs or traces for a run or debugging a device session.
+compatibility: Requires curl, jq, python3, and Loki/Tempo endpoints ($LOKI_URL base 3100, $TEMPO_URL base 3200)
 ---
 
 # Fetch Cadmus Logs by Run ID

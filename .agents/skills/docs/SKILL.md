@@ -30,11 +30,6 @@ wrangler dev
 
 ## Prerequisites
 
-The following tools must be on `PATH` (all provided by the devenv shell):
-
-- `mdbook`
-- `mdbook-mermaid`
-- `npm` / `node`
-- `cargo`
-- `git`
-- `wrangler`
+Use the devenv shell. `cadmuscli docs` requires `mdbook`, `mdbook-mermaid`,
+`mdbook-epub`, `mdbook-gettext`, `cargo`, `git`, `python3`, and `npm`/`node` on
+`PATH`; it does not install them. `wrangler` is needed only for `wrangler dev`.

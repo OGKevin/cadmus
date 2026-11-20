@@ -19,9 +19,13 @@ cadmuscli build-kobo --features test
 ## What it does
 
 1. Verifies the Linaro ARM toolchain is available on `PATH`
-2. Runs `cargo build --release --target arm-unknown-linux-gnueabihf -p cadmus`
+2. Builds the custom ARM SQLite library when cold
+3. Runs `cargo build --release --target arm-unknown-linux-gnueabihf -p cadmus`
+   with the `kobo` feature plus any requested extras
 
-Thirdparty dependencies (zlib, bzip2, libpng, libjpeg, openjpeg, jbig2dec, libwebp, freetype2, harfbuzz, gumbo, djvulibre, mupdf) are tracked as git submodules and built automatically by the `build-deps` crate's build.rs when needed. On a warm cache, no submodule initialisation or C/C++ compilation happens.
+Thirdparty dependencies are built by `crates/core/build.rs` through the
+`build-deps` crate. Warm caches skip submodule initialization and C/C++
+compilation.
 
 ## Output
 
@@ -30,6 +34,15 @@ The compiled binary is written to:
 
 ## Prerequisites
 
-- **Linux or macOS** — cross-compilation is supported on both platforms
-- Linaro ARM toolchain on `PATH`: `arm-linux-gnueabihf-gcc`, `arm-linux-gnueabihf-ar`
-  (provided by the devenv shell)
+- **Linux or macOS** with the devenv-provided Linaro ARM tools on `PATH`:
+  `arm-linux-gnueabihf-gcc` and `arm-linux-gnueabihf-ar`
+- Generate the compile-time documentation and bundled-asset manifest inputs:
+
+  ```bash
+  cadmuscli docs --mdbook-only
+  cadmuscli download-assets
+  cadmuscli download-fonts
+  ```
+
+The documentation tools are supplied by devenv. `build-kobo` ensures ARM SQLite
+automatically; a separate `cadmuscli setup --kobo` is optional.

@@ -28,14 +28,5 @@ alone. Host names use `hostSchema` in `plugins/cadmus.kobo/common.ts`.
 
 ## Checks
 
-The plugin is typechecked and tested like the rest of the code, from this
-directory:
-
-```sh
-npm ci
-npm run typecheck
-npm test
-npm run format
-```
-
-`devenv` runs the same checks as `cadmus-opencode-check`.
+`devenv` runs the `package.json` typecheck, test, and format scripts as
+`cadmus-opencode-check`.

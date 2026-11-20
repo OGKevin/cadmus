@@ -1,10 +1,9 @@
 # Third-Party Libraries — Agent Context
 
-## What this directory is
-
-Thirdparty C/C++ dependencies for cross-compiling to ARM (Kobo). Each
-subdirectory is a git submodule tracked in `.gitmodules`. All build logic
-lives in the `crates/build-deps` crate.
+Most subdirectories contain C/C++ dependencies cross-compiled for Kobo by
+`crates/build-deps`: the `LIBRARY_NAMES` chain via `build/kobo/recipes.rs`, and
+SQLite via `build/sqlite.rs`. Other submodules provide fonts, Rust libraries, or
+documentation tooling and have different consumers.
 
 ## Build order
 
@@ -47,29 +46,30 @@ upstream.
 
 ## Version management and Renovate
 
-Thirdparty dependencies are tracked as git submodules in `.gitmodules`. Each
-submodule pins a specific commit from the upstream repository.
+Renovate monitors submodule commits via its `git-submodules` manager and opens
+PRs when new upstream versions are available. When adding a submodule, add it
+under `thirdparty/<name>` and set `branch` in `.gitmodules` to the release tag
+or branch to track. That is enough for the submodule commit itself. If the same
+revision is also pinned elsewhere (for example the `Cargo.toml` `[patch]` revs
+or `devenv.nix`), add a regex manager and matching group in `renovate.jsonc`.
 
-Renovate monitors submodule commits via its `git-submodules` manager and
-opens PRs when new upstream versions are available. When adding a new
-library:
+A Kobo C/C++ library additionally needs:
 
-1. Add the submodule under `thirdparty/<name>` and pin it to a release branch
-   or tag in `.gitmodules`.
-2. Add build logic in `crates/build-deps/src/build/kobo/recipes.rs`.
-3. Add the library name to `LIBRARY_NAMES` in `crates/build-deps/src/versions.rs`,
+1. Build logic in `crates/build-deps/src/build/kobo/recipes.rs`.
+2. Its name in `LIBRARY_NAMES` in `crates/build-deps/src/versions.rs`,
    respecting dependency order.
-
-Renovate's `git-submodules` manager will automatically track the new
-submodule — no manual Renovate configuration is required.
+3. For a shared library, an entry in `BUILT_LIBRARY_COPIES` in the same file;
+   `copy_built_libs` uses it to stage the built `.so` into `libs/`.
+4. For a shared library, its base name in `SONAMES` in the same file; the warm
+   cache check and SONAME symlinking use it.
 
 ## Rules
 
 - Never commit built artifacts — only source code via submodules and patches
   in `build-scripts/`.
-- All builds target `arm-linux-gnueabihf` with `-mcpu=cortex-a9 -mfpu=neon`.
-- Update the submodule commit in `.gitmodules` when upgrading a library.
-- Insert new libraries at the correct position in `LIBRARY_NAMES` (respecting
-  the dependency chain).
+- All Kobo C/C++ builds target `arm-linux-gnueabihf` with
+  `-mcpu=cortex-a9 -mfpu=neon`.
+- Record submodule upgrades as a new gitlink; edit `.gitmodules` only when its
+  path, URL, or tracked version changes.
 - Prefer a patch file over modifying build logic to work around upstream
   issues — patches make the delta explicit and reviewable.

@@ -57,10 +57,18 @@ update.
 
 ## Feature Flag CI Matrix
 
-When a PR adds a new Cargo feature flag, verify:
+When a PR adds a Cargo feature flag, verify:
 
-- [ ] `.github/workflows/cargo.yml` has new matrix entries in **both** `clippy`
-      and `test` jobs for the feature alone and in combination with every other
-      feature.
-- [ ] `--all-features` is **not** the only coverage — `#[cfg(not(feature = "..."))]`
-      paths must be tested individually.
+- [ ] `xtask/src/tasks/util/matrix.rs` generates the intended combinations;
+      features in scanned manifests are included automatically (`xtask/`,
+      `thirdparty/`, and `target/` are not scanned).
+- [ ] `cadmuscli ci matrix` succeeds and its `matrix` and `test-matrix` outputs
+      contain, for each compatible device, an entry where the affected feature
+      is the only non-device feature, plus relevant combinations.
+- [ ] The generator's tests are updated: `scan_workspace_includes_runtime_features_on_ubuntu`
+      asserts the total entry count, which changes only when the set of
+      feature names changes (reusing an existing name in another crate does
+      not); exclusion, device-feature, or validity-rule changes need matching
+      test updates.
+- [ ] Coverage is not limited to `--all-features`; `#[cfg(not(feature = "..."))]`
+      paths need combinations that disable the feature.
