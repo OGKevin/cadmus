@@ -154,6 +154,9 @@ settings-dictionaries-re-download = Re-Télécharger
 settings-dictionaries-update = Mettre à jour
 settings-dictionaries-update-available = Mise à jour disponible
 english = Anglais
+
+# Library metadata
+
 # Calendar intermission
 calendar-date-line = { $day } { $month } { $year } - { $weekday }
 calendar-poweroff = Extinction automatique dans { $duration }
