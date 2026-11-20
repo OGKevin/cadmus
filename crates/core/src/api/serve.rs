@@ -18,7 +18,9 @@ use hyper::body::Incoming;
 use hyper_util::rt::{TokioExecutor, TokioIo, TokioTimer};
 use hyper_util::server::conn::auto::Builder;
 use hyper_util::service::TowerToHyperService;
-use secrecy::{ExposeSecret, SecretString};
+#[cfg(any(not(debug_assertions), test))]
+use secrecy::ExposeSecret;
+use secrecy::SecretString;
 use std::convert::Infallible;
 use std::future::Future;
 use std::io::ErrorKind;
@@ -800,6 +802,7 @@ fn bearer_ok(token: &SecretString, presented: Option<&str>) -> bool {
 }
 
 /// Constant-time Bearer compare.
+#[cfg(any(not(debug_assertions), test))]
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
 fn bearer_matches(expected: &str, presented: &str) -> bool {
     let expected = expected.as_bytes();
@@ -913,38 +916,103 @@ fn openapi(method: &http::Method) -> Response<InnerBody> {
         .unwrap_or_else(|_| empty(StatusCode::INTERNAL_SERVER_ERROR))
 }
 
-/// GET/HEAD a file under the site root, streamed in [`FILE_CHUNK_BYTES`] frames. 404 when the path escapes.
+/// GET/HEAD a file under the site root. 404 when the path escapes.
+///
+/// A bare locale path redirects to that locale's companion page. A `<file>.gz`
+/// sibling is sent as stored with `Content-Encoding: gzip` when the client
+/// accepts gzip, and inflated in memory when it does not. Stored files stream
+/// in [`FILE_CHUNK_BYTES`] frames.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
 async fn static_file(root: &Path, req: Request<Incoming>) -> Response<InnerBody> {
     let method = req.method().clone();
     if method != http::Method::GET && method != http::Method::HEAD {
         return empty(StatusCode::METHOD_NOT_ALLOWED);
     }
-    let Some(path) = resolve(root, req.uri().path()).await else {
+    let head = method == http::Method::HEAD;
+    if let Some(location) = companion_redirect(root, req.uri().path()).await {
+        return Response::builder()
+            .status(StatusCode::FOUND)
+            .header(http::header::LOCATION, location)
+            .body(boxed_body(Full::new(Bytes::new())))
+            .unwrap_or_else(|_| empty(StatusCode::INTERNAL_SERVER_ERROR));
+    }
+    let Some(file) = resolve(root, req.uri().path(), accepts_gzip(req.headers())).await else {
         return empty(StatusCode::NOT_FOUND);
     };
-    let meta = match tokio::fs::metadata(&path).await {
-        Ok(meta) => meta,
-        Err(_) => return empty(StatusCode::NOT_FOUND),
+    let sent = match file.delivery {
+        Delivery::Inflate => inflated_body(file.path, head).await,
+        Delivery::Stored | Delivery::Gzip => stored_body(&file.path, head).await,
     };
-    if meta.len() > MAX_FILE_BYTES {
-        return empty(StatusCode::PAYLOAD_TOO_LARGE);
-    }
-    let body = if method == http::Method::HEAD {
-        boxed_body(Full::new(Bytes::new()))
-    } else {
-        let file = match tokio::fs::File::open(&path).await {
-            Ok(file) => file,
-            Err(_) => return empty(StatusCode::NOT_FOUND),
-        };
-        boxed_body(StreamBody::new(file_frames(file.take(meta.len()))))
+    let (length, body) = match sent {
+        Ok(sent) => sent,
+        Err(status) => return empty(status),
     };
-    Response::builder()
+    let builder = Response::builder()
         .status(StatusCode::OK)
-        .header(http::header::CONTENT_TYPE, content_type(&path))
-        .header(http::header::CONTENT_LENGTH, meta.len())
+        .header(http::header::CONTENT_TYPE, file.content_type)
+        .header(http::header::CONTENT_LENGTH, length)
+        .header(http::header::VARY, "accept-encoding");
+    let builder = match file.delivery {
+        Delivery::Gzip => builder.header(http::header::CONTENT_ENCODING, "gzip"),
+        Delivery::Stored | Delivery::Inflate => builder,
+    };
+    builder
         .body(body)
         .unwrap_or_else(|_| empty(StatusCode::INTERNAL_SERVER_ERROR))
+}
+
+/// Length and body of a file sent as stored. HEAD gets an empty body.
+async fn stored_body(path: &Path, head: bool) -> Result<(u64, InnerBody), StatusCode> {
+    let meta = tokio::fs::metadata(path)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+    if meta.len() > MAX_FILE_BYTES {
+        return Err(StatusCode::PAYLOAD_TOO_LARGE);
+    }
+    if head {
+        return Ok((meta.len(), boxed_body(Full::new(Bytes::new()))));
+    }
+    let file = tokio::fs::File::open(path)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+    Ok((
+        meta.len(),
+        boxed_body(StreamBody::new(file_frames(file.take(meta.len())))),
+    ))
+}
+
+/// Length and body of a `.gz` file inflated for a client without gzip.
+///
+/// Rare: every browser sends `Accept-Encoding: gzip`. The whole file is held
+/// in memory, capped at [`MAX_FILE_BYTES`].
+async fn inflated_body(path: PathBuf, head: bool) -> Result<(u64, InnerBody), StatusCode> {
+    let bytes = match tokio::task::spawn_blocking(move || inflate(&path)).await {
+        Ok(Ok(bytes)) => bytes,
+        Ok(Err(error)) => {
+            tracing::warn!(error = %error, "inflating a gzip site file failed");
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+        Err(error) => {
+            tracing::warn!(error = %error, "gzip inflate task failed");
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+    let length = bytes.len() as u64;
+    if length > MAX_FILE_BYTES {
+        return Err(StatusCode::PAYLOAD_TOO_LARGE);
+    }
+    let body = if head { Bytes::new() } else { bytes };
+    Ok((length, boxed_body(Full::new(body))))
+}
+
+/// Decompressed bytes of the gzip file at `path`, read to one byte past [`MAX_FILE_BYTES`].
+fn inflate(path: &Path) -> std::io::Result<Bytes> {
+    use std::io::Read;
+    let mut out = Vec::new();
+    flate2::read::GzDecoder::new(std::fs::File::open(path)?)
+        .take(MAX_FILE_BYTES + 1)
+        .read_to_end(&mut out)?;
+    Ok(Bytes::from(out))
 }
 
 /// Read position of [`file_frames`].
@@ -989,9 +1057,47 @@ fn empty(status: StatusCode) -> Response<InnerBody> {
     response
 }
 
-/// Resolve a URL path under `root`. Rejects `..` and storybook.
+/// File the static site serves for one request.
+struct SiteFile {
+    /// Canonical file on disk.
+    path: PathBuf,
+    /// Content-Type of the requested file, never of its `.gz` sibling.
+    content_type: &'static str,
+    /// How the stored bytes reach the client.
+    delivery: Delivery,
+}
+
+/// How a [`SiteFile`]'s stored bytes reach the client.
+enum Delivery {
+    /// The requested file itself, sent as stored.
+    Stored,
+    /// The `.gz` sibling, sent as stored with `Content-Encoding: gzip`.
+    Gzip,
+    /// The `.gz` sibling, inflated because the client does not accept gzip.
+    Inflate,
+}
+
+/// Where a bare locale path such as `/en/` redirects: that locale's companion.
+///
+/// A redirect, not a rewrite, so the page's client router sees the companion
+/// path and drops the site header the companion does not want.
+async fn companion_redirect(root: &Path, url_path: &str) -> Option<String> {
+    let segments = safe_segments(url_path)?;
+    let [locale] = segments.as_slice() else {
+        return None;
+    };
+    is_dir(&root.join(locale).join("companion"))
+        .await
+        .then(|| format!("/{locale}/companion/"))
+}
+
+/// Resolve a URL path under `root`. Rejects `..`, storybook, and escapes.
+///
+/// Prefers the `.gz` sibling when `gzip` is accepted, then the file itself,
+/// then the `.gz` sibling to inflate. The device ships the Rust API docs as
+/// `.gz` only.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-async fn resolve(root: &Path, url_path: &str) -> Option<PathBuf> {
+async fn resolve(root: &Path, url_path: &str, gzip: bool) -> Option<SiteFile> {
     let mut segments = safe_segments(url_path)?;
     if segments.len() >= 2 && segments[1] == "api" {
         let local_api = root.join(&segments[0]).join("api");
@@ -1017,8 +1123,67 @@ async fn resolve(root: &Path, url_path: &str) -> Option<PathBuf> {
         path.push("index.html");
     }
     let root = tokio::fs::canonicalize(root).await.ok()?;
-    let path = tokio::fs::canonicalize(&path).await.ok()?;
-    path.starts_with(&root).then_some(path)
+    let (file, delivery) = match contained(&root, &with_gz(&path)).await {
+        Some(compressed) if gzip => (compressed, Delivery::Gzip),
+        compressed => match contained(&root, &path).await {
+            Some(file) => (file, Delivery::Stored),
+            None => (compressed?, Delivery::Inflate),
+        },
+    };
+    Some(SiteFile {
+        path: file,
+        content_type: content_type(&path),
+        delivery,
+    })
+}
+
+/// Whether `path` is a directory.
+async fn is_dir(path: &Path) -> bool {
+    tokio::fs::metadata(path)
+        .await
+        .map(|meta| meta.is_dir())
+        .unwrap_or(false)
+}
+
+/// Canonical `path` when it exists inside the canonical `root`.
+async fn contained(root: &Path, path: &Path) -> Option<PathBuf> {
+    let path = tokio::fs::canonicalize(path).await.ok()?;
+    path.starts_with(root).then_some(path)
+}
+
+/// `path` with `.gz` appended to its file name.
+fn with_gz(path: &Path) -> PathBuf {
+    let mut gz = path.as_os_str().to_owned();
+    gz.push(".gz");
+    PathBuf::from(gz)
+}
+
+/// Whether `Accept-Encoding` allows gzip. An explicit `gzip` entry wins over `*`.
+fn accepts_gzip(headers: &HeaderMap) -> bool {
+    let mut wildcard = false;
+    for coding in headers
+        .get_all(http::header::ACCEPT_ENCODING)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(','))
+    {
+        let (name, params) = coding.split_once(';').unwrap_or((coding, ""));
+        let refused = params.split(';').any(|param| {
+            param
+                .trim()
+                .strip_prefix("q=")
+                .and_then(|q| q.trim().parse::<f32>().ok())
+                == Some(0.0)
+        });
+        match name.trim() {
+            "*" => wildcard = !refused,
+            name if name.eq_ignore_ascii_case("gzip") || name.eq_ignore_ascii_case("x-gzip") => {
+                return !refused;
+            }
+            _ => {}
+        }
+    }
+    wildcard
 }
 
 /// Path segments that stay inside the site root.
@@ -1085,7 +1250,8 @@ pub(super) fn content_type(path: &Path) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        Locale, accept_failure_is_benign, bearer_matches, presented_bearer, safe_segments,
+        ConnectionActivity, Delivery, IDLE_CONNECTION_TIMEOUT, Locale, accept_failure_is_benign,
+        accepts_gzip, bearer_matches, companion_redirect, presented_bearer, resolve, safe_segments,
         site_locale,
     };
     use http::{HeaderMap, HeaderValue, header};
@@ -1096,6 +1262,20 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(header::AUTHORIZATION, HeaderValue::from_str(value).unwrap());
         headers
+    }
+
+    #[test]
+    fn stalled_body_expires_after_idle_timeout_but_progressing_one_does_not() {
+        let activity = ConnectionActivity::new();
+        let idle = IDLE_CONNECTION_TIMEOUT.as_millis() as u64;
+        activity.request_started();
+        let start = activity.progress_ms.load(Ordering::Relaxed);
+        assert!(!activity.expired_at(start + idle - 1));
+        assert!(activity.expired_at(start + idle));
+        activity.body_progressed();
+        let progressed = activity.progress_ms.load(Ordering::Relaxed);
+        assert!(!activity.expired_at(progressed + idle - 1));
+        assert!(activity.expired_at(progressed + idle));
     }
 
     #[test]
@@ -1134,6 +1314,94 @@ mod tests {
         assert!(!accept_failure_is_benign(&Error::from(
             ErrorKind::OutOfMemory
         )));
+    }
+
+    fn accept_encoding(value: &str) -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::ACCEPT_ENCODING,
+            HeaderValue::from_str(value).unwrap(),
+        );
+        headers
+    }
+
+    #[test]
+    fn accepts_gzip_follows_accept_encoding_weights() {
+        assert!(accepts_gzip(&accept_encoding("gzip")));
+        assert!(accepts_gzip(&accept_encoding("br, GZIP;q=0.5")));
+        assert!(accepts_gzip(&accept_encoding("gzip, deflate, br, zstd")));
+        assert!(accepts_gzip(&accept_encoding("*")));
+        assert!(accepts_gzip(&accept_encoding("*, gzip;q=1")));
+        assert!(!accepts_gzip(&accept_encoding("gzip;q=0")));
+        assert!(!accepts_gzip(&accept_encoding("*, gzip; q=0")));
+        assert!(!accepts_gzip(&accept_encoding("*;q=0")));
+        assert!(!accepts_gzip(&accept_encoding("br, deflate")));
+        assert!(!accepts_gzip(&accept_encoding("identity")));
+        assert!(!accepts_gzip(&HeaderMap::new()));
+    }
+
+    #[tokio::test]
+    async fn resolve_picks_the_delivery_by_what_is_stored_and_accepted() {
+        let root = tempfile::tempdir().unwrap();
+        let api = root.path().join("_shared/api/cadmus_core");
+        std::fs::create_dir_all(&api).unwrap();
+        std::fs::write(api.join("index.html.gz"), b"gz").unwrap();
+        std::fs::write(root.path().join("both.css"), b"css").unwrap();
+        std::fs::write(root.path().join("both.css.gz"), b"gz").unwrap();
+
+        let gzipped = resolve(root.path(), "/en/api/cadmus_core/", true)
+            .await
+            .unwrap();
+        assert!(matches!(gzipped.delivery, Delivery::Gzip));
+        assert_eq!(gzipped.content_type, "text/html; charset=utf-8");
+        assert!(gzipped.path.ends_with("cadmus_core/index.html.gz"));
+
+        let inflated = resolve(root.path(), "/en/api/cadmus_core/", false)
+            .await
+            .unwrap();
+        assert!(matches!(inflated.delivery, Delivery::Inflate));
+        assert_eq!(inflated.content_type, "text/html; charset=utf-8");
+
+        let stored = resolve(root.path(), "/both.css", false).await.unwrap();
+        assert!(matches!(stored.delivery, Delivery::Stored));
+        assert!(stored.path.ends_with("both.css"));
+
+        assert!(resolve(root.path(), "/absent.css", true).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_bare_locale_path_redirects_to_its_companion() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("en/companion")).unwrap();
+        std::fs::create_dir_all(root.path().join("en/guide")).unwrap();
+        std::fs::create_dir_all(root.path().join("_next")).unwrap();
+
+        for url in ["/en/", "/en"] {
+            assert_eq!(
+                companion_redirect(root.path(), url).await.as_deref(),
+                Some("/en/companion/"),
+                "{url}"
+            );
+        }
+        for url in ["/", "/en/guide/", "/en/companion/", "/_next/", "/fr/"] {
+            assert_eq!(companion_redirect(root.path(), url).await, None, "{url}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn resolve_rejects_a_gz_symlink_that_leaves_the_root() {
+        let outside = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(outside.path().join("secret.gz"), b"secret").unwrap();
+        std::os::unix::fs::symlink(
+            outside.path().join("secret.gz"),
+            root.path().join("page.html.gz"),
+        )
+        .unwrap();
+
+        assert!(resolve(root.path(), "/page.html", true).await.is_none());
+        assert!(resolve(root.path(), "/page.html", false).await.is_none());
     }
 
     #[test]
