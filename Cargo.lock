@@ -586,7 +586,7 @@ dependencies = [
 
 [[package]]
 name = "cadmus"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "cadmus-core",
  "tikv-jemallocator",
@@ -596,7 +596,7 @@ dependencies = [
 
 [[package]]
 name = "cadmus-core"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -691,7 +691,7 @@ dependencies = [
 
 [[package]]
 name = "cadmus-macros"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1853,7 +1853,7 @@ dependencies = [
 
 [[package]]
 name = "fetcher"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "cadmus-core",
  "reqwest",
@@ -3594,7 +3594,7 @@ dependencies = [
 
 [[package]]
 name = "importer"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "cadmus-core",
  "getopts",
@@ -8145,7 +8145,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "anyhow",
  "build-deps",
