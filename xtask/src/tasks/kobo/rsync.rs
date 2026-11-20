@@ -7,9 +7,12 @@
 //! Files are written to a temporary name and renamed into place, so the running
 //! binary and mapped libraries are never truncated.
 
+use std::collections::VecDeque;
 use std::ffi::OsString;
+use std::future::Future;
 use std::io::{self, Read, Write};
 use std::path::Path;
+use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -21,7 +24,7 @@ use oc_rsync_core::server::{
 };
 use russh::ChannelMsg;
 use russh::client::{Handle, Msg};
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncWrite, AsyncWriteExt};
 use tokio::sync::mpsc as tokio_mpsc;
 use tokio::task::JoinHandle;
 
@@ -202,6 +205,7 @@ struct BridgeWriter {
 }
 
 const WRITE_BUFFER_SIZE: usize = 32 * 1024;
+const MAX_INBOUND_ITEMS: usize = 64;
 
 impl BridgeWriter {
     fn send(&mut self, bytes: Vec<u8>) -> io::Result<()> {
@@ -245,6 +249,9 @@ impl Drop for BridgeWriter {
     }
 }
 
+type ChannelWriter = Pin<Box<dyn AsyncWrite + Send>>;
+type PendingWrite = Pin<Box<dyn Future<Output = (ChannelWriter, io::Result<()>)> + Send>>;
+
 fn spawn_bridge(
     channel: russh::Channel<Msg>,
 ) -> (
@@ -257,22 +264,24 @@ fn spawn_bridge(
     let (write_tx, mut write_rx) = tokio_mpsc::channel::<Vec<u8>>(64);
     let outcome = Arc::new(Mutex::new(Outcome::default()));
     let state = Arc::clone(&outcome);
-    let mut writer = Some(Box::pin(channel.make_writer()));
+    let mut writer: Option<ChannelWriter> = Some(Box::pin(channel.make_writer()));
 
     let task = tokio::spawn(async move {
         let mut channel = channel;
+        let mut channel_open = true;
         let mut write_open = true;
         let mut data_open = true;
-        let mut pending = None;
+        let mut inbound = VecDeque::<Option<Vec<u8>>>::new();
         let mut remote_eof = false;
         let mut remote_exit_status = None;
+        let mut write_fut: Option<PendingWrite> = None;
         loop {
             tokio::select! {
-                message = channel.wait(), if pending.is_none() => {
+                message = channel.wait(), if channel_open && (inbound.len() < MAX_INBOUND_ITEMS || write_fut.is_some()) => {
                     match message {
                         Some(ChannelMsg::Data { data }) => {
                             if data_open && !remote_eof {
-                                pending = Some(Some(data.to_vec()));
+                                inbound.push_back(Some(data.to_vec()));
                             }
                         }
                         Some(ChannelMsg::ExtendedData { data, .. }) => {
@@ -286,7 +295,7 @@ fn spawn_bridge(
                                 outcome.exit_status = Some(exit_status);
                             }
                             if !data_open
-                                || (remote_eof && !write_open && pending.is_none())
+                                || (remote_eof && !write_open && inbound.is_empty())
                             {
                                 break;
                             }
@@ -300,26 +309,40 @@ fn spawn_bridge(
                         }
                         Some(ChannelMsg::Eof) => {
                             remote_eof = true;
-                            if data_open && pending.is_none() {
-                                pending = Some(None);
+                            if data_open {
+                                inbound.push_back(None);
                             }
                         }
                         Some(_) => {}
-                        None => break,
+                        None => {
+                            channel_open = false;
+                            write_open = false;
+                            write_fut = None;
+                            writer = None;
+                            write_rx.close();
+                            if data_open && !remote_eof {
+                                remote_eof = true;
+                                inbound.push_back(None);
+                            }
+                        }
                     }
                 }
-                permit = data_tx.reserve(), if data_open && pending.is_some() => {
+                permit = data_tx.reserve(), if data_open && !inbound.is_empty() => {
                     match permit {
                         Ok(permit) => {
-                            if let Some(data) = pending.take() {
+                            if let Some(data) = inbound.pop_front() {
                                 permit.send(data);
                             }
-                            if remote_eof && !write_open && remote_exit_status.is_some() {
+                            if remote_eof
+                                && !write_open
+                                && inbound.is_empty()
+                                && remote_exit_status.is_some()
+                            {
                                 break;
                             }
                         }
                         Err(_) => {
-                            pending = None;
+                            inbound.clear();
                             data_open = false;
                             if remote_exit_status.is_some() {
                                 break;
@@ -327,14 +350,14 @@ fn spawn_bridge(
                         }
                     }
                 }
-                outgoing = write_rx.recv(), if write_open => {
+                outgoing = write_rx.recv(), if write_open && write_fut.is_none() => {
                     match outgoing {
                         Some(bytes) => {
-                            if let Some(writer) = writer.as_mut()
-                                && writer.write_all(&bytes).await.is_err()
-                            {
-                                break;
-                            }
+                            let mut writer = writer.take().expect("writer is present while writes are open");
+                            write_fut = Some(Box::pin(async move {
+                                let result = writer.write_all(&bytes).await;
+                                (writer, result)
+                            }));
                         }
                         None => {
                             write_open = false;
@@ -343,12 +366,29 @@ fn spawn_bridge(
                             if !data_open && remote_exit_status.is_some() {
                                 break;
                             }
-                            if remote_eof && pending.is_none() && remote_exit_status.is_some() {
+                            if remote_eof
+                                && inbound.is_empty()
+                                && remote_exit_status.is_some()
+                            {
                                 break;
                             }
                         }
                     }
                 }
+                result = async {
+                    match write_fut.as_mut() {
+                        Some(fut) => fut.await,
+                        None => std::future::pending().await,
+                    }
+                }, if write_fut.is_some() => {
+                    let (w, result) = result;
+                    writer = Some(w);
+                    write_fut = None;
+                    if result.is_err() {
+                        break;
+                    }
+                }
+                else => break,
             }
         }
     });
@@ -774,5 +814,311 @@ mod tests {
         assert!(rx.try_recv().is_err());
         writer.flush().unwrap();
         assert_eq!(rx.try_recv().unwrap(), vec![1, 2, 3]);
+    }
+
+    #[tokio::test]
+    async fn slow_reader_does_not_stall_the_bridge() {
+        use std::time::Duration;
+
+        use russh::server::{Auth, ChannelOpenHandle, Msg as ServerMsg, Session};
+
+        struct SlowReader {
+            first_data: bool,
+        }
+
+        impl SlowReader {
+            fn new() -> Self {
+                Self { first_data: true }
+            }
+        }
+
+        impl russh::server::Server for SlowReader {
+            type Handler = Self;
+
+            fn new_client(&mut self, _: Option<std::net::SocketAddr>) -> Self {
+                Self::new()
+            }
+        }
+
+        impl russh::server::Handler for SlowReader {
+            type Error = russh::Error;
+
+            async fn auth_none(&mut self, _: &str) -> Result<Auth, Self::Error> {
+                Ok(Auth::Accept)
+            }
+
+            async fn channel_open_session(
+                &mut self,
+                _: russh::Channel<ServerMsg>,
+                reply: ChannelOpenHandle,
+                _: &mut Session,
+            ) -> Result<(), Self::Error> {
+                reply.accept().await;
+                Ok(())
+            }
+
+            async fn exec_request(
+                &mut self,
+                channel: russh::ChannelId,
+                _: &[u8],
+                session: &mut Session,
+            ) -> Result<(), Self::Error> {
+                session.channel_success(channel)?;
+                session.data(channel, &b"payload"[..])?;
+                Ok(())
+            }
+
+            async fn data(
+                &mut self,
+                channel: russh::ChannelId,
+                _data: &[u8],
+                session: &mut Session,
+            ) -> Result<(), Self::Error> {
+                if self.first_data {
+                    self.first_data = false;
+                    session.data(channel, &b"payload2"[..])?;
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                    session.eof(channel)?;
+                    session.exit_status_request(channel, 0)?;
+                }
+                Ok(())
+            }
+        }
+
+        let (handle, running) = connect_test_server(SlowReader::new()).await;
+        let channel = handle.channel_open_session().await.unwrap();
+        channel.exec(true, "rsync --server").await.unwrap();
+
+        let (mut reader, mut writer, _outcome, bridge) = spawn_bridge(channel);
+
+        let write_task = tokio::task::spawn_blocking(move || {
+            let data = vec![0u8; 4 * 1024 * 1024];
+            writer.write_all(&data).unwrap();
+            writer.flush().unwrap();
+        });
+
+        let read_task = tokio::task::spawn_blocking(move || {
+            let mut buf = [0u8; 7];
+            reader.read_exact(&mut buf).unwrap();
+            let mut buf2 = [0u8; 8];
+            reader.read_exact(&mut buf2).unwrap();
+            (buf, buf2)
+        });
+
+        let (buf, buf2) = tokio::time::timeout(Duration::from_secs(5), read_task)
+            .await
+            .expect("the bridge must keep reading while a write is pending")
+            .unwrap();
+        assert_eq!(&buf, b"payload");
+        assert_eq!(&buf2, b"payload2");
+
+        tokio::time::timeout(Duration::from_secs(10), write_task)
+            .await
+            .expect("the write must not deadlock")
+            .unwrap();
+
+        tokio::time::timeout(Duration::from_secs(5), bridge)
+            .await
+            .expect("the bridge must stop")
+            .unwrap();
+
+        running.abort();
+    }
+
+    #[tokio::test]
+    async fn bidirectional_backpressure_does_not_deadlock() {
+        use std::time::Duration;
+
+        use russh::server::{Auth, ChannelOpenHandle, Msg as ServerMsg, Session};
+
+        const CHUNKS: usize = 1500;
+        const CHUNK_SIZE: usize = 16 * 1024;
+        const PEER_STALL: Duration = Duration::from_secs(6);
+
+        struct FloodThenDelay {
+            first_read: bool,
+        }
+
+        impl FloodThenDelay {
+            fn new() -> Self {
+                Self { first_read: true }
+            }
+        }
+
+        impl russh::server::Server for FloodThenDelay {
+            type Handler = Self;
+
+            fn new_client(&mut self, _: Option<std::net::SocketAddr>) -> Self {
+                Self::new()
+            }
+        }
+
+        impl russh::server::Handler for FloodThenDelay {
+            type Error = russh::Error;
+
+            async fn auth_none(&mut self, _: &str) -> Result<Auth, Self::Error> {
+                Ok(Auth::Accept)
+            }
+
+            async fn channel_open_session(
+                &mut self,
+                _: russh::Channel<ServerMsg>,
+                reply: ChannelOpenHandle,
+                _: &mut Session,
+            ) -> Result<(), Self::Error> {
+                reply.accept().await;
+                Ok(())
+            }
+
+            async fn exec_request(
+                &mut self,
+                channel: russh::ChannelId,
+                _: &[u8],
+                session: &mut Session,
+            ) -> Result<(), Self::Error> {
+                session.channel_success(channel)?;
+                let handle = session.handle();
+                tokio::spawn(async move {
+                    let chunk = vec![0x5au8; CHUNK_SIZE];
+                    for _ in 0..CHUNKS {
+                        if handle.data(channel, chunk.clone()).await.is_err() {
+                            return;
+                        }
+                    }
+                    let _ = handle.eof(channel).await;
+                    let _ = handle.exit_status_request(channel, 0).await;
+                });
+                Ok(())
+            }
+
+            async fn data(
+                &mut self,
+                _: russh::ChannelId,
+                _: &[u8],
+                _: &mut Session,
+            ) -> Result<(), Self::Error> {
+                if self.first_read {
+                    self.first_read = false;
+                    tokio::time::sleep(PEER_STALL).await;
+                }
+                Ok(())
+            }
+        }
+
+        let (handle, running) = connect_test_server(FloodThenDelay::new()).await;
+        let channel = handle.channel_open_session().await.unwrap();
+        channel.exec(true, "rsync --server").await.unwrap();
+
+        let (mut reader, mut writer, _outcome, bridge) = spawn_bridge(channel);
+
+        let engine = tokio::task::spawn_blocking(move || {
+            let mut buf = vec![0u8; CHUNK_SIZE];
+            for _ in 0..CHUNKS {
+                reader.read_exact(&mut buf).unwrap();
+                writer.write_all(&buf).unwrap();
+            }
+            drop(writer);
+        });
+
+        let (engine_result, bridge_result) = tokio::time::timeout(Duration::from_secs(30), async {
+            tokio::join!(engine, bridge)
+        })
+        .await
+        .expect("bidirectional backpressure must not deadlock the bridge");
+        engine_result.unwrap();
+        bridge_result.unwrap();
+
+        running.abort();
+    }
+
+    #[tokio::test]
+    async fn terminal_close_cancels_pending_write_and_releases_engine() {
+        use std::time::Duration;
+
+        use russh::server::{Auth, ChannelOpenHandle, Msg as ServerMsg, Session};
+
+        struct CloseWithoutReading {
+            first_read: bool,
+        }
+
+        impl CloseWithoutReading {
+            fn new() -> Self {
+                Self { first_read: true }
+            }
+        }
+
+        impl russh::server::Server for CloseWithoutReading {
+            type Handler = Self;
+
+            fn new_client(&mut self, _: Option<std::net::SocketAddr>) -> Self {
+                Self::new()
+            }
+        }
+
+        impl russh::server::Handler for CloseWithoutReading {
+            type Error = russh::Error;
+
+            async fn auth_none(&mut self, _: &str) -> Result<Auth, Self::Error> {
+                Ok(Auth::Accept)
+            }
+
+            async fn channel_open_session(
+                &mut self,
+                _: russh::Channel<ServerMsg>,
+                reply: ChannelOpenHandle,
+                _: &mut Session,
+            ) -> Result<(), Self::Error> {
+                reply.accept().await;
+                Ok(())
+            }
+
+            async fn exec_request(
+                &mut self,
+                channel: russh::ChannelId,
+                _: &[u8],
+                session: &mut Session,
+            ) -> Result<(), Self::Error> {
+                session.channel_success(channel)?;
+                Ok(())
+            }
+
+            async fn data(
+                &mut self,
+                channel: russh::ChannelId,
+                _: &[u8],
+                session: &mut Session,
+            ) -> Result<(), Self::Error> {
+                if self.first_read {
+                    self.first_read = false;
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                    let handle = session.handle();
+                    tokio::spawn(async move {
+                        let _ = handle.close(channel).await;
+                    });
+                }
+                Ok(())
+            }
+        }
+
+        let (handle, running) = connect_test_server(CloseWithoutReading::new()).await;
+        let channel = handle.channel_open_session().await.unwrap();
+        channel.exec(true, "rsync --server").await.unwrap();
+
+        let (_reader, mut writer, _outcome, bridge) = spawn_bridge(channel);
+        let engine = tokio::task::spawn_blocking(move || {
+            let payload = vec![0x5au8; 32 * 1024 * 1024];
+            writer.write_all(&payload)
+        });
+
+        let (engine_result, bridge_result) = tokio::time::timeout(Duration::from_secs(10), async {
+            tokio::join!(engine, bridge)
+        })
+        .await
+        .expect("terminal channel closure must release the pending write");
+        engine_result
+            .unwrap()
+            .expect("the engine must finish queuing its write");
+        bridge_result.unwrap();
+        running.abort();
     }
 }
