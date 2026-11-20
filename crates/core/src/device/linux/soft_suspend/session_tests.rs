@@ -38,11 +38,22 @@ mod session {
         SoftSuspendPaths::test_fixture()
     }
 
-    fn unlock_name(paths: &SoftSuspendPaths) -> String {
-        fs::read_to_string(&paths.wake_unlock)
+    async fn unlock_name(paths: &SoftSuspendPaths) -> String {
+        tokio::fs::read_to_string(&paths.wake_unlock)
+            .await
             .expect("read")
             .trim()
             .to_string()
+    }
+
+    async fn wait_for_unlock(paths: &SoftSuspendPaths) {
+        for _ in 0..200 {
+            if unlock_name(paths).await == WAKE_LOCK_NAME {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        panic!("condition not met within timeout");
     }
 
     fn make_unwritable(path: &std::path::Path) {
@@ -80,7 +91,7 @@ mod session {
             WAKE_LOCK_NAME
         );
         drop(lease);
-        assert_eq!(unlock_name(&paths), WAKE_LOCK_NAME);
+        assert_eq!(unlock_name(&paths).await, WAKE_LOCK_NAME);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -147,7 +158,7 @@ mod session {
         inhibitor.set_autosleep_grace(Duration::from_millis(30));
         thread::sleep(Duration::from_millis(80));
         assert_eq!(
-            unlock_name(&paths),
+            unlock_name(&paths).await,
             "",
             "failed wake_lock must leave held=false so grace updates do not unlock"
         );
@@ -203,7 +214,7 @@ mod session {
             .acquire(Kind::SoftSuspend, SoftSuspendName::Wifi)
             .unwrap();
         drop(lease);
-        assert_eq!(unlock_name(&paths), WAKE_LOCK_NAME);
+        assert_eq!(unlock_name(&paths).await, WAKE_LOCK_NAME);
         assert_eq!(
             leds.off_calls.load(Ordering::SeqCst),
             off_after_setup,
@@ -228,9 +239,9 @@ mod session {
         let b = inhibitor.acquire(Kind::SoftSuspend, "b").unwrap();
         assert_eq!(inhibitor.len(), 2);
         drop(a);
-        assert_eq!(unlock_name(&paths), "");
+        assert_eq!(unlock_name(&paths).await, "");
         drop(b);
-        assert_eq!(unlock_name(&paths), WAKE_LOCK_NAME);
+        assert_eq!(unlock_name(&paths).await, WAKE_LOCK_NAME);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -249,8 +260,8 @@ mod session {
             .unwrap();
         drop(lease);
 
-        assert_eq!(unlock_name(&paths), "");
-        wait_for(|| unlock_name(&paths) == WAKE_LOCK_NAME);
+        assert_eq!(unlock_name(&paths).await, "");
+        wait_for_unlock(&paths).await;
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -273,7 +284,7 @@ mod session {
             .unwrap();
         thread::sleep(Duration::from_millis(120));
 
-        assert_eq!(unlock_name(&paths), "");
+        assert_eq!(unlock_name(&paths).await, "");
         assert!(inhibitor.has_holders());
     }
 
@@ -304,7 +315,7 @@ mod session {
         });
         let lease = join.join().expect("acquire thread");
         thread::sleep(Duration::from_millis(120));
-        assert_eq!(unlock_name(&paths), "");
+        assert_eq!(unlock_name(&paths).await, "");
         assert!(inhibitor.has_holders());
         drop(lease);
     }
@@ -327,9 +338,9 @@ mod session {
         inhibitor.set_autosleep_grace(Duration::from_millis(150));
 
         thread::sleep(Duration::from_millis(80));
-        assert_eq!(unlock_name(&paths), "");
+        assert_eq!(unlock_name(&paths).await, "");
         thread::sleep(Duration::from_millis(100));
-        assert_eq!(unlock_name(&paths), WAKE_LOCK_NAME);
+        assert_eq!(unlock_name(&paths).await, WAKE_LOCK_NAME);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -349,9 +360,9 @@ mod session {
                 .acquire(Kind::SoftSuspend, SoftSuspendName::MainLoop)
                 .unwrap();
             drop(lease);
-            assert_eq!(unlock_name(&paths), "");
+            assert_eq!(unlock_name(&paths).await, "");
             thread::sleep(Duration::from_millis(80));
-            assert_eq!(unlock_name(&paths), WAKE_LOCK_NAME);
+            assert_eq!(unlock_name(&paths).await, WAKE_LOCK_NAME);
         }
     }
 
@@ -373,6 +384,258 @@ mod session {
         drop(inhibitor);
 
         thread::sleep(Duration::from_millis(50));
-        assert_eq!(unlock_name(&paths), WAKE_LOCK_NAME);
+        assert_eq!(unlock_name(&paths).await, WAKE_LOCK_NAME);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn pause_unlocks_immediately_with_live_holder_and_grace() {
+        let (_dir, paths) = temp_paths();
+        let inhibitor = Inhibitor::with_paths(
+            paths.clone(),
+            None,
+            std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
+        );
+        inhibitor.set_autosleep_grace(Duration::from_secs(60));
+        let _thumbnail = inhibitor
+            .acquire(Kind::SoftSuspend, SoftSuspendName::Thumbnail)
+            .unwrap();
+
+        inhibitor.pause_soft_suspend_wake_lock();
+
+        assert_eq!(unlock_name(&paths).await, WAKE_LOCK_NAME);
+        assert_eq!(inhibitor.len(), 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn acquire_while_paused_is_tracked_and_locked_on_resume() {
+        let (_dir, paths) = temp_paths();
+        let inhibitor = Inhibitor::with_paths(
+            paths.clone(),
+            None,
+            std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
+        );
+        let _thumbnail = inhibitor
+            .acquire(Kind::SoftSuspend, SoftSuspendName::Thumbnail)
+            .unwrap();
+        inhibitor.pause_soft_suspend_wake_lock();
+        tokio::fs::write(&paths.wake_lock, "")
+            .await
+            .expect("clear lock");
+
+        let _wifi = inhibitor
+            .acquire(Kind::SoftSuspend, SoftSuspendName::Wifi)
+            .unwrap();
+
+        assert_eq!(inhibitor.len(), 2);
+        assert_eq!(
+            tokio::fs::read_to_string(&paths.wake_lock)
+                .await
+                .expect("read")
+                .trim(),
+            ""
+        );
+        inhibitor.resume_soft_suspend_wake_lock();
+        assert_eq!(
+            tokio::fs::read_to_string(&paths.wake_lock)
+                .await
+                .expect("read")
+                .trim(),
+            WAKE_LOCK_NAME
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn first_acquire_while_paused_tracks_and_locks_on_resume() {
+        let (_dir, paths) = temp_paths();
+        let inhibitor = Inhibitor::with_paths(
+            paths.clone(),
+            None,
+            std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
+        );
+        inhibitor.pause_soft_suspend_wake_lock();
+        tokio::fs::write(&paths.wake_lock, "")
+            .await
+            .expect("clear lock");
+
+        let _wifi = inhibitor
+            .acquire(Kind::SoftSuspend, SoftSuspendName::Wifi)
+            .unwrap();
+
+        assert_eq!(inhibitor.len(), 1);
+        assert_eq!(
+            tokio::fs::read_to_string(&paths.wake_lock)
+                .await
+                .expect("read")
+                .trim(),
+            ""
+        );
+        inhibitor.resume_soft_suspend_wake_lock();
+        assert_eq!(
+            tokio::fs::read_to_string(&paths.wake_lock)
+                .await
+                .expect("read")
+                .trim(),
+            WAKE_LOCK_NAME
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn resume_with_no_live_holders_leaves_wake_lock_unlocked() {
+        let (_dir, paths) = temp_paths();
+        let inhibitor = Inhibitor::with_paths(
+            paths.clone(),
+            None,
+            std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
+        );
+        let thumbnail = inhibitor
+            .acquire(Kind::SoftSuspend, SoftSuspendName::Thumbnail)
+            .unwrap();
+        inhibitor.pause_soft_suspend_wake_lock();
+        tokio::fs::write(&paths.wake_lock, "")
+            .await
+            .expect("clear lock");
+        tokio::fs::write(&paths.wake_unlock, "")
+            .await
+            .expect("clear unlock");
+
+        drop(thumbnail);
+        inhibitor.resume_soft_suspend_wake_lock();
+
+        assert!(inhibitor.is_empty());
+        assert_eq!(
+            tokio::fs::read_to_string(&paths.wake_lock)
+                .await
+                .expect("read")
+                .trim(),
+            ""
+        );
+        assert_eq!(unlock_name(&paths).await, "");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn repeated_pause_and_resume_are_idempotent() {
+        let (_dir, paths) = temp_paths();
+        let inhibitor = Inhibitor::with_paths(
+            paths.clone(),
+            None,
+            std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
+        );
+        let _thumbnail = inhibitor
+            .acquire(Kind::SoftSuspend, SoftSuspendName::Thumbnail)
+            .unwrap();
+
+        inhibitor.pause_soft_suspend_wake_lock();
+        tokio::fs::write(&paths.wake_unlock, "")
+            .await
+            .expect("clear unlock");
+        inhibitor.pause_soft_suspend_wake_lock();
+        assert_eq!(unlock_name(&paths).await, "");
+
+        tokio::fs::write(&paths.wake_lock, "")
+            .await
+            .expect("clear lock");
+        inhibitor.resume_soft_suspend_wake_lock();
+        assert_eq!(
+            tokio::fs::read_to_string(&paths.wake_lock)
+                .await
+                .expect("read")
+                .trim(),
+            WAKE_LOCK_NAME
+        );
+        tokio::fs::write(&paths.wake_lock, "")
+            .await
+            .expect("clear lock");
+        inhibitor.resume_soft_suspend_wake_lock();
+        assert_eq!(
+            tokio::fs::read_to_string(&paths.wake_lock)
+                .await
+                .expect("read")
+                .trim(),
+            ""
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn last_holder_drop_while_paused_stays_unlocked_after_resume() {
+        let (_dir, paths) = temp_paths();
+        let inhibitor = Inhibitor::with_paths(
+            paths.clone(),
+            None,
+            std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
+        );
+        inhibitor.set_autosleep_grace(Duration::from_millis(30));
+        let thumbnail = inhibitor
+            .acquire(Kind::SoftSuspend, SoftSuspendName::Thumbnail)
+            .unwrap();
+        inhibitor.pause_soft_suspend_wake_lock();
+        tokio::fs::write(&paths.wake_lock, "")
+            .await
+            .expect("clear lock");
+        tokio::fs::write(&paths.wake_unlock, "")
+            .await
+            .expect("clear unlock");
+
+        drop(thumbnail);
+        inhibitor.resume_soft_suspend_wake_lock();
+
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        assert_eq!(
+            tokio::fs::read_to_string(&paths.wake_lock)
+                .await
+                .expect("read")
+                .trim(),
+            ""
+        );
+        assert_eq!(unlock_name(&paths).await, "");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn full_inhibit_blocks_pause() {
+        let (_dir, paths) = temp_paths();
+        let inhibitor = Inhibitor::with_paths(
+            paths.clone(),
+            None,
+            std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
+        );
+        let _full = inhibitor.acquire(Kind::Full, "ota").unwrap();
+        tokio::fs::write(&paths.wake_unlock, "")
+            .await
+            .expect("clear unlock");
+
+        let outcome = inhibitor.pause_soft_suspend_wake_lock();
+
+        assert_eq!(
+            outcome,
+            crate::device::inhibitor::WakeLockPauseOutcome::BlockedByFull
+        );
+        assert_eq!(unlock_name(&paths).await, "");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn full_inhibit_acquired_while_paused_restores_wake_lock() {
+        let (_dir, paths) = temp_paths();
+        let inhibitor = Inhibitor::with_paths(
+            paths.clone(),
+            None,
+            std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
+        );
+        let _thumbnail = inhibitor
+            .acquire(Kind::SoftSuspend, SoftSuspendName::Thumbnail)
+            .unwrap();
+        inhibitor.pause_soft_suspend_wake_lock();
+        tokio::fs::write(&paths.wake_lock, "")
+            .await
+            .expect("clear lock");
+
+        let _full = inhibitor.acquire(Kind::Full, "ota").unwrap();
+
+        assert!(inhibitor.full_active());
+        assert_eq!(
+            tokio::fs::read_to_string(&paths.wake_lock)
+                .await
+                .expect("read")
+                .trim(),
+            WAKE_LOCK_NAME
+        );
     }
 }

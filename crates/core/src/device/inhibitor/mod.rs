@@ -6,7 +6,7 @@
 //!
 //! | Kind | Wake lock | Blocks Cadmus suspend | Blocks user exits |
 //! |------|-----------|----------------------|-------------------|
-//! | [`Kind::SoftSuspend`] | Yes (Linux) | No | No |
+//! | [`Kind::SoftSuspend`] | Yes (Linux; suppressed during the kernel-sleep window) | No | No |
 //! | [`Kind::Sleep`] | Yes (implies SoftSuspend) | Auto Suspend only | No |
 //! | [`Kind::Full`] | Yes (implies SoftSuspend) | Yes | Yes |
 //!
@@ -51,6 +51,8 @@ pub use error::InhibitorError;
 pub use guard::InhibitorGuard;
 pub use kind::Kind;
 pub use soft_suspend::SoftSuspendName;
+#[cfg(any(test, feature = "kobo", docsrs))]
+pub(crate) use soft_suspend::WakeLockPauseOutcome;
 
 use crate::device::battery::{Battery, FakeBattery};
 #[cfg(all(test, target_os = "linux"))]
@@ -107,6 +109,7 @@ impl Inhibitor {
     ) -> Arc<Self> {
         let full = full::FullInhibitState::new(Arc::clone(&soft_suspend), Arc::clone(&status_led));
         let sleep = sleep::SleepInhibitState::new(Arc::clone(&soft_suspend));
+        soft_suspend.set_full_tracker(full.downgrade_tracker());
         Arc::new(Self {
             soft_suspend,
             full,
@@ -182,31 +185,43 @@ impl Inhibitor {
         self.full.full_active()
     }
 
+    /// Locks the gate that serializes suspend entry with Full-holder acquisition.
+    #[cfg(any(feature = "kobo", docsrs))]
+    pub(crate) fn lock_full_suspend_gate(&self) -> std::sync::MutexGuard<'_, ()> {
+        self.full.lock_suspend_gate()
+    }
+
     /// Returns whether any [`Kind::Sleep`] holder is active.
     ///
     /// The Auto Suspend path defers while this is true. Explicit `start_cycle`
-    /// (cover, power button, menu Suspend) still runs; that path pauses the
-    /// nested `"sleep-inhibit"` wake lock for the cycle. User exits and live
-    /// AutoPowerOff are not blocked.
+    /// (cover, power button, menu Suspend) still runs; the kernel-sleep window
+    /// suppresses the shared `cadmus` lock while the nested `"sleep-inhibit"`
+    /// lease remains tracked. User exits and live AutoPowerOff are not blocked.
     #[cfg(any(test, feature = "kobo", docsrs))]
     pub(crate) fn sleep_active(&self) -> bool {
         self.sleep.sleep_active()
     }
 
-    /// Drops the nested `"sleep-inhibit"` wake lock without releasing Sleep holders.
+    /// Releases the kernel wake lock for a Cadmus suspend sleep window.
     ///
-    /// [`start_cycle`](crate::device::suspend::start_cycle) calls this so an
-    /// explicit cycle can sleep while the menu (or other Sleep holder) stays up.
-    /// Other SoftSuspend holders (`wifi`, `input`, …) keep their leases.
-    #[cfg(any(feature = "kobo", docsrs))]
-    pub(crate) fn pause_sleep_wake_lock(&self) {
-        self.sleep.pause_wake_lock();
+    /// Every SoftSuspend lease, including the nested `"sleep-inhibit"` and
+    /// `"full-inhibit"` leases, stays tracked. The kernel `cadmus` lock is
+    /// released immediately, bypassing autosleep grace, and acquire/release
+    /// transitions do not write the wake-lock nodes until
+    /// [`Self::resume_soft_suspend_wake_lock`]. A live Full holder blocks
+    /// suppression so critical work keeps kernel wake-lock protection.
+    #[cfg(any(test, feature = "kobo", docsrs))]
+    pub(crate) fn pause_soft_suspend_wake_lock(&self) -> WakeLockPauseOutcome {
+        self.soft_suspend.pause_wake_lock()
     }
 
-    /// Restores `"sleep-inhibit"` after an explicit cycle if Sleep holders remain.
-    #[cfg(any(feature = "kobo", docsrs))]
-    pub(crate) fn resume_sleep_wake_lock(&self) {
-        self.sleep.resume_wake_lock();
+    /// Ends a Cadmus suspend sleep window.
+    ///
+    /// Re-acquires the kernel `cadmus` lock when any SoftSuspend holder is
+    /// still alive; otherwise leaves it unlocked.
+    #[cfg(any(test, feature = "kobo", docsrs))]
+    pub(crate) fn resume_soft_suspend_wake_lock(&self) {
+        self.soft_suspend.resume_wake_lock();
     }
 
     /// Acquires a named inhibitor guard.

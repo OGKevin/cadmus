@@ -20,9 +20,11 @@ Auto Suspend / power button / sleep cover use
 1. `AlarmType::AutoSuspend` → `start_cycle` (`Classic`)
 2. Intermission; 3 s prepare delay → PrepareSuspend teardown
 3. 15 s Suspend RTC → `RtcAlarmFired(Suspend)` → `enter_sleep`
-4. `KoboPowerManager::suspend`: `state-extended=1`, wait 2 s, `sync`,
+4. Release the shared `cadmus` wake lock, then
+   `KoboPowerManager::suspend`: `state-extended=1`, wait 2 s, `sync`,
    `state=mem`
-5. Wake: `state-extended=0` and model-specific touch re-init; AutoPowerOff /
+5. Wake: restore `cadmus` while any SoftSuspend holder remains;
+   `state-extended=0` and model-specific touch re-init; AutoPowerOff /
    Calendar RTC; WakeDebounce re-sleep until user cancels
 
 ## Soft-suspend deep idle (autosleep armed)
@@ -32,8 +34,11 @@ When soft suspend is armed, same triggers use
 
 1. `start_cycle` acquires the `deep-idle` cycle lease
 2. PrepareSuspend teardown runs with zero delay; there is no Suspend RTC
-3. Force autosleep **`mem`**, `arm_deep_idle` (`state-extended=1`), drop lease
-4. Poll boottime−monotonic until wake or timeout; re-arm while soft suspend
+3. Force autosleep **`mem`**, `arm_deep_idle` (`state-extended=1`), release the
+   shared `cadmus` wake lock while keeping every SoftSuspend lease tracked, then
+   drop the cycle lease
+4. Poll boottime−monotonic until wake or timeout; wake restores `cadmus` while
+   any SoftSuspend holder remains; re-arm while soft suspend
    can re-arm, otherwise `finish_cycle`. DeepIdle stops after three
    consecutive timed-out attempts; a detected wake resets the count, so the
    WakeDebounce re-entry starts fresh

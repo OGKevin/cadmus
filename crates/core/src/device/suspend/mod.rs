@@ -53,10 +53,12 @@
 //!
 //! # Full inhibit
 //!
-//! [`crate::device::inhibitor::Kind::Full`] does **not** cancel an in-flight
-//! cycle. It blocks **starting** one: [`start_cycle`] sets
+//! [`crate::device::inhibitor::Kind::Full`] blocks **starting** a cycle:
+//! [`start_cycle`] sets
 //! [`Context::deferred_suspend`](crate::context::Context::deferred_suspend)
-//! and returns. When the last Full holder drops, Kobo posts
+//! and returns. If a worker acquires Full after a cycle has started, the
+//! orchestrator aborts the cycle before kernel sleep and queues the same
+//! Explicit deferred intent. When the last Full holder drops, Kobo posts
 //! [`Event::FullInhibitCleared`](crate::view::Event::FullInhibitCleared) and
 //! the orchestrator flushes that intent: Auto origin rechecks Sleep via
 //! [`start_cycle_from_auto`](orchestrator::start_cycle_from_auto); Explicit
