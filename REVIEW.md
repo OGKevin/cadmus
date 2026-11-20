@@ -66,8 +66,9 @@ When a PR adds a Cargo feature flag, verify:
       contain, for each compatible device, an entry where the affected feature
       is the only non-device feature, plus relevant combinations.
 - [ ] The generator's tests are updated: `scan_workspace_includes_runtime_features_on_ubuntu`
-      asserts the total entry count, so any added non-excluded feature changes
-      it; exclusion, device-feature, or validity-rule changes need matching
+      asserts the total entry count, which changes only when the set of
+      feature names changes (reusing an existing name in another crate does
+      not); exclusion, device-feature, or validity-rule changes need matching
       test updates.
 - [ ] Coverage is not limited to `--all-features`; `#[cfg(not(feature = "..."))]`
       paths need combinations that disable the feature.

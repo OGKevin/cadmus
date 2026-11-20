@@ -4,8 +4,10 @@
 
 Cadmus uses [SQLite](https://sqlite.org) as its embedded database and
 [SQLx](https://github.com/launchbadge/sqlx) as the Rust database library.
-SQLx provides **compile-time SQL verification** — every query is checked against
-the real schema before the code ships.
+SQLx's typed macros provide **compile-time SQL verification**: queries written
+with them are checked against the real schema before the code ships. Untyped
+query functions, allowed only for the cases listed under
+[Review rules](#review-rules), are not checked.
 
 ## Runtime databases
 

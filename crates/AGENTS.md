@@ -127,10 +127,11 @@ When adding a feature flag:
    non-excluded features automatically (`default`, `bench`, `docs`,
    `telemetry`, `device`, and the device-list features are excluded).
 2. Run `cadmuscli ci matrix` and confirm each compatible device has an entry
-   where the new feature is the only non-device feature. Update the expected
-   entry count in `scan_workspace_includes_runtime_features_on_ubuntu`
-   (`matrix.rs`), which asserts the total; also update the generator and its
-   tests when changing exclusions or validity rules.
+   where the new feature is the only non-device feature. If the feature name is
+   new to every scanned crate, update the expected entry count in
+   `scan_workspace_includes_runtime_features_on_ubuntu` (`matrix.rs`); names
+   are deduplicated, so reusing an existing name does not change it. Update the
+   generator and its tests when changing exclusions or validity rules.
 3. Test the affected combination locally with a device feature. `--all-features`
    does not cover `#[cfg(not(feature = "..."))]` paths.
 

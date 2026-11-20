@@ -58,12 +58,17 @@ Clippy runs with `-D warnings` — all warnings are errors:
 cadmuscli clippy
 ```
 
-Clippy runs across every feature flag combination in CI. The matrix is
-generated from the workspace manifests by `cadmuscli ci matrix`, so a new
-feature flag under `crates/` is included automatically; do not add matrix
-entries to `.github/workflows/cargo.yml` by hand. Update the expected entry
-count in `scan_workspace_includes_runtime_features_on_ubuntu`
-(`xtask/src/tasks/util/matrix.rs`) when you add one.
+Clippy runs across a generated feature matrix in CI. `cadmuscli ci matrix`
+builds it from the manifests under `crates/`: every entry enables exactly one
+device feature (`emulator`, `kobo`, or `deviceless`) plus a combination of the
+remaining features. The matrix never enables `bench`, `docs`, or `telemetry`
+(`default` is implicit), and combines `test` only with `emulator` or `kobo`.
+Do not add matrix entries to `.github/workflows/cargo.yml` by hand.
+
+When you add a feature name that no scanned crate defines yet, update the
+expected entry count in `scan_workspace_includes_runtime_features_on_ubuntu`
+(`xtask/src/tasks/util/matrix.rs`). Feature names are deduplicated, so adding
+an existing name to another crate does not change the count.
 
 ### Key Conventions
 

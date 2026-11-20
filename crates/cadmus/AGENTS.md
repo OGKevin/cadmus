@@ -29,9 +29,10 @@ Every other queued event is dropped. Replaying an arbitrary queued device event
 during teardown would run transitions such as `PrepareShare` (which closes the
 database and enables mass storage) after the process has already begun exiting.
 
-Device tasks and view jobs are stopped first so they cannot queue events
-mid-drain. Input stays live, but its events are not shutdown-related and are
-dropped.
+Clearing device tasks only requests cancellation; they are not joined, so a
+task that has not yet observed its token can still queue an event during the
+drain. View jobs are cancelled and joined. Input stays live. Events from either
+source are dropped unless they are shutdown-related.
 
 See the background task stop/join policy in
 [`../core/src/task/AGENTS.md`](../core/src/task/AGENTS.md).

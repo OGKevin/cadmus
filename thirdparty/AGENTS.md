@@ -58,6 +58,10 @@ A Kobo C/C++ library additionally needs:
 1. Build logic in `crates/build-deps/src/build/kobo/recipes.rs`.
 2. Its name in `LIBRARY_NAMES` in `crates/build-deps/src/versions.rs`,
    respecting dependency order.
+3. For a shared library, an entry in `BUILT_LIBRARY_COPIES` in the same file;
+   `copy_built_libs` uses it to stage the built `.so` into `libs/`.
+4. For a shared library, its base name in `SONAMES` in the same file; the warm
+   cache check and SONAME symlinking use it.
 
 ## Rules
 
