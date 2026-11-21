@@ -34,8 +34,13 @@ export const restartInputSchema = z
   })
   .strict();
 
+export const devicesInputSchema = z
+  .object({ timeout: z.number().int().positive().max(60).optional() })
+  .strict();
+
 export type DeployInput = z.infer<typeof deployInputSchema>;
 export type RestartInput = z.infer<typeof restartInputSchema>;
+export type DevicesInput = z.infer<typeof devicesInputSchema>;
 
 type SshInput = {
   port?: number;
