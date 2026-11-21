@@ -10,13 +10,21 @@ For editing the mdBook user guide itself, see [User guide](user-guide.md).
 
 ## Site structure
 
-All paths are locale-first (see [`website/i18n/routing.ts`](https://github.com/ogkevin/cadmus/blob/master/website/i18n/routing.ts)
+Entry points are locale-first (see [`website/i18n/routing.ts`](https://github.com/ogkevin/cadmus/blob/master/website/i18n/routing.ts)
 and [`website/lib/doc-hrefs.ts`](https://github.com/ogkevin/cadmus/blob/master/website/lib/doc-hrefs.ts)):
 
 - **Landing**: `/{locale}/` (e.g. `/en/`, `/fr/`)
 - **User guide**: `/{locale}/guide/` (mdBook HTML symlinked into `website/public/`)
 - **API reference**: `/{locale}/api/cadmus_core/` (cargo doc)
 - **Storybook**: `/{locale}/storybook/`
+
+The API reference and Storybook are deployed once, under `/_shared/`, and served at
+`/{locale}/api/*` and `/{locale}/storybook/*` through `200` proxy rules in the generated
+`_redirects`. Directory URLs keep the locale prefix. Page URLs ending in `.html` (rustdoc
+pages, Storybook's `iframe.html`) are redirected by Cloudflare to extensionless
+`/_shared/...` URLs, so deep links end up there rather than under `/{locale}/`. Bare
+`/{locale}/api` and `/{locale}/api/` redirect to the `cadmus_core` crate index, because
+rustdoc has no index page at its root.
 
 ### Deployed URLs
 
@@ -134,7 +142,11 @@ runs:
 8. Build Storybook → `website/storybook-static/`
 9. Symlink guide/api/storybook into `website/public/{locale}/`
 10. `next build` (static export) → `website/out/`
-11. Deduplicate shared api/storybook trees via symlinks in `website/out/_shared/`
+11. Deduplicate shared api/storybook trees: keep one copy in `website/out/_shared/`,
+    remove the locale and top-level copies (the output has no symlinks, because
+    artifact upload and the Cloudflare deploy would turn them back into copies), and
+    append `200` proxy rules for `/{locale}/api/*` and `/{locale}/storybook/*` to
+    `website/out/_redirects`
 
 `--mdbook-only` stops after step 3 (see [User guide](user-guide.md)).
 

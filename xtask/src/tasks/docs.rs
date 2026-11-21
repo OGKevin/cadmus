@@ -12,12 +12,17 @@
 //!    cargo-doc, and Storybook outputs in the static export under locale-first
 //!    paths.
 //! 10. Builds the Next.js website (`website/out/`).
-//! 11. Deduplicates API and Storybook copies in `website/out/` via symlinks.
+//! 11. Deduplicates API and Storybook copies in `website/out/`: keeps one copy
+//!     in `_shared/`, removes the locale and top-level copies, and appends
+//!     `200` proxy rules for them to `website/out/_redirects`. The output
+//!     contains no symlinks.
 //!
 //! ## Redirects for legacy paths (`/guide/`, `/api/`, …)
 //!
 //! `website/public/_redirects` holds server-side 302 rules for Cloudflare
-//! Workers Static Assets (and `wrangler dev`).  Committed to git.
+//! Workers Static Assets (and `wrangler dev`).  Committed to git.  Step 11
+//! appends the per-locale proxy rules that serve `/<locale>/api/*` and
+//! `/<locale>/storybook/*` from `/_shared/` in the generated copy only.
 //!
 //! ## Output
 //!
@@ -445,8 +450,18 @@ fn create_website_symlinks(root: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Replaces duplicated API and Storybook trees in `website/out/` with symlinks
-/// to `website/out/_shared/` after `next build` copies symlink targets.
+/// Shared asset trees served from `website/out/_shared/<asset>` for every
+/// locale.
+const SHARED_ASSETS: [&str; 2] = ["api", "storybook"];
+
+/// Keeps one copy of each shared asset tree in `website/out/_shared/` and
+/// removes the per-locale and top-level copies that `next build` produced by
+/// following the `website/public/` symlinks.
+///
+/// The output must not contain symlinks: `actions/upload-artifact` and the
+/// Cloudflare asset uploader both follow them and would restore every copy.
+/// Locale paths are served from the shared tree by the proxy rules from
+/// [`write_shared_proxy_rules`].
 fn deduplicate_website_out(root: &Path) -> Result<()> {
     let out_dir = root.join("website/out");
     if !out_dir.exists() {
@@ -457,7 +472,7 @@ fn deduplicate_website_out(root: &Path) -> Result<()> {
     let shared_out = out_dir.join("_shared");
     std::fs::create_dir_all(&shared_out)?;
 
-    for asset in ["api", "storybook"] {
+    for asset in SHARED_ASSETS {
         let shared_asset = shared_out.join(asset);
         if shared_asset.exists() {
             continue;
@@ -475,19 +490,90 @@ fn deduplicate_website_out(root: &Path) -> Result<()> {
     }
 
     for locale in &website_locales {
-        for asset in ["api", "storybook"] {
-            let link_path = out_dir.join(locale).join(asset);
-            if link_path.exists() || link_path.symlink_metadata().is_ok() {
-                remove_path_all(&link_path)?;
-            }
-
-            if shared_out.join(asset).exists() {
-                symlink_relative(&format!("../_shared/{asset}"), &link_path)?;
-            }
+        for asset in SHARED_ASSETS {
+            remove_path_all(&out_dir.join(locale).join(asset))?;
         }
     }
+    remove_path_all(&out_dir.join("api"))?;
 
-    Ok(())
+    write_shared_proxy_rules(&out_dir, &website_locales)
+}
+
+/// Returns the page a bare `/<locale>/<asset>` URL should land on, relative to
+/// `/<locale>/<asset>/`. Rustdoc has no index at its root, so the API lands on
+/// the `cadmus_core` crate index like the legacy `/api/` redirect does.
+fn landing_suffix(asset: &str) -> &'static str {
+    match asset {
+        "api" => "cadmus_core/",
+        _ => "",
+    }
+}
+
+/// Returns the `_redirects` rules for one locale and shared asset: `302`s from
+/// the bare URL (and, when the landing page is not the root, the
+/// trailing-slash URL) to the landing page, then the `200` proxy for
+/// everything below it.
+fn shared_asset_rules(locale: &str, asset: &str) -> Vec<String> {
+    let suffix = landing_suffix(asset);
+    let landing = format!("/{locale}/{asset}/{suffix}");
+    let mut rules = vec![format!("/{locale}/{asset} {landing} 302")];
+    if !suffix.is_empty() {
+        rules.push(format!("/{locale}/{asset}/ {landing} 302"));
+    }
+    rules.push(format!("/{locale}/{asset}/* /_shared/{asset}/:splat 200"));
+    rules
+}
+
+/// Appends Cloudflare `_redirects` rules that serve `/<locale>/<asset>/*`
+/// from `/_shared/<asset>/` with a `200` proxy, so only one copy is deployed.
+///
+/// A request for a directory URL such as `/en/api/cadmus_core/` keeps its
+/// locale prefix. A page URL ending in `.html` does not: Cloudflare applies
+/// its HTML handling to the proxied path and redirects to the extensionless
+/// `/_shared/...` URL, which then stays in the address bar.
+///
+/// The splat rule does not match the bare `/<locale>/<asset>` URL, which would
+/// hit the 404 page, so [`shared_asset_rules`] redirects it to the landing page.
+///
+/// Locales are listed explicitly rather than matched with a placeholder so
+/// the rules can never match `/_shared/` itself. Rules already present are
+/// not repeated.
+fn write_shared_proxy_rules(out_dir: &Path, locales: &[String]) -> Result<()> {
+    let redirects_path = out_dir.join("_redirects");
+    let mut redirects = match std::fs::read_to_string(&redirects_path) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => {
+            return Err(error)
+                .with_context(|| format!("failed to read {}", redirects_path.display()));
+        }
+    };
+
+    let rules: Vec<String> = locales
+        .iter()
+        .flat_map(|locale| {
+            SHARED_ASSETS
+                .iter()
+                .filter(|asset| out_dir.join("_shared").join(asset).exists())
+                .flat_map(move |asset| shared_asset_rules(locale, asset))
+        })
+        .filter(|rule| !redirects.lines().any(|line| line == rule))
+        .collect();
+
+    if rules.is_empty() {
+        return Ok(());
+    }
+
+    if !redirects.is_empty() && !redirects.ends_with('\n') {
+        redirects.push('\n');
+    }
+    for rule in rules {
+        redirects.push_str(&rule);
+        redirects.push('\n');
+    }
+
+    std::fs::write(&redirects_path, redirects)
+        .with_context(|| format!("failed to write {}", redirects_path.display()))
 }
 
 #[cfg(test)]
@@ -549,29 +635,56 @@ mod tests {
     }
 
     #[test]
-    fn deduplicate_website_out_moves_shared_tree_and_creates_locale_symlinks() {
+    fn deduplicate_website_out_removes_locale_copies() {
         let temp_dir = TempDir::new().unwrap();
         let root = temp_dir.path();
         setup_po_locales(root, &["en", "fr"]);
         setup_duplicate_asset_trees(root, &["en", "fr"], "api");
+        setup_duplicate_asset_trees(root, &["en", "fr"], "storybook");
+        let out_dir = root.join("website/out");
+        fs::create_dir_all(out_dir.join("api")).unwrap();
+        fs::write(out_dir.join("api/index.html"), "legacy-api").unwrap();
+        fs::write(out_dir.join("_redirects"), "/guide /en/guide/ 302").unwrap();
 
         deduplicate_website_out(root).unwrap();
 
-        let shared_api = root.join("website/out/_shared/api");
-        assert!(shared_api.is_dir());
         assert_eq!(
-            fs::read_to_string(shared_api.join("index.html")).unwrap(),
+            fs::read_to_string(out_dir.join("_shared/api/index.html")).unwrap(),
             "en-api"
         );
-
+        assert_eq!(
+            fs::read_to_string(out_dir.join("_shared/storybook/index.html")).unwrap(),
+            "en-storybook"
+        );
         for locale in ["en", "fr"] {
-            let link = root.join("website/out").join(locale).join("api");
-            assert_symlink_to(&link, "../_shared/api");
+            for asset in ["api", "storybook"] {
+                let path = out_dir.join(locale).join(asset);
+                assert!(
+                    path.symlink_metadata().is_err(),
+                    "{} should have been removed",
+                    path.display()
+                );
+            }
         }
+        assert!(out_dir.join("api").symlink_metadata().is_err());
+        assert_eq!(
+            fs::read_to_string(out_dir.join("_redirects")).unwrap(),
+            "/guide /en/guide/ 302\n\
+             /en/api /en/api/cadmus_core/ 302\n\
+             /en/api/ /en/api/cadmus_core/ 302\n\
+             /en/api/* /_shared/api/:splat 200\n\
+             /en/storybook /en/storybook/ 302\n\
+             /en/storybook/* /_shared/storybook/:splat 200\n\
+             /fr/api /fr/api/cadmus_core/ 302\n\
+             /fr/api/ /fr/api/cadmus_core/ 302\n\
+             /fr/api/* /_shared/api/:splat 200\n\
+             /fr/storybook /fr/storybook/ 302\n\
+             /fr/storybook/* /_shared/storybook/:splat 200\n"
+        );
     }
 
     #[test]
-    fn deduplicate_website_out_is_idempotent_when_symlinks_exist() {
+    fn deduplicate_website_out_is_idempotent() {
         let temp_dir = TempDir::new().unwrap();
         let root = temp_dir.path();
         setup_po_locales(root, &["en", "fr"]);
@@ -580,17 +693,21 @@ mod tests {
         deduplicate_website_out(root).unwrap();
         deduplicate_website_out(root).unwrap();
 
-        let shared_api = root.join("website/out/_shared/api");
-        assert!(shared_api.is_dir());
+        let out_dir = root.join("website/out");
         assert_eq!(
-            fs::read_to_string(shared_api.join("index.html")).unwrap(),
+            fs::read_to_string(out_dir.join("_shared/api/index.html")).unwrap(),
             "en-api"
         );
-
-        for locale in ["en", "fr"] {
-            let link = root.join("website/out").join(locale).join("api");
-            assert_symlink_to(&link, "../_shared/api");
-        }
+        assert!(out_dir.join("en/api").symlink_metadata().is_err());
+        assert_eq!(
+            fs::read_to_string(out_dir.join("_redirects")).unwrap(),
+            "/en/api /en/api/cadmus_core/ 302\n\
+             /en/api/ /en/api/cadmus_core/ 302\n\
+             /en/api/* /_shared/api/:splat 200\n\
+             /fr/api /fr/api/cadmus_core/ 302\n\
+             /fr/api/ /fr/api/cadmus_core/ 302\n\
+             /fr/api/* /_shared/api/:splat 200\n"
+        );
     }
 
     #[test]
