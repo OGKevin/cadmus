@@ -9,8 +9,10 @@
 //! |------|--------|----------|
 //! | *(default)* | `bundle/KoboRoot-nm.tgz` | Cadmus + NickelMenu |
 //! | `--no-nickel` | `bundle/KoboRoot.tgz` | Cadmus only |
+//! | `--no-nickel --xz` | `bundle/KoboRoot.tgz` + `bundle/KoboRoot.tar.xz` | Cadmus only, plus an xz copy for OTA |
 //! | `--test` | `bundle/KoboRoot-nm-test.tgz` | Test build + NickelMenu |
 //! | `--test --no-nickel` | `bundle/KoboRoot-test.tgz` | Test build only |
+//! | `--test --no-nickel --xz` | `bundle/KoboRoot-test.tgz` + `bundle/KoboRoot-test.tar.xz` | Test build only, plus an xz copy for OTA |
 //!
 //! ## NickelMenu
 //!
@@ -42,6 +44,10 @@ pub struct BundleArgs {
     /// Use a cached NickelMenu archive instead of downloading.
     #[arg(long)]
     pub skip_download: bool,
+
+    /// Also write an xz copy of the bundle (`KoboRoot[-test].tar.xz`) for OTA.
+    #[arg(long, requires = "no_nickel")]
+    pub xz: bool,
 }
 
 /// Packages the distribution directory into a `KoboRoot.tgz`.
@@ -64,7 +70,7 @@ pub fn run(args: BundleArgs) -> Result<()> {
     }
 
     if args.no_nickel {
-        create_bundle_cadmus_only(&root, args.test)?;
+        create_bundle_cadmus_only(&root, args.test, args.xz)?;
     } else {
         let archive = ensure_nickel_menu(&root, args.skip_download)?;
         create_bundle_with_nickel(&root, &archive, args.test)?;
@@ -122,12 +128,12 @@ fn download_nickel_menu(cache_dir: &Path, archive: &Path) -> Result<()> {
 }
 
 /// Creates a bundle containing only Cadmus (no NickelMenu).
-fn create_bundle_cadmus_only(root: &Path, test: bool) -> Result<()> {
+fn create_bundle_cadmus_only(root: &Path, test: bool, xz: bool) -> Result<()> {
     let bundle_dir = root.join("bundle");
-    let (adds_subdir, archive_name) = if test {
-        ("cadmus-tst", "KoboRoot-test.tgz")
+    let (adds_subdir, archive_name, xz_name) = if test {
+        ("cadmus-tst", "KoboRoot-test.tgz", "KoboRoot-test.tar.xz")
     } else {
-        ("cadmus", "KoboRoot.tgz")
+        ("cadmus", "KoboRoot.tgz", "KoboRoot.tar.xz")
     };
 
     let install_dir = bundle_dir.join("mnt/onboard/.adds").join(adds_subdir);
@@ -136,11 +142,20 @@ fn create_bundle_cadmus_only(root: &Path, test: bool) -> Result<()> {
     fs::copy_dir_all(&root.join("dist"), &install_dir)?;
 
     let archive = bundle_dir.join(archive_name);
-    fs::create_tarball(&archive, &bundle_dir, &["mnt"])?;
+    let xz_archive = bundle_dir.join(xz_name);
+    fs::create_ota_archives(
+        &archive,
+        xz.then_some(xz_archive.as_path()),
+        &bundle_dir,
+        &["mnt"],
+    )?;
 
     std::fs::remove_dir_all(bundle_dir.join("mnt"))?;
 
     println!("Bundle created: bundle/{archive_name}");
+    if xz {
+        println!("Bundle created: bundle/{xz_name}");
+    }
     println!("Place this file in the .kobo directory on your Kobo device");
     Ok(())
 }

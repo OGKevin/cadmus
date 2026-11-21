@@ -511,6 +511,7 @@ jobs:
         with:
           gh-token: ${{ secrets.GITHUB_TOKEN }}
           gh-oauth-client-id: ${{ secrets.GH_OAUTH_CLIENT_ID }}
+          xz: "true"
 
       - &get-commit
         name: Get commit hash
@@ -538,6 +539,7 @@ jobs:
             dist/libs/*.so*
             dist/bin/*
             release-artifacts/*.tgz
+            release-artifacts/*.tar.xz
 
       - name: Upload KoboRoot
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -546,6 +548,15 @@ jobs:
           path: release-artifacts/KoboRoot.tgz
           if-no-files-found: error
           retention-days: 7
+
+      - name: Upload KoboRoot xz
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: cadmus-kobo-xz-${{ steps.artifact.outputs.suffix }}
+          path: release-artifacts/KoboRoot.tar.xz
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
 
       - name: Upload KoboRoot with NickelMenu
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -608,6 +619,7 @@ jobs:
           gh-token: ${{ secrets.GITHUB_TOKEN }}
           gh-oauth-client-id: ${{ secrets.GH_OAUTH_CLIENT_ID }}
           test: "true"
+          xz: "true"
 
       - *get-commit
       - *determine-suffix
@@ -621,6 +633,15 @@ jobs:
           path: release-artifacts/KoboRoot-test.tgz
           if-no-files-found: error
           retention-days: 7
+
+      - name: Upload KoboRoot xz
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: cadmus-kobo-xz-test-${{ steps.artifact.outputs.suffix }}
+          path: release-artifacts/KoboRoot-test.tar.xz
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
 
       - name: Upload KoboRoot with NickelMenu
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

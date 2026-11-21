@@ -26,6 +26,7 @@ gix = { version = "0.90", default-features = false, features = [
 http = "1"
 http-body-util = "0.1"
 io_tee = "0.1"
+lzma-rust2 = { version = "0.24", default-features = false }
 octocrab = { version = "0.54.2", default-features = false, features = [
     "jwt-rust-crypto",
 ] }

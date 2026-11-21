@@ -73,6 +73,131 @@ pub fn create_tarball(dest: &Path, base_dir: &Path, entries: &[&str]) -> Result<
     Ok(())
 }
 
+const XZ_DICT_SIZE: u32 = 16 << 20;
+const XZ_NICE_LEN: u32 = 273;
+const XZ_BLOCK_SIZE: u64 = 32 << 20;
+
+struct BundleSink {
+    gz: flate2::write::GzEncoder<std::io::BufWriter<std::fs::File>>,
+    xz: Option<lzma_rust2::XzWriterMt<std::io::BufWriter<std::fs::File>>>,
+}
+
+impl std::io::Write for BundleSink {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.gz.write_all(buf)?;
+        if let Some(xz) = self.xz.as_mut() {
+            xz.write_all(buf)?;
+        }
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.gz.flush()?;
+        if let Some(xz) = self.xz.as_mut() {
+            xz.flush()?;
+        }
+        Ok(())
+    }
+}
+
+fn create_output(path: &Path) -> Result<std::io::BufWriter<std::fs::File>> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create parent directory for {}", path.display()))?;
+    }
+
+    let file = std::fs::File::create(path)
+        .with_context(|| format!("failed to create archive {}", path.display()))?;
+    Ok(std::io::BufWriter::new(file))
+}
+
+/// Creates the OTA bundle archive: one tar stream written to `gz_dest` as
+/// gzip and, when `xz_dest` is set, as xz.
+///
+/// Directories come first, then files in path order. Path order keeps sibling
+/// files, such as the font families and icon sets, close together so xz can
+/// match across them.
+///
+/// # Errors
+///
+/// Returns an error if an output cannot be created or any entry cannot be
+/// read or added.
+pub fn create_ota_archives(
+    gz_dest: &Path,
+    xz_dest: Option<&Path>,
+    base_dir: &Path,
+    entries: &[&str],
+) -> Result<()> {
+    let mut dirs: Vec<std::path::PathBuf> = Vec::new();
+    let mut files: Vec<std::path::PathBuf> = Vec::new();
+
+    for entry in entries {
+        for item in walkdir::WalkDir::new(base_dir.join(entry)).follow_links(true) {
+            let item = item.with_context(|| format!("failed to walk {entry}"))?;
+            let relative = item
+                .path()
+                .strip_prefix(base_dir)
+                .with_context(|| format!("{} is outside the bundle", item.path().display()))?
+                .to_path_buf();
+
+            if item.file_type().is_dir() {
+                dirs.push(relative);
+            } else {
+                files.push(relative);
+            }
+        }
+    }
+
+    dirs.sort();
+    files.sort();
+
+    let mut options = lzma_rust2::XzOptions::with_preset(9);
+    options.lzma_options.dict_size = XZ_DICT_SIZE;
+    options.lzma_options.nice_len = XZ_NICE_LEN;
+    options.block_size = std::num::NonZeroU64::new(XZ_BLOCK_SIZE);
+    let workers = std::thread::available_parallelism().map_or(1, |threads| {
+        u32::try_from(threads.get()).unwrap_or(u32::MAX)
+    });
+
+    let sink = BundleSink {
+        gz: flate2::write::GzEncoder::new(create_output(gz_dest)?, flate2::Compression::default()),
+        xz: xz_dest
+            .map(|dest| {
+                lzma_rust2::XzWriterMt::new(create_output(dest)?, options, workers)
+                    .context("failed to start xz stream")
+            })
+            .transpose()?,
+    };
+    let mut builder = tar::Builder::new(sink);
+
+    for relative in dirs.iter().chain(files.iter()) {
+        builder
+            .append_path_with_name(base_dir.join(relative), relative)
+            .with_context(|| format!("failed to add {} to archive", relative.display()))?;
+    }
+
+    let sink = builder
+        .into_inner()
+        .context("failed to finalise tar builder")?;
+
+    sink.gz
+        .finish()
+        .context("failed to finalise gzip stream")?
+        .into_inner()
+        .map_err(|e| e.into_error())
+        .context("failed to flush gzip archive")?;
+
+    if let Some(xz) = sink.xz {
+        xz.finish()
+            .context("failed to finalise xz stream")?
+            .into_inner()
+            .map_err(|e| e.into_error())
+            .context("failed to flush xz archive")?;
+    }
+
+    Ok(())
+}
+
 /// Extracts a `.tar.gz` archive into `dest_dir`.
 ///
 /// # Errors
@@ -427,6 +552,81 @@ mod tests {
         create_tarball(&archive, tmp.path(), &["src"]).unwrap();
 
         assert!(archive.exists());
+    }
+
+    #[test]
+    fn create_ota_archives_orders_by_path_and_round_trips() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("root");
+        let nested = root.join("mnt/nested");
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(root.join("mnt/a.txt"), b"same").unwrap();
+        fs::write(root.join("mnt/b.txt"), b"different").unwrap();
+        fs::write(nested.join("c.txt"), b"same").unwrap();
+
+        let gz = tmp.path().join("out.tgz");
+        let xz = tmp.path().join("out.tar.xz");
+        create_ota_archives(&gz, Some(&xz), &root, &["mnt"]).unwrap();
+
+        let from_gz = {
+            let mut buf = Vec::new();
+            std::io::Read::read_to_end(
+                &mut flate2::read::GzDecoder::new(fs::File::open(&gz).unwrap()),
+                &mut buf,
+            )
+            .unwrap();
+            buf
+        };
+        let from_xz = {
+            let mut buf = Vec::new();
+            std::io::Read::read_to_end(
+                &mut lzma_rust2::XzReader::new(fs::File::open(&xz).unwrap(), true),
+                &mut buf,
+            )
+            .unwrap();
+            buf
+        };
+        assert_eq!(from_gz, from_xz);
+
+        let mut archive = tar::Archive::new(from_xz.as_slice());
+        let names: Vec<String> = archive
+            .entries()
+            .unwrap()
+            .map(|e| e.unwrap().path().unwrap().to_string_lossy().into_owned())
+            .collect();
+
+        assert_eq!(
+            names,
+            [
+                "mnt",
+                "mnt/nested",
+                "mnt/a.txt",
+                "mnt/b.txt",
+                "mnt/nested/c.txt"
+            ]
+        );
+
+        let out = tmp.path().join("out");
+        fs::create_dir_all(&out).unwrap();
+        tar::Archive::new(from_xz.as_slice()).unpack(&out).unwrap();
+        assert_eq!(fs::read(out.join("mnt/nested/c.txt")).unwrap(), b"same");
+        assert_eq!(fs::read(out.join("mnt/b.txt")).unwrap(), b"different");
+    }
+
+    #[test]
+    fn create_ota_archives_without_xz_writes_only_gzip() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("root");
+        fs::create_dir_all(root.join("mnt")).unwrap();
+        fs::write(root.join("mnt/a.txt"), b"a").unwrap();
+
+        let gz = tmp.path().join("out.tgz");
+        create_ota_archives(&gz, None, &root, &["mnt"]).unwrap();
+
+        let extract_dir = tmp.path().join("x");
+        extract_tarball(&gz, &extract_dir).unwrap();
+        assert!(extract_dir.join("mnt/a.txt").exists());
+        assert_eq!(fs::read_dir(tmp.path()).unwrap().count(), 3);
     }
 
     #[test]

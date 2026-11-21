@@ -79,10 +79,10 @@ for details.
 ## Normal vs test builds
 
 OTA works for both types of builds. The type you're currently using determines
-what gets downloaded:
+what gets installed:
 
-- **Normal builds** update to `KoboRoot.tgz` in `/mnt/onboard/.adds/cadmus`
-- **Test builds** update to `KoboRoot-test.tgz` in `/mnt/onboard/.adds/cadmus-tst`
+- **Normal builds** install `KoboRoot.tgz` into `/mnt/onboard/.adds/cadmus`
+- **Test builds** install `KoboRoot-test.tgz` into `/mnt/onboard/.adds/cadmus-tst`
 
 See the [available packages](./index.md#available-packages) table for all
 options.
@@ -106,3 +106,9 @@ while downloading an update:
 - If you see this error and have an SD card inserted, the card may be full
 - If you do not have an SD card, free up space on internal storage by deleting
   books or other files you do not need
+
+### "Not enough internal storage" error
+
+Kobo installs updates from internal storage, even when the download went to
+the SD card. If Cadmus reports that internal storage is too small, delete books
+or other files from internal storage and try again.

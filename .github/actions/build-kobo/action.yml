@@ -25,6 +25,12 @@ inputs:
       and test is true, defaults to test.
     required: false
     default: ""
+  xz:
+    description: >
+      Also produce an xz copy of the Cadmus-only bundle (KoboRoot.tar.xz, or
+      KoboRoot-test.tar.xz when test is true) that OTA updates download.
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -111,13 +117,21 @@ runs:
       run: |
         mkdir -p release-artifacts
 
+        xz_flag=""
+        if [ "${{ inputs.xz }}" = "true" ]; then
+          xz_flag="--xz"
+        fi
+
         if [ "${{ inputs.test }}" = "true" ]; then
           cd dist
           tar czf ../release-artifacts/cadmus-kobo-test.tar.gz .
           cd ..
 
-          cadmuscli bundle --no-nickel --test
+          cadmuscli bundle --no-nickel --test $xz_flag
           cp bundle/KoboRoot-test.tgz release-artifacts/KoboRoot-test.tgz
+          if [ -n "$xz_flag" ]; then
+            cp bundle/KoboRoot-test.tar.xz release-artifacts/KoboRoot-test.tar.xz
+          fi
 
           cadmuscli bundle --test
           cp bundle/KoboRoot-nm-test.tgz release-artifacts/KoboRoot-nm-test.tgz
@@ -126,8 +140,11 @@ runs:
           tar czf ../release-artifacts/cadmus-kobo.tar.gz .
           cd ..
 
-          cadmuscli bundle --no-nickel
+          cadmuscli bundle --no-nickel $xz_flag
           cp bundle/KoboRoot.tgz release-artifacts/KoboRoot.tgz
+          if [ -n "$xz_flag" ]; then
+            cp bundle/KoboRoot.tar.xz release-artifacts/KoboRoot.tar.xz
+          fi
 
           cadmuscli bundle
           cp bundle/KoboRoot-nm.tgz release-artifacts/KoboRoot-nm.tgz
