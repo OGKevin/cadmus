@@ -86,7 +86,7 @@ Once inside the devenv shell, these commands are available:
 | `cadmuscli run-emulator`    | Run the emulator                                                                |
 | `cadmuscli build-kobo`      | Cross-compile for Kobo device                                                   |
 | `cadmuscli dist`            | Assemble the Kobo distribution directory                                        |
-| `cadmuscli bundle`          | Package KoboRoot.tgz for installation                                           |
+| `cadmuscli bundle`          | Package KoboRoot.tgz for installation (`--no-nickel --xz` adds KoboRoot.tar.xz) |
 | `cadmus-dev-otel`           | Run emulator with tracing and profiling enabled                                 |
 | `cadmus-process-status`     | Print stack URLs, process state, and health probes                              |
 | `devenv up`                 | Start the supervised stack (observability + docs site)                          |
