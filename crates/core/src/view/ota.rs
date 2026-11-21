@@ -676,9 +676,21 @@ async fn finish_successful_deploy(hub: &Hub, install_dir: &Path, outcome: Deploy
 }
 
 fn report_artifact_download_progress(hub: &Hub, kind: OtaDownloadKind, ota_progress: OtaProgress) {
-    if let OtaProgress::DownloadingArtifact { downloaded, total } = ota_progress {
-        let percent = (downloaded as f32 / total as f32 * 100.0) as u8;
-        send_ota_progress(hub, kind.progress_label(percent), percent, true);
+    match ota_progress {
+        OtaProgress::DownloadingArtifact { downloaded, total } => {
+            let percent = (downloaded as f32 / total as f32 * 100.0) as u8;
+            send_ota_progress(hub, kind.progress_label(percent), percent, true);
+        }
+        OtaProgress::Decompressing { done, total } => {
+            let percent = (done as f32 / total.max(1) as f32 * 100.0).min(100.0) as u8;
+            send_ota_progress(
+                hub,
+                fl!("ota-decompressing", percent = percent),
+                percent,
+                true,
+            );
+        }
+        _ => {}
     }
 }
 
@@ -877,6 +889,11 @@ fn run_ota_download(ctx: OtaDownloadContext) -> crate::runtime::Job {
                         }
                         DownloadedArtifact::Zipped(path) => {
                             client.extract_and_deploy(path, should_cancel).await
+                        }
+                        DownloadedArtifact::Xz(source) => {
+                            client
+                                .transcode_and_deploy(source, progress, should_cancel)
+                                .await
                         }
                     };
 
@@ -1141,7 +1158,7 @@ impl OtaView {
             }
         }
 
-        if percent == 100 {
+        if percent == 100 && !cancelable {
             if let Some(idx) = self.progress_bar_index.take()
                 && let Some(child) = self.children.get(idx)
             {
@@ -1733,7 +1750,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn test_progress_100_removes_bar_and_shifts_cancel_index() {
+    async fn test_progress_100_cancelable_keeps_bar_for_decompression() {
         let mut context = create_test_context().await;
         let mut ota = create_ota_view(&mut context);
         let mut rq = RenderQueue::new();
@@ -1743,15 +1760,12 @@ mod tests {
         assert_eq!(ota.progress_bar_index, Some(2));
         assert_eq!(ota.cancel_button_index, Some(3));
 
-        let handled = ota.on_download_progress("Done", 100, true, &mut rq);
-
+        let handled = ota.on_download_progress("Decompressing 0%", 100, true, &mut rq);
         assert!(handled);
-        assert!(ota.progress_bar_index.is_none());
-        assert_eq!(ota.cancel_button_index, Some(2));
-        assert!(
-            ota.children[2].downcast_ref::<Button>().is_some(),
-            "cancel button must remain addressable after progress bar removal"
-        );
+        assert_eq!(ota.progress_bar_index, Some(2));
+
+        ota.on_download_progress("Decompressing 10%", 10, true, &mut rq);
+        assert!(ota.children[2].downcast_ref::<ProgressBar>().is_some());
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

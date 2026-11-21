@@ -199,6 +199,10 @@ pub enum OtaProgress {
     FindingWorkflow,
     /// Actively downloading the artifact with optional progress tracking.
     DownloadingArtifact { downloaded: u64, total: u64 },
+    /// Decoding the xz payload and re-compressing it into `KoboRoot.tgz`.
+    ///
+    /// `done` and `total` count compressed (xz) bytes consumed and in the payload.
+    Decompressing { done: u64, total: u64 },
     /// Download completed successfully.
     Complete,
 }

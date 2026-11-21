@@ -1,3 +1,4 @@
+use super::xz::{self, XzSource};
 use crate::github::types::{
     Artifact, ArtifactsResponse, Release, ReleaseAsset, Repository, WorkflowRun,
     WorkflowRunsResponse,
@@ -128,6 +129,20 @@ pub enum OtaError {
     /// OTA download or deploy was cancelled by the user
     #[error("OTA download cancelled")]
     Cancelled,
+
+    /// The xz payload is corrupt, fails its integrity check or exceeds the
+    /// decoder memory limit
+    #[error("Decompression error: {0}")]
+    Decompress(String),
+
+    /// The deploy filesystem cannot hold the decompressed bundle
+    #[error("Insufficient space to stage update: need {needed_mb}MB, have {available_mb}MB")]
+    InsufficientDeploySpace {
+        /// Estimated size of the staged `KoboRoot.tgz` in megabytes.
+        needed_mb: u64,
+        /// Free space on the deploy filesystem in megabytes.
+        available_mb: u64,
+    },
 }
 
 /// Result of committing `KoboRoot.tgz` to the deploy path.
@@ -173,7 +188,8 @@ impl DeployOutcome {
 /// in RAM it is buffered whole ([`Self::InMemory`]) so the ZIP never touches
 /// flash; otherwise it is downloaded to `tmp_dir` and streamed from disk
 /// ([`Self::Zipped`]). Stable releases ship a bare `KoboRoot.tgz` and are always
-/// on disk ([`Self::Bundle`]).
+/// on disk ([`Self::Bundle`]). Newer builds and releases also ship an xz copy
+/// ([`Self::Xz`]) that is decoded into `KoboRoot.tgz` on the device.
 #[derive(Debug)]
 pub enum DownloadedArtifact {
     /// The artifact ZIP, held entirely in memory.
@@ -182,6 +198,8 @@ pub enum DownloadedArtifact {
     Zipped(PathBuf),
     /// Path to a bare `KoboRoot.tgz` release asset.
     Bundle(PathBuf),
+    /// An xz copy of the bundle, decoded and re-compressed during deploy.
+    Xz(XzSource),
 }
 
 impl From<crate::runtime::Cancelled> for OtaError {
@@ -242,7 +260,7 @@ impl OtaClient {
     /// 1. Verifies sufficient disk space (100MB required)
     /// 2. Fetches PR metadata to get the commit SHA
     /// 3. Finds the associated "Cargo" workflow run
-    /// 4. Locates artifacts matching "cadmus-kobo-pr*" pattern
+    /// 4. Locates the `cadmus-kobo-xz-pr*` artifact, falling back to `cadmus-kobo-pr*`
     /// 5. Downloads the artifact ZIP file to `tmp_dir/cadmus-ota-{pr_number}.zip`
     ///
     /// GitHub authentication is required for this operation.
@@ -347,10 +365,7 @@ impl OtaClient {
             }
         }
 
-        let artifact_name_pattern = cfg_select! {
-            feature = "test" => { format!("cadmus-kobo-test-pr{}", pr_number) }
-            _ => { format!("cadmus-kobo-pr{}", pr_number) }
-        };
+        let prefixes = ArtifactPrefixes::for_pr(pr_number);
 
         let mut artifact = None;
         for run in runs
@@ -364,10 +379,7 @@ impl OtaClient {
                 conclusion = ?run.conclusion,
                 "Checking Cargo workflow run for artifacts"
             );
-            match self
-                .find_artifact_in_run(run.id, &artifact_name_pattern)
-                .await
-            {
+            match self.find_ota_artifact_in_run(run.id, &prefixes).await {
                 Ok(found) => {
                     tracing::debug!(run_id = run.id, "Selected Cargo workflow run");
                     artifact = Some(found);
@@ -384,7 +396,7 @@ impl OtaClient {
             }
         }
 
-        let artifact = artifact.ok_or_else(|| {
+        let (artifact, format) = artifact.ok_or_else(|| {
             tracing::error!(
                 pr_number,
                 "No Cargo workflow run with matching artifacts found"
@@ -404,6 +416,7 @@ impl OtaClient {
         let artifact = self
             .download_artifact(
                 &artifact,
+                format,
                 &download_path,
                 &mut progress_callback,
                 should_cancel,
@@ -494,17 +507,14 @@ impl OtaClient {
         })?;
         let short_sha = &head_sha[..7.min(head_sha.len())];
 
-        let artifact_name_prefix = cfg_select! {
-            feature = "test" => { format!("cadmus-kobo-test-{}", short_sha) }
-            _ => { format!("cadmus-kobo-{}", short_sha) }
-        };
+        let prefixes = ArtifactPrefixes::for_commit(short_sha);
 
-        tracing::debug!(pattern = %artifact_name_prefix, "Looking for artifact");
+        tracing::debug!(xz = %prefixes.xz, legacy = %prefixes.legacy, "Looking for artifact");
 
         progress_callback(OtaProgress::FindingWorkflow);
 
-        let artifact = self
-            .find_artifact_in_run(cargo_run.id, &artifact_name_prefix)
+        let (artifact, format) = self
+            .find_ota_artifact_in_run(cargo_run.id, &prefixes)
             .await
             .map_err(|e| match e {
                 OtaError::ArtifactsNotFound(ArtifactSource::WorkflowRun(pattern)) => {
@@ -526,6 +536,7 @@ impl OtaClient {
         let artifact = self
             .download_artifact(
                 &artifact,
+                format,
                 &download_path,
                 &mut progress_callback,
                 should_cancel,
@@ -543,8 +554,8 @@ impl OtaClient {
     /// This performs the complete download workflow for stable releases:
     /// 1. Verifies sufficient disk space (100MB required)
     /// 2. Fetches the latest release from GitHub API
-    /// 3. Locates the `KoboRoot.tgz` asset in the release
-    /// 4. Downloads the file to `tmp_dir/cadmus-ota-stable-release.tgz`
+    /// 3. Locates the `KoboRoot.tar.xz` asset in the release, falling back to `KoboRoot.tgz`
+    /// 4. Downloads the asset into memory when it fits, otherwise to `tmp_dir`
     ///
     /// GitHub authentication is not required for this operation as release
     /// assets are downloaded from public URLs without Authorization headers.
@@ -555,7 +566,8 @@ impl OtaClient {
     ///
     /// # Returns
     ///
-    /// The downloaded `KoboRoot.tgz` bundle, always on disk.
+    /// The downloaded bundle: xz in memory or on disk when the release ships one,
+    /// otherwise the bare `KoboRoot.tgz` on disk.
     ///
     /// # Errors
     ///
@@ -610,36 +622,44 @@ impl OtaClient {
             );
         }
 
-        let asset_name = "KoboRoot.tgz";
-
-        let asset = release
-            .assets
-            .iter()
-            .find(|a| a.name == asset_name)
-            .ok_or_else(|| {
-                tracing::error!(
-                    target_asset = asset_name,
-                    "Asset not found in latest release"
-                );
-                OtaError::ArtifactsNotFound(ArtifactSource::ReleaseAsset(asset_name.to_owned()))
-            })?;
+        let (asset, format) = select_release_asset(&release.assets).ok_or_else(|| {
+            tracing::error!(
+                target_asset = GZIP_RELEASE_ASSET,
+                "Asset not found in latest release"
+            );
+            OtaError::ArtifactsNotFound(ArtifactSource::ReleaseAsset(GZIP_RELEASE_ASSET.to_owned()))
+        })?;
 
         tracing::debug!(
             name = %asset.name,
             url = %asset.browser_download_url,
             size_bytes = asset.size,
+            ?format,
             "Found release asset"
         );
 
-        let download_path = self.tmp_dir.join("cadmus-ota-stable-release.tgz");
-
-        self.download_release_asset(asset, &download_path, &mut progress_callback, should_cancel)
-            .await?;
+        let downloaded = match format {
+            PayloadFormat::Gzip => {
+                let download_path = self.tmp_dir.join("cadmus-ota-stable-release.tgz");
+                self.download_release_asset(
+                    asset,
+                    &download_path,
+                    &mut progress_callback,
+                    should_cancel,
+                )
+                .await?;
+                DownloadedArtifact::Bundle(download_path)
+            }
+            PayloadFormat::Xz => {
+                self.download_release_xz(asset, &mut progress_callback, should_cancel)
+                    .await?
+            }
+        };
 
         progress_callback(OtaProgress::Complete);
 
         tracing::info!("Stable release download completed");
-        Ok(DownloadedArtifact::Bundle(download_path))
+        Ok(downloaded)
     }
 
     /// Fetches the latest stable release version from GitHub.
@@ -1005,7 +1025,8 @@ impl OtaClient {
         let mut reader = ZipArchiveReader::open(tokio::io::BufReader::new(file).compat())
             .await
             .map_err(|error| OtaError::ZipError(error.to_string()))?;
-        let (mut entry, _) = open_kobo_root_entry(&mut reader, should_cancel).await?;
+        let (mut entry, _) =
+            open_kobo_root_entry(&mut reader, kobo_root_gzip_name(), should_cancel).await?;
 
         let (deploy_path, staging_path, mut unpublished, mut staging) =
             self.begin_staging().await?;
@@ -1064,12 +1085,79 @@ impl OtaClient {
         let mut reader = ZipArchiveReader::open(Cursor::new(zip_bytes))
             .await
             .map_err(|error| OtaError::ZipError(error.to_string()))?;
-        let (mut entry, uncompressed) = open_kobo_root_entry(&mut reader, should_cancel).await?;
+        let (mut entry, uncompressed) =
+            open_kobo_root_entry(&mut reader, kobo_root_gzip_name(), should_cancel).await?;
         let mut kobo_root_data = Vec::with_capacity(usize::try_from(uncompressed).unwrap_or(0));
         copy_cancellable(&mut entry, &mut kobo_root_data, should_cancel).await?;
         tracing::debug!(bytes = kobo_root_data.len(), "Extracted file into memory");
 
         self.deploy_bytes(&kobo_root_data, should_cancel).await
+    }
+
+    /// Decodes an xz payload into `KoboRoot.tgz` and deploys it.
+    ///
+    /// The xz stream is decoded and re-compressed with gzip in a single pass
+    /// straight into the staging file, so the only flash write is the final
+    /// `KoboRoot.tgz`. The CPU-bound codec runs on the blocking pool one chunk at
+    /// a time while reads and writes stay async. `progress` receives
+    /// [`OtaProgress::Decompressing`]. On success an on-disk source is deleted as
+    /// a best-effort cleanup step.
+    ///
+    /// # Errors
+    ///
+    /// * `OtaError::InsufficientDeploySpace` - The deploy filesystem cannot hold
+    ///   the bundle
+    /// * `OtaError::Decompress` - The xz stream is corrupt or too demanding
+    /// * `OtaError::ZipError` - The wrapping ZIP is invalid or fails its CRC32
+    /// * `OtaError::DeploymentError` - No `KoboRoot` xz member in the ZIP
+    /// * `OtaError::Cancelled` - The user cancelled
+    /// * `OtaError::Io` - Reading the payload or writing the staging file failed
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self, source, progress, should_cancel))
+    )]
+    pub async fn transcode_and_deploy<F>(
+        &self,
+        source: XzSource,
+        mut progress: F,
+        should_cancel: CancelFunc<'_>,
+    ) -> Result<DeployOutcome, OtaError>
+    where
+        F: FnMut(OtaProgress),
+    {
+        if should_cancel.is_cancelled() {
+            return Err(OtaError::Cancelled);
+        }
+
+        tracing::info!("Decoding xz bundle and deploying");
+
+        let (deploy_path, staging_path, mut unpublished, mut staging) =
+            self.begin_staging().await?;
+
+        match xz::uncompressed_size(&source).await {
+            Some(raw_size) => check_deploy_space(&deploy_path, xz::gzip_bound(raw_size))?,
+            None => tracing::warn!("xz index unreadable; skipping the deploy space check"),
+        }
+
+        xz::transcode_to_gzip(&source, &mut staging, should_cancel, &mut progress).await?;
+
+        let outcome = self
+            .commit_staging(
+                deploy_path,
+                staging_path,
+                &mut unpublished,
+                &mut staging,
+                should_cancel,
+            )
+            .await?;
+
+        if let Some(path) = source.path()
+            && let Err(e) = tokio::fs::remove_file(path).await
+        {
+            tracing::error!(path = ?path, error = %e, "Failed to remove source file");
+        }
+
+        Ok(outcome)
     }
 
     /// Queries the GitHub API for the repository's default branch name.
@@ -1092,12 +1180,14 @@ impl OtaClient {
         Ok(repo.default_branch)
     }
 
-    /// Fetches artifacts for a workflow run and finds one matching the given prefix.
-    async fn find_artifact_in_run(
+    /// Fetches artifacts for a workflow run and picks the OTA bundle.
+    ///
+    /// The xz artifact wins over the legacy gzip one when a run has both.
+    async fn find_ota_artifact_in_run(
         &self,
         run_id: u64,
-        name_prefix: &str,
-    ) -> Result<Artifact, OtaError> {
+        prefixes: &ArtifactPrefixes,
+    ) -> Result<(Artifact, PayloadFormat), OtaError> {
         let artifacts_url = format!(
             "https://api.github.com/repos/ogkevin/cadmus/actions/runs/{}/artifacts?per_page=50",
             run_id
@@ -1131,28 +1221,24 @@ impl OtaClient {
             }
         }
 
-        tracing::debug!(pattern = %name_prefix, "Looking for artifact");
-
-        artifacts
-            .artifacts
-            .into_iter()
-            .find(|a| !a.expired && a.name.starts_with(name_prefix))
-            .ok_or_else(|| {
-                tracing::error!(run_id, pattern = %name_prefix, "No matching artifact found");
-                OtaError::ArtifactsNotFound(ArtifactSource::WorkflowRun(name_prefix.to_owned()))
-            })
+        select_artifact(artifacts.artifacts, prefixes).ok_or_else(|| {
+            tracing::error!(run_id, xz = %prefixes.xz, legacy = %prefixes.legacy, "No matching artifact found");
+            OtaError::ArtifactsNotFound(ArtifactSource::WorkflowRun(prefixes.legacy.clone()))
+        })
     }
 
     /// Downloads an artifact ZIP, buffering it in memory when it fits.
     ///
     /// The in-memory path never writes the ZIP to flash. When it does not fit,
     /// the ZIP is downloaded to `download_path` and the caller streams the
-    /// `KoboRoot` entry from disk.
+    /// bundle entry from disk. `format` selects the memory heuristic and the
+    /// returned variant.
     ///
     /// GitHub authentication is required for this operation.
     async fn download_artifact<F>(
         &self,
         artifact: &Artifact,
+        format: PayloadFormat,
         download_path: &PathBuf,
         progress_callback: &mut F,
         should_cancel: Option<&CancelFlag>,
@@ -1168,7 +1254,7 @@ impl OtaClient {
             progress_callback(OtaProgress::DownloadingArtifact { downloaded, total })
         };
 
-        if artifact_fits_in_memory(artifact.size_in_bytes) {
+        if payload_fits_in_memory(format, artifact.size_in_bytes) {
             tracing::debug!(
                 artifact_id = artifact.id,
                 size_bytes = artifact.size_in_bytes,
@@ -1184,7 +1270,10 @@ impl OtaClient {
                     should_cancel,
                 )
                 .await?;
-            return Ok(DownloadedArtifact::InMemory(bytes));
+            return Ok(match format {
+                PayloadFormat::Gzip => DownloadedArtifact::InMemory(bytes),
+                PayloadFormat::Xz => DownloadedArtifact::Xz(XzSource::ZipBytes(bytes)),
+            });
         }
 
         self.github
@@ -1197,7 +1286,10 @@ impl OtaClient {
                 should_cancel,
             )
             .await?;
-        Ok(DownloadedArtifact::Zipped(download_path.clone()))
+        Ok(match format {
+            PayloadFormat::Gzip => DownloadedArtifact::Zipped(download_path.clone()),
+            PayloadFormat::Xz => DownloadedArtifact::Xz(XzSource::ZipFile(download_path.clone())),
+        })
     }
 
     /// Downloads a release asset to the specified path with chunked transfer and progress reporting.
@@ -1232,6 +1324,39 @@ impl OtaClient {
             )
             .await?;
         Ok(())
+    }
+
+    /// Downloads the `KoboRoot.tar.xz` release asset, into memory when it fits.
+    async fn download_release_xz<F>(
+        &self,
+        asset: &ReleaseAsset,
+        progress_callback: &mut F,
+        should_cancel: Option<&CancelFlag>,
+    ) -> Result<DownloadedArtifact, OtaError>
+    where
+        F: FnMut(OtaProgress),
+    {
+        if xz::fits_in_memory(asset.size) {
+            tracing::debug!(size_bytes = asset.size, "Buffering release asset in memory");
+            let bytes = self
+                .github
+                .download_to_vec(
+                    &asset.browser_download_url,
+                    Some(asset.size),
+                    |url| self.github.get_unauthenticated(url),
+                    &mut |downloaded, total| {
+                        progress_callback(OtaProgress::DownloadingArtifact { downloaded, total })
+                    },
+                    should_cancel,
+                )
+                .await?;
+            return Ok(DownloadedArtifact::Xz(XzSource::RawBytes(bytes)));
+        }
+
+        let download_path = self.tmp_dir.join("cadmus-ota-stable-release.tar.xz");
+        self.download_release_asset(asset, &download_path, progress_callback, should_cancel)
+            .await?;
+        Ok(DownloadedArtifact::Xz(XzSource::RawFile(download_path)))
     }
 }
 
@@ -1353,6 +1478,29 @@ fn check_disk_space(path: &Path) -> Result<(), OtaError> {
     Ok(())
 }
 
+/// Fails when the deploy filesystem cannot hold `needed_bytes`.
+///
+/// [`check_disk_space`] only covers `tmp_dir`; the staged `KoboRoot.tgz` is
+/// written next to the deploy path, which can be a different filesystem.
+fn check_deploy_space(deploy_path: &Path, needed_bytes: u64) -> Result<(), OtaError> {
+    use nix::sys::statvfs::statvfs;
+
+    let directory = deploy_path.parent().unwrap_or(deploy_path);
+    let stat = statvfs(directory)?;
+    let available = stat.blocks_available() as u64 * stat.block_size() as u64;
+    tracing::debug!(path = ?directory, available, needed_bytes, "Checking deploy space");
+
+    if available < needed_bytes {
+        const MIB: u64 = 1024 * 1024;
+        tracing::error!(path = ?directory, available, needed_bytes, "Insufficient deploy space");
+        return Err(OtaError::InsufficientDeploySpace {
+            needed_mb: needed_bytes / MIB,
+            available_mb: available / MIB,
+        });
+    }
+    Ok(())
+}
+
 /// Returns whether an artifact ZIP of `zip_size` bytes should be buffered in RAM.
 ///
 /// Peak memory on the in-memory path is the ZIP plus the decompressed entry. The
@@ -1366,7 +1514,109 @@ fn artifact_fits_in_memory(zip_size: u64) -> bool {
     )
 }
 
-/// Locates the deployable `KoboRoot` entry in an opened ZIP.
+/// Which compression an OTA payload uses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PayloadFormat {
+    /// A gzip `KoboRoot.tgz`, deployed as is.
+    Gzip,
+    /// An xz `KoboRoot.tar.xz`, decoded into a gzip bundle on the device.
+    Xz,
+}
+
+/// Release asset holding the gzip bundle. Never dropped: USB installs and
+/// firmware that predates xz support depend on it.
+const GZIP_RELEASE_ASSET: &str = "KoboRoot.tgz";
+
+/// Release asset holding the xz bundle. Stable releases ship no test variant,
+/// so the name does not depend on the `test` feature.
+const XZ_RELEASE_ASSET: &str = "KoboRoot.tar.xz";
+
+/// Returns whether a downloaded payload of `size` bytes can be held in RAM.
+fn payload_fits_in_memory(format: PayloadFormat, size: u64) -> bool {
+    match format {
+        PayloadFormat::Gzip => artifact_fits_in_memory(size),
+        PayloadFormat::Xz => xz::fits_in_memory(size),
+    }
+}
+
+/// Artifact name prefixes for one build, xz first.
+///
+/// The xz name carries its marker before the `pr<N>` / `<sha7>` part so the
+/// legacy prefix, which firmware without xz support still searches for, can
+/// never match it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ArtifactPrefixes {
+    xz: String,
+    legacy: String,
+}
+
+impl ArtifactPrefixes {
+    fn for_pr(pr_number: u32) -> Self {
+        Self::for_suffix(&format!("pr{pr_number}"))
+    }
+
+    fn for_commit(short_sha: &str) -> Self {
+        Self::for_suffix(short_sha)
+    }
+
+    fn for_suffix(suffix: &str) -> Self {
+        cfg_select! {
+            feature = "test" => {
+                Self {
+                    xz: format!("cadmus-kobo-xz-test-{suffix}"),
+                    legacy: format!("cadmus-kobo-test-{suffix}"),
+                }
+            }
+            _ => {
+                Self {
+                    xz: format!("cadmus-kobo-xz-{suffix}"),
+                    legacy: format!("cadmus-kobo-{suffix}"),
+                }
+            }
+        }
+    }
+}
+
+/// Picks the xz artifact when present, otherwise the legacy gzip one.
+fn select_artifact(
+    artifacts: Vec<Artifact>,
+    prefixes: &ArtifactPrefixes,
+) -> Option<(Artifact, PayloadFormat)> {
+    let mut legacy = None;
+    for artifact in artifacts.into_iter().filter(|a| !a.expired) {
+        if artifact.name.starts_with(&prefixes.xz) {
+            return Some((artifact, PayloadFormat::Xz));
+        }
+        if legacy.is_none() && artifact.name.starts_with(&prefixes.legacy) {
+            legacy = Some(artifact);
+        }
+    }
+    legacy.map(|artifact| (artifact, PayloadFormat::Gzip))
+}
+
+/// Picks the xz release asset when present, otherwise `KoboRoot.tgz`.
+fn select_release_asset(assets: &[ReleaseAsset]) -> Option<(&ReleaseAsset, PayloadFormat)> {
+    assets
+        .iter()
+        .find(|asset| asset.name == XZ_RELEASE_ASSET)
+        .map(|asset| (asset, PayloadFormat::Xz))
+        .or_else(|| {
+            assets
+                .iter()
+                .find(|asset| asset.name == GZIP_RELEASE_ASSET)
+                .map(|asset| (asset, PayloadFormat::Gzip))
+        })
+}
+
+/// Name of the gzip bundle inside a CI artifact ZIP.
+fn kobo_root_gzip_name() -> &'static str {
+    cfg_select! {
+        feature = "test" => { "KoboRoot-test.tgz" }
+        _ => { "KoboRoot.tgz" }
+    }
+}
+
+/// Locates the deployable bundle named `kobo_root_name` in an opened ZIP.
 ///
 /// Returns the entry index and its uncompressed size. Directory entries are
 /// skipped. The stored name may be the full path or only its final component.
@@ -1375,16 +1625,12 @@ fn artifact_fits_in_memory(zip_size: u64) -> bool {
 ///
 /// Returns [`OtaError::Cancelled`] when `should_cancel` trips during the scan,
 /// [`OtaError::ZipError`] when an entry name is not UTF-8 or its size cannot be
-/// read, and [`OtaError::DeploymentError`] when no `KoboRoot` member is present.
+/// read, and [`OtaError::DeploymentError`] when no matching member is present.
 fn find_kobo_root_entry(
     cdrs: &[CDR],
+    kobo_root_name: &str,
     should_cancel: CancelFunc<'_>,
 ) -> Result<(usize, u64), OtaError> {
-    let kobo_root_name = cfg_select! {
-        feature = "test" => { "KoboRoot-test.tgz" }
-        _ => { "KoboRoot.tgz" }
-    };
-
     for (index, cdr) in cdrs.iter().enumerate() {
         if should_cancel.is_cancelled() {
             return Err(OtaError::Cancelled);
@@ -1419,7 +1665,7 @@ fn find_kobo_root_entry(
     )))
 }
 
-/// Opens the deployable `KoboRoot` member for reading.
+/// Opens the deployable bundle named `kobo_root_name` for reading.
 ///
 /// Returns the entry reader and the member's uncompressed size. Cancellation is
 /// checked while the central directory is scanned, before the member is opened.
@@ -1428,15 +1674,16 @@ fn find_kobo_root_entry(
 ///
 /// Returns [`OtaError::Cancelled`] when `should_cancel` trips during the scan,
 /// [`OtaError::ZipError`] when the member cannot be opened or its name is not
-/// UTF-8, and [`OtaError::DeploymentError`] when the archive has no `KoboRoot`.
-async fn open_kobo_root_entry<'a, R>(
+/// UTF-8, and [`OtaError::DeploymentError`] when the archive has no matching member.
+pub(super) async fn open_kobo_root_entry<'a, R>(
     reader: &'a mut ZipArchiveReader<R>,
+    kobo_root_name: &str,
     should_cancel: CancelFunc<'_>,
 ) -> Result<(ZipFileReader<&'a mut R>, u64), OtaError>
 where
     R: AsyncBufRead + AsyncSeek + Unpin,
 {
-    let (index, uncompressed) = find_kobo_root_entry(reader.cdrs(), should_cancel)?;
+    let (index, uncompressed) = find_kobo_root_entry(reader.cdrs(), kobo_root_name, should_cancel)?;
     let entry = reader
         .file(index)
         .await
@@ -1448,7 +1695,7 @@ where
 ///
 /// `read1` reports a CRC mismatch as [`ZipError::CRC32CheckError`] inside a
 /// [`std::io::Error`]. That case is rewritten to `CRC32 checksum mismatch`.
-fn zip_body_error(error: &Error) -> String {
+pub(super) fn zip_body_error(error: &Error) -> String {
     match error
         .get_ref()
         .and_then(|source| source.downcast_ref::<ZipError>())
@@ -2263,6 +2510,11 @@ mod tests {
                 );
                 client.extract_and_deploy(path, no_cancel()).await
             }
+            DownloadedArtifact::Xz(source) => {
+                client
+                    .transcode_and_deploy(source, |_| {}, no_cancel())
+                    .await
+            }
             DownloadedArtifact::Bundle(_) => {
                 unreachable!("default branch artifacts are ZIP archives")
             }
@@ -2297,21 +2549,26 @@ mod tests {
             download_result.err()
         );
 
-        let asset_path = match download_result.unwrap() {
-            DownloadedArtifact::Bundle(path) => path,
-            _ => unreachable!("stable releases ship a bare KoboRoot.tgz"),
+        let deploy_result = match download_result.unwrap() {
+            DownloadedArtifact::Bundle(asset_path) => {
+                assert!(
+                    asset_path.exists(),
+                    "Downloaded asset should exist at {:?}",
+                    asset_path
+                );
+                assert!(
+                    asset_path.metadata().unwrap().len() > 0,
+                    "Downloaded asset should not be empty"
+                );
+                client.deploy(asset_path, no_cancel()).await
+            }
+            DownloadedArtifact::Xz(source) => {
+                client
+                    .transcode_and_deploy(source, |_| {}, no_cancel())
+                    .await
+            }
+            _ => unreachable!("stable releases ship a bare bundle"),
         };
-        assert!(
-            asset_path.exists(),
-            "Downloaded asset should exist at {:?}",
-            asset_path
-        );
-        assert!(
-            asset_path.metadata().unwrap().len() > 0,
-            "Downloaded asset should not be empty"
-        );
-
-        let deploy_result = client.deploy(asset_path, no_cancel()).await;
 
         assert!(
             deploy_result.is_ok(),
@@ -2327,5 +2584,224 @@ mod tests {
         );
 
         std::fs::remove_file(&deploy_path).ok();
+    }
+
+    fn artifact(name: &str, expired: bool) -> Artifact {
+        Artifact {
+            name: name.to_owned(),
+            id: 1,
+            size_in_bytes: 1,
+            expired,
+        }
+    }
+
+    fn asset(name: &str) -> ReleaseAsset {
+        ReleaseAsset {
+            name: name.to_owned(),
+            browser_download_url: format!("https://example.invalid/{name}"),
+            size: 1,
+        }
+    }
+
+    #[test]
+    fn artifact_prefixes_for_pr_and_commit_never_overlap() {
+        for (prefixes, suffix) in [
+            (ArtifactPrefixes::for_pr(123), "-abc1234"),
+            (ArtifactPrefixes::for_commit("abc1234"), ""),
+        ] {
+            let xz_name = format!("{}{suffix}", prefixes.xz);
+            let legacy_name = format!("{}{suffix}", prefixes.legacy);
+            assert!(
+                !xz_name.starts_with(&prefixes.legacy),
+                "firmware without xz support must never match {xz_name}"
+            );
+            assert!(
+                !legacy_name.starts_with(&prefixes.xz),
+                "{legacy_name} must not look like an xz artifact"
+            );
+        }
+    }
+
+    #[test]
+    fn select_artifact_prefers_xz_in_any_order() {
+        let prefixes = ArtifactPrefixes::for_pr(7);
+        let xz = format!("{}-abc1234", prefixes.xz);
+        let legacy = format!("{}-abc1234", prefixes.legacy);
+
+        for names in [[&legacy, &xz], [&xz, &legacy]] {
+            let artifacts = names.iter().map(|name| artifact(name, false)).collect();
+            let (selected, format) = select_artifact(artifacts, &prefixes).unwrap();
+            assert_eq!(format, PayloadFormat::Xz);
+            assert_eq!(selected.name, xz);
+        }
+    }
+
+    #[test]
+    fn select_artifact_falls_back_to_legacy_and_skips_expired_and_other_bundles() {
+        let prefixes = ArtifactPrefixes::for_pr(7);
+        let legacy = format!("{}-abc1234", prefixes.legacy);
+
+        let artifacts = vec![
+            artifact(&format!("{}-abc1234", prefixes.xz), true),
+            artifact("cadmus-kobo-nm-pr7-abc1234", false),
+            artifact("cadmus-kobo-dist-pr7-abc1234", false),
+            artifact(&legacy, false),
+        ];
+        let (selected, format) = select_artifact(artifacts, &prefixes).unwrap();
+        assert_eq!(format, PayloadFormat::Gzip);
+        assert_eq!(selected.name, legacy);
+
+        let none = vec![
+            artifact(&format!("{}-abc1234", prefixes.xz), true),
+            artifact("cadmus-kobo-nm-pr7-abc1234", false),
+        ];
+        assert!(select_artifact(none, &prefixes).is_none());
+    }
+
+    #[test]
+    fn select_release_asset_prefers_xz_then_falls_back_to_tgz() {
+        let both = [
+            asset("KoboRoot-nm.tgz"),
+            asset(GZIP_RELEASE_ASSET),
+            asset(XZ_RELEASE_ASSET),
+        ];
+        let (selected, format) = select_release_asset(&both).unwrap();
+        assert_eq!(format, PayloadFormat::Xz);
+        assert_eq!(selected.name, XZ_RELEASE_ASSET);
+
+        let legacy_only = [asset("KoboRoot-nm.tgz"), asset(GZIP_RELEASE_ASSET)];
+        let (selected, format) = select_release_asset(&legacy_only).unwrap();
+        assert_eq!(format, PayloadFormat::Gzip);
+        assert_eq!(selected.name, GZIP_RELEASE_ASSET);
+
+        assert!(select_release_asset(&[asset("KoboRoot-nm.tgz")]).is_none());
+    }
+
+    #[test]
+    fn check_deploy_space_rejects_requests_larger_than_the_filesystem() {
+        let temp_dir = ota_test_tempdir();
+        let deploy_path = temp_dir.path().join("KoboRoot.tgz");
+
+        assert!(check_deploy_space(&deploy_path, 1).is_ok());
+        assert!(matches!(
+            check_deploy_space(&deploy_path, u64::MAX),
+            Err(OtaError::InsufficientDeploySpace { .. })
+        ));
+    }
+
+    fn xz_fixture(data: &[u8]) -> Vec<u8> {
+        use std::io::Write;
+
+        let mut writer =
+            lzma_rust2::XzWriter::new(Vec::new(), lzma_rust2::XzOptions::with_preset(1)).unwrap();
+        writer.write_all(data).unwrap();
+        writer.finish().unwrap()
+    }
+
+    fn zip_fixture(name: &str, data: &[u8]) -> Vec<u8> {
+        use std::io::Write;
+
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        writer
+            .start_file(
+                name,
+                zip::write::SimpleFileOptions::default()
+                    .compression_method(zip::CompressionMethod::Stored),
+            )
+            .unwrap();
+        writer.write_all(data).unwrap();
+        writer.finish().unwrap().into_inner()
+    }
+
+    fn bundle_payload() -> Vec<u8> {
+        (0..200_000_u32)
+            .flat_map(|n| n.wrapping_mul(2_654_435_761).to_le_bytes())
+            .collect()
+    }
+
+    fn gunzip_file(path: &Path) -> Vec<u8> {
+        use std::io::Read;
+
+        let mut out = Vec::new();
+        flate2::read::GzDecoder::new(std::fs::File::open(path).unwrap())
+            .read_to_end(&mut out)
+            .unwrap();
+        out
+    }
+
+    #[tokio::test]
+    async fn transcode_and_deploy_publishes_a_gzip_bundle_and_reports_progress() {
+        let temp_dir = ota_test_tempdir();
+        let client = make_client(temp_dir.path().to_path_buf());
+        let payload = bundle_payload();
+        let source =
+            XzSource::ZipBytes(zip_fixture(xz::kobo_root_xz_name(), &xz_fixture(&payload)));
+        let mut events = Vec::new();
+
+        let outcome = client
+            .transcode_and_deploy(source, |event| events.push(event), no_cancel())
+            .await
+            .unwrap();
+
+        assert_eq!(gunzip_file(outcome.path()), payload);
+        assert_no_partial_staging(outcome.path());
+        assert!(matches!(
+            events.last(),
+            Some(OtaProgress::Decompressing { done, total }) if done == total
+        ));
+    }
+
+    #[tokio::test]
+    async fn transcode_and_deploy_removes_an_on_disk_source_after_publishing() {
+        let temp_dir = ota_test_tempdir();
+        let client = make_client(temp_dir.path().to_path_buf());
+        let payload = bundle_payload();
+        let raw_path = temp_dir.path().join("cadmus-ota-stable-release.tar.xz");
+        std::fs::write(&raw_path, xz_fixture(&payload)).unwrap();
+
+        let outcome = client
+            .transcode_and_deploy(XzSource::RawFile(raw_path.clone()), |_| {}, no_cancel())
+            .await
+            .unwrap();
+
+        assert_eq!(gunzip_file(outcome.path()), payload);
+        assert!(!raw_path.exists());
+    }
+
+    #[tokio::test]
+    async fn transcode_and_deploy_rejects_corrupt_xz_without_publishing() {
+        let temp_dir = ota_test_tempdir();
+        let client = make_client(temp_dir.path().to_path_buf());
+        let mut xz = xz_fixture(&bundle_payload());
+        let middle = xz.len() / 2;
+        xz[middle] ^= 0xff;
+
+        let result = client
+            .transcode_and_deploy(XzSource::RawBytes(xz), |_| {}, no_cancel())
+            .await;
+
+        assert!(matches!(result, Err(OtaError::Decompress(_))), "{result:?}");
+        assert!(!client.deploy_path().exists());
+        assert_no_partial_staging(&client.deploy_path());
+    }
+
+    #[tokio::test]
+    async fn transcode_and_deploy_cancelled_mid_stream_does_not_publish() {
+        let temp_dir = ota_test_tempdir();
+        let client = make_client(temp_dir.path().to_path_buf());
+        let flag = CancelFlag::new();
+        let source = XzSource::RawBytes(xz_fixture(&bundle_payload()));
+
+        let result = client
+            .transcode_and_deploy(
+                source,
+                |_| flag.request_cancel(),
+                CancelFunc::from_flag(&flag),
+            )
+            .await;
+
+        assert!(matches!(result, Err(OtaError::Cancelled)), "{result:?}");
+        assert!(!client.deploy_path().exists());
+        assert_no_partial_staging(&client.deploy_path());
     }
 }

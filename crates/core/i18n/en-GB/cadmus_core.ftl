@@ -76,6 +76,7 @@ ota-battery-too-low = Battery too low to start OTA update
 ota-cannot-compare-versions = Cannot compare versions
 ota-check-updates-failed = Failed to check for updates
 ota-client-build-failed = Failed to create client
+ota-decompressing = Decompressing update… { $percent }%
 ota-deployment-failed = Deployment failed
 ota-download-cancel = {cancel}
 ota-download-canceling = Canceling…

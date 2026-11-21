@@ -632,6 +632,7 @@ dependencies = [
  "levenshtein",
  "libc",
  "log",
+ "lzma-rust2",
  "nix",
  "octocrab",
  "once_cell",
