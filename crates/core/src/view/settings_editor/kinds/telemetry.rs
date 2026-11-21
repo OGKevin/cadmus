@@ -128,6 +128,46 @@ impl SettingKind for LogLevel {
     }
 }
 
+/// Third-party (dependency) logging toggle setting
+pub struct EnableThirdPartyLog;
+
+impl SettingKind for EnableThirdPartyLog {
+    fn identity(&self) -> SettingIdentity {
+        SettingIdentity::EnableThirdPartyLog
+    }
+
+    fn label(&self, _settings: &Settings) -> String {
+        fl!("settings-telemetry-enable-third-party-log")
+    }
+
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
+        let enabled = data.settings.logging.enable_third_party_log;
+        SettingData {
+            value: enabled.to_string(),
+            widget: WidgetKind::Toggle {
+                left_label: fl!("settings-general-toggle-on"),
+                right_label: fl!("settings-general-toggle-off"),
+                enabled,
+                tap_event: Event::Toggle(ToggleEvent::Setting(ToggleSettings::EnableThirdPartyLog)),
+            },
+        }
+    }
+
+    fn handle(
+        &self,
+        evt: &Event,
+        context: &mut AppContext,
+        _bus: &mut Bus,
+    ) -> (Option<String>, bool) {
+        if let Event::Toggle(ToggleEvent::Setting(ToggleSettings::EnableThirdPartyLog)) = evt {
+            let logging = &mut context.settings.logging;
+            logging.enable_third_party_log = !logging.enable_third_party_log;
+            return (Some(logging.enable_third_party_log.to_string()), true);
+        }
+        (None, false)
+    }
+}
+
 /// OTLP endpoint configuration setting (tracing feature)
 #[cfg(feature = "tracing")]
 pub struct OtlpEndpoint;
@@ -426,6 +466,41 @@ mod tests {
             );
 
             assert!(result.0.is_none());
+        }
+    }
+
+    mod enable_third_party_log {
+        use super::*;
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_toggle_flips_setting() {
+            let setting = EnableThirdPartyLog;
+            let mut context = create_test_context().await;
+            context.settings = Settings::default();
+            let mut bus: Bus = VecDeque::new();
+            let event = Event::Toggle(ToggleEvent::Setting(ToggleSettings::EnableThirdPartyLog));
+
+            let result = setting.handle(&event, &mut context, &mut bus);
+            assert_eq!(result.0.as_deref(), Some("true"));
+            assert!(context.settings.logging.enable_third_party_log);
+
+            let result = setting.handle(&event, &mut context, &mut bus);
+            assert_eq!(result.0.as_deref(), Some("false"));
+            assert!(!context.settings.logging.enable_third_party_log);
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_returns_none_for_other_toggle() {
+            let setting = EnableThirdPartyLog;
+            let mut context = create_test_context().await;
+            context.settings = Settings::default();
+            let mut bus: Bus = VecDeque::new();
+            let event = Event::Toggle(ToggleEvent::Setting(ToggleSettings::LoggingEnabled));
+
+            let result = setting.handle(&event, &mut context, &mut bus);
+
+            assert!(result.0.is_none());
+            assert!(!context.settings.logging.enable_third_party_log);
         }
     }
 

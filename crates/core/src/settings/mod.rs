@@ -760,7 +760,8 @@ pub struct BatterySettings {
 pub struct LoggingSettings {
     /// Enables logging output when set to true.
     pub enabled: bool,
-    /// Minimum log level to record (for example: "info", "debug").
+    /// Minimum log level for Cadmus crates (for example: "info", "debug"), or a
+    /// full `EnvFilter` directive string.
     pub level: String,
     /// Maximum number of rotated log files to keep.
     pub max_files: usize,
@@ -776,6 +777,8 @@ pub struct LoggingSettings {
     pub enable_kern_log: bool,
     /// Captures D-Bus signals via the in-process zbus DbusMonitorTask when D-Bus log capture is supported.
     pub enable_dbus_log: bool,
+    /// Applies `level` to dependency crates too, instead of only to Cadmus crates.
+    pub enable_third_party_log: bool,
 }
 
 /// OTA update settings.
@@ -986,6 +989,7 @@ impl Default for LoggingSettings {
             pyroscope_endpoint: None,
             enable_kern_log: false,
             enable_dbus_log: false,
+            enable_third_party_log: false,
         }
     }
 }

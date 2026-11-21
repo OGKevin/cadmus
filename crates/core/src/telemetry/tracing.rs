@@ -110,6 +110,7 @@ const DEBUG_SPAN_QUEUE_SIZE: usize = 100_000;
 ///     pyroscope_endpoint: None,
 ///     enable_kern_log: false,
 ///     enable_dbus_log: false,
+///     enable_third_party_log: false,
 /// };
 ///
 /// let layer = init_telemetry::<tracing_subscriber::Registry>(&settings, "run-123")?;

@@ -103,6 +103,7 @@ fn try_main() -> Result<()> {
     generate_locales()?;
     generate_keyboard_layouts(&root)?;
     generate_bundled_assets()?;
+    generate_cadmus_log_targets(&root)?;
 
     if skip_thirdparty_deps() {
         println!("Skipping thirdparty deps");
@@ -438,6 +439,73 @@ fn generate_bundled_assets() -> Result<()> {
     std::fs::write(Path::new(&out_dir).join("bundled_assets.rs"), generated)
         .context("failed to write bundled_assets.rs")?;
     Ok(())
+}
+
+/// Writes `cadmus_log_targets.rs`, listing the tracing target of every
+/// workspace crate so `logging.level` can be scoped to Cadmus-owned code.
+fn generate_cadmus_log_targets(root: &Path) -> Result<()> {
+    let workspace_manifest = root.join("Cargo.toml");
+    println!("cargo:rerun-if-changed={}", workspace_manifest.display());
+
+    let workspace: toml::Table = toml::from_str(&fs::read_to_string(&workspace_manifest)?)
+        .context("failed to parse workspace Cargo.toml")?;
+    let members = workspace
+        .get("workspace")
+        .and_then(|ws| ws.get("members"))
+        .and_then(toml::Value::as_array)
+        .context("workspace.members missing")?;
+
+    let mut targets = BTreeSet::new();
+    for member in members {
+        let member = member
+            .as_str()
+            .context("workspace member is not a string")?;
+        let manifest_path = root.join(member).join("Cargo.toml");
+        println!("cargo:rerun-if-changed={}", manifest_path.display());
+        let manifest: toml::Table = toml::from_str(&fs::read_to_string(&manifest_path)?)
+            .with_context(|| format!("failed to parse {}", manifest_path.display()))?;
+        targets.extend(crate_log_targets(&manifest)?);
+    }
+
+    let entries: String = targets
+        .iter()
+        .map(|target| format!("    {target:?},\n"))
+        .collect();
+    let generated = format!(
+        "/// Tracing targets of all workspace crates (`logging.level` scope).\nconst CADMUS_LOG_TARGETS: &[&str] = &[\n{entries}];\n"
+    );
+
+    let out_dir = env::var("OUT_DIR").context("OUT_DIR not set")?;
+    fs::write(Path::new(&out_dir).join("cadmus_log_targets.rs"), generated)
+        .context("failed to write cadmus_log_targets.rs")?;
+    Ok(())
+}
+
+/// Returns the tracing targets of a workspace crate: the package name, the
+/// `[lib].name` and every `[[bin]].name`, with `-` replaced by `_`. Binaries are
+/// separate crates whose names can differ from the package name.
+fn crate_log_targets(manifest: &toml::Table) -> Result<Vec<String>> {
+    let package_name = manifest
+        .get("package")
+        .and_then(|pkg| pkg.get("name"))
+        .and_then(toml::Value::as_str)
+        .context("crate has no [package].name")?;
+    let lib_name = manifest
+        .get("lib")
+        .and_then(|lib| lib.get("name"))
+        .and_then(toml::Value::as_str);
+    let bin_names = manifest
+        .get("bin")
+        .and_then(toml::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|bin| bin.get("name").and_then(toml::Value::as_str));
+
+    Ok(std::iter::once(package_name)
+        .chain(lib_name)
+        .chain(bin_names)
+        .map(|name| name.replace('-', "_"))
+        .collect())
 }
 
 fn workspace_root() -> Result<PathBuf> {

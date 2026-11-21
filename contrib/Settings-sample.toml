@@ -88,6 +88,8 @@ directory = "logs"
 # Capture D-Bus signals via the built-in zbus-based DbusMonitorTask (requires test build with
 # kobo feature; no external dbus-monitor tool is needed).
 # enable-dbus-log = false
+# Record logs from dependencies (for example xml5ever) too, not only from Cadmus crates.
+# enable-third-party-log = false
 
 # You can create libraries by adding further [[libraries]] entries.
 [[libraries]]
