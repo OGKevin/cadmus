@@ -8,9 +8,9 @@ import { hasLocale } from "next-intl";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ThemeScript } from "@/components/theme-script/index";
-import { SiteHeader } from "@/components/site-header/index";
+import { SiteChrome } from "@/components/site-chrome/index";
 import { routing } from "@/i18n/routing";
-import { apiHref, guideHref } from "@/lib/doc-hrefs";
+import { apiHref, guideHref, rustApiHref } from "@/lib/doc-hrefs";
 import "../globals.css";
 
 export function generateStaticParams() {
@@ -53,11 +53,11 @@ export default async function LocaleLayout({
         <ThemeScript />
         <link rel="prefetch" href={guideHref(locale)} />
         <link rel="prefetch" href={apiHref(locale)} />
+        <link rel="prefetch" href={rustApiHref(locale)} />
       </head>
       <body className="flex min-h-screen flex-col bg-kumo-base text-kumo-default antialiased">
         <NextIntlClientProvider messages={messages}>
-          <SiteHeader />
-          {children}
+          <SiteChrome>{children}</SiteChrome>
         </NextIntlClientProvider>
       </body>
     </html>

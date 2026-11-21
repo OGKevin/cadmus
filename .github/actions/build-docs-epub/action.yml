@@ -1,19 +1,29 @@
-name: Build documentation EPUB
+name: Build documentation site and EPUB
 description: >
-  Install all doc tooling and build the mdBook EPUB, then upload it
-  as a workflow artifact. Callers must have already checked out the
-  repository, put cadmuscli on PATH, and set up a Rust toolchain
-  (install-doc-tools may cargo-install mdbook tools on a cache miss).
+  Install all doc tooling, build the full documentation site (which includes
+  the mdBook EPUB), and upload both the EPUB and the exported website as
+  workflow artifacts. The Kobo build jobs consume the website so that every
+  Kobo distribution, test or release, ships the companion site. Callers must
+  have already checked out the repository, put cadmuscli on PATH, and set up a
+  Rust toolchain (install-doc-tools may cargo-install mdbook tools on a cache
+  miss).
 
 inputs:
   node-version:
     description: "Node.js version to install"
     required: false
     default: "24"
+  rust-cachekey:
+    description: "Rust toolchain cache key used to restore the shared cargo cache"
+    required: true
   artifact-name:
-    description: "Name of the uploaded artifact"
+    description: "Name of the uploaded EPUB artifact"
     required: false
     default: "docs-epub"
+  website-artifact-name:
+    description: "Name of the uploaded website artifact"
+    required: false
+    default: "docs-website"
   retention-days:
     description: "Artifact retention in days"
     required: false
@@ -27,14 +37,23 @@ runs:
       with:
         python-version: "3.x"
 
+    - name: Restore shared cargo cache
+      uses: ./.github/actions/cargo-cache
+      with:
+        cachekey: ${{ inputs.rust-cachekey }}
+        mode: restore
+
     - name: Install doc tools
       uses: ./.github/actions/install-doc-tools
       with:
         node-version: ${{ inputs.node-version }}
 
-    - name: Build documentation EPUB
+    - name: Install protobuf tools
+      uses: ./.github/actions/install-proto-tools
+
+    - name: Build documentation site
       shell: bash
-      run: cadmuscli docs --mdbook-only
+      run: cadmuscli docs
       env:
         RUSTDOCFLAGS: "-D warnings"
 
@@ -43,4 +62,11 @@ runs:
       with:
         name: ${{ inputs.artifact-name }}
         path: docs/book/epub/Cadmus Documentation.epub
+        retention-days: ${{ inputs.retention-days }}
+
+    - name: Upload documentation website
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+      with:
+        name: ${{ inputs.website-artifact-name }}
+        path: website/out
         retention-days: ${{ inputs.retention-days }}

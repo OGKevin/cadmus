@@ -162,6 +162,7 @@ jobs:
         id: rust-toolchain
         with:
           toolchain: "1.100.0"
+      - *set-build-metadata
       - name: Install cadmuscli
         uses: ./.github/actions/install-cadmuscli
         with:
@@ -170,6 +171,7 @@ jobs:
         uses: ./.github/actions/build-docs-epub
         with:
           node-version: ${{ env.NODE_VERSION }}
+          rust-cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
 
   cache-warmup:
     needs: [changes, build-docs-epub, build-cadmuscli]
@@ -517,6 +519,12 @@ jobs:
           name: docs-epub
           path: docs/book/epub
 
+      - name: Download documentation website
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: docs-website
+          path: website/out
+
       - name: Build Kobo artifacts
         uses: ./.github/actions/build-kobo
         with:
@@ -613,6 +621,12 @@ jobs:
           name: docs-epub
           path: docs/book/epub
 
+      - name: Download documentation website
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: docs-website
+          path: website/out
+
       - name: Build Kobo test artifacts
         uses: ./.github/actions/build-kobo
         with:
@@ -687,6 +701,12 @@ jobs:
         with:
           name: docs-epub
           path: docs/book/epub
+
+      - name: Download documentation website
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: docs-website
+          path: website/out
 
       - name: Build Kobo test+tracing artifacts
         uses: ./.github/actions/build-kobo

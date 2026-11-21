@@ -22,7 +22,7 @@
     },
     "apiReference": {
       "label": "Référence API",
-      "description": "Documentation des crates Rust"
+      "description": "Essayez l’API de l’appareil dans le navigateur"
     },
     "storybook": {
       "label": "Navigateur de la bibliothèque des éléments",
@@ -31,6 +31,10 @@
     "planning": {
       "label": "Planning",
       "description": "Feuille de route, jalons et travaux en cours"
+    },
+    "rustApi": {
+      "label": "API Rust",
+      "description": "Documentation des crates Rust"
     }
   },
   "footer": {
@@ -43,5 +47,11 @@
   "language": {
     "name": "Anglais",
     "change": "Changer la langue"
+  },
+  "apiExplorer": {
+    "title": "Explorateur d’API",
+    "description": "Les appels visent l’appareil qui a servi cette page. Le code Compagnon est déjà renseigné.",
+    "tokenHint": "Les appels de réglages et de fichiers demandent le code à 6 chiffres du menu Compagnon. Ouvrez d’abord la page Compagnon.",
+    "loading": "Chargement du document API."
   }
 }

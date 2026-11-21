@@ -60,8 +60,8 @@ async fn start(harness: &mut DeviceRuntimeHarness, addr: SocketAddr) -> Result<(
 /// Drain until the deferred lease-and-bind start has reported back.
 async fn drive_listener_start(harness: &mut DeviceRuntimeHarness) {
     for _ in 0..100 {
-        crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-            handle_event(&Event::Api, hub, bus, context, runtime)
+        crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            handle_event(&Event::Api, hub, bus, rq, context, runtime)
         });
         if harness.context.api.pending_start.is_none() {
             return;
@@ -84,8 +84,8 @@ where
         if request.is_finished() {
             break;
         }
-        crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-            handle_event(&Event::Api, hub, bus, context, runtime)
+        crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            handle_event(&Event::Api, hub, bus, rq, context, runtime)
         });
         if request.is_finished() {
             break;
@@ -114,11 +114,12 @@ fn wrong_token(token: &str) -> String {
 async fn menu_switch_binds_an_ephemeral_port() {
     let mut harness = DeviceRuntimeHarness::new().await;
     arm_wifi(&mut harness, WifiMode::Auto);
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
         handle_event(
             &Event::Select(EntryId::ToggleCompanion),
             hub,
             bus,
+            rq,
             context,
             runtime,
         )
@@ -213,8 +214,8 @@ async fn suspend_and_resume_keep_the_token() {
     assert!(!holds_public_api_lease(&harness));
     assert!(harness.context.api.local_addr().is_none());
     assert!(tokio::net::TcpStream::connect(addr).await.is_err());
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::ApiResume, hub, bus, context, runtime)
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::ApiResume, hub, bus, rq, context, runtime)
     });
     drive_listener_start(&mut harness).await;
     assert_eq!(exposed_token(&harness), token);
@@ -238,8 +239,8 @@ async fn settings_update_applies_on_the_main_loop_and_leaves_wifi_alone() {
         .tx
         .send(Command::Settings(settings::Command::List { reply: tx }))
         .unwrap();
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::Api, hub, bus, context, runtime)
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, rq, context, runtime)
     });
     let catalog = rx.await.unwrap().expect("list");
     assert!(catalog.categories.iter().all(|category| {
@@ -256,8 +257,8 @@ async fn settings_update_applies_on_the_main_loop_and_leaves_wifi_alone() {
             reply: tx,
         }))
         .unwrap();
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::Api, hub, bus, context, runtime)
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, rq, context, runtime)
     });
     rx.await.unwrap().expect("update applied");
     assert!(!harness.context.settings.sleep_cover);
@@ -354,8 +355,8 @@ async fn text_update_rejects_values_the_setting_cannot_store() {
         .tx
         .send(Command::Settings(settings::Command::List { reply: tx }))
         .unwrap();
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::Api, hub, bus, context, runtime)
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, rq, context, runtime)
     });
     let catalog = rx.await.unwrap().expect("list");
     assert_eq!(
@@ -889,8 +890,8 @@ async fn send_add_library(
             reply: tx,
         }))
         .unwrap();
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::Api, hub, bus, context, runtime)
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, rq, context, runtime)
     });
     rx.await.unwrap()
 }
@@ -909,8 +910,8 @@ async fn send_remove_library(
             reply: tx,
         }))
         .unwrap();
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::Api, hub, bus, context, runtime)
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, rq, context, runtime)
     });
     rx.await.unwrap()
 }
@@ -923,8 +924,8 @@ async fn send_list(harness: &mut DeviceRuntimeHarness) -> proto::SettingsCatalog
         .tx
         .send(Command::Settings(settings::Command::List { reply: tx }))
         .unwrap();
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::Api, hub, bus, context, runtime)
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, rq, context, runtime)
     });
     rx.await.unwrap().expect("list")
 }
@@ -960,8 +961,8 @@ async fn send_update(
             reply: tx,
         }))
         .unwrap();
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::Api, hub, bus, context, runtime)
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, rq, context, runtime)
     });
     rx.await.unwrap()
 }
@@ -1055,8 +1056,8 @@ async fn refresh_rate_update_sets_global_and_per_file_type() {
         .tx
         .send(Command::Settings(settings::Command::List { reply: tx }))
         .unwrap();
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::Api, hub, bus, context, runtime)
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, rq, context, runtime)
     });
     let catalog = rx.await.unwrap().expect("list");
     let listed = catalog
@@ -1095,8 +1096,8 @@ async fn refresh_rate_update_sets_global_and_per_file_type() {
             reply: tx,
         }))
         .unwrap();
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::Api, hub, bus, context, runtime)
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, rq, context, runtime)
     });
     let updated = rx.await.unwrap().expect("update applied");
     assert_eq!(
@@ -1143,8 +1144,8 @@ async fn refresh_rate_update_sets_global_and_per_file_type() {
             reply: tx,
         }))
         .unwrap();
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::Api, hub, bus, context, runtime)
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, rq, context, runtime)
     });
     assert!(rx.await.unwrap().is_err());
     assert!(
@@ -1168,8 +1169,8 @@ async fn refresh_rate_update_sets_global_and_per_file_type() {
             reply: tx,
         }))
         .unwrap();
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::Api, hub, bus, context, runtime)
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, rq, context, runtime)
     });
     assert!(rx.await.unwrap().is_err());
     assert_eq!(
@@ -1188,8 +1189,8 @@ async fn refresh_rate_update_sets_global_and_per_file_type() {
             reply: tx,
         }))
         .unwrap();
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::Api, hub, bus, context, runtime)
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, rq, context, runtime)
     });
     rx.await.unwrap().expect("cleared file types");
     assert!(
@@ -1272,12 +1273,44 @@ async fn three_bad_bearer_credentials_shut_the_public_listener_down() {
         "a locked listener rejects even the valid token before the main loop drains: {locked}"
     );
     assert!(harness.context.api.is_on());
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::Api, hub, bus, context, runtime)
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, rq, context, runtime)
     });
     assert!(!harness.context.api.is_on());
     assert!(!holds_public_api_lease(&harness));
     assert!(tokio::net::TcpStream::connect(addr).await.is_err());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_successful_request_clears_bad_token_strikes() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    arm_wifi(&mut harness, WifiMode::Auto);
+    start(&mut harness, "127.0.0.1:0".parse().unwrap())
+        .await
+        .unwrap();
+    let token = exposed_token(&harness).expect("token");
+    let addr = harness.context.api.local_addr().unwrap();
+    for _ in 0..(MAX_AUTH_FAILURES - 1) {
+        let wrong = wrong_token(&token);
+        let status = http_status(addr, Some(&wrong)).await;
+        assert!(status.contains("401"), "wrong token status: {status}");
+    }
+    let valid = format!("Bearer {token}");
+    let ok = drive_request(&mut harness, async move {
+        http_status(addr, Some(&valid)).await
+    })
+    .await;
+    assert!(ok.contains("200"), "valid token status: {ok}");
+    for _ in 0..(MAX_AUTH_FAILURES - 1) {
+        let wrong = wrong_token(&token);
+        let status = http_status(addr, Some(&wrong)).await;
+        assert!(status.contains("401"), "wrong token status: {status}");
+    }
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, rq, context, runtime)
+    });
+    assert!(harness.context.api.is_on());
+    assert!(holds_public_api_lease(&harness));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -1293,8 +1326,8 @@ async fn headerless_requests_do_not_trip_the_lockout() {
             drive_request(&mut harness, async move { http_status(addr, None).await }).await;
         assert!(missing.contains("401"), "missing token status: {missing}");
     }
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::Api, hub, bus, context, runtime)
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, rq, context, runtime)
     });
     assert!(harness.context.api.is_on());
     assert!(holds_public_api_lease(&harness));
@@ -1321,8 +1354,8 @@ async fn bad_token_strikes_survive_suspend_and_resume() {
         suspend(context)
     });
     assert!(!holds_public_api_lease(&harness));
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::ApiResume, hub, bus, context, runtime)
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::ApiResume, hub, bus, rq, context, runtime)
     });
     drive_listener_start(&mut harness).await;
     assert_eq!(exposed_token(&harness), Some(token.clone()));
@@ -1330,8 +1363,8 @@ async fn bad_token_strikes_survive_suspend_and_resume() {
     let wrong = wrong_token(&token);
     let status = http_status(addr, Some(&wrong)).await;
     assert!(status.contains("401"), "wrong token status: {status}");
-    crate::poll_parts!(harness, |hub, bus, _rq, context, runtime| {
-        handle_event(&Event::Api, hub, bus, context, runtime)
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::Api, hub, bus, rq, context, runtime)
     });
     assert!(
         !harness.context.api.is_on(),
@@ -1439,6 +1472,119 @@ async fn site_files_need_no_token_and_a_valid_bearer_lists_settings() {
     })
     .await;
     assert!(listed.contains("200"), "{listed}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_bare_locale_path_redirects_to_the_companion_page() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    arm_wifi(&mut harness, WifiMode::Auto);
+    let site = harness.context.device.install_path("website");
+    tokio::fs::create_dir_all(site.join("xx/companion"))
+        .await
+        .unwrap();
+    tokio::fs::write(site.join("xx/companion/index.html"), b"companion")
+        .await
+        .unwrap();
+    start(&mut harness, "127.0.0.1:0".parse().unwrap())
+        .await
+        .unwrap();
+    let addr = harness.context.api.local_addr().unwrap();
+
+    let home = http_get(addr, "/xx/").await.to_ascii_lowercase();
+    assert!(home.starts_with("http/1.1 302"), "{home}");
+    assert!(home.contains("location: /xx/companion/"), "{home}");
+
+    let page = http_get(addr, "/xx/companion/").await;
+    assert!(page.starts_with("HTTP/1.1 200"), "{page}");
+    assert!(page.contains("companion"), "{page}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn gzipped_site_files_are_sent_encoded_or_inflated_by_accept_encoding() {
+    use std::io::Write;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let mut harness = DeviceRuntimeHarness::new().await;
+    arm_wifi(&mut harness, WifiMode::Auto);
+    let shared = harness
+        .context
+        .device
+        .install_path("website")
+        .join("_shared/api");
+    tokio::fs::create_dir_all(&shared).await.unwrap();
+    let page = "<p>api docs</p>".repeat(100);
+    let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+    encoder.write_all(page.as_bytes()).unwrap();
+    let compressed = encoder.finish().unwrap();
+    tokio::fs::write(shared.join("gzip-only.html.gz"), &compressed)
+        .await
+        .unwrap();
+    start(&mut harness, "127.0.0.1:0".parse().unwrap())
+        .await
+        .unwrap();
+    let addr = harness.context.api.local_addr().unwrap();
+
+    async fn raw_get(addr: SocketAddr, accept_encoding: &str, method: &str) -> Vec<u8> {
+        let mut stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+        stream
+            .write_all(
+                format!(
+                    "{method} /en/api/gzip-only.html HTTP/1.1\r\nHost: localhost\r\nAccept-Encoding: {accept_encoding}\r\nConnection: close\r\n\r\n"
+                )
+                .as_bytes(),
+            )
+            .await
+            .unwrap();
+        let mut buf = Vec::new();
+        tokio::time::timeout(Duration::from_secs(5), stream.read_to_end(&mut buf))
+            .await
+            .expect("response read timed out")
+            .unwrap();
+        buf
+    }
+
+    fn split(response: &[u8]) -> (String, &[u8]) {
+        let end = response
+            .windows(4)
+            .position(|window| window == b"\r\n\r\n")
+            .expect("headers end");
+        (
+            String::from_utf8_lossy(&response[..end]).to_ascii_lowercase(),
+            &response[end + 4..],
+        )
+    }
+
+    let encoded = raw_get(addr, "gzip, br", "GET").await;
+    let (headers, body) = split(&encoded);
+    assert!(headers.starts_with("http/1.1 200"), "{headers}");
+    assert!(headers.contains("content-encoding: gzip"), "{headers}");
+    assert!(headers.contains("vary: accept-encoding"), "{headers}");
+    assert!(headers.contains("content-type: text/html"), "{headers}");
+    assert!(
+        headers.contains(&format!("content-length: {}", compressed.len())),
+        "{headers}"
+    );
+    assert_eq!(body, compressed.as_slice());
+
+    let plain = raw_get(addr, "identity", "GET").await;
+    let (headers, body) = split(&plain);
+    assert!(headers.starts_with("http/1.1 200"), "{headers}");
+    assert!(!headers.contains("content-encoding"), "{headers}");
+    assert!(headers.contains("vary: accept-encoding"), "{headers}");
+    assert!(
+        headers.contains(&format!("content-length: {}", page.len())),
+        "{headers}"
+    );
+    assert_eq!(body, page.as_bytes());
+
+    let head = raw_get(addr, "gzip", "HEAD").await;
+    let (headers, body) = split(&head);
+    assert!(headers.contains("content-encoding: gzip"), "{headers}");
+    assert!(
+        headers.contains(&format!("content-length: {}", compressed.len())),
+        "{headers}"
+    );
+    assert!(body.is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

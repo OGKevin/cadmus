@@ -141,6 +141,10 @@ jobs:
         uses: ./.github/actions/build-docs-epub
         with:
           node-version: ${{ env.NODE_VERSION }}
+          rust-cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
+
+      - name: Build documentation site
+        run: cadmuscli docs
 
       - name: Build Kobo artifacts
         uses: ./.github/actions/build-kobo

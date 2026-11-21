@@ -7,22 +7,24 @@ include!(concat!(env!("OUT_DIR"), "/bundled_assets.rs"));
 ///
 /// Files listed in the generated `BUNDLED_ASSET_FILES` manifest are removed
 /// individually so user-added files in shared asset directories remain intact.
-/// The `libs/` directory is cleaned separately because all shipped shared
-/// libraries are Cadmus-owned.
+/// The `libs/` and `website/` directories are Cadmus-owned and replaced
+/// wholesale by the next bundle, so they are removed whole: stale files must
+/// not survive an update.
 pub async fn clean_bundled_files(install_dir: &Path) -> io::Result<()> {
     for asset in BUNDLED_ASSET_FILES {
         remove_file_if_exists(&install_dir.join(asset)).await?;
         remove_empty_parent_dirs(&install_dir.join(asset), install_dir).await?;
     }
 
-    clean_libs_dir(&install_dir.join("libs")).await?;
+    remove_owned_dir(&install_dir.join("libs")).await?;
     remove_empty_parent_dirs(&install_dir.join("libs"), install_dir).await?;
+    remove_owned_dir(&install_dir.join("website")).await?;
 
     Ok(())
 }
 
-async fn clean_libs_dir(libs_dir: &Path) -> io::Result<()> {
-    if let Err(e) = tokio::fs::remove_dir_all(libs_dir).await
+async fn remove_owned_dir(dir: &Path) -> io::Result<()> {
+    if let Err(e) = tokio::fs::remove_dir_all(dir).await
         && e.kind() != io::ErrorKind::NotFound
     {
         return Err(e);
@@ -183,11 +185,13 @@ mod tests {
         std::fs::create_dir_all(install_dir.join("fonts")).unwrap();
         std::fs::create_dir_all(install_dir.join("icons")).unwrap();
         std::fs::create_dir_all(install_dir.join("libs")).unwrap();
+        std::fs::create_dir_all(install_dir.join("website/en")).unwrap();
 
         std::fs::write(install_dir.join("fonts/Libron-Regular.ttf"), b"owned").unwrap();
         std::fs::write(install_dir.join("fonts/custom.ttf"), b"user").unwrap();
         std::fs::write(install_dir.join("icons/home.svg"), b"owned").unwrap();
         std::fs::write(install_dir.join("libs/libfoo.so.1"), b"owned").unwrap();
+        std::fs::write(install_dir.join("website/en/index.html"), b"owned").unwrap();
         std::fs::write(install_dir.join("Settings.toml"), b"user").unwrap();
 
         clean_bundled_files(&install_dir).await.unwrap();
@@ -196,6 +200,7 @@ mod tests {
         assert!(install_dir.join("fonts/custom.ttf").exists());
         assert!(!install_dir.join("icons/home.svg").exists());
         assert!(!install_dir.join("libs/libfoo.so.1").exists());
+        assert!(!install_dir.join("website/en/index.html").exists());
         assert!(install_dir.join("Settings.toml").exists());
     }
 }

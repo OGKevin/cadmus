@@ -64,7 +64,8 @@ wrangler dev              # Workers Static Assets, same as production
 
 **Fast iteration** (without devenv supervision):
 
-- Website UI: `cd website && npm run dev` (port 3000)
+- `devenv up` starts both: website at <http://localhost:3001>, Storybook at <http://localhost:6006>
+- Website UI: `cd website && npm run dev` (port 3000; conflicts with Grafana from `devenv up`)
 - Storybook: `cd website && npm run storybook` (port 6006)
 - mdBook user guide: `cd docs && mdbook serve` (port 3000)
 
@@ -76,6 +77,23 @@ its `predev` hook.
 
 Prerequisites: devenv provides `mdbook`, `mdbook-mermaid`, and `npm`; the `website:install`
 devenv task handles `npm install`.
+
+### Companion dev proxy
+
+`npm run dev` starts `scripts/companion-dev-proxy.mjs` on `:3999` and points the Next dev
+server at it. The proxy forwards only the RPCs the Companion page uses and refuses anything
+else loudly: an unknown procedure logs the expected list and answers 404, and a request
+whose `content-type` does not match the procedure (JSON for unary calls, `application/connect+json`
+for `FileOps/GetFile`) logs the expected type and answers 415. A mismatch here means the
+website and the proto contract drifted apart, not a transient failure.
+
+The proxy finds Companion by probing the `cadmus` process listeners: a wildcard bind wins
+(Kobo on the LAN), otherwise it probes each loopback listener with an unauthenticated
+`cadmus.api.internal.v1.Placeholder/Ping`. Only the internal listener registers that RPC,
+so the listener that does not answer it is Companion and is never the open internal API.
+Auth answers cannot do this job: debug builds accept any bearer, so both listeners would
+look identical. With no matching listener the proxy reports `{"companion":"down"}` instead
+of forwarding to the wrong surface.
 
 ## Editing website content
 
