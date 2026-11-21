@@ -840,7 +840,7 @@ fn run_ota_download(ctx: OtaDownloadContext) -> crate::runtime::Job {
                 }
             };
 
-            let client = OtaClient::new(github, tmp_dir.clone());
+            let client = OtaClient::new(github, tmp_dir.clone(), install_dir.clone());
             let deploy_path = client.deploy_path();
 
             let initial_label = kind.progress_label(0);
@@ -1038,6 +1038,7 @@ impl OtaView {
         let view_id = self.view_id;
         let wifi_session = context.wifi_session.clone();
         let tmp_dir = context.device.tmp_dir();
+        let install_dir = context.device.install_dir();
 
         // A view-owned job rather than an inline await: the request can sit in
         // the retry middleware for the whole client timeout, and holding the
@@ -1047,7 +1048,7 @@ impl OtaView {
         self.check_job = Some(crate::runtime::Job::spawn(move |cancel| async move {
             let outcome = crate::runtime::race_cancel(
                 &cancel,
-                Self::run_stable_release_check(github_token, tmp_dir, wifi_session),
+                Self::run_stable_release_check(github_token, tmp_dir, install_dir, wifi_session),
             )
             .await;
             if cancel.is_cancelled() {
@@ -1116,6 +1117,7 @@ impl OtaView {
     async fn run_stable_release_check(
         github_token: Option<SecretString>,
         tmp_dir: std::path::PathBuf,
+        install_dir: std::path::PathBuf,
         wifi_session: Arc<WifiSession>,
     ) -> Result<StableReleaseCheckOutcome, crate::ota::OtaError> {
         let _wifi = wifi_session
@@ -1125,7 +1127,7 @@ impl OtaView {
 
         let github = GithubClient::new(github_token)
             .map_err(|e| crate::ota::OtaError::Api(e.to_string()))?;
-        let client = OtaClient::new(github, tmp_dir);
+        let client = OtaClient::new(github, tmp_dir, install_dir);
         let remote_version = client.fetch_latest_release_version().await?;
 
         let current_version = get_current_version();

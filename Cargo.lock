@@ -666,6 +666,7 @@ dependencies = [
  "sqlx",
  "sunrise",
  "sysinfo",
+ "tar",
  "tempfile",
  "thiserror 2.0.21",
  "tikv-jemallocator",

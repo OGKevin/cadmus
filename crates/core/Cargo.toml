@@ -36,6 +36,7 @@ septem = "1.1.0"
 byteorder = "1.5.0"
 cadmus-macros = { path = "../macros" }
 flate2 = "1.1.5"
+tar = { version = "0.4", default-features = false }
 lzma-rust2 = { workspace = true, features = ["std", "xz", "optimization"] }
 futures-lite = "2"
 levenshtein = "1.0.5"
