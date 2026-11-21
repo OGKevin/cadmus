@@ -12,8 +12,11 @@ on:
     paths:
       - docs/**
       - website/**
-      - crates/**/*.rs
+      - "crates/**/*.rs"
+      - "crates/build-deps/src/api_enums*.json"
+      - proto/**
       - .github/actions/install-doc-tools/**
+      - .github/actions/install-proto-tools/**
       - .github/actions/install-cadmuscli/**
       - .github/actions/clone-needed-cargo-submodules/**
       - .github/workflows/cadmus-docs.yml
@@ -50,7 +53,10 @@ jobs:
               - 'docs/**'
               - 'website/**'
               - 'crates/**/*.rs'
+              - 'crates/build-deps/src/api_enums*.json'
+              - 'proto/**'
               - '.github/actions/install-doc-tools/**'
+              - '.github/actions/install-proto-tools/**'
               - '.github/actions/install-cadmuscli/**'
               - '.github/actions/clone-needed-cargo-submodules/**'
               - '.github/workflows/cadmus-docs.yml'
@@ -105,6 +111,9 @@ jobs:
         uses: ./.github/actions/install-doc-tools
         with:
           node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install protobuf tools
+        uses: ./.github/actions/install-proto-tools
 
       - name: Build documentation portal
         env:

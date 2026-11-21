@@ -511,7 +511,9 @@ impl<R: Rtc> AlarmManager<R> {
         now: DateTime<Utc>,
     ) -> Result<(), Error> {
         let wake_time = match when {
-            AlarmWhen::In(duration) => now + duration,
+            AlarmWhen::In(duration) => now
+                .checked_add_signed(duration)
+                .unwrap_or(DateTime::<Utc>::MAX_UTC),
             AlarmWhen::At(instant) => self.resolve_instant(instant)?,
         };
         tracing::debug!(

@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+  "crates/api-proto",
   "crates/build-deps",
   "crates/core",
   "crates/cadmus",
@@ -14,17 +15,31 @@ members = [
 async-trait = "0.1"
 async_zip = { version = "0.0.19", default-features = false, features = ["deflate", "tokio"] }
 blake3 = "1"
+buffa = { version = "0.9", default-features = false, features = ["std", "json"] }
+buffa-types = { version = "0.9", default-features = false, features = ["std", "json"] }
 bytes = "1"
 bytesize = "2"
 cc = "1"
+connectrpc = { version = "0.9", default-features = false }
+connectrpc-build = "0.9"
 gethostname = "1.1.0"
+getrandom = "0.3"
 gix = { version = "0.90", default-features = false, features = [
   "revision",
   "sha1",
   "status",
 ] }
 http = "1"
+http-body = "1"
 http-body-util = "0.1"
+hyper = { version = "1.12", features = ["http1", "http2", "server"] }
+hyper-util = { version = "0.1.21", features = [
+  "http1",
+  "http2",
+  "server-auto",
+  "service",
+  "tokio",
+] }
 io_tee = "0.1"
 mdns-sd = "0.13"
 octocrab = { version = "0.54.2", default-features = false, features = [

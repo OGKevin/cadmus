@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package cadmus.api.shared.v1;
+
+import "cadmus/api/shared/v1/locale.proto";
+import "google/protobuf/timestamp.proto";
+import "openapiv3/annotations.proto";
+
+// Device identity shared by the public companion listener and the private
+// loopback listener.
+service Status {
+  // Locale, mDNS hostname, and compile-time Cadmus version.
+  // Does not require a bearer token on the public listener.
+  rpc GetStatus(GetStatusRequest) returns (DeviceStatus) {
+    option (openapi.v3.operation) = { security: [{}] };
+  }
+}
+
+// Empty. Status has no query parameters.
+message GetStatusRequest {}
+
+// Compile-time version from get_version.
+message Version {
+  uint64 major = 1;
+  uint64 minor = 2;
+  uint64 patch = 3;
+  // Commits after the tag. Zero on a tagged release.
+  uint64 commits_ahead = 4;
+  // Git hash without the leading g. Empty on a tagged release.
+  string commit = 5;
+  bool dirty = 6;
+  // PR_INFO, empty when this build is not from a pull request.
+  string pull_request = 7;
+  string build_user = 8;
+  string build_host = 9;
+  google.protobuf.Timestamp build_timestamp = 10;
+  // True when the test Cargo feature is on.
+  bool test = 11;
+}
+
+// Snapshot of the running process.
+message DeviceStatus {
+  // Site locale directory used in companion URLs.
+  Locale locale = 1;
+  // mDNS hostname without ".local", e.g. "cadmus" or "cadmus-2" after a
+  // rename.
+  string hostname = 2;
+  Version version = 3;
+}

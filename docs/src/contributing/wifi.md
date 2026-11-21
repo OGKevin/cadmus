@@ -52,6 +52,7 @@ Use a stable, descriptive lease name. Existing names include:
 | `time-sync`           | <a href="/api/cadmus_core/task/time_sync/struct.TimeSyncTask.html">`TimeSyncTask`</a>                                                 |
 | `ota-download`        | <a href="/api/cadmus_core/view/ota/struct.OtaView.html">`OtaView`</a>                                                                 |
 | `dictionary-download` | <a href="/api/cadmus_core/dictionary/monolingual/service/struct.MonolingualDictionaryService.html">`MonolingualDictionaryService`</a> |
+| `public-api`          | Public API listener ([API](api.md))                                                                                                   |
 
 ## Gating offline UI
 

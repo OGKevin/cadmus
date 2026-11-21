@@ -31,6 +31,50 @@ pub fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Copies an exported site into `dst`, skipping `storybook` and symlinks.
+///
+/// Locale API docs are symlinks to `_shared/api`. The device copy keeps that
+/// one real tree and leaves the symlinks out. A missing `src` is not an error.
+///
+/// # Errors
+///
+/// Returns an error if a directory cannot be created or a file cannot be copied.
+pub fn copy_site(src: &Path, dst: &Path) -> Result<()> {
+    if !src.exists() {
+        return Ok(());
+    }
+    copy_site_tree(src, dst)
+}
+
+fn copy_site_tree(src: &Path, dst: &Path) -> Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        if name == "storybook" {
+            continue;
+        }
+        let file_type = entry.file_type()?;
+        if file_type.is_symlink() {
+            continue;
+        }
+        let src_path = entry.path();
+        let dst_path = dst.join(name);
+        if file_type.is_dir() {
+            copy_site_tree(&src_path, &dst_path)?;
+        } else if file_type.is_file() {
+            std::fs::copy(&src_path, &dst_path).with_context(|| {
+                format!(
+                    "failed to copy {} \u{2192} {}",
+                    src_path.display(),
+                    dst_path.display()
+                )
+            })?;
+        }
+    }
+    Ok(())
+}
+
 /// Creates a `.tar.gz` archive at `dest` from `entries` inside `base_dir`.
 ///
 /// # Errors
@@ -413,6 +457,33 @@ mod tests {
 
         assert_eq!(fs::read(dst.join("a.txt")).unwrap(), b"a");
         assert_eq!(fs::read(dst.join("sub/b.txt")).unwrap(), b"b");
+    }
+
+    #[test]
+    fn copy_site_skips_symlinks_storybook_and_missing_source() {
+        let tmp = tempfile::tempdir().unwrap();
+        let missing = tmp.path().join("missing");
+        let dst = tmp.path().join("website");
+        copy_site(&missing, &dst).unwrap();
+        assert!(!dst.exists());
+
+        let src = tmp.path().join("out");
+        fs::create_dir_all(src.join("_shared/api")).unwrap();
+        fs::write(src.join("_shared/api/index.html"), b"api").unwrap();
+        fs::create_dir_all(src.join("en")).unwrap();
+        fs::write(src.join("en/index.html"), b"en").unwrap();
+        std::os::unix::fs::symlink("../_shared/api", src.join("en/api")).unwrap();
+        fs::create_dir_all(src.join("storybook")).unwrap();
+        fs::write(src.join("storybook/index.html"), b"sb").unwrap();
+
+        copy_site(&src, &dst).unwrap();
+        assert_eq!(
+            fs::read(dst.join("_shared/api/index.html")).unwrap(),
+            b"api"
+        );
+        assert_eq!(fs::read(dst.join("en/index.html")).unwrap(), b"en");
+        assert!(!dst.join("en/api").exists());
+        assert!(!dst.join("storybook").exists());
     }
 
     #[test]

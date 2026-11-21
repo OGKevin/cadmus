@@ -34,6 +34,8 @@ pub enum SoftSuspendName {
     LibraryImport,
     /// Dictionary index background task.
     DictionaryIndex,
+    /// Connect RPC listener and in-flight API hub round-trips.
+    Api,
     /// Unit / integration tests.
     Test,
 }
@@ -52,6 +54,7 @@ impl SoftSuspendName {
             Self::Thumbnail => "thumbnail",
             Self::LibraryImport => "library-import",
             Self::DictionaryIndex => "dictionary-index",
+            Self::Api => "api",
             Self::Test => "test",
         }
     }

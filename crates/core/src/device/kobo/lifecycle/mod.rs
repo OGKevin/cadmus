@@ -114,7 +114,7 @@ impl DeviceLifecycle for Device {
         context.inhibitor.apply_settings(
             context.settings.autosleep_mode,
             context.settings.indicate_autosleep_led,
-            std::time::Duration::from_secs_f32(context.settings.autosleep_grace.max(0.0)),
+            context.settings.autosleep_grace_duration(),
         );
         let hub_notify = hub.clone();
         context
@@ -309,6 +309,7 @@ mod suspend_tests;
 #[cfg(all(test, feature = "kobo"))]
 mod tests {
     use super::*;
+    use crate::device::ExitStatus;
     use crate::device::rtc::{AlarmType, shutdown_rtc};
     use crate::device::test_harness::DeviceRuntimeHarness;
     use crate::device::wifi::{Essid, NetworkInfo};

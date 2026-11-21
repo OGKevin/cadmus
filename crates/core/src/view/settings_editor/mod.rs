@@ -35,14 +35,16 @@
 //!
 //! ### 1. Add a variant to `SettingIdentity`
 //!
-//! Open `kinds/identity.rs` and add a variant for the new setting:
+//! Add a variant to the `SettingIdentityKind` entry in
+//! `crates/build-deps/src/api_enums.json`. The build generates the Rust
+//! [`SettingIdentity`] enum, the proto enum, and the mapping from that file:
 //!
-//! ```rust,no_run
-//! pub enum SettingIdentity {
-//!     // ... existing variants
-//!     MyNewSetting,
-//! }
+//! ```json
+//! { "rust": "MyNewSetting", "number": 48 }
 //! ```
+//!
+//! Numbers are append-only; take the next free one. `api_enums.schema.json`
+//! validates the entry.
 //!
 //! ### 2. Implement `SettingKind`
 //!
@@ -181,7 +183,8 @@ pub use self::setting_value::SettingValue;
 ///   [`Category`]. On tab switch the active editor is returned here and the target is pulled
 ///   out, avoiding a full view-tree rebuild on every navigation. The [`Category::Libraries`]
 ///   editor is included and stays current because every library mutation calls
-///   `rebuild_library_rows` before returning.
+///   `rebuild_library_rows`, and `SettingsEvent::LibrariesChanged` refreshes it when the
+///   API changes the list off-screen.
 pub struct SettingsEditor {
     id: Id,
     rect: Rectangle,
@@ -435,6 +438,16 @@ impl View for SettingsEditor {
                 unimplemented!(
                     "The settings navigation bar should not be resizable which means this event is not expected to be send."
                 )
+            }
+            Event::Settings(SettingsEvent::LibrariesChanged) => {
+                if let Some(editor) = self
+                    .editors
+                    .get_mut(&Category::Libraries)
+                    .and_then(|editor| editor.downcast_mut::<CategoryEditor>())
+                {
+                    editor.libraries_changed(rq, context).await;
+                }
+                true
             }
             Event::ToggleNear(ViewId::MainMenu, rect) => {
                 toggle_main_menu(self, *rect, None, rq, context);
