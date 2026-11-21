@@ -96,7 +96,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::filter::{EnvFilter, LevelFilter};
 use tracing_subscriber::prelude::*;
 use uuid::Uuid;
 
@@ -560,17 +560,17 @@ include!(concat!(env!("OUT_DIR"), "/cadmus_log_targets.rs"));
 ///
 /// With third-party logging enabled, the level or directive string is used as
 /// is. Otherwise `off` comes first so third-party output is dropped, followed
-/// by one directive per Cadmus target. A full directive string (containing `,`
-/// or `=`) is appended last so the user's directives win. Cadmus targets it
-/// does not name use its bare level (for example `warn`), or `info` when it has
-/// none.
+/// by one directive per Cadmus target at the last plain level in the string
+/// (`info` when it has none). Every other directive (a target, optionally with
+/// a level) is appended last so the user's directives win. Plain levels are
+/// never appended, as they would replace the global `off`.
 ///
 /// ```text
 /// level = "debug"
 /// => off,article_fetcher=debug,build_deps=debug,cadmus=debug,cadmus_core=debug,...
 ///
 /// level = "warn,cadmus_core::view=trace"
-/// => off,article_fetcher=warn,build_deps=warn,cadmus=warn,cadmus_core=warn,...,warn,cadmus_core::view=trace
+/// => off,article_fetcher=warn,build_deps=warn,cadmus=warn,cadmus_core=warn,...,cadmus_core::view=trace
 ///
 /// level = "debug", enable_third_party_log = true
 /// => debug
@@ -583,8 +583,15 @@ fn filter_directives(settings: &LoggingSettings) -> String {
         return level.to_owned();
     }
 
-    let expert = level.contains([',', '=']);
-    let cadmus_level = if expert { bare_level(level) } else { level };
+    let mut cadmus_level = "info";
+    let mut overrides = Vec::new();
+    for directive in level.split(',').map(str::trim).filter(|d| !d.is_empty()) {
+        if directive.parse::<LevelFilter>().is_ok() {
+            cadmus_level = directive;
+        } else {
+            overrides.push(directive);
+        }
+    }
 
     let mut directives = vec!["off".to_owned()];
     directives.extend(
@@ -592,20 +599,8 @@ fn filter_directives(settings: &LoggingSettings) -> String {
             .iter()
             .map(|target| format!("{target}={cadmus_level}")),
     );
-    if expert {
-        directives.push(level.to_owned());
-    }
+    directives.extend(overrides.into_iter().map(str::to_owned));
     directives.join(",")
-}
-
-/// Returns the level of the first directive without a target (for example
-/// `warn` in `warn,cadmus::view=trace`), or `info` when there is none.
-fn bare_level(directives: &str) -> &str {
-    directives
-        .split(',')
-        .map(str::trim)
-        .find(|directive| !directive.is_empty() && !directive.contains('='))
-        .unwrap_or("info")
 }
 
 #[cfg(test)]
@@ -819,7 +814,8 @@ mod tests {
         let filter = filter_directives(&settings);
         assert!(filter.starts_with("off,"));
         assert!(filter.contains(",cadmus_core=warn,"));
-        assert!(filter.ends_with(",warn,cadmus::view=trace"));
+        assert!(filter.ends_with(",cadmus::view=trace"));
+        assert!(!filter.contains(",warn,"));
         EnvFilter::builder()
             .parse(&filter)
             .expect("layered directives must parse");
@@ -834,5 +830,40 @@ mod tests {
         let filter = filter_directives(&settings);
         assert!(filter.contains(",cadmus_core=info,"));
         assert!(filter.ends_with(",cadmus::view=trace"));
+    }
+
+    #[test]
+    fn target_only_directive_is_kept_as_override() {
+        let settings = LoggingSettings {
+            level: "cadmus_core::view,cadmus=debug".to_string(),
+            ..Default::default()
+        };
+        let filter = filter_directives(&settings);
+        assert!(filter.contains(",cadmus_core=info,"));
+        assert!(filter.ends_with(",cadmus_core::view,cadmus=debug"));
+        EnvFilter::builder()
+            .parse(&filter)
+            .expect("target-only directives must parse");
+    }
+
+    #[test]
+    fn bare_level_in_expert_directive_keeps_dependencies_off() {
+        let settings = LoggingSettings {
+            level: "debug,cadmus_core::view=trace".to_string(),
+            ..Default::default()
+        };
+        let filter = EnvFilter::builder()
+            .parse(filter_directives(&settings))
+            .expect("directives must parse");
+        let subscriber = tracing_subscriber::registry().with(filter);
+
+        tracing::subscriber::with_default(subscriber, || {
+            assert!(!tracing::enabled!(target: "xml5ever", tracing::Level::WARN));
+            assert!(tracing::enabled!(target: "cadmus_core", tracing::Level::DEBUG));
+            assert!(tracing::enabled!(
+                target: "cadmus_core::view",
+                tracing::Level::TRACE
+            ));
+        });
     }
 }

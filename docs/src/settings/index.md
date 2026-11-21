@@ -931,9 +931,10 @@ enabled.
 
 - Possible values: `"trace"`, `"debug"`, `"info"`, `"warn"`, `"error"`.
 - A full filter directive (for example `"warn,cadmus::view=trace"`) is also
-  accepted. It is applied after the Cadmus defaults, so your directives win.
-  Cadmus crates you do not name log at the plain level in your directive
-  (`warn` in the example), or at `info` if it has none.
+  accepted. Its targeted directives are applied after the Cadmus defaults, so
+  they win. Its plain level (`warn` in the example) applies to the Cadmus
+  crates you do not name, or `info` if it has none. It never turns dependency
+  logs back on.
 
 <!-- i18n:skip-start -->
 
