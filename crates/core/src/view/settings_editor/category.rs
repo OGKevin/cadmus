@@ -19,7 +19,7 @@ use super::kinds::power::{
 use super::kinds::reader::{
     DitheredKindsSetting, FinishedActionSetting, FontFamily, RefreshRateInfo,
 };
-use super::kinds::telemetry::{LogLevel, LoggingEnabled};
+use super::kinds::telemetry::{EnableThirdPartyLog, LogLevel, LoggingEnabled};
 use crate::device::AppContext;
 use crate::device::soft_suspend::SoftSuspendBackend as _;
 use crate::dictionary::{DictionaryEntry, MonolingualDictionaryService, dictionary_label};
@@ -128,8 +128,11 @@ impl Category {
                 Box::new(AllowedKindsSetting),
             ],
             Category::Telemetry => {
-                let rows: Vec<Box<dyn SettingKind>> =
-                    vec![Box::new(LoggingEnabled), Box::new(LogLevel)];
+                let rows: Vec<Box<dyn SettingKind>> = vec![
+                    Box::new(LoggingEnabled),
+                    Box::new(LogLevel),
+                    Box::new(EnableThirdPartyLog),
+                ];
 
                 #[cfg(any(
                     feature = "tracing",

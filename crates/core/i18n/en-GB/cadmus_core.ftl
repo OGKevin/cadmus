@@ -224,6 +224,7 @@ settings-log-level-error = ERROR
 # Settings - Telemetry
 settings-telemetry-enable-logging = Enable Logging
 settings-telemetry-log-level = Log Level
+settings-telemetry-enable-third-party-log = Enable Third-Party Log
 settings-telemetry-otlp-endpoint = OTLP Endpoint
 settings-telemetry-pyroscope-endpoint = Pyroscope Endpoint
 settings-telemetry-enable-kernel-log = Enable Kernel Log
