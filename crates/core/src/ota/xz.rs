@@ -36,6 +36,11 @@ const INPUT_CHUNK_SIZE: usize = 256 * 1024;
 /// Decoded bytes the codec produces per call before they are re-compressed.
 const DECODE_BUFFER_SIZE: usize = 256 * 1024;
 
+/// Gzip bytes one codec step may hold before it returns them to be written.
+/// Highly repetitive xz input can decode to far more than its own size, so
+/// output is drained in bounded steps rather than once per input chunk.
+const STEP_OUTPUT_LIMIT: usize = 1024 * 1024;
+
 /// Name of the xz bundle inside a CI artifact ZIP.
 pub(super) fn kobo_root_xz_name() -> &'static str {
     cfg_select! {
@@ -160,10 +165,17 @@ fn zip_member_index_size<R: Read + Seek>(reader: R) -> std::io::Result<u64> {
     xz_index_size(member)
 }
 
-/// Gzip bytes produced by one codec step and whether the xz stream has ended.
+/// Result of one codec step.
 struct Step {
+    /// Gzip bytes produced by this step.
     gzip: Vec<u8>,
+    /// Compressed input bytes consumed by this step.
+    consumed: usize,
+    /// The xz input has ended.
     finished: bool,
+    /// The decoder needs more input; calling again with the same input does
+    /// nothing.
+    idle: bool,
 }
 
 /// The sans-I/O codec: xz in, gzip out.
@@ -174,22 +186,24 @@ struct Transcoder {
 }
 
 impl Transcoder {
+    /// Concatenated xz streams and stream padding are decoded through EOF, so
+    /// a multi-stream payload is never silently cut short.
     fn new() -> Self {
         Self {
-            stream: XzStream::new_mem_limit(false, XZ_DECODER_MEM_LIMIT_KIB),
+            stream: XzStream::new_mem_limit(true, XZ_DECODER_MEM_LIMIT_KIB),
             encoder: flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast()),
             decoded: vec![0; DECODE_BUFFER_SIZE],
         }
     }
 
-    /// Decodes all of `input` and returns the gzip bytes it produced.
+    /// Decodes `input` until it is used up, the xz input ends, or
+    /// [`STEP_OUTPUT_LIMIT`] gzip bytes are pending.
     ///
     /// With [`Action::Finish`] and no more input, an xz stream that has not
     /// ended is reported as truncated by the decoder.
     fn feed(&mut self, input: &[u8], action: Action) -> Result<Step, OtaError> {
         let mut position = 0;
-        let mut finished = false;
-        loop {
+        let (finished, idle) = loop {
             let result = self
                 .stream
                 .process(&input[position..], &mut self.decoded, action)
@@ -199,16 +213,20 @@ impl Transcoder {
                 .write_all(&self.decoded[..result.bytes_produced])?;
 
             if result.status == Status::StreamEnd {
-                finished = true;
-                break;
+                break (true, false);
             }
             if result.bytes_consumed == 0 && result.bytes_produced == 0 {
-                break;
+                break (false, true);
             }
-        }
+            if self.encoder.get_ref().len() >= STEP_OUTPUT_LIMIT {
+                break (false, false);
+            }
+        };
         Ok(Step {
             gzip: std::mem::take(self.encoder.get_mut()),
+            consumed: position,
             finished,
+            idle,
         })
     }
 
@@ -222,15 +240,47 @@ impl Transcoder {
 async fn step_off_thread(
     mut transcoder: Transcoder,
     input: Vec<u8>,
-    len: usize,
+    range: std::ops::Range<usize>,
     action: Action,
 ) -> Result<(Transcoder, Vec<u8>, Result<Step, OtaError>), OtaError> {
     crate::runtime::spawn_blocking(move || {
-        let step = transcoder.feed(&input[..len], action);
+        let step = transcoder.feed(&input[range], action);
         (transcoder, input, step)
     })
     .await
     .map_err(|error| OtaError::Io(std::io::Error::other(error)))
+}
+
+/// Runs codec steps over `input[..len]` until it is used up or the xz input
+/// ends, writing each step's gzip output before the next step runs.
+///
+/// Returns the codec, the input buffer and whether the xz input has ended.
+async fn pump<W>(
+    mut transcoder: Transcoder,
+    mut input: Vec<u8>,
+    len: usize,
+    action: Action,
+    out: &mut W,
+    should_cancel: CancelFunc<'_>,
+) -> Result<(Transcoder, Vec<u8>, bool), OtaError>
+where
+    W: AsyncWrite + Unpin,
+{
+    let mut start = 0;
+    loop {
+        if should_cancel.is_cancelled() {
+            return Err(OtaError::Cancelled);
+        }
+        let (next, returned, step) = step_off_thread(transcoder, input, start..len, action).await?;
+        transcoder = next;
+        input = returned;
+        let step = step?;
+        out.write_all(&step.gzip).await?;
+        start += step.consumed;
+        if step.finished || step.idle {
+            return Ok((transcoder, input, step.finished));
+        }
+    }
 }
 
 /// Decompression progress is reported in steps of this many percent so screen
@@ -366,12 +416,11 @@ where
             continue;
         }
 
-        let (next, returned, step) = step_off_thread(transcoder, buffer, read, Action::Run).await?;
+        let (next, returned, ended) =
+            pump(transcoder, buffer, read, Action::Run, out, should_cancel).await?;
         transcoder = next;
         buffer = returned;
-        let step = step?;
-        out.write_all(&step.gzip).await?;
-        finished = step.finished;
+        finished = ended;
 
         let done = consumed.min(total);
         let percent =
@@ -383,11 +432,17 @@ where
     }
 
     if !finished {
-        let (next, _, step) = step_off_thread(transcoder, Vec::new(), 0, Action::Finish).await?;
+        let (next, _, ended) = pump(
+            transcoder,
+            Vec::new(),
+            0,
+            Action::Finish,
+            out,
+            should_cancel,
+        )
+        .await?;
         transcoder = next;
-        let step = step?;
-        out.write_all(&step.gzip).await?;
-        if !step.finished {
+        if !ended {
             return Err(OtaError::Decompress(
                 "unexpected end of xz stream".to_owned(),
             ));
@@ -447,6 +502,31 @@ mod tests {
         let mut out = Vec::new();
         transcode_to_gzip(source, &mut out, never_cancel(), &mut |_| {}).await?;
         Ok(out)
+    }
+
+    #[tokio::test]
+    async fn concatenated_xz_streams_are_all_decoded() {
+        let first = sample_tar();
+        let second: Vec<u8> = first.iter().rev().copied().collect();
+        let mut payload = xz_bytes(&first);
+        payload.extend_from_slice(&[0; 4]);
+        payload.extend_from_slice(&xz_bytes(&second));
+
+        let out = transcode(&XzSource::RawBytes(payload)).await.unwrap();
+
+        assert_eq!(gunzip(&out), [first, second].concat());
+    }
+
+    #[test]
+    fn one_step_holds_at_most_the_output_limit() {
+        let block = sample_tar();
+        let tar = block.repeat(16);
+        let xz = xz_bytes(&tar);
+        let mut transcoder = Transcoder::new();
+        let step = transcoder.feed(&xz, Action::Run).unwrap();
+
+        assert!(!step.idle && !step.finished);
+        assert!(step.gzip.len() < STEP_OUTPUT_LIMIT + DECODE_BUFFER_SIZE * 2);
     }
 
     #[tokio::test]

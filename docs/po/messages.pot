@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-11-21T10:48:46+01:00\n"
+"POT-Creation-Date: 2026-11-21T20:15:14+01:00\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -748,16 +748,16 @@ msgstr ""
 #: src/installation/ota.md:81
 msgid ""
 "OTA works for both types of builds. The type you're currently using "
-"determines what gets downloaded:"
+"determines what gets installed:"
 msgstr ""
 
 #: src/installation/ota.md:84
-msgid "**Normal builds** update to `KoboRoot.tgz` in `/mnt/onboard/.adds/cadmus`"
+msgid "**Normal builds** install `KoboRoot.tgz` into `/mnt/onboard/.adds/cadmus`"
 msgstr ""
 
 #: src/installation/ota.md:85
 msgid ""
-"**Test builds** update to `KoboRoot-test.tgz` in "
+"**Test builds** install `KoboRoot-test.tgz` into "
 "`/mnt/onboard/.adds/cadmus-tst`"
 msgstr ""
 
@@ -805,6 +805,17 @@ msgstr ""
 msgid ""
 "If you do not have an SD card, free up space on internal storage by deleting "
 "books or other files you do not need"
+msgstr ""
+
+#: src/installation/ota.md:110
+msgid "\"Not enough internal storage\" error"
+msgstr ""
+
+#: src/installation/ota.md:112
+msgid ""
+"Kobo installs updates from internal storage, even when the download went to "
+"the SD card. If Cadmus reports that internal storage is too small, delete "
+"books or other files from internal storage and try again."
 msgstr ""
 
 #: src/installation/manual-pr-install.md:1

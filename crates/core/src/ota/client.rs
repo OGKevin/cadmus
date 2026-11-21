@@ -1463,7 +1463,8 @@ fn check_disk_space(path: &Path) -> Result<(), OtaError> {
     use nix::sys::statvfs::statvfs;
 
     let stat = statvfs(path)?;
-    let available_mb = (stat.blocks_available() as u64 * stat.block_size() as u64) / (1024 * 1024);
+    let available_mb =
+        (stat.blocks_available() as u64 * stat.fragment_size() as u64) / (1024 * 1024);
     tracing::debug!(path = ?path, available_mb, "Checking disk space");
 
     if available_mb < 100 {
@@ -1487,7 +1488,7 @@ fn check_deploy_space(deploy_path: &Path, needed_bytes: u64) -> Result<(), OtaEr
 
     let directory = deploy_path.parent().unwrap_or(deploy_path);
     let stat = statvfs(directory)?;
-    let available = stat.blocks_available() as u64 * stat.block_size() as u64;
+    let available = stat.blocks_available() as u64 * stat.fragment_size() as u64;
     tracing::debug!(path = ?directory, available, needed_bytes, "Checking deploy space");
 
     if available < needed_bytes {

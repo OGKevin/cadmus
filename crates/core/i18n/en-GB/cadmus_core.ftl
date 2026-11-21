@@ -78,6 +78,7 @@ ota-check-updates-failed = Failed to check for updates
 ota-client-build-failed = Failed to create client
 ota-decompressing = Decompressing update… { $percent }%
 ota-deployment-failed = Deployment failed
+ota-insufficient-deploy-space = Not enough internal storage to install the update: { $needed } MB needed, { $available } MB free. Delete files from internal storage and try again.
 ota-download-cancel = {cancel}
 ota-download-canceling = Canceling…
 ota-download-failed = Download failed

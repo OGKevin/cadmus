@@ -911,11 +911,19 @@ fn run_ota_download(ctx: OtaDownloadContext) -> crate::runtime::Job {
                         }
                         Err(e) => {
                             error!(error = %e, "Deployment failed");
+                            let message = match e {
+                                OtaError::InsufficientDeploySpace {
+                                    needed_mb,
+                                    available_mb,
+                                } => fl!(
+                                    "ota-insufficient-deploy-space",
+                                    needed = needed_mb,
+                                    available = available_mb
+                                ),
+                                _ => fl!("ota-deployment-failed"),
+                            };
                             hub2.send(
-                                (Event::Notification(NotificationEvent::Show(fl!(
-                                    "ota-deployment-failed"
-                                ))))
-                                .into(),
+                                (Event::Notification(NotificationEvent::Show(message))).into(),
                             )
                             .ok();
                         }
