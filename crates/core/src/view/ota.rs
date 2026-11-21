@@ -911,19 +911,11 @@ fn run_ota_download(ctx: OtaDownloadContext) -> crate::runtime::Job {
                         }
                         Err(e) => {
                             error!(error = %e, "Deployment failed");
-                            let message = match e {
-                                OtaError::InsufficientDeploySpace {
-                                    needed_mb,
-                                    available_mb,
-                                } => fl!(
-                                    "ota-insufficient-deploy-space",
-                                    needed = needed_mb,
-                                    available = available_mb
-                                ),
-                                _ => fl!("ota-deployment-failed"),
-                            };
                             hub2.send(
-                                (Event::Notification(NotificationEvent::Show(message))).into(),
+                                (Event::Notification(NotificationEvent::Show(
+                                    ota_failure_notification(&e, fl!("ota-deployment-failed")),
+                                )))
+                                .into(),
                             )
                             .ok();
                         }
@@ -938,8 +930,11 @@ fn run_ota_download(ctx: OtaDownloadContext) -> crate::runtime::Job {
                 Err(e) => {
                     error!(error = %e, "OTA download failed");
                     hub2.send(
-                        (Event::Notification(NotificationEvent::Show(fl!("ota-download-failed"))))
-                            .into(),
+                        (Event::Notification(NotificationEvent::Show(ota_failure_notification(
+                            &e,
+                            fl!("ota-download-failed"),
+                        ))))
+                        .into(),
                     )
                     .ok();
                 }
@@ -953,6 +948,34 @@ fn run_ota_download(ctx: OtaDownloadContext) -> crate::runtime::Job {
         }
         unwind_guard.disarm();
     })
+}
+
+/// Returns the notification text for a failed OTA step.
+///
+/// A full filesystem is the failure the user can fix, so it names the
+/// directory and the space involved. Every other error shows `fallback`.
+fn ota_failure_notification(error: &OtaError, fallback: String) -> String {
+    match error {
+        OtaError::InsufficientSpace {
+            path,
+            required_mb,
+            available_mb,
+        } => insufficient_space_notification(
+            &path.display().to_string(),
+            *required_mb,
+            *available_mb,
+        ),
+        _ => fallback,
+    }
+}
+
+fn insufficient_space_notification(path: &str, required: u64, available: u64) -> String {
+    fl!(
+        "ota-insufficient-space",
+        path = path,
+        required = required,
+        available = available
+    )
 }
 
 /// Closes the OTA overlay when the download task panics.
@@ -1855,6 +1878,35 @@ mod tests {
             Event::Notification(NotificationEvent::Show(text))
                 if text == fl!("ota-download-failed")
         ));
+    }
+
+    #[test]
+    fn insufficient_space_notification_names_the_path_and_sizes() {
+        let error = OtaError::InsufficientSpace {
+            path: std::path::PathBuf::from("/mnt/onboard/.kobo"),
+            required_mb: 140,
+            available_mb: 90,
+        };
+
+        let text = ota_failure_notification(&error, fl!("ota-download-failed"));
+
+        assert_eq!(
+            text,
+            fl!(
+                "ota-insufficient-space",
+                path = "/mnt/onboard/.kobo",
+                required = 140_u64,
+                available = 90_u64
+            )
+        );
+        assert_ne!(text, fl!("ota-download-failed"));
+    }
+
+    #[test]
+    fn other_errors_keep_the_fallback_notification() {
+        let text = ota_failure_notification(&OtaError::NoToken, fl!("ota-download-failed"));
+
+        assert_eq!(text, fl!("ota-download-failed"));
     }
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn cancel_after_commit_still_requests_reboot() {

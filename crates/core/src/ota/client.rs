@@ -13,6 +13,7 @@ use async_zip::spec::constructs::CDR;
 use futures_lite::io::{AsyncBufRead, AsyncRead, AsyncReadExt, AsyncSeek, Cursor};
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use std::io::Error;
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use tokio_util::compat::TokioAsyncReadCompatExt;
 
@@ -98,9 +99,19 @@ pub enum OtaError {
     #[error(transparent)]
     InsufficientScopes(#[from] crate::github::ScopeError),
 
-    /// Insufficient disk space available for download (requires 100MB minimum)
-    #[error("Insufficient disk space: need 100MB, have {0}MB")]
-    InsufficientSpace(u64),
+    /// A filesystem does not have enough free space for the update
+    #[error(
+        "Insufficient disk space on {}: need {required_mb}MB, have {available_mb}MB",
+        path.display()
+    )]
+    InsufficientSpace {
+        /// Directory whose filesystem is too full
+        path: PathBuf,
+        /// Space the step needs there, including headroom, rounded up to whole megabytes
+        required_mb: u64,
+        /// Space available there, rounded down to whole megabytes
+        available_mb: u64,
+    },
 
     /// File system I/O operation failed
     #[error("I/O error: {0}")]
@@ -134,15 +145,6 @@ pub enum OtaError {
     /// decoder memory limit
     #[error("Decompression error: {0}")]
     Decompress(String),
-
-    /// The deploy filesystem cannot hold the decompressed bundle
-    #[error("Insufficient space to stage update: need {needed_mb}MB, have {available_mb}MB")]
-    InsufficientDeploySpace {
-        /// Estimated size of the staged `KoboRoot.tgz` in megabytes.
-        needed_mb: u64,
-        /// Free space on the deploy filesystem in megabytes.
-        available_mb: u64,
-    },
 }
 
 /// Result of committing `KoboRoot.tgz` to the deploy path.
@@ -257,10 +259,10 @@ impl OtaClient {
     /// Downloads the build artifact from a GitHub pull request.
     ///
     /// This performs the complete download workflow:
-    /// 1. Verifies sufficient disk space (100MB required)
-    /// 2. Fetches PR metadata to get the commit SHA
-    /// 3. Finds the associated "Cargo" workflow run
-    /// 4. Locates the `cadmus-kobo-xz-pr*` artifact, falling back to `cadmus-kobo-pr*`
+    /// 1. Fetches PR metadata to get the commit SHA
+    /// 2. Finds the associated "Cargo" workflow run
+    /// 3. Locates the `cadmus-kobo-xz-pr*` artifact, falling back to `cadmus-kobo-pr*`
+    /// 4. Verifies the artifact fits on the temp and deploy filesystems
     /// 5. Downloads the artifact ZIP file to `tmp_dir/cadmus-ota-{pr_number}.zip`
     ///
     /// GitHub authentication is required for this operation.
@@ -276,7 +278,7 @@ impl OtaClient {
     ///
     /// # Errors
     ///
-    /// * `OtaError::InsufficientSpace` - Less than 100MB available in the configured temp directory
+    /// * `OtaError::InsufficientSpace` - The temp or deploy filesystem cannot hold the artifact
     /// * `OtaError::NoToken` - GitHub token not configured
     /// * `OtaError::PrNotFound` - PR number doesn't exist in repository
     /// * `OtaError::ArtifactsNotFound` - No matching build artifacts found for the PR
@@ -296,7 +298,6 @@ impl OtaClient {
             return Err(OtaError::Cancelled);
         }
 
-        check_disk_space(&self.tmp_dir)?;
         verify_scopes(&self.github).await?;
 
         progress_callback(OtaProgress::CheckingPr);
@@ -432,9 +433,9 @@ impl OtaClient {
     /// Downloads the latest build artifact from the default branch.
     ///
     /// This performs the complete download workflow for default branch builds:
-    /// 1. Verifies sufficient disk space (100MB required)
-    /// 2. Queries GitHub API for the latest successful `cargo.yml` workflow run on the default branch
-    /// 3. Locates artifacts matching "cadmus-kobo-{sha}" pattern (or "cadmus-kobo-test-{sha}" with `test` feature)
+    /// 1. Queries GitHub API for the latest successful `cargo.yml` workflow run on the default branch
+    /// 2. Locates artifacts matching "cadmus-kobo-{sha}" pattern (or "cadmus-kobo-test-{sha}" with `test` feature)
+    /// 3. Verifies the artifact fits on the temp and deploy filesystems
     /// 4. Downloads the artifact ZIP file to `tmp_dir/cadmus-ota-{sha}.zip`
     ///
     /// GitHub authentication is required for this operation.
@@ -449,7 +450,7 @@ impl OtaClient {
     ///
     /// # Errors
     ///
-    /// * `OtaError::InsufficientSpace` - Less than 100MB available in the configured temp directory
+    /// * `OtaError::InsufficientSpace` - The temp or deploy filesystem cannot hold the artifact
     /// * `OtaError::NoToken` - GitHub token not configured
     /// * `OtaError::ArtifactsNotFound` - No matching build artifacts found for default branch
     /// * `OtaError::Api` - GitHub API request failed
@@ -467,7 +468,6 @@ impl OtaClient {
             return Err(OtaError::Cancelled);
         }
 
-        check_disk_space(&self.tmp_dir)?;
         verify_scopes(&self.github).await?;
 
         progress_callback(OtaProgress::FindingLatestBuild);
@@ -552,9 +552,9 @@ impl OtaClient {
     /// Downloads the latest stable release artifact from GitHub releases.
     ///
     /// This performs the complete download workflow for stable releases:
-    /// 1. Verifies sufficient disk space (100MB required)
-    /// 2. Fetches the latest release from GitHub API
-    /// 3. Locates the `KoboRoot.tar.xz` asset in the release, falling back to `KoboRoot.tgz`
+    /// 1. Fetches the latest release from GitHub API
+    /// 2. Locates the `KoboRoot.tar.xz` asset in the release, falling back to `KoboRoot.tgz`
+    /// 3. Verifies the asset fits on the temp and deploy filesystems
     /// 4. Downloads the asset into memory when it fits, otherwise to `tmp_dir`
     ///
     /// GitHub authentication is not required for this operation as release
@@ -571,7 +571,7 @@ impl OtaClient {
     ///
     /// # Errors
     ///
-    /// * `OtaError::InsufficientSpace` - Less than 100MB available in the configured temp directory
+    /// * `OtaError::InsufficientSpace` - The temp or deploy filesystem cannot hold the asset
     /// * `OtaError::Api` - GitHub API request failed
     /// * `OtaError::Request` - Network communication failed
     /// * `OtaError::ArtifactsNotFound` - KoboRoot.tgz not found in latest release
@@ -588,8 +588,6 @@ impl OtaClient {
         if should_cancel.is_some_and(CancelFlag::is_cancelled) {
             return Err(OtaError::Cancelled);
         }
-
-        check_disk_space(&self.tmp_dir)?;
 
         progress_callback(OtaProgress::FindingLatestBuild);
         tracing::info!("Starting stable release download");
@@ -641,6 +639,8 @@ impl OtaClient {
         let downloaded = match format {
             PayloadFormat::Gzip => {
                 let download_path = self.tmp_dir.join("cadmus-ota-stable-release.tgz");
+                self.ensure_space_for_download(asset.size, asset.size)
+                    .await?;
                 self.download_release_asset(
                     asset,
                     &download_path,
@@ -741,9 +741,9 @@ impl OtaClient {
 
         let cancel = should_cancel;
         let src_path = kobo_root_path.clone();
-        let (deploy_path, staging_path, mut unpublished, mut staging) =
-            self.begin_staging().await?;
         let mut src = tokio::fs::File::open(&src_path).await?;
+        let (deploy_path, staging_path, mut unpublished, mut staging) =
+            self.begin_staging(src.metadata().await?.len()).await?;
         copy_file_to_file(&mut src, &mut staging, cancel).await?;
         let outcome = self
             .commit_staging(
@@ -798,8 +798,26 @@ impl OtaClient {
         path
     }
 
+    /// Verifies that the temp and deploy filesystems can hold an update.
+    ///
+    /// `tmp_bytes` is what the download writes under `tmp_dir`; `deploy_bytes`
+    /// is what staging writes next to the deploy path. The two are added when
+    /// both directories sit on the same filesystem, because the download is
+    /// still on disk while the bundle is staged.
+    async fn ensure_space_for_download(
+        &self,
+        tmp_bytes: u64,
+        deploy_bytes: u64,
+    ) -> Result<(), OtaError> {
+        let deploy_path = self.deploy_path();
+        self.ensure_deploy_dir(&deploy_path).await?;
+        let deploy_dir = deploy_dir(&deploy_path)?;
+        check_download_space(&self.tmp_dir, tmp_bytes, &deploy_dir, deploy_bytes).await
+    }
+
     async fn begin_staging(
         &self,
+        expected_len: u64,
     ) -> Result<
         (
             PathBuf,
@@ -812,6 +830,8 @@ impl OtaClient {
         let deploy_path = self.deploy_path();
         let staging_path = self.staging_path();
         self.ensure_deploy_dir(&deploy_path).await?;
+        let deploy_dir = deploy_dir(&deploy_path)?;
+        check_disk_space(&deploy_dir, expected_len).await?;
         let unpublished = crate::fs::RemovePathOnDrop::file(staging_path.clone());
         let staging = tokio::fs::File::create(&staging_path).await?;
         Ok((deploy_path, staging_path, unpublished, staging))
@@ -896,7 +916,7 @@ impl OtaClient {
         >,
     {
         let (deploy_path, staging_path, mut unpublished, mut staging) =
-            self.begin_staging().await?;
+            self.begin_staging(0).await?;
         write(&mut staging).await?;
         self.commit_staging(
             deploy_path,
@@ -965,7 +985,7 @@ impl OtaClient {
         let byte_count = data.len();
         let cancel = should_cancel;
         let (deploy_path, staging_path, mut unpublished, mut staging) =
-            self.begin_staging().await?;
+            self.begin_staging(byte_count as u64).await?;
         use tokio::io::AsyncWriteExt;
         for chunk in data.chunks(64 * 1024) {
             if cancel.is_cancelled() {
@@ -1025,11 +1045,11 @@ impl OtaClient {
         let mut reader = ZipArchiveReader::open(tokio::io::BufReader::new(file).compat())
             .await
             .map_err(|error| OtaError::ZipError(error.to_string()))?;
-        let (mut entry, _) =
+        let (mut entry, uncompressed) =
             open_kobo_root_entry(&mut reader, kobo_root_gzip_name(), should_cancel).await?;
 
         let (deploy_path, staging_path, mut unpublished, mut staging) =
-            self.begin_staging().await?;
+            self.begin_staging(uncompressed).await?;
         copy_entry_to_file(&mut entry, &mut staging, should_cancel).await?;
         tokio::io::AsyncWriteExt::flush(&mut staging).await?;
 
@@ -1105,7 +1125,7 @@ impl OtaClient {
     ///
     /// # Errors
     ///
-    /// * `OtaError::InsufficientDeploySpace` - The deploy filesystem cannot hold
+    /// * `OtaError::InsufficientSpace` - The deploy filesystem cannot hold
     ///   the bundle
     /// * `OtaError::Decompress` - The xz stream is corrupt or too demanding
     /// * `OtaError::ZipError` - The wrapping ZIP is invalid or fails its CRC32
@@ -1131,13 +1151,15 @@ impl OtaClient {
 
         tracing::info!("Decoding xz bundle and deploying");
 
+        let expected_len = match xz::uncompressed_size(&source).await {
+            Some(raw_size) => xz::gzip_bound(raw_size),
+            None => {
+                tracing::warn!("xz index unreadable; skipping the deploy space check");
+                0
+            }
+        };
         let (deploy_path, staging_path, mut unpublished, mut staging) =
-            self.begin_staging().await?;
-
-        match xz::uncompressed_size(&source).await {
-            Some(raw_size) => check_deploy_space(&deploy_path, xz::gzip_bound(raw_size))?,
-            None => tracing::warn!("xz index unreadable; skipping the deploy space check"),
-        }
+            self.begin_staging(expected_len).await?;
 
         xz::transcode_to_gzip(&source, &mut staging, should_cancel, &mut progress).await?;
 
@@ -1254,7 +1276,16 @@ impl OtaClient {
             progress_callback(OtaProgress::DownloadingArtifact { downloaded, total })
         };
 
-        if payload_fits_in_memory(format, artifact.size_in_bytes) {
+        let fits_in_memory = payload_fits_in_memory(format, artifact.size_in_bytes);
+        let tmp_bytes = if fits_in_memory {
+            0
+        } else {
+            artifact.size_in_bytes
+        };
+        self.ensure_space_for_download(tmp_bytes, artifact.size_in_bytes)
+            .await?;
+
+        if fits_in_memory {
             tracing::debug!(
                 artifact_id = artifact.id,
                 size_bytes = artifact.size_in_bytes,
@@ -1336,7 +1367,12 @@ impl OtaClient {
     where
         F: FnMut(OtaProgress),
     {
-        if xz::fits_in_memory(asset.size) {
+        let fits_in_memory = xz::fits_in_memory(asset.size);
+        let tmp_bytes = if fits_in_memory { 0 } else { asset.size };
+        self.ensure_space_for_download(tmp_bytes, asset.size)
+            .await?;
+
+        if fits_in_memory {
             tracing::debug!(size_bytes = asset.size, "Buffering release asset in memory");
             let bytes = self
                 .github
@@ -1459,47 +1495,109 @@ fn api_error(error: impl std::fmt::Display + HttpFailure) -> OtaError {
     }
 }
 
-fn check_disk_space(path: &Path) -> Result<(), OtaError> {
-    use nix::sys::statvfs::statvfs;
+/// Spare bytes kept free on a filesystem on top of what an update writes.
+///
+/// The deploy filesystem is the Kobo's internal storage, which Nickel and the
+/// user keep writing to while the update runs.
+const SPACE_HEADROOM_BYTES: u64 = 16 * 1024 * 1024;
 
-    let stat = statvfs(path)?;
-    let available_mb =
-        (stat.blocks_available() as u64 * stat.fragment_size() as u64) / (1024 * 1024);
-    tracing::debug!(path = ?path, available_mb, "Checking disk space");
+const BYTES_PER_MB: u64 = 1024 * 1024;
 
-    if available_mb < 100 {
-        tracing::error!(
-            path = ?path,
-            available_mb,
-            required_mb = 100,
-            "Insufficient disk space"
-        );
-        return Err(OtaError::InsufficientSpace(available_mb));
+/// Bytes an update step writes to the filesystem that holds `dir`.
+struct SpaceNeed {
+    /// A directory on the filesystem the step writes to.
+    dir: PathBuf,
+    /// Id of the device that holds `dir`, from `st_dev`. Two directories with
+    /// the same id share one pool of free space.
+    device: u64,
+    /// Bytes the step writes, excluding [`SPACE_HEADROOM_BYTES`].
+    bytes: u64,
+}
+
+impl SpaceNeed {
+    async fn for_dir(dir: &Path, bytes: u64) -> Result<Self, OtaError> {
+        Ok(Self {
+            dir: dir.to_owned(),
+            device: tokio::fs::metadata(dir).await?.dev(),
+            bytes,
+        })
+    }
+}
+
+/// Returns the `(directory, bytes)` pairs that must each be checked for free space.
+///
+/// Needs on the same device are added into one pair, because they draw from
+/// the same free space. A need of zero bytes on its own device is dropped.
+fn space_requirements(tmp: SpaceNeed, deploy: SpaceNeed) -> Vec<(PathBuf, u64)> {
+    if tmp.device == deploy.device {
+        return vec![(tmp.dir, tmp.bytes.saturating_add(deploy.bytes))];
+    }
+
+    [tmp, deploy]
+        .into_iter()
+        .filter(|need| need.bytes > 0)
+        .map(|need| (need.dir, need.bytes))
+        .collect()
+}
+
+async fn check_download_space(
+    tmp_dir: &Path,
+    tmp_bytes: u64,
+    deploy_dir: &Path,
+    deploy_bytes: u64,
+) -> Result<(), OtaError> {
+    let requirements = space_requirements(
+        SpaceNeed::for_dir(tmp_dir, tmp_bytes).await?,
+        SpaceNeed::for_dir(deploy_dir, deploy_bytes).await?,
+    );
+    for (dir, bytes) in requirements {
+        check_disk_space(&dir, bytes).await?;
     }
     Ok(())
 }
 
-/// Fails when the deploy filesystem cannot hold `needed_bytes`.
+/// Reads the statistics of the filesystem that holds `path`.
 ///
-/// [`check_disk_space`] only covers `tmp_dir`; the staged `KoboRoot.tgz` is
-/// written next to the deploy path, which can be a different filesystem.
-fn check_deploy_space(deploy_path: &Path, needed_bytes: u64) -> Result<(), OtaError> {
-    use nix::sys::statvfs::statvfs;
+/// `statvfs(2)` has no async equivalent, so the call runs on the runtime's
+/// blocking pool instead of an async worker.
+async fn filesystem_stats(path: &Path) -> Result<nix::sys::statvfs::Statvfs, OtaError> {
+    let path = path.to_owned();
+    let stats = crate::runtime::spawn_blocking(move || nix::sys::statvfs::statvfs(&path))
+        .await
+        .map_err(|error| OtaError::Io(Error::other(error)))??;
+    Ok(stats)
+}
 
-    let directory = deploy_path.parent().unwrap_or(deploy_path);
-    let stat = statvfs(directory)?;
-    let available = stat.blocks_available() as u64 * stat.fragment_size() as u64;
-    tracing::debug!(path = ?directory, available, needed_bytes, "Checking deploy space");
+/// Fails with [`OtaError::InsufficientSpace`] unless the filesystem holding
+/// `path` has `required_bytes` plus [`SPACE_HEADROOM_BYTES`] available to
+/// unprivileged writers.
+async fn check_disk_space(path: &Path, required_bytes: u64) -> Result<(), OtaError> {
+    let stat = filesystem_stats(path).await?;
+    let available_bytes = stat.blocks_available() as u64 * stat.fragment_size() as u64;
+    let needed_bytes = required_bytes.saturating_add(SPACE_HEADROOM_BYTES);
+    tracing::debug!(path = ?path, available_bytes, needed_bytes, "Checking disk space");
 
-    if available < needed_bytes {
-        const MIB: u64 = 1024 * 1024;
-        tracing::error!(path = ?directory, available, needed_bytes, "Insufficient deploy space");
-        return Err(OtaError::InsufficientDeploySpace {
-            needed_mb: needed_bytes / MIB,
-            available_mb: available / MIB,
+    if available_bytes < needed_bytes {
+        tracing::error!(
+            path = ?path,
+            available_bytes,
+            needed_bytes,
+            "Insufficient disk space"
+        );
+        return Err(OtaError::InsufficientSpace {
+            path: path.to_owned(),
+            required_mb: needed_bytes.div_ceil(BYTES_PER_MB),
+            available_mb: available_bytes / BYTES_PER_MB,
         });
     }
     Ok(())
+}
+
+/// Returns the directory that receives the staged bundle.
+fn deploy_dir(deploy_path: &Path) -> Result<PathBuf, OtaError> {
+    deploy_path.parent().map(Path::to_owned).ok_or_else(|| {
+        OtaError::DeploymentError(format!("{} has no parent directory", deploy_path.display()))
+    })
 }
 
 /// Returns whether an artifact ZIP of `zip_size` bytes should be buffered in RAM.
@@ -2401,14 +2499,92 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_check_disk_space_sufficient() {
+    #[tokio::test]
+    async fn check_disk_space_accepts_a_request_that_fits() {
         use tempfile::TempDir;
         let temp_dir = TempDir::new().unwrap();
-        let result = check_disk_space(temp_dir.path());
-        assert!(
-            result.is_ok(),
-            "Should have sufficient disk space in temp directory"
+        assert!(check_disk_space(temp_dir.path(), 0).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn check_disk_space_rejects_a_request_larger_than_the_filesystem() {
+        use tempfile::TempDir;
+        let temp_dir = TempDir::new().unwrap();
+
+        let error = check_disk_space(temp_dir.path(), u64::MAX / 2)
+            .await
+            .unwrap_err();
+
+        match error {
+            OtaError::InsufficientSpace {
+                path,
+                required_mb,
+                available_mb,
+            } => {
+                assert_eq!(path, temp_dir.path());
+                assert!(required_mb > available_mb);
+            }
+            other => panic!("expected InsufficientSpace, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn space_requirements_add_needs_that_share_a_device() {
+        let tmp = SpaceNeed {
+            dir: PathBuf::from("/tmp-dir"),
+            device: 7,
+            bytes: 100,
+        };
+        let deploy = SpaceNeed {
+            dir: PathBuf::from("/deploy-dir"),
+            device: 7,
+            bytes: 50,
+        };
+
+        assert_eq!(
+            space_requirements(tmp, deploy),
+            vec![(PathBuf::from("/tmp-dir"), 150)]
+        );
+    }
+
+    #[test]
+    fn space_requirements_keep_needs_on_different_devices_apart() {
+        let tmp = SpaceNeed {
+            dir: PathBuf::from("/tmp-dir"),
+            device: 1,
+            bytes: 100,
+        };
+        let deploy = SpaceNeed {
+            dir: PathBuf::from("/deploy-dir"),
+            device: 2,
+            bytes: 50,
+        };
+
+        assert_eq!(
+            space_requirements(tmp, deploy),
+            vec![
+                (PathBuf::from("/tmp-dir"), 100),
+                (PathBuf::from("/deploy-dir"), 50)
+            ]
+        );
+    }
+
+    #[test]
+    fn space_requirements_skip_a_device_that_receives_nothing() {
+        let tmp = SpaceNeed {
+            dir: PathBuf::from("/tmp-dir"),
+            device: 1,
+            bytes: 0,
+        };
+        let deploy = SpaceNeed {
+            dir: PathBuf::from("/deploy-dir"),
+            device: 2,
+            bytes: 50,
+        };
+
+        assert_eq!(
+            space_requirements(tmp, deploy),
+            vec![(PathBuf::from("/deploy-dir"), 50)]
         );
     }
 
@@ -2676,18 +2852,6 @@ mod tests {
         assert_eq!(selected.name, GZIP_RELEASE_ASSET);
 
         assert!(select_release_asset(&[asset("KoboRoot-nm.tgz")]).is_none());
-    }
-
-    #[test]
-    fn check_deploy_space_rejects_requests_larger_than_the_filesystem() {
-        let temp_dir = ota_test_tempdir();
-        let deploy_path = temp_dir.path().join("KoboRoot.tgz");
-
-        assert!(check_deploy_space(&deploy_path, 1).is_ok());
-        assert!(matches!(
-            check_deploy_space(&deploy_path, u64::MAX),
-            Err(OtaError::InsufficientDeploySpace { .. })
-        ));
     }
 
     fn xz_fixture(data: &[u8]) -> Vec<u8> {
