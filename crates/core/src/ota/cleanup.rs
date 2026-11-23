@@ -1,34 +1,89 @@
 use std::io;
+use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 
 include!(concat!(env!("OUT_DIR"), "/bundled_assets.rs"));
+
+/// Top-level directories of the install directory that hold only Cadmus-owned
+/// files, so they are removed and measured as a whole.
+const OWNED_DIRS: [&str; 1] = ["libs"];
 
 /// Deletes Cadmus-owned bundled files from an install directory before OTA reboot.
 ///
 /// Files listed in the generated `BUNDLED_ASSET_FILES` manifest are removed
 /// individually so user-added files in shared asset directories remain intact.
-/// The `libs/` directory is cleaned separately because all shipped shared
-/// libraries are Cadmus-owned.
+/// The [`OWNED_DIRS`] are removed whole because everything shipped in them is
+/// Cadmus-owned.
 pub async fn clean_bundled_files(install_dir: &Path) -> io::Result<()> {
     for asset in BUNDLED_ASSET_FILES {
         remove_file_if_exists(&install_dir.join(asset)).await?;
         remove_empty_parent_dirs(&install_dir.join(asset), install_dir).await?;
     }
 
-    clean_libs_dir(&install_dir.join("libs")).await?;
-    remove_empty_parent_dirs(&install_dir.join("libs"), install_dir).await?;
+    for dir in OWNED_DIRS {
+        let path = install_dir.join(dir);
+        remove_dir_tree_if_exists(&path).await?;
+        remove_empty_parent_dirs(&path, install_dir).await?;
+    }
 
     Ok(())
 }
 
-async fn clean_libs_dir(libs_dir: &Path) -> io::Result<()> {
-    if let Err(e) = tokio::fs::remove_dir_all(libs_dir).await
+async fn remove_dir_tree_if_exists(dir: &Path) -> io::Result<()> {
+    if let Err(e) = tokio::fs::remove_dir_all(dir).await
         && e.kind() != io::ErrorKind::NotFound
     {
         return Err(e);
     }
 
     Ok(())
+}
+
+/// Returns the bytes on disk that [`clean_bundled_files`] would free.
+///
+/// Counts allocated blocks, so it matches what the filesystem gives back.
+/// Missing entries count as zero, and user-added files are never counted.
+pub(super) async fn bundled_files_size(install_dir: &Path) -> u64 {
+    let mut total = 0u64;
+
+    for asset in BUNDLED_ASSET_FILES {
+        total = total.saturating_add(allocated_bytes(&install_dir.join(asset)).await);
+    }
+    for dir in OWNED_DIRS {
+        total = total.saturating_add(tree_allocated_bytes(&install_dir.join(dir)).await);
+    }
+
+    total
+}
+
+/// Returns the allocated size of one entry, or zero when it cannot be read.
+async fn allocated_bytes(path: &Path) -> u64 {
+    tokio::fs::symlink_metadata(path)
+        .await
+        .map_or(0, |metadata| metadata.blocks() * 512)
+}
+
+/// Returns the allocated size of a directory tree, or zero when it is missing.
+async fn tree_allocated_bytes(root: &Path) -> u64 {
+    let mut total = 0u64;
+    let mut pending = vec![root.to_owned()];
+
+    while let Some(path) = pending.pop() {
+        let Ok(metadata) = tokio::fs::symlink_metadata(&path).await else {
+            continue;
+        };
+        total = total.saturating_add(metadata.blocks() * 512);
+
+        if metadata.is_dir()
+            && let Ok(mut entries) = tokio::fs::read_dir(&path).await
+        {
+            while let Ok(Some(entry)) = entries.next_entry().await {
+                pending.push(entry.path());
+            }
+        }
+    }
+
+    total
 }
 
 async fn remove_file_if_exists(path: &Path) -> io::Result<()> {
@@ -197,5 +252,41 @@ mod tests {
         assert!(!install_dir.join("icons/home.svg").exists());
         assert!(!install_dir.join("libs/libfoo.so.1").exists());
         assert!(install_dir.join("Settings.toml").exists());
+    }
+
+    fn allocated(path: &Path) -> u64 {
+        std::fs::symlink_metadata(path).unwrap().blocks() * 512
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn bundled_files_size_counts_owned_files_and_ignores_user_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let install_dir = tmp.path().join("install");
+        std::fs::create_dir_all(install_dir.join("fonts")).unwrap();
+        std::fs::create_dir_all(install_dir.join("libs")).unwrap();
+        std::fs::write(
+            install_dir.join("fonts/Libron-Regular.ttf"),
+            vec![1u8; 10_000],
+        )
+        .unwrap();
+        std::fs::write(install_dir.join("libs/libfoo.so.1"), vec![2u8; 20_000]).unwrap();
+
+        let owned_only = bundled_files_size(&install_dir).await;
+        std::fs::write(install_dir.join("fonts/custom.ttf"), vec![3u8; 500_000]).unwrap();
+        std::fs::write(install_dir.join("Settings.toml"), vec![4u8; 500_000]).unwrap();
+        let with_user_files = bundled_files_size(&install_dir).await;
+
+        let expected = allocated(&install_dir.join("fonts/Libron-Regular.ttf"))
+            + allocated(&install_dir.join("libs"))
+            + allocated(&install_dir.join("libs/libfoo.so.1"));
+        assert_eq!(owned_only, expected);
+        assert_eq!(with_user_files, expected);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn bundled_files_size_is_zero_for_a_missing_install_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        assert_eq!(bundled_files_size(&tmp.path().join("absent")).await, 0);
     }
 }

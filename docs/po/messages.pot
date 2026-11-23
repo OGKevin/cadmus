@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-11-21T20:15:14+01:00\n"
+"POT-Creation-Date: 2026-11-22T22:26:31+08:00\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -114,7 +114,7 @@ msgstr ""
 msgid "Database Backup"
 msgstr ""
 
-#: src/SUMMARY.md:30 src/installation/ota.md:96 src/troubleshooting/index.md:1
+#: src/SUMMARY.md:30 src/troubleshooting/index.md:1
 msgid "Troubleshooting"
 msgstr ""
 
@@ -772,50 +772,6 @@ msgid ""
 "OTA only works for updating an existing installation. To install Cadmus for "
 "the first time, follow the [installation guide](./index.md) or the [test "
 "builds guide](./test-builds.md) to copy a KoboRoot file via USB."
-msgstr ""
-
-#: src/installation/ota.md:98
-msgid "\"Insufficient disk space\" error"
-msgstr ""
-
-#: src/installation/ota.md:100
-msgid ""
-"If Cadmus shows an error like _\"Insufficient disk space: need 100MB, have "
-"XMB\"_ while downloading an update:"
-msgstr ""
-
-#: src/installation/ota.md:103
-msgid "Cadmus downloads update files into a `tmp` folder:"
-msgstr ""
-
-#: src/installation/ota.md:104
-msgid "**With SD card**: `/mnt/sd/.cadmus/tmp` (uses SD card space)"
-msgstr ""
-
-#: src/installation/ota.md:105
-msgid ""
-"**Without SD card**: `/mnt/onboard/.adds/cadmus/tmp` (uses internal storage)"
-msgstr ""
-
-#: src/installation/ota.md:106
-msgid "If you see this error and have an SD card inserted, the card may be full"
-msgstr ""
-
-#: src/installation/ota.md:107
-msgid ""
-"If you do not have an SD card, free up space on internal storage by deleting "
-"books or other files you do not need"
-msgstr ""
-
-#: src/installation/ota.md:110
-msgid "\"Not enough internal storage\" error"
-msgstr ""
-
-#: src/installation/ota.md:112
-msgid ""
-"Kobo installs updates from internal storage, even when the download went to "
-"the SD card. If Cadmus reports that internal storage is too small, delete "
-"books or other files from internal storage and try again."
 msgstr ""
 
 #: src/installation/manual-pr-install.md:1

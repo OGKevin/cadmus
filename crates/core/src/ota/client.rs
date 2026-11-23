@@ -12,8 +12,12 @@ use async_zip::error::ZipError;
 use async_zip::spec::constructs::CDR;
 use futures_lite::io::{AsyncBufRead, AsyncRead, AsyncReadExt, AsyncSeek, Cursor};
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
-use std::io::Error;
-use std::path::{Path, PathBuf};
+use std::io::{Error, Read};
+use std::os::unix::fs::MetadataExt;
+use std::path::{Component, Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 use tokio_util::compat::TokioAsyncReadCompatExt;
 
 #[cfg(test)]
@@ -30,6 +34,7 @@ use crate::settings::INTERNAL_CARD_ROOT;
 pub struct OtaClient {
     github: GithubClient,
     tmp_dir: PathBuf,
+    install_dir: PathBuf,
 }
 
 /// Indicates where artifacts were expected but not found.
@@ -98,9 +103,19 @@ pub enum OtaError {
     #[error(transparent)]
     InsufficientScopes(#[from] crate::github::ScopeError),
 
-    /// Insufficient disk space available for download (requires 100MB minimum)
-    #[error("Insufficient disk space: need 100MB, have {0}MB")]
-    InsufficientSpace(u64),
+    /// A filesystem does not have enough free space for the update
+    #[error(
+        "Insufficient disk space on {}: need {required_mb}MB, have {available_mb}MB",
+        path.display()
+    )]
+    InsufficientSpace {
+        /// Directory whose filesystem is too full
+        path: PathBuf,
+        /// Space the step needs there, including headroom, rounded up to whole megabytes
+        required_mb: u64,
+        /// Space available there, rounded down to whole megabytes
+        available_mb: u64,
+    },
 
     /// File system I/O operation failed
     #[error("I/O error: {0}")]
@@ -134,15 +149,6 @@ pub enum OtaError {
     /// decoder memory limit
     #[error("Decompression error: {0}")]
     Decompress(String),
-
-    /// The deploy filesystem cannot hold the decompressed bundle
-    #[error("Insufficient space to stage update: need {needed_mb}MB, have {available_mb}MB")]
-    InsufficientDeploySpace {
-        /// Estimated size of the staged `KoboRoot.tgz` in megabytes.
-        needed_mb: u64,
-        /// Free space on the deploy filesystem in megabytes.
-        available_mb: u64,
-    },
 }
 
 /// Result of committing `KoboRoot.tgz` to the deploy path.
@@ -247,20 +253,28 @@ impl From<serde_json::Error> for OtaError {
 impl OtaClient {
     /// Creates a new OTA client wrapping the provided GitHub client.
     ///
+    /// `install_dir` is the Cadmus install directory. Its bundled files are
+    /// removed before the reboot that unpacks an update, so the space they
+    /// occupy counts as free when checking that an update fits.
+    ///
     /// # Errors
     ///
     /// Returns `OtaError::TlsConfig` if the underlying HTTP client fails to build.
-    pub fn new(github: GithubClient, tmp_dir: PathBuf) -> Self {
-        Self { github, tmp_dir }
+    pub fn new(github: GithubClient, tmp_dir: PathBuf, install_dir: PathBuf) -> Self {
+        Self {
+            github,
+            tmp_dir,
+            install_dir,
+        }
     }
 
     /// Downloads the build artifact from a GitHub pull request.
     ///
     /// This performs the complete download workflow:
-    /// 1. Verifies sufficient disk space (100MB required)
-    /// 2. Fetches PR metadata to get the commit SHA
-    /// 3. Finds the associated "Cargo" workflow run
-    /// 4. Locates the `cadmus-kobo-xz-pr*` artifact, falling back to `cadmus-kobo-pr*`
+    /// 1. Fetches PR metadata to get the commit SHA
+    /// 2. Finds the associated "Cargo" workflow run
+    /// 3. Locates the `cadmus-kobo-xz-pr*` artifact, falling back to `cadmus-kobo-pr*`
+    /// 4. Verifies the artifact fits on the temp and deploy filesystems
     /// 5. Downloads the artifact ZIP file to `tmp_dir/cadmus-ota-{pr_number}.zip`
     ///
     /// GitHub authentication is required for this operation.
@@ -276,7 +290,7 @@ impl OtaClient {
     ///
     /// # Errors
     ///
-    /// * `OtaError::InsufficientSpace` - Less than 100MB available in the configured temp directory
+    /// * `OtaError::InsufficientSpace` - The temp or deploy filesystem cannot hold the artifact
     /// * `OtaError::NoToken` - GitHub token not configured
     /// * `OtaError::PrNotFound` - PR number doesn't exist in repository
     /// * `OtaError::ArtifactsNotFound` - No matching build artifacts found for the PR
@@ -296,7 +310,6 @@ impl OtaClient {
             return Err(OtaError::Cancelled);
         }
 
-        check_disk_space(&self.tmp_dir)?;
         verify_scopes(&self.github).await?;
 
         progress_callback(OtaProgress::CheckingPr);
@@ -432,9 +445,9 @@ impl OtaClient {
     /// Downloads the latest build artifact from the default branch.
     ///
     /// This performs the complete download workflow for default branch builds:
-    /// 1. Verifies sufficient disk space (100MB required)
-    /// 2. Queries GitHub API for the latest successful `cargo.yml` workflow run on the default branch
-    /// 3. Locates artifacts matching "cadmus-kobo-{sha}" pattern (or "cadmus-kobo-test-{sha}" with `test` feature)
+    /// 1. Queries GitHub API for the latest successful `cargo.yml` workflow run on the default branch
+    /// 2. Locates artifacts matching "cadmus-kobo-{sha}" pattern (or "cadmus-kobo-test-{sha}" with `test` feature)
+    /// 3. Verifies the artifact fits on the temp and deploy filesystems
     /// 4. Downloads the artifact ZIP file to `tmp_dir/cadmus-ota-{sha}.zip`
     ///
     /// GitHub authentication is required for this operation.
@@ -449,7 +462,7 @@ impl OtaClient {
     ///
     /// # Errors
     ///
-    /// * `OtaError::InsufficientSpace` - Less than 100MB available in the configured temp directory
+    /// * `OtaError::InsufficientSpace` - The temp or deploy filesystem cannot hold the artifact
     /// * `OtaError::NoToken` - GitHub token not configured
     /// * `OtaError::ArtifactsNotFound` - No matching build artifacts found for default branch
     /// * `OtaError::Api` - GitHub API request failed
@@ -467,7 +480,6 @@ impl OtaClient {
             return Err(OtaError::Cancelled);
         }
 
-        check_disk_space(&self.tmp_dir)?;
         verify_scopes(&self.github).await?;
 
         progress_callback(OtaProgress::FindingLatestBuild);
@@ -552,9 +564,9 @@ impl OtaClient {
     /// Downloads the latest stable release artifact from GitHub releases.
     ///
     /// This performs the complete download workflow for stable releases:
-    /// 1. Verifies sufficient disk space (100MB required)
-    /// 2. Fetches the latest release from GitHub API
-    /// 3. Locates the `KoboRoot.tar.xz` asset in the release, falling back to `KoboRoot.tgz`
+    /// 1. Fetches the latest release from GitHub API
+    /// 2. Locates the `KoboRoot.tar.xz` asset in the release, falling back to `KoboRoot.tgz`
+    /// 3. Verifies the asset fits on the temp and deploy filesystems
     /// 4. Downloads the asset into memory when it fits, otherwise to `tmp_dir`
     ///
     /// GitHub authentication is not required for this operation as release
@@ -571,7 +583,7 @@ impl OtaClient {
     ///
     /// # Errors
     ///
-    /// * `OtaError::InsufficientSpace` - Less than 100MB available in the configured temp directory
+    /// * `OtaError::InsufficientSpace` - The temp or deploy filesystem cannot hold the asset
     /// * `OtaError::Api` - GitHub API request failed
     /// * `OtaError::Request` - Network communication failed
     /// * `OtaError::ArtifactsNotFound` - KoboRoot.tgz not found in latest release
@@ -588,8 +600,6 @@ impl OtaClient {
         if should_cancel.is_some_and(CancelFlag::is_cancelled) {
             return Err(OtaError::Cancelled);
         }
-
-        check_disk_space(&self.tmp_dir)?;
 
         progress_callback(OtaProgress::FindingLatestBuild);
         tracing::info!("Starting stable release download");
@@ -641,6 +651,8 @@ impl OtaClient {
         let downloaded = match format {
             PayloadFormat::Gzip => {
                 let download_path = self.tmp_dir.join("cadmus-ota-stable-release.tgz");
+                self.ensure_space_for_download(asset.size, asset.size)
+                    .await?;
                 self.download_release_asset(
                     asset,
                     &download_path,
@@ -684,7 +696,11 @@ impl OtaClient {
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// # rustls::crypto::ring::default_provider().install_default().ok();
     /// # let github = GithubClient::new(None)?;
-    /// # let client = OtaClient::new(github, std::path::PathBuf::from("/tmp"));
+    /// # let client = OtaClient::new(
+    /// #     github,
+    /// #     std::path::PathBuf::from("/tmp"),
+    /// #     std::path::PathBuf::from("/mnt/onboard/.adds/cadmus"),
+    /// # );
     /// let version = client.fetch_latest_release_version().await?;
     /// println!("Latest version: {}", version);
     /// # Ok(())
@@ -741,9 +757,9 @@ impl OtaClient {
 
         let cancel = should_cancel;
         let src_path = kobo_root_path.clone();
-        let (deploy_path, staging_path, mut unpublished, mut staging) =
-            self.begin_staging().await?;
         let mut src = tokio::fs::File::open(&src_path).await?;
+        let (deploy_path, staging_path, mut unpublished, mut staging) =
+            self.begin_staging(src.metadata().await?.len()).await?;
         copy_file_to_file(&mut src, &mut staging, cancel).await?;
         let outcome = self
             .commit_staging(
@@ -798,8 +814,26 @@ impl OtaClient {
         path
     }
 
+    /// Verifies that the temp and deploy filesystems can hold an update.
+    ///
+    /// `tmp_bytes` is what the download writes under `tmp_dir`; `deploy_bytes`
+    /// is what staging writes next to the deploy path. The two are added when
+    /// both directories sit on the same filesystem, because the download is
+    /// still on disk while the bundle is staged.
+    async fn ensure_space_for_download(
+        &self,
+        tmp_bytes: u64,
+        deploy_bytes: u64,
+    ) -> Result<(), OtaError> {
+        let deploy_path = self.deploy_path();
+        self.ensure_deploy_dir(&deploy_path).await?;
+        let deploy_dir = deploy_dir(&deploy_path)?;
+        check_download_space(&self.tmp_dir, tmp_bytes, &deploy_dir, deploy_bytes).await
+    }
+
     async fn begin_staging(
         &self,
+        expected_len: u64,
     ) -> Result<
         (
             PathBuf,
@@ -812,9 +846,56 @@ impl OtaClient {
         let deploy_path = self.deploy_path();
         let staging_path = self.staging_path();
         self.ensure_deploy_dir(&deploy_path).await?;
+        let deploy_dir = deploy_dir(&deploy_path)?;
+        check_disk_space(&deploy_dir, expected_len).await?;
         let unpublished = crate::fs::RemovePathOnDrop::file(staging_path.clone());
         let staging = tokio::fs::File::create(&staging_path).await?;
         Ok((deploy_path, staging_path, unpublished, staging))
+    }
+
+    /// Verifies that the staged bundle fits on the deploy filesystem once unpacked.
+    ///
+    /// Nickel unpacks `KoboRoot.tgz` on the next boot. Files Cadmus already
+    /// installed are removed first, so their size counts as free space. A bundle
+    /// that does not fit would leave a half-written install.
+    ///
+    /// The credit is only a prediction. [`Self::ensure_committed_bundle_fits`]
+    /// checks it against the space that is actually free once the cleanup ran.
+    async fn ensure_bundle_fits(
+        &self,
+        staging_path: &Path,
+        deploy_path: &Path,
+        should_cancel: CancelFunc<'_>,
+    ) -> Result<(), OtaError> {
+        let deploy_dir = deploy_dir(deploy_path)?;
+        let unpacked_bytes =
+            unpacked_bundle_bytes(staging_path, &deploy_dir, should_cancel).await?;
+        let freed_bytes = crate::ota::cleanup::bundled_files_size(&self.install_dir).await;
+        tracing::debug!(
+            unpacked_bytes,
+            freed_bytes,
+            "Checking that the bundle fits once unpacked"
+        );
+        check_disk_space(&deploy_dir, unpacked_bytes.saturating_sub(freed_bytes)).await
+    }
+
+    /// Verifies that a published bundle fits in the space that is free now.
+    ///
+    /// Run this after [`crate::ota::clean_bundled_files`] failed: the space
+    /// [`Self::ensure_bundle_fits`] credited for it may not have been freed, and
+    /// the reboot would then unpack into a full filesystem. Nothing is credited
+    /// here, because whatever the cleanup removed is already free.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`OtaError::InsufficientSpace`] when the bundle does not fit, and
+    /// [`OtaError::DeploymentError`] when it cannot be read, since an
+    /// unreadable bundle cannot be shown to fit.
+    pub async fn ensure_committed_bundle_fits(deploy_path: &Path) -> Result<(), OtaError> {
+        let deploy_dir = deploy_dir(deploy_path)?;
+        let unpacked_bytes =
+            unpacked_bundle_bytes(deploy_path, &deploy_dir, CancelFunc::never()).await?;
+        check_disk_space(&deploy_dir, unpacked_bytes).await
     }
 
     #[cfg_attr(
@@ -833,6 +914,8 @@ impl OtaClient {
             return Err(OtaError::Cancelled);
         }
         staging.sync_all().await?;
+        self.ensure_bundle_fits(&staging_path, &deploy_path, should_cancel)
+            .await?;
         if !should_cancel.try_commit() {
             return Err(OtaError::Cancelled);
         }
@@ -896,7 +979,7 @@ impl OtaClient {
         >,
     {
         let (deploy_path, staging_path, mut unpublished, mut staging) =
-            self.begin_staging().await?;
+            self.begin_staging(0).await?;
         write(&mut staging).await?;
         self.commit_staging(
             deploy_path,
@@ -965,7 +1048,7 @@ impl OtaClient {
         let byte_count = data.len();
         let cancel = should_cancel;
         let (deploy_path, staging_path, mut unpublished, mut staging) =
-            self.begin_staging().await?;
+            self.begin_staging(byte_count as u64).await?;
         use tokio::io::AsyncWriteExt;
         for chunk in data.chunks(64 * 1024) {
             if cancel.is_cancelled() {
@@ -1025,11 +1108,11 @@ impl OtaClient {
         let mut reader = ZipArchiveReader::open(tokio::io::BufReader::new(file).compat())
             .await
             .map_err(|error| OtaError::ZipError(error.to_string()))?;
-        let (mut entry, _) =
+        let (mut entry, uncompressed) =
             open_kobo_root_entry(&mut reader, kobo_root_gzip_name(), should_cancel).await?;
 
         let (deploy_path, staging_path, mut unpublished, mut staging) =
-            self.begin_staging().await?;
+            self.begin_staging(uncompressed).await?;
         copy_entry_to_file(&mut entry, &mut staging, should_cancel).await?;
         tokio::io::AsyncWriteExt::flush(&mut staging).await?;
 
@@ -1105,7 +1188,7 @@ impl OtaClient {
     ///
     /// # Errors
     ///
-    /// * `OtaError::InsufficientDeploySpace` - The deploy filesystem cannot hold
+    /// * `OtaError::InsufficientSpace` - The deploy filesystem cannot hold
     ///   the bundle
     /// * `OtaError::Decompress` - The xz stream is corrupt or too demanding
     /// * `OtaError::ZipError` - The wrapping ZIP is invalid or fails its CRC32
@@ -1131,13 +1214,15 @@ impl OtaClient {
 
         tracing::info!("Decoding xz bundle and deploying");
 
+        let expected_len = match xz::uncompressed_size(&source).await {
+            Some(raw_size) => xz::gzip_bound(raw_size),
+            None => {
+                tracing::warn!("xz index unreadable; skipping the deploy space check");
+                0
+            }
+        };
         let (deploy_path, staging_path, mut unpublished, mut staging) =
-            self.begin_staging().await?;
-
-        match xz::uncompressed_size(&source).await {
-            Some(raw_size) => check_deploy_space(&deploy_path, xz::gzip_bound(raw_size))?,
-            None => tracing::warn!("xz index unreadable; skipping the deploy space check"),
-        }
+            self.begin_staging(expected_len).await?;
 
         xz::transcode_to_gzip(&source, &mut staging, should_cancel, &mut progress).await?;
 
@@ -1254,7 +1339,16 @@ impl OtaClient {
             progress_callback(OtaProgress::DownloadingArtifact { downloaded, total })
         };
 
-        if payload_fits_in_memory(format, artifact.size_in_bytes) {
+        let fits_in_memory = payload_fits_in_memory(format, artifact.size_in_bytes);
+        let tmp_bytes = if fits_in_memory {
+            0
+        } else {
+            artifact.size_in_bytes
+        };
+        self.ensure_space_for_download(tmp_bytes, artifact.size_in_bytes)
+            .await?;
+
+        if fits_in_memory {
             tracing::debug!(
                 artifact_id = artifact.id,
                 size_bytes = artifact.size_in_bytes,
@@ -1336,7 +1430,12 @@ impl OtaClient {
     where
         F: FnMut(OtaProgress),
     {
-        if xz::fits_in_memory(asset.size) {
+        let fits_in_memory = xz::fits_in_memory(asset.size);
+        let tmp_bytes = if fits_in_memory { 0 } else { asset.size };
+        self.ensure_space_for_download(tmp_bytes, asset.size)
+            .await?;
+
+        if fits_in_memory {
             tracing::debug!(size_bytes = asset.size, "Buffering release asset in memory");
             let bytes = self
                 .github
@@ -1459,47 +1558,243 @@ fn api_error(error: impl std::fmt::Display + HttpFailure) -> OtaError {
     }
 }
 
-fn check_disk_space(path: &Path) -> Result<(), OtaError> {
-    use nix::sys::statvfs::statvfs;
+/// Spare bytes kept free on a filesystem on top of what an update writes.
+///
+/// The deploy filesystem is the Kobo's internal storage, which Nickel and the
+/// user keep writing to while the update runs.
+const SPACE_HEADROOM_BYTES: u64 = 16 * 1024 * 1024;
 
-    let stat = statvfs(path)?;
-    let available_mb =
-        (stat.blocks_available() as u64 * stat.fragment_size() as u64) / (1024 * 1024);
-    tracing::debug!(path = ?path, available_mb, "Checking disk space");
+const BYTES_PER_MB: u64 = 1024 * 1024;
 
-    if available_mb < 100 {
-        tracing::error!(
-            path = ?path,
-            available_mb,
-            required_mb = 100,
-            "Insufficient disk space"
-        );
-        return Err(OtaError::InsufficientSpace(available_mb));
+/// Bytes an update step writes to the filesystem that holds `dir`.
+struct SpaceNeed {
+    /// A directory on the filesystem the step writes to.
+    dir: PathBuf,
+    /// Id of the device that holds `dir`, from `st_dev`. Two directories with
+    /// the same id share one pool of free space.
+    device: u64,
+    /// Bytes the step writes, excluding [`SPACE_HEADROOM_BYTES`].
+    bytes: u64,
+}
+
+impl SpaceNeed {
+    async fn for_dir(dir: &Path, bytes: u64) -> Result<Self, OtaError> {
+        Ok(Self {
+            dir: dir.to_owned(),
+            device: tokio::fs::metadata(dir).await?.dev(),
+            bytes,
+        })
+    }
+}
+
+/// Returns the `(directory, bytes)` pairs that must each be checked for free space.
+///
+/// Needs on the same device are added into one pair, because they draw from
+/// the same free space. A need of zero bytes on its own device is dropped.
+fn space_requirements(tmp: SpaceNeed, deploy: SpaceNeed) -> Vec<(PathBuf, u64)> {
+    if tmp.device == deploy.device {
+        return vec![(tmp.dir, tmp.bytes.saturating_add(deploy.bytes))];
+    }
+
+    [tmp, deploy]
+        .into_iter()
+        .filter(|need| need.bytes > 0)
+        .map(|need| (need.dir, need.bytes))
+        .collect()
+}
+
+async fn check_download_space(
+    tmp_dir: &Path,
+    tmp_bytes: u64,
+    deploy_dir: &Path,
+    deploy_bytes: u64,
+) -> Result<(), OtaError> {
+    let requirements = space_requirements(
+        SpaceNeed::for_dir(tmp_dir, tmp_bytes).await?,
+        SpaceNeed::for_dir(deploy_dir, deploy_bytes).await?,
+    );
+    for (dir, bytes) in requirements {
+        check_disk_space(&dir, bytes).await?;
     }
     Ok(())
 }
 
-/// Fails when the deploy filesystem cannot hold `needed_bytes`.
+/// Reads the statistics of the filesystem that holds `path`.
 ///
-/// [`check_disk_space`] only covers `tmp_dir`; the staged `KoboRoot.tgz` is
-/// written next to the deploy path, which can be a different filesystem.
-fn check_deploy_space(deploy_path: &Path, needed_bytes: u64) -> Result<(), OtaError> {
-    use nix::sys::statvfs::statvfs;
+/// `statvfs(2)` has no async equivalent, so the call runs on the runtime's
+/// blocking pool instead of an async worker.
+async fn filesystem_stats(path: &Path) -> Result<nix::sys::statvfs::Statvfs, OtaError> {
+    let path = path.to_owned();
+    let stats = crate::runtime::spawn_blocking(move || nix::sys::statvfs::statvfs(&path))
+        .await
+        .map_err(|error| OtaError::Io(Error::other(error)))??;
+    Ok(stats)
+}
 
-    let directory = deploy_path.parent().unwrap_or(deploy_path);
-    let stat = statvfs(directory)?;
-    let available = stat.blocks_available() as u64 * stat.fragment_size() as u64;
-    tracing::debug!(path = ?directory, available, needed_bytes, "Checking deploy space");
+/// Fails with [`OtaError::InsufficientSpace`] unless the filesystem holding
+/// `path` has `required_bytes` plus [`SPACE_HEADROOM_BYTES`] available to
+/// unprivileged writers.
+async fn check_disk_space(path: &Path, required_bytes: u64) -> Result<(), OtaError> {
+    let stat = filesystem_stats(path).await?;
+    let available_bytes = stat.blocks_available() as u64 * stat.fragment_size() as u64;
+    let needed_bytes = required_bytes.saturating_add(SPACE_HEADROOM_BYTES);
+    tracing::debug!(path = ?path, available_bytes, needed_bytes, "Checking disk space");
 
-    if available < needed_bytes {
-        const MIB: u64 = 1024 * 1024;
-        tracing::error!(path = ?directory, available, needed_bytes, "Insufficient deploy space");
-        return Err(OtaError::InsufficientDeploySpace {
-            needed_mb: needed_bytes / MIB,
-            available_mb: available / MIB,
+    if available_bytes < needed_bytes {
+        tracing::error!(
+            path = ?path,
+            available_bytes,
+            needed_bytes,
+            "Insufficient disk space"
+        );
+        return Err(OtaError::InsufficientSpace {
+            path: path.to_owned(),
+            required_mb: needed_bytes.div_ceil(BYTES_PER_MB),
+            available_mb: available_bytes / BYTES_PER_MB,
         });
     }
     Ok(())
+}
+
+/// Returns the directory that receives the staged bundle.
+fn deploy_dir(deploy_path: &Path) -> Result<PathBuf, OtaError> {
+    deploy_path.parent().map(Path::to_owned).ok_or_else(|| {
+        OtaError::DeploymentError(format!("{} has no parent directory", deploy_path.display()))
+    })
+}
+
+/// Returns the allocation unit of the filesystem holding `path`.
+///
+/// Every file occupies a whole number of these units, which on the FAT
+/// internal storage is what makes many small files larger on disk than raw.
+async fn filesystem_cluster_bytes(path: &Path) -> Result<u64, OtaError> {
+    let stat = filesystem_stats(path).await?;
+    Ok((stat.fragment_size() as u64).max(1))
+}
+
+/// Returns the on-disk bytes that unpacking `bundle_path` writes to the
+/// filesystem holding `deploy_dir`.
+async fn unpacked_bundle_bytes(
+    bundle_path: &Path,
+    deploy_dir: &Path,
+    should_cancel: CancelFunc<'_>,
+) -> Result<u64, OtaError> {
+    let cluster_bytes = filesystem_cluster_bytes(deploy_dir).await?;
+    unpacked_onboard_size(bundle_path, cluster_bytes, should_cancel).await
+}
+
+/// Sums the on-disk size of the files that unpacking `bundle_path` writes
+/// under `mnt/onboard/`.
+///
+/// The walk gunzips the whole bundle, which takes seconds on the device CPU, so
+/// it runs on the runtime's blocking pool and leaves the async workers free for
+/// the UI. `should_cancel` is polled meanwhile so the user can still cancel
+/// before the commit point.
+async fn unpacked_onboard_size(
+    bundle_path: &Path,
+    cluster_bytes: u64,
+    should_cancel: CancelFunc<'_>,
+) -> Result<u64, OtaError> {
+    let stop = Arc::new(AtomicBool::new(false));
+    let mut walk = crate::runtime::spawn_blocking({
+        let bundle_path = bundle_path.to_owned();
+        let stop = Arc::clone(&stop);
+        move || {
+            let bundle = std::io::BufReader::new(std::fs::File::open(bundle_path)?);
+            onboard_unpacked_bytes(bundle, cluster_bytes, &stop)
+        }
+    });
+    let period = Duration::from_millis(100);
+    let mut ticks = tokio::time::interval_at(tokio::time::Instant::now() + period, period);
+
+    loop {
+        tokio::select! {
+            joined = &mut walk => {
+                return joined.map_err(|error| OtaError::Io(Error::other(error)))?;
+            }
+            _ = ticks.tick() => {
+                if should_cancel.is_cancelled() {
+                    stop.store(true, Ordering::Relaxed);
+                }
+            }
+        }
+    }
+}
+
+/// Sums the on-disk size of the entries of a gzip-compressed tar under
+/// `mnt/onboard/`, rounding every file up to `cluster_bytes` and counting one
+/// cluster per directory entry.
+///
+/// # Errors
+///
+/// Returns [`OtaError::Cancelled`] when `stop` is set, including while the
+/// walk skips over the contents of a large entry, and
+/// [`OtaError::DeploymentError`] when `bundle` is not a readable `.tgz`.
+fn onboard_unpacked_bytes(
+    bundle: impl Read,
+    cluster_bytes: u64,
+    stop: &AtomicBool,
+) -> Result<u64, OtaError> {
+    let unreadable = |error: Error| {
+        if stop.load(Ordering::Relaxed) {
+            return OtaError::Cancelled;
+        }
+        OtaError::DeploymentError(format!("KoboRoot.tgz is not a readable archive: {error}"))
+    };
+    let mut archive = tar::Archive::new(StopOnFlag {
+        inner: flate2::read::GzDecoder::new(bundle),
+        stop,
+    });
+    let mut total = 0u64;
+
+    for entry in archive.entries().map_err(unreadable)? {
+        if stop.load(Ordering::Relaxed) {
+            return Err(OtaError::Cancelled);
+        }
+        let entry = entry.map_err(unreadable)?;
+        if !is_onboard_path(&entry.path().map_err(unreadable)?) {
+            continue;
+        }
+        let entry_type = entry.header().entry_type();
+        if entry_type.is_file() {
+            total = total.saturating_add(entry.size().div_ceil(cluster_bytes) * cluster_bytes);
+        } else if entry_type.is_dir() {
+            total = total.saturating_add(cluster_bytes);
+        }
+    }
+
+    Ok(total)
+}
+
+/// Reader that fails every read once `stop` is set.
+///
+/// `tar` drains the contents of a skipped entry without returning to the
+/// caller, so a check between entries alone cannot interrupt a large entry.
+struct StopOnFlag<'a, R> {
+    inner: R,
+    stop: &'a AtomicBool,
+}
+
+impl<R: Read> Read for StopOnFlag<'_, R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if self.stop.load(Ordering::Relaxed) {
+            return Err(Error::other("bundle scan cancelled"));
+        }
+        self.inner.read(buf)
+    }
+}
+
+/// Returns whether a tar entry path lies under `mnt/onboard/`, the internal
+/// storage partition, ignoring a leading `./`.
+fn is_onboard_path(path: &Path) -> bool {
+    let mut parts = path
+        .components()
+        .filter(|part| !matches!(part, Component::CurDir | Component::RootDir));
+    matches!(
+        (parts.next(), parts.next()),
+        (Some(Component::Normal(mnt)), Some(Component::Normal(onboard)))
+            if mnt == "mnt" && onboard == "onboard"
+    )
 }
 
 /// Returns whether an artifact ZIP of `zip_size` bytes should be buffered in RAM.
@@ -1807,7 +2102,7 @@ mod tests {
         crate::crypto::init_crypto_provider();
         let github =
             GithubClient::new(Some(SecretString::from("test_token"))).expect("client build");
-        OtaClient::new(github, tmp_dir)
+        OtaClient::new(github, tmp_dir.clone(), tmp_dir.join("install"))
     }
 
     fn ota_test_tempdir() -> tempfile::TempDir {
@@ -1840,6 +2135,37 @@ mod tests {
         CancelFunc::never()
     }
 
+    fn tar_bytes(entries: &[(&str, tar::EntryType, &[u8])]) -> Vec<u8> {
+        let mut builder = tar::Builder::new(Vec::new());
+        for (path, entry_type, data) in entries {
+            let mut header = tar::Header::new_gnu();
+            header.set_entry_type(*entry_type);
+            header.set_size(data.len() as u64);
+            header.set_mode(0o644);
+            builder.append_data(&mut header, path, *data).unwrap();
+        }
+        builder.into_inner().unwrap()
+    }
+
+    fn tgz_bytes(entries: &[(&str, tar::EntryType, &[u8])]) -> Vec<u8> {
+        use std::io::Write;
+
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        encoder.write_all(&tar_bytes(entries)).unwrap();
+        encoder.finish().unwrap()
+    }
+
+    fn valid_bundle() -> &'static [u8] {
+        static BUNDLE: std::sync::LazyLock<Vec<u8>> = std::sync::LazyLock::new(|| {
+            tgz_bytes(&[(
+                "mnt/onboard/.adds/cadmus/hello.txt",
+                tar::EntryType::Regular,
+                b"hello",
+            )])
+        });
+        BUNDLE.as_slice()
+    }
+
     fn fixture_zip_bytes() -> Vec<u8> {
         let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("src/ota/tests/fixtures/test_artifact.zip");
@@ -1867,7 +2193,10 @@ mod tests {
         let client = make_client(temp_dir.path().to_path_buf());
 
         let result = client
-            .extract_and_deploy_bytes(fixture_zip_bytes(), no_cancel())
+            .extract_and_deploy_bytes(
+                zip_fixture(kobo_root_gzip_name(), valid_bundle()),
+                no_cancel(),
+            )
             .await;
 
         assert!(
@@ -1880,8 +2209,7 @@ mod tests {
             deploy_path.exists(),
             "Deployed file should exist at {deploy_path:?}"
         );
-        let content = std::fs::read_to_string(&deploy_path).unwrap();
-        assert!(content.contains("Mock KoboRoot.tgz"));
+        assert_eq!(std::fs::read(&deploy_path).unwrap(), valid_bundle());
         assert_no_partial_staging(&deploy_path);
         assert!(
             leftover_zips(temp_dir.path()).is_empty(),
@@ -1970,10 +2298,12 @@ mod tests {
     async fn test_extract_and_deploy_success() {
         let temp_dir = ota_test_tempdir();
         let client = make_client(temp_dir.path().to_path_buf());
-        let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("src/ota/tests/fixtures/test_artifact.zip");
         let artifact_path = temp_dir.path().join("test_artifact.zip");
-        std::fs::copy(&fixture_path, &artifact_path).unwrap();
+        std::fs::write(
+            &artifact_path,
+            zip_fixture(kobo_root_gzip_name(), valid_bundle()),
+        )
+        .unwrap();
 
         let result = client
             .extract_and_deploy(artifact_path.clone(), no_cancel())
@@ -1992,10 +2322,10 @@ mod tests {
             deploy_path
         );
 
-        let content = std::fs::read_to_string(&deploy_path).unwrap();
-        assert!(
-            content.contains("Mock KoboRoot.tgz"),
-            "Deployed file should contain mock content"
+        assert_eq!(
+            std::fs::read(&deploy_path).unwrap(),
+            valid_bundle(),
+            "Deployed file should be the bundle from the artifact"
         );
         assert_no_partial_staging(&deploy_path);
         assert!(
@@ -2011,7 +2341,7 @@ mod tests {
         let temp_dir = ota_test_tempdir();
         let client = make_client(temp_dir.path().to_path_buf());
         let deploy_path = client.deploy_path();
-        let payload = b"new bundle content";
+        let payload = valid_bundle();
 
         let result = client
             .write_staging_then_rename(no_cancel(), |staging| {
@@ -2042,7 +2372,7 @@ mod tests {
         let client = make_client(temp_dir.path().to_path_buf());
         let deploy_path = client.deploy_path();
         let existing = b"existing bundle content";
-        let payload = b"new bundle content";
+        let payload = valid_bundle();
 
         client.ensure_deploy_dir(&deploy_path).await.unwrap();
         std::fs::write(&deploy_path, existing).unwrap();
@@ -2077,7 +2407,7 @@ mod tests {
         let client = make_client(temp_dir.path().to_path_buf());
         let deploy_path = client.deploy_path();
         let source_path = temp_dir.path().join("source-KoboRoot.tgz");
-        let payload = b"source bundle content";
+        let payload = valid_bundle();
 
         std::fs::write(&source_path, payload).unwrap();
         let _fail_sync = FailSyncDeployParent::arm();
@@ -2180,7 +2510,7 @@ mod tests {
         let temp_dir = ota_test_tempdir();
         let client = make_client(temp_dir.path().to_path_buf());
         let deploy_path = client.deploy_path();
-        let payload = b"committed bundle content";
+        let payload = valid_bundle();
         let flag = CancelFlag::new();
 
         let result = client
@@ -2223,7 +2553,7 @@ mod tests {
         let result = client
             .write_staging_then_rename(CancelFunc::new(&cancel_check), |staging| {
                 Box::pin(async {
-                    staging.write_all(b"partial data").await?;
+                    staging.write_all(valid_bundle()).await?;
                     Ok(())
                 })
             })
@@ -2401,15 +2731,245 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_check_disk_space_sufficient() {
+    #[tokio::test]
+    async fn check_disk_space_accepts_a_request_that_fits() {
         use tempfile::TempDir;
         let temp_dir = TempDir::new().unwrap();
-        let result = check_disk_space(temp_dir.path());
-        assert!(
-            result.is_ok(),
-            "Should have sufficient disk space in temp directory"
+        assert!(check_disk_space(temp_dir.path(), 0).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn check_disk_space_rejects_a_request_larger_than_the_filesystem() {
+        use tempfile::TempDir;
+        let temp_dir = TempDir::new().unwrap();
+
+        let error = check_disk_space(temp_dir.path(), u64::MAX / 2)
+            .await
+            .unwrap_err();
+
+        match error {
+            OtaError::InsufficientSpace {
+                path,
+                required_mb,
+                available_mb,
+            } => {
+                assert_eq!(path, temp_dir.path());
+                assert!(required_mb > available_mb);
+            }
+            other => panic!("expected InsufficientSpace, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn space_requirements_add_needs_that_share_a_device() {
+        let tmp = SpaceNeed {
+            dir: PathBuf::from("/tmp-dir"),
+            device: 7,
+            bytes: 100,
+        };
+        let deploy = SpaceNeed {
+            dir: PathBuf::from("/deploy-dir"),
+            device: 7,
+            bytes: 50,
+        };
+
+        assert_eq!(
+            space_requirements(tmp, deploy),
+            vec![(PathBuf::from("/tmp-dir"), 150)]
         );
+    }
+
+    #[test]
+    fn space_requirements_keep_needs_on_different_devices_apart() {
+        let tmp = SpaceNeed {
+            dir: PathBuf::from("/tmp-dir"),
+            device: 1,
+            bytes: 100,
+        };
+        let deploy = SpaceNeed {
+            dir: PathBuf::from("/deploy-dir"),
+            device: 2,
+            bytes: 50,
+        };
+
+        assert_eq!(
+            space_requirements(tmp, deploy),
+            vec![
+                (PathBuf::from("/tmp-dir"), 100),
+                (PathBuf::from("/deploy-dir"), 50)
+            ]
+        );
+    }
+
+    #[test]
+    fn space_requirements_skip_a_device_that_receives_nothing() {
+        let tmp = SpaceNeed {
+            dir: PathBuf::from("/tmp-dir"),
+            device: 1,
+            bytes: 0,
+        };
+        let deploy = SpaceNeed {
+            dir: PathBuf::from("/deploy-dir"),
+            device: 2,
+            bytes: 50,
+        };
+
+        assert_eq!(
+            space_requirements(tmp, deploy),
+            vec![(PathBuf::from("/deploy-dir"), 50)]
+        );
+    }
+
+    #[test]
+    fn onboard_unpacked_bytes_rounds_files_to_clusters_and_skips_other_paths() {
+        let bundle = tgz_bytes(&[
+            ("mnt/onboard/.adds/cadmus/", tar::EntryType::Directory, b""),
+            (
+                "mnt/onboard/.adds/cadmus/small",
+                tar::EntryType::Regular,
+                &[1],
+            ),
+            (
+                "mnt/onboard/.adds/cadmus/big",
+                tar::EntryType::Regular,
+                &[2; 5000],
+            ),
+            (
+                "mnt/onboard/.adds/cadmus/empty",
+                tar::EntryType::Regular,
+                b"",
+            ),
+            ("usr/lib/outside", tar::EntryType::Regular, &[3; 100_000]),
+        ]);
+
+        let bytes =
+            onboard_unpacked_bytes(std::io::Cursor::new(bundle), 4096, &AtomicBool::new(false))
+                .unwrap();
+
+        assert_eq!(bytes, 4096 + 4096 + 2 * 4096);
+    }
+
+    #[test]
+    fn onboard_unpacked_bytes_stops_when_asked() {
+        let result = onboard_unpacked_bytes(
+            std::io::Cursor::new(valid_bundle()),
+            4096,
+            &AtomicBool::new(true),
+        );
+
+        assert!(matches!(result, Err(OtaError::Cancelled)));
+    }
+
+    /// Sets `stop` once more than `after_bytes` have been served, imitating a
+    /// user cancelling while the walk is part-way through the archive.
+    struct StopsAfter<'a> {
+        inner: std::io::Cursor<Vec<u8>>,
+        served: usize,
+        after_bytes: usize,
+        stop: &'a AtomicBool,
+    }
+
+    impl Read for StopsAfter<'_> {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let read = self.inner.read(buf)?;
+            self.served += read;
+            if self.served > self.after_bytes {
+                self.stop.store(true, Ordering::Relaxed);
+            }
+            Ok(read)
+        }
+    }
+
+    #[test]
+    fn onboard_unpacked_bytes_stops_while_skipping_a_large_entry() {
+        let mut state = 0x2545_f491_u32;
+        let noise: Vec<u8> = (0..1024 * 1024)
+            .map(|_| {
+                state ^= state << 13;
+                state ^= state >> 17;
+                state ^= state << 5;
+                state.to_le_bytes()[0]
+            })
+            .collect();
+        let bundle = tgz_bytes(&[("usr/lib/large", tar::EntryType::Regular, &noise)]);
+        assert!(
+            bundle.len() > 256 * 1024,
+            "the entry must not compress away"
+        );
+        let stop = AtomicBool::new(false);
+        let reader = StopsAfter {
+            inner: std::io::Cursor::new(bundle),
+            served: 0,
+            after_bytes: 64 * 1024,
+            stop: &stop,
+        };
+
+        let result = onboard_unpacked_bytes(reader, 4096, &stop);
+
+        assert!(matches!(result, Err(OtaError::Cancelled)));
+    }
+
+    #[tokio::test]
+    async fn committed_bundle_check_accepts_a_bundle_that_fits() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let bundle_path = temp_dir.path().join("KoboRoot.tgz");
+        std::fs::write(&bundle_path, valid_bundle()).unwrap();
+
+        OtaClient::ensure_committed_bundle_fits(&bundle_path)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn committed_bundle_check_rejects_a_bundle_it_cannot_read() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let bundle_path = temp_dir.path().join("KoboRoot.tgz");
+        std::fs::write(&bundle_path, b"not a gzip stream").unwrap();
+
+        let result = OtaClient::ensure_committed_bundle_fits(&bundle_path).await;
+
+        assert!(matches!(result, Err(OtaError::DeploymentError(_))));
+    }
+
+    #[test]
+    fn onboard_unpacked_bytes_rejects_data_that_is_not_a_tgz() {
+        let result = onboard_unpacked_bytes(
+            std::io::Cursor::new(b"not a gzip stream".as_slice()),
+            4096,
+            &AtomicBool::new(false),
+        );
+
+        assert!(matches!(result, Err(OtaError::DeploymentError(_))));
+    }
+
+    #[test]
+    fn is_onboard_path_accepts_only_the_internal_storage_tree() {
+        assert!(is_onboard_path(Path::new("mnt/onboard/.adds/cadmus/a")));
+        assert!(is_onboard_path(Path::new("./mnt/onboard/a")));
+        assert!(!is_onboard_path(Path::new("mnt/sd/a")));
+        assert!(!is_onboard_path(Path::new("usr/mnt/onboard/a")));
+    }
+
+    #[tokio::test]
+    async fn deploy_refuses_a_bundle_that_is_not_a_tgz() {
+        let temp_dir = ota_test_tempdir();
+        let client = make_client(temp_dir.path().to_path_buf());
+        let deploy_path = client.deploy_path();
+        let source_path = temp_dir.path().join("source-KoboRoot.tgz");
+        std::fs::write(&source_path, b"not a gzip stream").unwrap();
+
+        let result = client.deploy(source_path.clone(), no_cancel()).await;
+
+        assert!(matches!(result, Err(OtaError::DeploymentError(_))));
+        assert!(
+            !deploy_path.exists(),
+            "an unreadable bundle must not be published"
+        );
+        assert!(
+            source_path.exists(),
+            "the source is kept when the deploy fails"
+        );
+        assert_no_partial_staging(&deploy_path);
     }
 
     fn cargo_run(id: u64, status: &str, conclusion: Option<&str>) -> WorkflowRun {
@@ -2472,7 +3032,7 @@ mod tests {
         crate::crypto::init_crypto_provider();
         let token = std::env::var("GH_TOKEN").expect("GH_TOKEN must be set");
         let github = GithubClient::new(Some(SecretString::from(token))).expect("client build");
-        OtaClient::new(github, tmp_dir)
+        OtaClient::new(github, tmp_dir.clone(), tmp_dir.join("install"))
     }
 
     #[tokio::test]
@@ -2678,18 +3238,6 @@ mod tests {
         assert!(select_release_asset(&[asset("KoboRoot-nm.tgz")]).is_none());
     }
 
-    #[test]
-    fn check_deploy_space_rejects_requests_larger_than_the_filesystem() {
-        let temp_dir = ota_test_tempdir();
-        let deploy_path = temp_dir.path().join("KoboRoot.tgz");
-
-        assert!(check_deploy_space(&deploy_path, 1).is_ok());
-        assert!(matches!(
-            check_deploy_space(&deploy_path, u64::MAX),
-            Err(OtaError::InsufficientDeploySpace { .. })
-        ));
-    }
-
     fn xz_fixture(data: &[u8]) -> Vec<u8> {
         use std::io::Write;
 
@@ -2715,9 +3263,14 @@ mod tests {
     }
 
     fn bundle_payload() -> Vec<u8> {
-        (0..200_000_u32)
+        let data: Vec<u8> = (0..200_000_u32)
             .flat_map(|n| n.wrapping_mul(2_654_435_761).to_le_bytes())
-            .collect()
+            .collect();
+        tar_bytes(&[(
+            "mnt/onboard/.adds/cadmus/payload.bin",
+            tar::EntryType::Regular,
+            data.as_slice(),
+        )])
     }
 
     fn gunzip_file(path: &Path) -> Vec<u8> {

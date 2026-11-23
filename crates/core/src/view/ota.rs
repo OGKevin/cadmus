@@ -660,7 +660,15 @@ async fn finish_ota_cancelled(tmp_dir: &Path, deploy_path: &Path) {
 
 /// Completes a published OTA install, including the committed-but-not-durable
 /// case where parent-directory sync failed after rename.
-async fn finish_successful_deploy(hub: &Hub, install_dir: &Path, outcome: DeployOutcome) {
+///
+/// The space check before the commit credits the files that
+/// [`clean_bundled_files`] frees. When that cleanup fails, the credit may not
+/// have materialised, so the bundle is checked again against the space that is
+/// free now. A bundle that does not fit is withdrawn, because the reboot would
+/// otherwise unpack it into a full filesystem.
+///
+/// Returns whether the reboot should proceed.
+async fn finish_successful_deploy(hub: &Hub, install_dir: &Path, outcome: DeployOutcome) -> bool {
     if let DeployOutcome::CommittedNotDurable { path, error } = &outcome {
         tracing::warn!(
             path = ?path,
@@ -671,8 +679,37 @@ async fn finish_successful_deploy(hub: &Hub, install_dir: &Path, outcome: Deploy
 
     if let Err(e) = clean_bundled_files(install_dir).await {
         tracing::warn!(path = ?install_dir, error = %e, "Failed to clean bundled OTA files");
+        if let Err(error) = OtaClient::ensure_committed_bundle_fits(outcome.path()).await {
+            withdraw_unfit_bundle(hub, outcome.path(), &error).await;
+            return false;
+        }
     }
     send_ota_progress(hub, fl!("ota-installing-and-rebooting"), 100, false);
+    true
+}
+
+/// Deletes a published bundle that cannot be unpacked and tells the user why.
+async fn withdraw_unfit_bundle(hub: &Hub, bundle_path: &Path, error: &OtaError) {
+    error!(
+        path = ?bundle_path,
+        error = %error,
+        "Published OTA bundle does not fit after a failed cleanup; withdrawing it"
+    );
+    if let Err(remove_error) = tokio::fs::remove_file(bundle_path).await {
+        tracing::warn!(
+            path = ?bundle_path,
+            error = %remove_error,
+            "Failed to withdraw the OTA bundle"
+        );
+    }
+    hub.send(
+        (Event::Notification(NotificationEvent::Show(ota_failure_notification(
+            error,
+            fl!("ota-deployment-failed"),
+        ))))
+        .into(),
+    )
+    .ok();
 }
 
 fn report_artifact_download_progress(hub: &Hub, kind: OtaDownloadKind, ota_progress: OtaProgress) {
@@ -840,7 +877,7 @@ fn run_ota_download(ctx: OtaDownloadContext) -> crate::runtime::Job {
                 }
             };
 
-            let client = OtaClient::new(github, tmp_dir.clone());
+            let client = OtaClient::new(github, tmp_dir.clone(), install_dir.clone());
             let deploy_path = client.deploy_path();
 
             let initial_label = kind.progress_label(0);
@@ -905,25 +942,18 @@ fn run_ota_download(ctx: OtaDownloadContext) -> crate::runtime::Job {
                     match deploy_result {
                         Ok(outcome) => {
                             hub2.send((Event::ClearDeferredSuspend).into()).ok();
-                            finish_successful_deploy(&hub2, &install_dir, outcome).await;
-                            close_on_drop.disarm();
-                            return true;
+                            if finish_successful_deploy(&hub2, &install_dir, outcome).await {
+                                close_on_drop.disarm();
+                                return true;
+                            }
                         }
                         Err(e) => {
                             error!(error = %e, "Deployment failed");
-                            let message = match e {
-                                OtaError::InsufficientDeploySpace {
-                                    needed_mb,
-                                    available_mb,
-                                } => fl!(
-                                    "ota-insufficient-deploy-space",
-                                    needed = needed_mb,
-                                    available = available_mb
-                                ),
-                                _ => fl!("ota-deployment-failed"),
-                            };
                             hub2.send(
-                                (Event::Notification(NotificationEvent::Show(message))).into(),
+                                (Event::Notification(NotificationEvent::Show(
+                                    ota_failure_notification(&e, fl!("ota-deployment-failed")),
+                                )))
+                                .into(),
                             )
                             .ok();
                         }
@@ -938,8 +968,11 @@ fn run_ota_download(ctx: OtaDownloadContext) -> crate::runtime::Job {
                 Err(e) => {
                     error!(error = %e, "OTA download failed");
                     hub2.send(
-                        (Event::Notification(NotificationEvent::Show(fl!("ota-download-failed"))))
-                            .into(),
+                        (Event::Notification(NotificationEvent::Show(ota_failure_notification(
+                            &e,
+                            fl!("ota-download-failed"),
+                        ))))
+                        .into(),
                     )
                     .ok();
                 }
@@ -953,6 +986,34 @@ fn run_ota_download(ctx: OtaDownloadContext) -> crate::runtime::Job {
         }
         unwind_guard.disarm();
     })
+}
+
+/// Returns the notification text for a failed OTA step.
+///
+/// A full filesystem is the failure the user can fix, so it names the
+/// directory and the space involved. Every other error shows `fallback`.
+fn ota_failure_notification(error: &OtaError, fallback: String) -> String {
+    match error {
+        OtaError::InsufficientSpace {
+            path,
+            required_mb,
+            available_mb,
+        } => insufficient_space_notification(
+            &path.display().to_string(),
+            *required_mb,
+            *available_mb,
+        ),
+        _ => fallback,
+    }
+}
+
+fn insufficient_space_notification(path: &str, required: u64, available: u64) -> String {
+    fl!(
+        "ota-insufficient-space",
+        path = path,
+        required = required,
+        available = available
+    )
 }
 
 /// Closes the OTA overlay when the download task panics.
@@ -1015,6 +1076,7 @@ impl OtaView {
         let view_id = self.view_id;
         let wifi_session = context.wifi_session.clone();
         let tmp_dir = context.device.tmp_dir();
+        let install_dir = context.device.install_dir();
 
         // A view-owned job rather than an inline await: the request can sit in
         // the retry middleware for the whole client timeout, and holding the
@@ -1024,7 +1086,7 @@ impl OtaView {
         self.check_job = Some(crate::runtime::Job::spawn(move |cancel| async move {
             let outcome = crate::runtime::race_cancel(
                 &cancel,
-                Self::run_stable_release_check(github_token, tmp_dir, wifi_session),
+                Self::run_stable_release_check(github_token, tmp_dir, install_dir, wifi_session),
             )
             .await;
             if cancel.is_cancelled() {
@@ -1093,6 +1155,7 @@ impl OtaView {
     async fn run_stable_release_check(
         github_token: Option<SecretString>,
         tmp_dir: std::path::PathBuf,
+        install_dir: std::path::PathBuf,
         wifi_session: Arc<WifiSession>,
     ) -> Result<StableReleaseCheckOutcome, crate::ota::OtaError> {
         let _wifi = wifi_session
@@ -1102,7 +1165,7 @@ impl OtaView {
 
         let github = GithubClient::new(github_token)
             .map_err(|e| crate::ota::OtaError::Api(e.to_string()))?;
-        let client = OtaClient::new(github, tmp_dir);
+        let client = OtaClient::new(github, tmp_dir, install_dir);
         let remote_version = client.fetch_latest_release_version().await?;
 
         let current_version = get_current_version();
@@ -1855,6 +1918,35 @@ mod tests {
             Event::Notification(NotificationEvent::Show(text))
                 if text == fl!("ota-download-failed")
         ));
+    }
+
+    #[test]
+    fn insufficient_space_notification_names_the_path_and_sizes() {
+        let error = OtaError::InsufficientSpace {
+            path: std::path::PathBuf::from("/mnt/onboard/.kobo"),
+            required_mb: 140,
+            available_mb: 90,
+        };
+
+        let text = ota_failure_notification(&error, fl!("ota-download-failed"));
+
+        assert_eq!(
+            text,
+            fl!(
+                "ota-insufficient-space",
+                path = "/mnt/onboard/.kobo",
+                required = 140_u64,
+                available = 90_u64
+            )
+        );
+        assert_ne!(text, fl!("ota-download-failed"));
+    }
+
+    #[test]
+    fn other_errors_keep_the_fallback_notification() {
+        let text = ota_failure_notification(&OtaError::NoToken, fl!("ota-download-failed"));
+
+        assert_eq!(text, fl!("ota-download-failed"));
     }
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn cancel_after_commit_still_requests_reboot() {
