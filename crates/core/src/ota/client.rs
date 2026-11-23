@@ -364,19 +364,31 @@ impl OtaClient {
 
         tracing::debug!(count = runs.workflow_runs.len(), "Found workflow runs");
 
-        #[cfg(feature = "tracing")]
-        if tracing::enabled!(tracing::Level::DEBUG) {
+        if tracing::enabled!(tracing::Level::TRACE) {
             for (idx, run) in runs.workflow_runs.iter().enumerate() {
-                tracing::debug!(
+                tracing::trace!(
                     index = idx,
                     name = %run.name,
                     id = run.id,
                     status = %run.status,
                     conclusion = ?run.conclusion,
+                    head_sha = ?run.head_sha,
+                    candidate = is_ota_candidate_run(run),
                     "Workflow run"
                 );
             }
         }
+
+        let candidate_count = runs
+            .workflow_runs
+            .iter()
+            .filter(|r| is_ota_candidate_run(r))
+            .count();
+        tracing::debug!(
+            total = runs.workflow_runs.len(),
+            candidates = candidate_count,
+            "Filtered workflow runs to OTA candidates"
+        );
 
         let prefixes = ArtifactPrefixes::for_pr(pr_number);
 
@@ -412,6 +424,10 @@ impl OtaClient {
         let (artifact, format) = artifact.ok_or_else(|| {
             tracing::error!(
                 pr_number,
+                head_sha = %head_sha,
+                total_runs = runs.workflow_runs.len(),
+                candidate_runs = candidate_count,
+                cargo_runs = ?cargo_run_summaries(&runs.workflow_runs),
                 "No Cargo workflow run with matching artifacts found"
             );
             OtaError::ArtifactsNotFound(ArtifactSource::PullRequest(pr_number))
@@ -1293,10 +1309,9 @@ impl OtaClient {
 
         tracing::debug!(count = artifacts.artifacts.len(), "Found artifacts");
 
-        #[cfg(feature = "tracing")]
-        if tracing::enabled!(tracing::Level::DEBUG) {
+        if tracing::enabled!(tracing::Level::TRACE) {
             for (idx, artifact) in artifacts.artifacts.iter().enumerate() {
-                tracing::debug!(
+                tracing::trace!(
                     index = idx,
                     name = %artifact.name,
                     id = artifact.id,
@@ -1483,6 +1498,14 @@ async fn copy_file_to_file(
 
     tracing::debug!(bytes = total, "Streamed file to staging path");
     Ok(())
+}
+
+/// Summarises every `Cargo` run as `(id, status, conclusion)` for diagnostics.
+fn cargo_run_summaries(runs: &[WorkflowRun]) -> Vec<(u64, &str, Option<&str>)> {
+    runs.iter()
+        .filter(|r| r.name == "Cargo")
+        .map(|r| (r.id, r.status.as_str(), r.conclusion.as_deref()))
+        .collect()
 }
 
 fn is_ota_candidate_run(run: &WorkflowRun) -> bool {
