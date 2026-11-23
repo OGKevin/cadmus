@@ -1971,12 +1971,19 @@ mod tests {
     /// This is the shape the main loop now relies on: stop the job, then drain
     /// what it queued. Asserting only that a request was enqueued is what let
     /// the reboot be dropped on the floor previously.
+    ///
+    /// The producer posts only after shutdown cancels it, standing in for an
+    /// install still committing when shutdown starts. Without that gate the
+    /// premature drain races a runtime worker for the reboot request.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn a_committed_install_queues_its_reboot_for_the_shutdown_drain() {
         use std::time::Duration;
 
         let (hub, mut rx) = crate::view::hub_channel();
-        let job = crate::runtime::Job::spawn(move |_| request_ota_reboot(hub));
+        let job = crate::runtime::Job::spawn(move |token| async move {
+            token.cancelled().await;
+            request_ota_reboot(hub).await;
+        });
 
         // Draining before the producer finishes is the old bug: the hub looks empty.
         let premature: Vec<Event> = std::iter::from_fn(|| rx.try_recv().ok())
