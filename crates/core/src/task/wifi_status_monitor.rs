@@ -1,9 +1,10 @@
 //! WiFi status monitor using dhcpcd-dbus.
 //!
-//! Subscribes to the `WpaStatus` signal from `name.marples.roy.dhcpcd` on the
-//! system bus. When the status changes to `COMPLETED` with an IP, sends a
-//! `NetUp` event. Startup connectivity is reconciled by the device lifecycle
-//! (enable/disable + `network_info`), not by probing dhcpcd here.
+//! Subscribes to signals from `name.marples.roy.dhcpcd` on the system bus and
+//! sends a `NetUp` event when either `WpaStatus` reports `COMPLETED` with an IP
+//! or an `Event` reports a newly acquired DHCP lease (`BOUND`, `REBOOT`).
+//! Startup connectivity is reconciled by the device lifecycle (enable/disable +
+//! `network_info`), not by probing dhcpcd here.
 
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
@@ -24,7 +25,7 @@ const DHCPCCD_PATH: &str = "/name/marples/roy/dhcpcd";
 
 const SIGNAL_QUEUE_CAPACITY: NonZeroUsize = NonZeroUsize::new(100).unwrap();
 
-/// WiFi status monitor that listens for dhcpcd-dbus WpaStatus signals.
+/// WiFi status monitor that listens for dhcpcd-dbus `WpaStatus` and `Event` signals.
 pub struct WifiStatusMonitorTask;
 
 #[async_trait::async_trait]
@@ -48,12 +49,11 @@ impl BackgroundTask for WifiStatusMonitorTask {
     }
 }
 
-/// Matches the dhcpcd `WpaStatus` signal on [`DHCPCCD_PATH`].
-fn wpa_status_rule() -> zbus::Result<zbus::OwnedMatchRule> {
+/// Matches every dhcpcd signal on [`DHCPCCD_PATH`]; [`process_signal`] routes by member.
+fn dhcpcd_signal_rule() -> zbus::Result<zbus::OwnedMatchRule> {
     Ok(zbus::MatchRule::builder()
         .msg_type(zbus::message::Type::Signal)
         .path(DHCPCCD_PATH)
-        .member("WpaStatus")
         .build()?
         .into())
 }
@@ -62,16 +62,12 @@ async fn monitor(hub: &crate::view::Hub) -> Result<(), Box<dyn std::error::Error
     let connection = zbus::Connection::system().await?;
     tracing::info!("connected to system bus");
 
-    let rule = wpa_status_rule()?;
+    let rule = dhcpcd_signal_rule()?;
 
     let mut stream =
         zbus::MessageStream::for_match_rule(rule, &connection, Some(SIGNAL_QUEUE_CAPACITY)).await?;
 
-    tracing::info!(
-        path = DHCPCCD_PATH,
-        member = "WpaStatus",
-        "subscribed to wifi status signals"
-    );
+    tracing::info!(path = DHCPCCD_PATH, "subscribed to dhcpcd signals");
 
     loop {
         tokio::select! {
@@ -92,10 +88,10 @@ async fn monitor(hub: &crate::view::Hub) -> Result<(), Box<dyn std::error::Error
                     }
                 };
 
-                if let Err(e) = process_wpa_status(&msg, hub) {
+                if let Err(e) = process_signal(&msg, hub) {
                     #[cfg(feature = "tracing")]
-                    span.set_status(Status::error("failed to process wpa status"));
-                    tracing::warn!(error = %e, "failed to process wpa status");
+                    span.set_status(Status::error("failed to process dhcpcd signal"));
+                    tracing::warn!(error = %e, "failed to process dhcpcd signal");
                 }
             }
         }
@@ -115,6 +111,50 @@ fn process_wpa_status(
     let interfaces: HashMap<String, HashMap<String, String>> = body.deserialize()?;
 
     check_interfaces(&interfaces, hub);
+
+    Ok(())
+}
+
+/// Routes a dhcpcd signal to its handler by member name.
+fn process_signal(
+    msg: &zbus::Message,
+    hub: &crate::view::Hub,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match msg.header().member().map(|member| member.as_str()) {
+        Some("WpaStatus") => process_wpa_status(msg, hub),
+        Some("Event") => process_event(msg, hub),
+        _ => Ok(()),
+    }
+}
+
+/// Sends NetUp when a dhcpcd `Event` reports that the interface acquired a lease.
+///
+/// The body is the dhcpcd hook environment as `a{sv}`; `Reason` is the hook
+/// reason as defined in [dhcpcd-run-hooks(8)]. Only `BOUND` (a new lease) and
+/// `REBOOT` (a stored lease the server confirmed after reassociation) mark the
+/// transition to online. `RENEW` and `REBIND` fire while a lease is already
+/// held, so they are not a sign that Wi-Fi came up. `WpaStatus` does not
+/// reliably follow a new lease, so the lease alone must bring the session
+/// online.
+///
+/// [dhcpcd-run-hooks(8)]: https://github.com/NetworkConfiguration/dhcpcd/blob/master/hooks/dhcpcd-run-hooks.8.in
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(msg, hub), ret(level=tracing::Level::TRACE)))]
+fn process_event(
+    msg: &zbus::Message,
+    hub: &crate::view::Hub,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let body = msg.body();
+    let config: HashMap<&str, zbus::Variant<'_>> = body.deserialize()?;
+    let reason = config
+        .get("Reason")
+        .and_then(|reason| <&str>::try_from(reason).ok());
+
+    tracing::debug!(reason, "dhcpcd event received");
+
+    if matches!(reason, Some("BOUND" | "REBOOT")) {
+        tracing::info!(reason, "network up detected via dhcpcd event");
+        hub.send((Event::Device(DeviceEvent::NetUp)).into()).ok();
+    }
 
     Ok(())
 }
@@ -220,11 +260,48 @@ mod tests {
     }
 
     #[test]
-    fn wpa_status_rule_matches_dhcpcd_signal() {
-        let rule = wpa_status_rule().expect("rule should build").to_string();
+    fn dhcpcd_signal_rule_matches_every_member_on_the_path() {
+        let rule = dhcpcd_signal_rule().expect("rule should build").to_string();
 
         assert!(rule.contains("type='signal'"), "{rule}");
         assert!(rule.contains(&format!("path='{DHCPCCD_PATH}'")), "{rule}");
-        assert!(rule.contains("member='WpaStatus'"), "{rule}");
+        assert!(!rule.contains("member="), "{rule}");
+    }
+
+    fn dhcpcd_event(reason: &str) -> zbus::Message {
+        let config = HashMap::from([
+            ("Interface", zbus::Variant::from("wlan0")),
+            ("Reason", zbus::Variant::from(reason)),
+            ("IPAddress", zbus::Variant::from(2_147_592_384_u32)),
+        ]);
+        zbus::Message::signal(DHCPCCD_PATH, "name.marples.roy.dhcpcd", "Event")
+            .build(&config)
+            .expect("signal should build")
+    }
+
+    #[test]
+    fn new_lease_events_send_netup() {
+        for reason in ["BOUND", "REBOOT"] {
+            let (tx, mut rx) = crate::view::hub_channel();
+
+            process_signal(&dhcpcd_event(reason), &tx).expect("event should decode");
+
+            let event = rx.try_recv().expect("lease event should send NetUp");
+            assert!(
+                matches!(event.event, Event::Device(DeviceEvent::NetUp)),
+                "{reason}"
+            );
+        }
+    }
+
+    #[test]
+    fn events_without_a_new_lease_do_not_send_netup() {
+        for reason in ["RENEW", "REBIND", "CARRIER", "NOCARRIER", "EXPIRE", "STOP"] {
+            let (tx, mut rx) = crate::view::hub_channel();
+
+            process_signal(&dhcpcd_event(reason), &tx).expect("event should decode");
+
+            assert!(rx.try_recv().is_err(), "{reason} must not send NetUp");
+        }
     }
 }
