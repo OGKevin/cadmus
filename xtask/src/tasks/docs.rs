@@ -6,13 +6,15 @@
 //! 4. Generates Rust API documentation (`target/doc/`).
 //! 5. Optionally injects the git version string into the generated HTML.
 //! 6. Writes `website/public/_shared/locales.json` with available locales.
-//! 7. Runs website prebuild scripts (`generate-version.mjs`, `generate-locales.mjs`).
-//! 8. Builds Storybook (`website/storybook-static/`).
-//! 9. Creates symlinks in `website/public/` so Next.js includes mdBook,
+//! 7. Writes `website/public/_shared/openapi.json`, the API contract that the
+//!    hosted API explorer loads.
+//! 8. Runs website prebuild scripts (`generate-version.mjs`, `generate-locales.mjs`).
+//! 9. Builds Storybook (`website/storybook-static/`).
+//! 10. Creates symlinks in `website/public/` so Next.js includes mdBook,
 //!    cargo-doc, and Storybook outputs in the static export under locale-first
 //!    paths.
-//! 10. Builds the Next.js website (`website/out/`).
-//! 11. Deduplicates API and Storybook copies in `website/out/`: keeps one copy
+//! 11. Builds the Next.js website (`website/out/`).
+//! 12. Deduplicates API and Storybook copies in `website/out/`: keeps one copy
 //!     in `_shared/`, removes the locale and top-level copies, and appends
 //!     `200` proxy rules for them to `website/out/_redirects`. The output
 //!     contains no symlinks.
@@ -20,7 +22,7 @@
 //! ## Redirects for legacy paths (`/guide/`, `/api/`, …)
 //!
 //! `website/public/_redirects` holds server-side 302 rules for Cloudflare
-//! Workers Static Assets (and `wrangler dev`).  Committed to git.  Step 11
+//! Workers Static Assets (and `wrangler dev`).  Committed to git.  Step 12
 //! appends the per-locale proxy rules that serve `/<locale>/api/*` and
 //! `/<locale>/storybook/*` from `/_shared/` in the generated copy only.
 //!
@@ -86,6 +88,7 @@ pub fn run(args: DocsArgs) -> Result<()> {
     build_cargo_doc(&root)?;
     inject_git_version(&root)?;
     write_locales_json(&root)?;
+    write_openapi_document(&root)?;
     run_website_prebuild(&root)?;
     build_storybook(&root)?;
     create_website_symlinks(&root)?;
@@ -231,6 +234,24 @@ fn run_website_prebuild(root: &Path) -> Result<()> {
     cmd::run("node", &["scripts/generate-locales.mjs"], &website, &[])
 }
 
+/// Writes the API contract to `website/public/_shared/openapi.json`.
+///
+/// The hosted API explorer loads it from this static path, which
+/// `NEXT_PUBLIC_OPENAPI_URL` names during `next build`. The generator is the
+/// one `cadmus-api-proto` runs for the device copy, so the two cannot drift.
+fn write_openapi_document(root: &Path) -> Result<()> {
+    println!("Generating OpenAPI document…");
+    let target = Path::new(&cargo_metadata(root)?.target_directory).join("openapi");
+    let generated = build_deps::openapi::generate_openapi(root, &target)?;
+    let shared = root.join("website/public/_shared");
+    std::fs::create_dir_all(&shared)
+        .with_context(|| format!("failed to create {}", shared.display()))?;
+    let destination = shared.join(build_deps::openapi::OPENAPI_FILE);
+    std::fs::copy(&generated, &destination)
+        .with_context(|| format!("failed to copy {}", destination.display()))?;
+    Ok(())
+}
+
 /// Builds the Next.js website.
 ///
 /// Runs `next build` inside `website/`.  The static export lands in
@@ -238,7 +259,12 @@ fn run_website_prebuild(root: &Path) -> Result<()> {
 /// via the symlinks created by [`create_website_symlinks`].
 fn build_website(root: &Path) -> Result<()> {
     println!("Building Next.js website…");
-    cmd::run("npx", &["next", "build"], &root.join("website"), &[])?;
+    cmd::run(
+        "npx",
+        &["next", "build"],
+        &root.join("website"),
+        &[("NEXT_PUBLIC_OPENAPI_URL", "/_shared/openapi.json")],
+    )?;
     deduplicate_website_out(root)?;
     Ok(())
 }

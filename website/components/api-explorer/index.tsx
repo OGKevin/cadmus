@@ -33,13 +33,29 @@ const SPEC_URL = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${
 /** Gives our header its row on every width; Fumadocs only sizes it on mobile. */
 const HEADER_HEIGHT = { "--fd-header-height": "3.5rem" } as CSSProperties;
 
-/** Starts the bearer field with the companion token saved in localStorage. */
+/**
+ * Fills the bearer field with the companion token saved in localStorage.
+ *
+ * The playground keeps what the field held in `sessionStorage` for the tab and
+ * prefers it over `defaultValue`, so an empty value left from before pairing
+ * would hide the token. A blank tab value is replaced with the token; a token
+ * the user typed in this tab is kept.
+ */
 function prefillCompanionToken(fields: AuthField[]): AuthField[] {
   const token = window.localStorage.getItem(TOKEN_KEY)?.trim() ?? "";
+  if (!token) return fields;
+  const lastPrefill = window.sessionStorage.getItem(PREFILL_KEY);
 
-  return fields.map((field) =>
-    field.schemeId === "bearerAuth" ? { ...field, defaultValue: token } : field,
-  );
+  return fields.map((field) => {
+    if (field.schemeId !== "bearerAuth") return field;
+    const stored = window.sessionStorage.getItem(field.storageKey);
+    const current: unknown = stored ? JSON.parse(stored) : "";
+    if (shouldReplaceSessionToken(current, lastPrefill)) {
+      window.sessionStorage.setItem(field.storageKey, JSON.stringify(token));
+      window.sessionStorage.setItem(PREFILL_KEY, token);
+    }
+    return { ...field, defaultValue: token };
+  });
 }
 
 const OpenAPIPage = createOpenAPIPage({

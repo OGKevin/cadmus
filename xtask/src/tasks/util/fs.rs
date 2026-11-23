@@ -4,31 +4,14 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 
-/// Recursively copies a directory tree from `src` to `dst`.
+/// Recursively copies a directory tree from `src` to `dst`, following symlinks.
 ///
 /// # Errors
 ///
 /// Returns an error if any directory cannot be created or any file cannot be
 /// copied.
 pub fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
-    std::fs::create_dir_all(dst)?;
-    for entry in std::fs::read_dir(src)? {
-        let entry = entry?;
-        let src_path = entry.path();
-        let dst_path = dst.join(entry.file_name());
-        if src_path.is_dir() {
-            copy_dir_all(&src_path, &dst_path)?;
-        } else {
-            std::fs::copy(&src_path, &dst_path).with_context(|| {
-                format!(
-                    "failed to copy {} → {}",
-                    src_path.display(),
-                    dst_path.display()
-                )
-            })?;
-        }
-    }
-    Ok(())
+    copy_tree(src, dst, &[], true)
 }
 
 /// Copies an exported site into `dst`, skipping `storybook` and symlinks.

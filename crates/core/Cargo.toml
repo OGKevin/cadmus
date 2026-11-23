@@ -22,7 +22,7 @@ libc = "0.2.180"
 png = "0.18.0"
 rars = { workspace = true }
 regex = "1.12.2"
-serde = { version = "1.0.228", features = ["derive"] }
+serde = { workspace = true }
 serde_json = { workspace = true }
 titlecase = "3.6.0"
 unicode-normalization = "0.1.25"
