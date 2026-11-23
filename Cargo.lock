@@ -632,7 +632,7 @@ dependencies = [
  "levenshtein",
  "libc",
  "log",
- "lzma-rust2",
+ "lzma-rust2 0.25.0",
  "nix",
  "octocrab",
  "once_cell",
@@ -4033,6 +4033,15 @@ name = "lzma-rust2"
 version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "490750560fa7851fbbf5d3ab1a8750f09350ed361ed8aed85b1e1e40587812ee"
+dependencies = [
+ "sha2 0.11.1",
+]
+
+[[package]]
+name = "lzma-rust2"
+version = "0.25.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef1d73c59a56771343712b22ea5615092c612c16ba291c0979e3105dfeec4890"
 dependencies = [
  "sha2 0.11.1",
 ]
@@ -8157,7 +8166,7 @@ dependencies = [
  "core",
  "flate2",
  "io_tee",
- "lzma-rust2",
+ "lzma-rust2 0.25.0",
  "reqwest",
  "russh",
  "russh-config",
@@ -8381,7 +8390,7 @@ dependencies = [
  "hmac 0.13.0",
  "indexmap",
  "libc",
- "lzma-rust2",
+ "lzma-rust2 0.24.0",
  "memchr",
  "nix",
  "pbkdf2",
