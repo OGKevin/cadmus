@@ -612,6 +612,10 @@ impl WifiSession {
                     );
                     break;
                 }
+                if self.is_online() {
+                    tracing::debug!(name = %name, "wifi came online during the timeout re-query");
+                    break;
+                }
                 tracing::warn!(
                     name = %name,
                     timeout_secs = timeout.as_secs_f32(),
@@ -1219,6 +1223,77 @@ mod tests {
             started.elapsed() >= timeout,
             "lease must wait out the timeout"
         );
+        assert!(session.is_online());
+        drop(lease);
+    }
+
+    /// Reports no association, and holds every query after the first until
+    /// released, so a test can deliver `notify_online` while the timeout
+    /// re-query is still pending.
+    ///
+    /// `is_enabled` reports `false` for the same reason as
+    /// [`LateAssociationWifi`].
+    struct PendingFinalQueryWifi {
+        network_info_calls: std::sync::atomic::AtomicU32,
+        final_query_started: tokio::sync::Notify,
+        release_final_query: tokio::sync::Notify,
+    }
+
+    #[async_trait::async_trait]
+    impl WifiManager for PendingFinalQueryWifi {
+        async fn enable(&self) -> Result<(), WifiError> {
+            Ok(())
+        }
+
+        async fn disable(&self) -> Result<(), WifiError> {
+            Ok(())
+        }
+
+        async fn is_enabled(&self) -> bool {
+            false
+        }
+
+        async fn network_info(
+            &self,
+        ) -> Result<Option<crate::device::wifi::NetworkInfo>, WifiError> {
+            let call = self
+                .network_info_calls
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if call > 0 {
+                self.final_query_started.notify_one();
+                self.release_final_query.notified().await;
+            }
+            Ok(None)
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn acquire_observes_online_signal_during_final_query() {
+        let wifi = Arc::new(PendingFinalQueryWifi {
+            network_info_calls: std::sync::atomic::AtomicU32::new(0),
+            final_query_started: tokio::sync::Notify::new(),
+            release_final_query: tokio::sync::Notify::new(),
+        });
+        let session = WifiSession::new(wifi.clone(), WifiMode::Auto);
+        let acquire = {
+            let session = Arc::clone(&session);
+            tokio::spawn(async move {
+                session
+                    .acquire_with_timeout("racing", Duration::from_millis(50))
+                    .await
+            })
+        };
+
+        tokio::time::timeout(Duration::from_secs(5), wifi.final_query_started.notified())
+            .await
+            .expect("timeout re-query must start");
+        session.notify_online();
+        wifi.release_final_query.notify_one();
+
+        let lease = acquire
+            .await
+            .expect("acquire task must not panic")
+            .expect("online signal during the final query must grant the lease");
         assert!(session.is_online());
         drop(lease);
     }
