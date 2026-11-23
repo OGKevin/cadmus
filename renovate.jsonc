@@ -195,6 +195,17 @@
     },
     {
       "customType": "regex",
+      "managerFilePatterns": ["/^\\.github\\/actions\\/sccache\\/action\\.yml$/"],
+      "matchStrings": [
+        "sccache_version:[\\s\\S]*?default: \"(?<currentValue>[^\"]+)\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "mozilla/sccache",
+      "extractVersionTemplate": "^v?(?<version>.+)$",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
       "managerFilePatterns": ["/^\\.github\\/workflows\\/actions-lint\\.yml$/"],
       "matchStrings": [
         "ACTIONLINT_VERSION:\\s+\\\"(?<currentValue>[^\\\"]+)\\\""

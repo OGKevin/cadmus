@@ -45,6 +45,7 @@ jobs:
               - '.github/actions/build-docs-epub/**'
               - '.github/actions/cargo-cache/**'
               - '.github/actions/cargo-cache-warmup/**'
+              - '.github/actions/sccache/**'
               - '.github/actions/cache-fonts/**'
               - '.github/actions/clone-needed-cargo-submodules/**'
               - '.github/actions/install-doc-tools/**'
@@ -223,6 +224,11 @@ jobs:
         with:
           toolchain: "1.100.0"
           components: clippy
+      - &sccache
+        name: Set up sccache
+        uses: ./.github/actions/sccache
+        with:
+          cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
       - *set-build-metadata
       - name: Install cadmuscli
         uses: ./.github/actions/install-cadmuscli
@@ -325,6 +331,7 @@ jobs:
         with:
           toolchain: "1.100.0"
           components: llvm-tools
+      - *sccache
       - *set-build-metadata
       - name: Install cadmuscli
         uses: ./.github/actions/install-cadmuscli
@@ -491,6 +498,8 @@ jobs:
           toolchain: "1.100.0"
           targets: arm-unknown-linux-gnueabihf
 
+      - *sccache
+
       - name: Install cadmuscli
         uses: ./.github/actions/install-cadmuscli
         with:
@@ -598,6 +607,8 @@ jobs:
           toolchain: "1.100.0"
           targets: arm-unknown-linux-gnueabihf
 
+      - *sccache
+
       - name: Install cadmuscli
         uses: ./.github/actions/install-cadmuscli
         with:
@@ -682,6 +693,8 @@ jobs:
         with:
           toolchain: "1.100.0"
           targets: arm-unknown-linux-gnueabihf
+
+      - *sccache
 
       - name: Install cadmuscli
         uses: ./.github/actions/install-cadmuscli

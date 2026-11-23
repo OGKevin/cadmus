@@ -24,6 +24,11 @@ runs:
         targets: arm-unknown-linux-gnueabihf
         components: llvm-tools
 
+    - name: Set up sccache
+      uses: ./.github/actions/sccache
+      with:
+        cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
+
     - name: Install cadmuscli
       uses: ./.github/actions/install-cadmuscli
       with:

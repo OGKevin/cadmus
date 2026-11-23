@@ -1,0 +1,48 @@
+name: sccache
+description: >
+  Install sccache and route rustc through it, backed by the GitHub Actions
+  cache. Pull requests write to their own ref scope. Incremental compilation
+  is disabled because sccache cannot cache incremental crates.
+
+  The server starts here, not on the first rustc call: with the whole matrix
+  starting at once, the GHA backend can take longer than sccache's default
+  10 s startup timeout, and cargo then fails before compiling anything.
+
+  Bump the `cadmus-v<N>` prefix in SCCACHE_GHA_VERSION to discard every entry.
+
+inputs:
+  cachekey:
+    description: "The dtolnay/rust-toolchain cachekey output"
+    required: true
+  sccache_version:
+    description: "sccache release to install"
+    required: false
+    default: "0.20.0"
+
+runs:
+  using: composite
+  steps:
+    - name: Install sccache
+      uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+      with:
+        version: v${{ inputs.sccache_version }}
+
+    - name: Route rustc through sccache
+      shell: bash
+      env:
+        CACHEKEY: ${{ inputs.cachekey }}
+      run: |
+        conf="$RUNNER_TEMP/sccache.toml"
+        echo "server_startup_timeout_ms = 120000" > "$conf"
+        {
+          echo "SCCACHE_CONF=$conf"
+          echo "SCCACHE_IDLE_TIMEOUT=0"
+          echo "SCCACHE_GHA_ENABLED=true"
+          echo "SCCACHE_GHA_VERSION=cadmus-v1-${CACHEKEY}"
+          echo "RUSTC_WRAPPER=sccache"
+          echo "CARGO_INCREMENTAL=0"
+        } >> "$GITHUB_ENV"
+
+    - name: Start sccache server
+      shell: bash
+      run: sccache --start-server
