@@ -20,8 +20,8 @@
       "label": "Translations",
       "description": "Help translate Cadmus"
     },
-    "apiReference": {
-      "label": "API Reference",
+    "apiExplorer": {
+      "label": "API Explorer",
       "description": "Try the device API in the browser"
     },
     "storybook": {
@@ -94,6 +94,9 @@
     "title": "API explorer",
     "description": "Calls run against the device that served this page. The companion code is already filled in.",
     "tokenHint": "Settings and file calls need the 6-digit code from the Companion menu. Open the companion page first, or paste the code into the bearer field.",
-    "loading": "Loading the API document."
+    "loading": "Loading the API document.",
+    "loadError": "Could not load the API document.",
+    "version": "Version {version}",
+    "operations": "Operations"
   }
 }

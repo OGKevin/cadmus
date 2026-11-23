@@ -35,8 +35,7 @@ import {
   type CompanionStatus,
   type SettingInput,
 } from "@/lib/companion";
-
-const TOKEN_KEY = "cadmus-companion-token";
+import { TOKEN_KEY } from "@/lib/companion-token";
 
 export function CompanionPage({
   token,
@@ -58,13 +57,13 @@ export function CompanionPage({
   const probe = useCompanionProbe(status === undefined);
   const shown = status ? { state: "up" as const, ...status } : probe;
   const [view, setView] = useState(initialView);
+  useSettingsHash(setView);
   const version = shown?.state === "up" ? shown.version : "";
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-kumo-base text-kumo-default">
       <CompanionTopBar
         settingsCurrent={view === "settings"}
-        showSettings={Boolean(token || categories)}
         version={version}
         onHome={() => setView("home")}
         onSettings={() => setView("settings")}
@@ -120,15 +119,30 @@ function useCompanionProbe(enabled: boolean): CompanionProbe | null {
   return probe;
 }
 
+function useSettingsHash(setView: (view: "home" | "settings") => void) {
+  useEffect(() => {
+    function openSettingsHash() {
+      if (window.location.hash !== "#settings") return;
+      setView("settings");
+      window.history.replaceState(
+        null,
+        "",
+        `${window.location.pathname}${window.location.search}`,
+      );
+    }
+    openSettingsHash();
+    window.addEventListener("hashchange", openSettingsHash);
+    return () => window.removeEventListener("hashchange", openSettingsHash);
+  }, [setView]);
+}
+
 function CompanionTopBar({
   settingsCurrent,
-  showSettings,
   version,
   onHome,
   onSettings,
 }: {
   settingsCurrent: boolean;
-  showSettings: boolean;
   version: string;
   onHome: () => void;
   onSettings: () => void;
@@ -144,11 +158,7 @@ function CompanionTopBar({
       >
         {version ? `Cadmus ${version}` : t("home")}
       </button>
-      <DocsMenu
-        settingsCurrent={settingsCurrent}
-        showSettings={showSettings}
-        onSettings={onSettings}
-      />
+      <DocsMenu settingsCurrent={settingsCurrent} onSettings={onSettings} />
       <div className="ml-auto">
         <LanguageSwitcher />
       </div>

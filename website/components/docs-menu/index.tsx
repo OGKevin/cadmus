@@ -3,7 +3,12 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { List } from "@phosphor-icons/react";
 import { useLocale, useTranslations } from "next-intl";
-import { apiHref, guideHref, rustApiHref } from "@/lib/doc-hrefs";
+import {
+  apiHref,
+  companionSettingsHref,
+  guideHref,
+  rustApiHref,
+} from "@/lib/doc-hrefs";
 
 const menuItemClass =
   "block w-full px-4 py-2 text-left text-sm hover:bg-kumo-tint";
@@ -11,15 +16,13 @@ const menuItemClass =
 export type DocsMenuProps = {
   /** Highlight the Settings entry as the current page. */
   settingsCurrent?: boolean;
-  /** Show the Settings entry after the documentation links. */
-  showSettings?: boolean;
+  /** Open Settings in place. Without it, Settings links to the companion page. */
   onSettings?: () => void;
 };
 
 /** Hamburger menu shared by the companion and explorer pages. */
 export function DocsMenu({
   settingsCurrent = false,
-  showSettings = false,
   onSettings,
 }: DocsMenuProps) {
   const t = useTranslations("companion");
@@ -93,25 +96,32 @@ export function DocsMenu({
               {docs("rustApi.label")}
             </a>
           </li>
-          {showSettings && onSettings ? (
-            <>
-              <li role="separator" className="my-1 border-t border-kumo-line" />
-              <li role="none">
-                <button
-                  type="button"
-                  role="menuitem"
-                  className={menuItemClass}
-                  aria-current={settingsCurrent ? "page" : undefined}
-                  onClick={() => {
-                    onSettings();
-                    setOpen(false);
-                  }}
-                >
-                  {t("settings")}
-                </button>
-              </li>
-            </>
-          ) : null}
+          <li role="separator" className="my-1 border-t border-kumo-line" />
+          <li role="none">
+            {onSettings ? (
+              <button
+                type="button"
+                role="menuitem"
+                className={menuItemClass}
+                aria-current={settingsCurrent ? "page" : undefined}
+                onClick={() => {
+                  onSettings();
+                  setOpen(false);
+                }}
+              >
+                {t("settings")}
+              </button>
+            ) : (
+              <a
+                href={companionSettingsHref(locale)}
+                role="menuitem"
+                className={menuItemClass}
+                aria-current={settingsCurrent ? "page" : undefined}
+              >
+                {t("settings")}
+              </a>
+            )}
+          </li>
         </ul>
       ) : null}
     </div>

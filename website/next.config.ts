@@ -40,14 +40,6 @@ const nextConfig: NextConfig = {
               destination: "/:locale/api/cadmus_core/index.html",
             },
             {
-              source: "/:locale/api-explorer",
-              destination: "/:locale/api-explorer/index.html",
-            },
-            {
-              source: "/:locale/api-explorer/",
-              destination: "/:locale/api-explorer/index.html",
-            },
-            {
               source: "/cadmus.api.:rest(.*)",
               destination: `${proxyOrigin}/cadmus.api.:rest`,
             },

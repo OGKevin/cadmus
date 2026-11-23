@@ -31,8 +31,8 @@ export function DocGrid() {
       icon: BookOpen,
     },
     {
-      label: t("apiReference.label"),
-      description: t("apiReference.description"),
+      label: t("apiExplorer.label"),
+      description: t("apiExplorer.description"),
       href: apiHref(locale),
       icon: Code,
     },
