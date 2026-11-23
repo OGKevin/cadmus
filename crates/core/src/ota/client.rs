@@ -858,6 +858,9 @@ impl OtaClient {
     /// Nickel unpacks `KoboRoot.tgz` on the next boot. Files Cadmus already
     /// installed are removed first, so their size counts as free space. A bundle
     /// that does not fit would leave a half-written install.
+    ///
+    /// The credit is only a prediction. [`Self::ensure_committed_bundle_fits`]
+    /// checks it against the space that is actually free once the cleanup ran.
     async fn ensure_bundle_fits(
         &self,
         staging_path: &Path,
@@ -865,17 +868,34 @@ impl OtaClient {
         should_cancel: CancelFunc<'_>,
     ) -> Result<(), OtaError> {
         let deploy_dir = deploy_dir(deploy_path)?;
-        let cluster_bytes = filesystem_cluster_bytes(&deploy_dir).await?;
         let unpacked_bytes =
-            unpacked_onboard_size(staging_path, cluster_bytes, should_cancel).await?;
+            unpacked_bundle_bytes(staging_path, &deploy_dir, should_cancel).await?;
         let freed_bytes = crate::ota::cleanup::bundled_files_size(&self.install_dir).await;
         tracing::debug!(
             unpacked_bytes,
             freed_bytes,
-            cluster_bytes,
             "Checking that the bundle fits once unpacked"
         );
         check_disk_space(&deploy_dir, unpacked_bytes.saturating_sub(freed_bytes)).await
+    }
+
+    /// Verifies that a published bundle fits in the space that is free now.
+    ///
+    /// Run this after [`crate::ota::clean_bundled_files`] failed: the space
+    /// [`Self::ensure_bundle_fits`] credited for it may not have been freed, and
+    /// the reboot would then unpack into a full filesystem. Nothing is credited
+    /// here, because whatever the cleanup removed is already free.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`OtaError::InsufficientSpace`] when the bundle does not fit, and
+    /// [`OtaError::DeploymentError`] when it cannot be read, since an
+    /// unreadable bundle cannot be shown to fit.
+    pub async fn ensure_committed_bundle_fits(deploy_path: &Path) -> Result<(), OtaError> {
+        let deploy_dir = deploy_dir(deploy_path)?;
+        let unpacked_bytes =
+            unpacked_bundle_bytes(deploy_path, &deploy_dir, CancelFunc::never()).await?;
+        check_disk_space(&deploy_dir, unpacked_bytes).await
     }
 
     #[cfg_attr(
@@ -1652,6 +1672,17 @@ async fn filesystem_cluster_bytes(path: &Path) -> Result<u64, OtaError> {
     Ok((stat.fragment_size() as u64).max(1))
 }
 
+/// Returns the on-disk bytes that unpacking `bundle_path` writes to the
+/// filesystem holding `deploy_dir`.
+async fn unpacked_bundle_bytes(
+    bundle_path: &Path,
+    deploy_dir: &Path,
+    should_cancel: CancelFunc<'_>,
+) -> Result<u64, OtaError> {
+    let cluster_bytes = filesystem_cluster_bytes(deploy_dir).await?;
+    unpacked_onboard_size(bundle_path, cluster_bytes, should_cancel).await
+}
+
 /// Sums the on-disk size of the files that unpacking `bundle_path` writes
 /// under `mnt/onboard/`.
 ///
@@ -1696,7 +1727,8 @@ async fn unpacked_onboard_size(
 ///
 /// # Errors
 ///
-/// Returns [`OtaError::Cancelled`] when `stop` is set between entries and
+/// Returns [`OtaError::Cancelled`] when `stop` is set, including while the
+/// walk skips over the contents of a large entry, and
 /// [`OtaError::DeploymentError`] when `bundle` is not a readable `.tgz`.
 fn onboard_unpacked_bytes(
     bundle: impl Read,
@@ -1704,9 +1736,15 @@ fn onboard_unpacked_bytes(
     stop: &AtomicBool,
 ) -> Result<u64, OtaError> {
     let unreadable = |error: Error| {
+        if stop.load(Ordering::Relaxed) {
+            return OtaError::Cancelled;
+        }
         OtaError::DeploymentError(format!("KoboRoot.tgz is not a readable archive: {error}"))
     };
-    let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(bundle));
+    let mut archive = tar::Archive::new(StopOnFlag {
+        inner: flate2::read::GzDecoder::new(bundle),
+        stop,
+    });
     let mut total = 0u64;
 
     for entry in archive.entries().map_err(unreadable)? {
@@ -1726,6 +1764,24 @@ fn onboard_unpacked_bytes(
     }
 
     Ok(total)
+}
+
+/// Reader that fails every read once `stop` is set.
+///
+/// `tar` drains the contents of a skipped entry without returning to the
+/// caller, so a check between entries alone cannot interrupt a large entry.
+struct StopOnFlag<'a, R> {
+    inner: R,
+    stop: &'a AtomicBool,
+}
+
+impl<R: Read> Read for StopOnFlag<'_, R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if self.stop.load(Ordering::Relaxed) {
+            return Err(Error::other("bundle scan cancelled"));
+        }
+        self.inner.read(buf)
+    }
 }
 
 /// Returns whether a tar entry path lies under `mnt/onboard/`, the internal
@@ -2802,6 +2858,77 @@ mod tests {
         );
 
         assert!(matches!(result, Err(OtaError::Cancelled)));
+    }
+
+    /// Sets `stop` once more than `after_bytes` have been served, imitating a
+    /// user cancelling while the walk is part-way through the archive.
+    struct StopsAfter<'a> {
+        inner: std::io::Cursor<Vec<u8>>,
+        served: usize,
+        after_bytes: usize,
+        stop: &'a AtomicBool,
+    }
+
+    impl Read for StopsAfter<'_> {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let read = self.inner.read(buf)?;
+            self.served += read;
+            if self.served > self.after_bytes {
+                self.stop.store(true, Ordering::Relaxed);
+            }
+            Ok(read)
+        }
+    }
+
+    #[test]
+    fn onboard_unpacked_bytes_stops_while_skipping_a_large_entry() {
+        let mut state = 0x2545_f491_u32;
+        let noise: Vec<u8> = (0..1024 * 1024)
+            .map(|_| {
+                state ^= state << 13;
+                state ^= state >> 17;
+                state ^= state << 5;
+                state.to_le_bytes()[0]
+            })
+            .collect();
+        let bundle = tgz_bytes(&[("usr/lib/large", tar::EntryType::Regular, &noise)]);
+        assert!(
+            bundle.len() > 256 * 1024,
+            "the entry must not compress away"
+        );
+        let stop = AtomicBool::new(false);
+        let reader = StopsAfter {
+            inner: std::io::Cursor::new(bundle),
+            served: 0,
+            after_bytes: 64 * 1024,
+            stop: &stop,
+        };
+
+        let result = onboard_unpacked_bytes(reader, 4096, &stop);
+
+        assert!(matches!(result, Err(OtaError::Cancelled)));
+    }
+
+    #[tokio::test]
+    async fn committed_bundle_check_accepts_a_bundle_that_fits() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let bundle_path = temp_dir.path().join("KoboRoot.tgz");
+        std::fs::write(&bundle_path, valid_bundle()).unwrap();
+
+        OtaClient::ensure_committed_bundle_fits(&bundle_path)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn committed_bundle_check_rejects_a_bundle_it_cannot_read() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let bundle_path = temp_dir.path().join("KoboRoot.tgz");
+        std::fs::write(&bundle_path, b"not a gzip stream").unwrap();
+
+        let result = OtaClient::ensure_committed_bundle_fits(&bundle_path).await;
+
+        assert!(matches!(result, Err(OtaError::DeploymentError(_))));
     }
 
     #[test]

@@ -660,7 +660,15 @@ async fn finish_ota_cancelled(tmp_dir: &Path, deploy_path: &Path) {
 
 /// Completes a published OTA install, including the committed-but-not-durable
 /// case where parent-directory sync failed after rename.
-async fn finish_successful_deploy(hub: &Hub, install_dir: &Path, outcome: DeployOutcome) {
+///
+/// The space check before the commit credits the files that
+/// [`clean_bundled_files`] frees. When that cleanup fails, the credit may not
+/// have materialised, so the bundle is checked again against the space that is
+/// free now. A bundle that does not fit is withdrawn, because the reboot would
+/// otherwise unpack it into a full filesystem.
+///
+/// Returns whether the reboot should proceed.
+async fn finish_successful_deploy(hub: &Hub, install_dir: &Path, outcome: DeployOutcome) -> bool {
     if let DeployOutcome::CommittedNotDurable { path, error } = &outcome {
         tracing::warn!(
             path = ?path,
@@ -671,8 +679,37 @@ async fn finish_successful_deploy(hub: &Hub, install_dir: &Path, outcome: Deploy
 
     if let Err(e) = clean_bundled_files(install_dir).await {
         tracing::warn!(path = ?install_dir, error = %e, "Failed to clean bundled OTA files");
+        if let Err(error) = OtaClient::ensure_committed_bundle_fits(outcome.path()).await {
+            withdraw_unfit_bundle(hub, outcome.path(), &error).await;
+            return false;
+        }
     }
     send_ota_progress(hub, fl!("ota-installing-and-rebooting"), 100, false);
+    true
+}
+
+/// Deletes a published bundle that cannot be unpacked and tells the user why.
+async fn withdraw_unfit_bundle(hub: &Hub, bundle_path: &Path, error: &OtaError) {
+    error!(
+        path = ?bundle_path,
+        error = %error,
+        "Published OTA bundle does not fit after a failed cleanup; withdrawing it"
+    );
+    if let Err(remove_error) = tokio::fs::remove_file(bundle_path).await {
+        tracing::warn!(
+            path = ?bundle_path,
+            error = %remove_error,
+            "Failed to withdraw the OTA bundle"
+        );
+    }
+    hub.send(
+        (Event::Notification(NotificationEvent::Show(ota_failure_notification(
+            error,
+            fl!("ota-deployment-failed"),
+        ))))
+        .into(),
+    )
+    .ok();
 }
 
 fn report_artifact_download_progress(hub: &Hub, kind: OtaDownloadKind, ota_progress: OtaProgress) {
@@ -905,9 +942,10 @@ fn run_ota_download(ctx: OtaDownloadContext) -> crate::runtime::Job {
                     match deploy_result {
                         Ok(outcome) => {
                             hub2.send((Event::ClearDeferredSuspend).into()).ok();
-                            finish_successful_deploy(&hub2, &install_dir, outcome).await;
-                            close_on_drop.disarm();
-                            return true;
+                            if finish_successful_deploy(&hub2, &install_dir, outcome).await {
+                                close_on_drop.disarm();
+                                return true;
+                            }
                         }
                         Err(e) => {
                             error!(error = %e, "Deployment failed");
