@@ -73,6 +73,23 @@ impl MonolingualDictionaryService {
         })
     }
 
+    /// Creates a service whose metadata catalogue requests go to `metadata_url`
+    /// instead of the Reader-Dict API.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the HTTP client cannot be built.
+    #[cfg(test)]
+    pub(crate) fn with_metadata_url(
+        database: &Database,
+        dict_dir: &Path,
+        metadata_url: String,
+    ) -> Result<Self, MonolingualError> {
+        let mut service = Self::new(database, dict_dir)?;
+        service.client = service.client.with_metadata_url(metadata_url);
+        Ok(service)
+    }
+
     /// Returns all dictionaries available for download from the remote API.
     ///
     /// Metadata is served from the SQLite cache when available; otherwise a

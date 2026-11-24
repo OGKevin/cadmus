@@ -8,6 +8,7 @@ use super::metadata::DictionariesResponse;
 use crate::db::types::UnixTimestamp;
 use crate::http::Client;
 use chrono::DateTime;
+use std::borrow::Cow;
 
 const MONOLINGUAL_API_URL: &str = "https://www.reader-dict.com/api/v1/dictionaries";
 
@@ -19,6 +20,7 @@ const MONOLINGUAL_API_URL: &str = "https://www.reader-dict.com/api/v1/dictionari
 #[derive(Clone)]
 pub(super) struct MonolingualClient {
     http: Client,
+    metadata_url: Cow<'static, str>,
 }
 
 impl std::fmt::Debug for MonolingualClient {
@@ -38,7 +40,18 @@ impl MonolingualClient {
         tracing::debug!("Building monolingual client");
         let http = Client::new()?;
         tracing::debug!("Monolingual client built successfully");
-        Ok(Self { http })
+        Ok(Self {
+            http,
+            metadata_url: Cow::Borrowed(MONOLINGUAL_API_URL),
+        })
+    }
+
+    /// Points the metadata catalogue requests at `metadata_url` instead of the
+    /// Reader-Dict API, so tests can serve the catalogue from loopback.
+    #[cfg(test)]
+    pub(super) fn with_metadata_url(mut self, metadata_url: String) -> Self {
+        self.metadata_url = Cow::Owned(metadata_url);
+        self
     }
 
     /// Fetches dictionary metadata from the remote API and returns the parsed
@@ -56,7 +69,7 @@ impl MonolingualClient {
 
         let text = self
             .http
-            .get(MONOLINGUAL_API_URL)
+            .get(&self.metadata_url)
             .send()
             .await
             .map_err(|e| MonolingualError::Request(e.to_string()))?
@@ -91,7 +104,7 @@ impl MonolingualClient {
 
         let response = self
             .http
-            .head(MONOLINGUAL_API_URL)
+            .head(&self.metadata_url)
             .header("If-Modified-Since", &since_str)
             .send()
             .await

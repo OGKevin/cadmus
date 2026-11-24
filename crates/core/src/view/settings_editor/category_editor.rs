@@ -79,6 +79,31 @@ impl CategoryEditor {
         rq: &mut RenderQueue,
         context: &mut AppContext,
     ) -> CategoryEditor {
+        let dict_service = if category == Category::Dictionaries {
+            match MonolingualDictionaryService::new(
+                &context.database,
+                context.device.data_path(DICTIONARIES_DIRNAME).as_path(),
+            ) {
+                Ok(service) => Some(service),
+                Err(e) => {
+                    tracing::warn!(error = %e, "Failed to create MonolingualDictionaryService");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        Self::with_dict_service(rect, category, dict_service, rq, context).await
+    }
+
+    async fn with_dict_service(
+        rect: Rectangle,
+        category: Category,
+        dict_service: Option<MonolingualDictionaryService>,
+        rq: &mut RenderQueue,
+        context: &mut AppContext,
+    ) -> CategoryEditor {
         let id = ID_FEEDER.next();
         let mut children = Vec::new();
 
@@ -120,21 +145,6 @@ impl CategoryEditor {
 
         let separator_index = first_row_index;
         let keyboard_index = children.len() - 1;
-
-        let dict_service = if category == Category::Dictionaries {
-            match MonolingualDictionaryService::new(
-                &context.database,
-                context.device.data_path(DICTIONARIES_DIRNAME).as_path(),
-            ) {
-                Ok(service) => Some(service),
-                Err(e) => {
-                    tracing::warn!(error = %e, "Failed to create MonolingualDictionaryService");
-                    None
-                }
-            }
-        } else {
-            None
-        };
 
         let mut editor = CategoryEditor {
             id,
@@ -1087,12 +1097,58 @@ mod tests {
         CategoryEditor::new(rect, Category::Libraries, &mut rq, context).await
     }
 
+    async fn serve_dictionary_catalogue() -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        const CATALOGUE: &str = r#"{"en":{"en":{"formats":"df,dic,dictorg,kobo,mobi,stardict","updated":"2026-04-01","words":1381375,"name":"English","name-loc":"English"}}}"#;
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let port = listener.local_addr().expect("addr").port();
+
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let mut buf = [0u8; 2048];
+                let Ok(read) = stream.read(&mut buf).await else {
+                    continue;
+                };
+                let response = if buf[..read].starts_with(b"HEAD ") {
+                    "HTTP/1.1 304 Not Modified\r\nConnection: close\r\n\r\n".to_string()
+                } else {
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{CATALOGUE}",
+                        CATALOGUE.len()
+                    )
+                };
+                let _ = stream.write_all(response.as_bytes()).await;
+                let _ = stream.shutdown().await;
+            }
+        });
+
+        format!("http://127.0.0.1:{port}/api/v1/dictionaries")
+    }
+
     async fn create_test_dictionary_category_editor(context: &mut AppContext) -> CategoryEditor {
         crypto::init_crypto_provider();
         let rect = rect![0, 0, 600, 800];
         let mut rq = RenderQueue::new();
+        let metadata_url = serve_dictionary_catalogue().await;
+        let service = MonolingualDictionaryService::with_metadata_url(
+            &context.database,
+            context.device.data_path(DICTIONARIES_DIRNAME).as_path(),
+            metadata_url,
+        )
+        .expect("failed to create dictionary service");
 
-        CategoryEditor::new(rect, Category::Dictionaries, &mut rq, context).await
+        CategoryEditor::with_dict_service(
+            rect,
+            Category::Dictionaries,
+            Some(service),
+            &mut rq,
+            context,
+        )
+        .await
     }
 
     async fn create_test_import_category_editor(context: &mut AppContext) -> CategoryEditor {
@@ -1581,6 +1637,10 @@ mod tests {
         let initial_rows_count = editor
             .separator_index
             .saturating_sub(editor.first_row_index);
+        assert_eq!(
+            initial_rows_count, 1,
+            "Editor should list the catalogue served by the loopback mock"
+        );
 
         editor
             .handle_event(
