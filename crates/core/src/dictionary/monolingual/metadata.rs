@@ -75,26 +75,6 @@ pub(crate) fn dictionary_label(lang: &str, entry: Option<&DictionaryEntry>) -> S
     }
 }
 
-/// Returns the download URL for the DICT.org format archive (includes etymologies).
-///
-/// Pattern: `https://www.reader-dict.com/file/{lang}/dictorg-{lang}-{lang}.zip`
-pub(super) fn download_url(lang: &str) -> String {
-    format!(
-        "https://www.reader-dict.com/file/{lang}/dictorg-{lang}-{lang}.zip",
-        lang = lang
-    )
-}
-
-/// Returns the download URL for the DICT.org format archive **without** etymologies.
-///
-/// Pattern: `https://www.reader-dict.com/file/{lang}/dictorg-{lang}-{lang}-noetym.zip`
-pub(super) fn download_url_no_etym(lang: &str) -> String {
-    format!(
-        "https://www.reader-dict.com/file/{lang}/dictorg-{lang}-{lang}-noetym.zip",
-        lang = lang
-    )
-}
-
 mod date_serde {
     use chrono::NaiveDate;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -130,30 +110,6 @@ mod tests {
             name: Some("English".to_string()),
             name_loc: Some("English".to_string()),
         }
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn test_download_url_english() {
-        assert_eq!(
-            download_url("en"),
-            "https://www.reader-dict.com/file/en/dictorg-en-en.zip"
-        );
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn test_download_url_no_etym_english() {
-        assert_eq!(
-            download_url_no_etym("en"),
-            "https://www.reader-dict.com/file/en/dictorg-en-en-noetym.zip"
-        );
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn test_download_url_french() {
-        assert_eq!(
-            download_url("fr"),
-            "https://www.reader-dict.com/file/fr/dictorg-fr-fr.zip"
-        );
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

@@ -7,7 +7,7 @@
 use super::client::MonolingualClient;
 use super::db::Db;
 use super::errors::MonolingualError;
-use super::metadata::{DictionariesResponse, DictionaryEntry, download_url, download_url_no_etym};
+use super::metadata::{DictionariesResponse, DictionaryEntry};
 use crate::db::Database;
 use crate::db::types::UnixTimestamp;
 use crate::memory::{BufferPath, choose_buffer_path};
@@ -71,6 +71,23 @@ impl MonolingualDictionaryService {
             dict_dir: dict_dir.to_path_buf(),
             pending_installs: Arc::new(Mutex::new(HashSet::new())),
         })
+    }
+
+    /// Creates a service whose catalogue and archive requests go to
+    /// `base_url` instead of the Reader-Dict host.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the HTTP client cannot be built.
+    #[cfg(test)]
+    pub(crate) fn with_base_url(
+        database: &Database,
+        dict_dir: &Path,
+        base_url: String,
+    ) -> Result<Self, MonolingualError> {
+        let mut service = Self::new(database, dict_dir)?;
+        service.client = service.client.with_base_url(base_url);
+        Ok(service)
     }
 
     /// Returns all dictionaries available for download from the remote API.
@@ -293,14 +310,6 @@ impl MonolingualDictionaryService {
     where
         F: FnMut(u64, u64),
     {
-        let url = if include_etymologies {
-            download_url(lang)
-        } else {
-            download_url_no_etym(lang)
-        };
-
-        tracing::info!(lang, url = %url, "Downloading dictionary");
-
         let dest = self.lang_dir(lang);
         let staging = staging_dir(&self.reader_dict_dir(), lang);
         if tokio::fs::try_exists(&staging).await? {
@@ -311,7 +320,13 @@ impl MonolingualDictionaryService {
         let temp_path = staging.join(DOWNLOAD_TMP_NAME);
 
         self.client
-            .download(&url, &temp_path, progress_callback, should_cancel)
+            .download(
+                lang,
+                include_etymologies,
+                &temp_path,
+                progress_callback,
+                should_cancel,
+            )
             .await?;
 
         tracing::debug!(lang, dest = %dest.display(), "Extracting dictionary archive");
@@ -1067,6 +1082,47 @@ mod tests {
             .expect("failed to run migrations");
         let service = MonolingualDictionaryService::new(&database, dir.path())
             .expect("failed to create service");
+        (service, dir, database)
+    }
+
+    async fn create_test_service_with_unavailable_archives()
+    -> (MonolingualDictionaryService, TempDir, Database) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        crate::crypto::init_crypto_provider();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let port = listener.local_addr().expect("addr").port();
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let mut buf = [0u8; 2048];
+                if stream.read(&mut buf).await.is_err() {
+                    continue;
+                }
+                let _ = stream
+                    .write_all(
+                        b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                    )
+                    .await;
+                let _ = stream.shutdown().await;
+            }
+        });
+
+        let dir = TempDir::new().expect("failed to create temp dir");
+        let mut database = Database::new(":memory:")
+            .await
+            .expect("failed to create in-memory database");
+        database
+            .init_for_test(0)
+            .await
+            .expect("failed to run migrations");
+        let service = MonolingualDictionaryService::with_base_url(
+            &database,
+            dir.path(),
+            format!("http://127.0.0.1:{port}"),
+        )
+        .expect("failed to create service");
         (service, dir, database)
     }
 
@@ -1964,26 +2020,27 @@ mod tests {
 
     #[tokio::test]
     async fn test_pending_cleared_after_failed_install() {
-        let (service, _dir, _db) = create_test_service().await;
+        let (service, _dir, _db) = create_test_service_with_unavailable_archives().await;
 
         let entry = make_entry(2026, 4, 1);
-        let _ = service
+        let result = service
             .install_dictionary("zz", &entry, false, &mut |_, _| {})
             .await;
+        assert!(result.is_err(), "archive probe should fail with 404");
         assert!(!service.is_installing("zz"));
     }
 
     #[tokio::test]
     async fn test_reserved_install_clears_after_failed_install() {
-        let (service, _dir, _db) = create_test_service().await;
+        let (service, _dir, _db) = create_test_service_with_unavailable_archives().await;
         let entry = make_entry(2026, 4, 1);
 
         assert!(service.try_begin_install("zz"));
 
-        let _ = service
+        let result = service
             .install_reserved_dictionary("zz", &entry, false, &mut |_, _| {}, None)
             .await;
-
+        assert!(result.is_err(), "archive probe should fail with 404");
         assert!(!service.is_installing("zz"));
     }
 
@@ -2087,5 +2144,26 @@ mod tests {
             installed.contains(&"en".to_string()),
             "expected 'en' in installed list, got {installed:?}"
         );
+    }
+
+    /// Requests an archive Reader-Dict does not publish and verifies the
+    /// install fails and releases its reservation.
+    ///
+    /// Run with: `cargo test -- --ignored`
+    #[tokio::test]
+    #[ignore = "requires network access to www.reader-dict.com"]
+    async fn test_install_unavailable_dictionary_live() {
+        let (service, _dir, _db) = create_test_service().await;
+        let entry = make_entry(2026, 4, 1);
+
+        let result = service
+            .install_dictionary("zz", &entry, false, &mut |_, _| {})
+            .await;
+
+        assert!(
+            result.is_err(),
+            "unpublished archive should fail to install"
+        );
+        assert!(!service.is_installing("zz"));
     }
 }
