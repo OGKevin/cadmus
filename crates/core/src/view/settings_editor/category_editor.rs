@@ -1126,18 +1126,18 @@ mod tests {
             }
         });
 
-        format!("http://127.0.0.1:{port}/api/v1/dictionaries")
+        format!("http://127.0.0.1:{port}")
     }
 
     async fn create_test_dictionary_category_editor(context: &mut AppContext) -> CategoryEditor {
         crypto::init_crypto_provider();
         let rect = rect![0, 0, 600, 800];
         let mut rq = RenderQueue::new();
-        let metadata_url = serve_dictionary_catalogue().await;
-        let service = MonolingualDictionaryService::with_metadata_url(
+        let base_url = serve_dictionary_catalogue().await;
+        let service = MonolingualDictionaryService::with_base_url(
             &context.database,
             context.device.data_path(DICTIONARIES_DIRNAME).as_path(),
-            metadata_url,
+            base_url,
         )
         .expect("failed to create dictionary service");
 

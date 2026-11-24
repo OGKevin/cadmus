@@ -10,7 +10,7 @@ use crate::http::Client;
 use chrono::DateTime;
 use std::borrow::Cow;
 
-const MONOLINGUAL_API_URL: &str = "https://www.reader-dict.com/api/v1/dictionaries";
+const READER_DICT_BASE_URL: &str = "https://www.reader-dict.com";
 
 /// Monolingual dictionary HTTP client.
 ///
@@ -20,7 +20,7 @@ const MONOLINGUAL_API_URL: &str = "https://www.reader-dict.com/api/v1/dictionari
 #[derive(Clone)]
 pub(super) struct MonolingualClient {
     http: Client,
-    metadata_url: Cow<'static, str>,
+    base_url: Cow<'static, str>,
 }
 
 impl std::fmt::Debug for MonolingualClient {
@@ -42,16 +42,37 @@ impl MonolingualClient {
         tracing::debug!("Monolingual client built successfully");
         Ok(Self {
             http,
-            metadata_url: Cow::Borrowed(MONOLINGUAL_API_URL),
+            base_url: Cow::Borrowed(READER_DICT_BASE_URL),
         })
     }
 
-    /// Points the metadata catalogue requests at `metadata_url` instead of the
-    /// Reader-Dict API, so tests can serve the catalogue from loopback.
+    /// Points every request at `base_url` instead of the Reader-Dict host, so
+    /// tests can serve the catalogue and archives from loopback.
     #[cfg(test)]
-    pub(super) fn with_metadata_url(mut self, metadata_url: String) -> Self {
-        self.metadata_url = Cow::Owned(metadata_url);
+    pub(super) fn with_base_url(mut self, base_url: String) -> Self {
+        self.base_url = Cow::Owned(base_url);
         self
+    }
+
+    fn metadata_url(&self) -> String {
+        format!("{}/api/v1/dictionaries", self.base_url)
+    }
+
+    /// Returns the download URL for the DICT.org format archive (includes etymologies).
+    ///
+    /// Pattern: `{base_url}/file/{lang}/dictorg-{lang}-{lang}.zip`.
+    fn download_url(&self, lang: &str) -> String {
+        format!("{}/file/{lang}/dictorg-{lang}-{lang}.zip", self.base_url)
+    }
+
+    /// Returns the download URL for the DICT.org format archive **without** etymologies.
+    ///
+    /// Pattern: `{base_url}/file/{lang}/dictorg-{lang}-{lang}-noetym.zip`.
+    fn download_url_no_etym(&self, lang: &str) -> String {
+        format!(
+            "{}/file/{lang}/dictorg-{lang}-{lang}-noetym.zip",
+            self.base_url
+        )
     }
 
     /// Fetches dictionary metadata from the remote API and returns the parsed
@@ -67,9 +88,10 @@ impl MonolingualClient {
     pub(super) async fn fetch_metadata(&self) -> Result<DictionariesResponse, MonolingualError> {
         tracing::debug!("Fetching monolingual metadata from API");
 
+        let url = self.metadata_url();
         let text = self
             .http
-            .get(&self.metadata_url)
+            .get(&url)
             .send()
             .await
             .map_err(|e| MonolingualError::Request(e.to_string()))?
@@ -102,9 +124,11 @@ impl MonolingualClient {
             .format("%a, %d %b %Y %H:%M:%S GMT")
             .to_string();
 
+        let url = self.metadata_url();
+
         let response = self
             .http
-            .head(&self.metadata_url)
+            .head(&url)
             .header("If-Modified-Since", &since_str)
             .send()
             .await
@@ -117,7 +141,11 @@ impl MonolingualClient {
         }
     }
 
-    /// Downloads `url` to `dest` using chunked HTTP Range requests.
+    /// Downloads the dictionary archive for `lang` to `dest` using chunked
+    /// HTTP Range requests.
+    ///
+    /// `include_etymologies` selects the full archive over the smaller
+    /// no-etymology variant.
     ///
     /// Issues a minimal `bytes=0-0` Range request first to read `Content-Range`
     /// and obtain the total file size, then delegates to the chunked
@@ -132,10 +160,11 @@ impl MonolingualClient {
     /// Returns an error if the probe request fails or returns a non-2xx
     /// status, if the `Content-Range` header is missing, or if the chunked
     /// download fails.
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, progress_callback), fields(url = %url)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, progress_callback), fields(lang = %lang, include_etymologies = include_etymologies)))]
     pub(super) async fn download<F>(
         &self,
-        url: &str,
+        lang: &str,
+        include_etymologies: bool,
         dest: &std::path::Path,
         progress_callback: &mut F,
         should_cancel: Option<&crate::http::CancelFlag>,
@@ -143,11 +172,18 @@ impl MonolingualClient {
     where
         F: FnMut(u64, u64),
     {
+        let url = if include_etymologies {
+            self.download_url(lang)
+        } else {
+            self.download_url_no_etym(lang)
+        };
+
+        tracing::info!(lang, url = %url, "Downloading dictionary");
         tracing::debug!(url = %url, "Probing content length");
 
         let response = self
             .http
-            .head(url)
+            .head(&url)
             .header("Range", "bytes=0-0")
             .send()
             .await
@@ -167,7 +203,7 @@ impl MonolingualClient {
 
         self.http
             .download(
-                url,
+                &url,
                 Some(total_size),
                 dest,
                 |u| self.http.get(u),
@@ -191,6 +227,39 @@ mod tests {
     #[test]
     fn test_client_creation() {
         create_test_client();
+    }
+
+    #[test]
+    fn test_download_url_english() {
+        assert_eq!(
+            create_test_client().download_url("en"),
+            "https://www.reader-dict.com/file/en/dictorg-en-en.zip"
+        );
+    }
+
+    #[test]
+    fn test_download_url_no_etym_english() {
+        assert_eq!(
+            create_test_client().download_url_no_etym("en"),
+            "https://www.reader-dict.com/file/en/dictorg-en-en-noetym.zip"
+        );
+    }
+
+    #[test]
+    fn test_download_url_french() {
+        assert_eq!(
+            create_test_client().download_url("fr"),
+            "https://www.reader-dict.com/file/fr/dictorg-fr-fr.zip"
+        );
+    }
+
+    #[test]
+    fn test_metadata_url_uses_base_url() {
+        let client = create_test_client().with_base_url("http://127.0.0.1:1".to_string());
+        assert_eq!(
+            client.metadata_url(),
+            "http://127.0.0.1:1/api/v1/dictionaries"
+        );
     }
 
     /// Fetches live metadata from the monolingual API.
