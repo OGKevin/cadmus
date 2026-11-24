@@ -68,10 +68,11 @@ top-menu-switch-to = Switch to { $build }
 top-menu-sync-time = Sync Time
 top-menu-wifi = WiFi
 
-# Companion Dialog
+# Companion View
 
-companion-dialog-code = Code: { $code }
-companion-dialog-hint = Scan to open Companion on your phone
+companion-view-code = Code: { $code }
+companion-view-hint = Scan to open Companion on your phone
+companion-view-stop = Stop Companion
 
 # OTA
 

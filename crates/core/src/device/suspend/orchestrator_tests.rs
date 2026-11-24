@@ -2268,7 +2268,7 @@ async fn finish_cycle_emits_api_resume_only_while_the_companion_is_on() {
         .set_mode(crate::settings::WifiMode::AlwaysOn);
     crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
         crate::api::handle_event(
-            &Event::Select(EntryId::ToggleCompanion),
+            &Event::Select(EntryId::OpenCompanion),
             hub,
             bus,
             rq,

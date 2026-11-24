@@ -111,12 +111,12 @@ fn wrong_token(token: &str) -> String {
 
 #[cfg(feature = "emulator")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn menu_switch_binds_an_ephemeral_port() {
+async fn open_companion_binds_an_ephemeral_port() {
     let mut harness = DeviceRuntimeHarness::new().await;
     arm_wifi(&mut harness, WifiMode::Auto);
     crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
         handle_event(
-            &Event::Select(EntryId::ToggleCompanion),
+            &Event::Select(EntryId::OpenCompanion),
             hub,
             bus,
             rq,
@@ -127,9 +127,7 @@ async fn menu_switch_binds_an_ephemeral_port() {
     drive_listener_start(&mut harness).await;
     let port = harness.context.api.local_addr().unwrap().port();
     assert_ne!(port, 0);
-    assert!(
-        crate::view::common::locate_by_id(harness.view.as_ref(), ViewId::CompanionDialog).is_some()
-    );
+    assert!(crate::view::common::locate_by_id(harness.view.as_ref(), ViewId::Companion).is_some());
     assert!(harness.context.api.is_on());
 }
 
@@ -149,12 +147,12 @@ async fn wifi_off_takes_no_lease_and_does_not_listen() {
 
 #[cfg(feature = "emulator")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn menu_switch_with_wifi_off_notifies_instead_of_showing_a_code() {
+async fn open_companion_with_wifi_off_notifies_instead_of_showing_a_code() {
     let mut harness = DeviceRuntimeHarness::new().await;
     arm_wifi(&mut harness, WifiMode::Off);
     crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
         handle_event(
-            &Event::Select(EntryId::ToggleCompanion),
+            &Event::Select(EntryId::OpenCompanion),
             hub,
             bus,
             rq,
@@ -167,9 +165,7 @@ async fn menu_switch_with_wifi_off_notifies_instead_of_showing_a_code() {
         event,
         Event::Notification(crate::view::NotificationEvent::Show(_))
     )));
-    assert!(
-        crate::view::common::locate_by_id(harness.view.as_ref(), ViewId::CompanionDialog).is_none()
-    );
+    assert!(crate::view::common::locate_by_id(harness.view.as_ref(), ViewId::Companion).is_none());
     assert!(!harness.context.api.is_on());
 }
 
@@ -196,16 +192,24 @@ async fn always_on_acquires_companion_lease() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn switch_off_cancels_the_job_and_drops_the_lease() {
+async fn closing_the_view_stops_the_listener() {
     let mut harness = DeviceRuntimeHarness::new().await;
     arm_wifi(&mut harness, WifiMode::Auto);
     start(&mut harness, "127.0.0.1:0".parse().unwrap())
         .await
         .unwrap();
     let addr = harness.context.api.local_addr().unwrap();
-    crate::poll_parts!(harness, |_hub, _bus, _rq, context, _runtime| {
-        turn_off(context)
+    let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(
+            &Event::Close(ViewId::Companion),
+            hub,
+            bus,
+            rq,
+            context,
+            runtime,
+        )
     });
+    assert!(matches!(outcome, EventOutcome::Continue));
     assert!(!holds_public_api_lease(&harness));
     assert!(!harness.context.api.is_on());
     assert!(tokio::net::TcpStream::connect(addr).await.is_err());
@@ -240,6 +244,77 @@ async fn prepare_share_stops_the_listener_and_drops_the_lease() {
     assert!(harness.context.api.local_addr().is_none());
     assert!(!holds_public_api_lease(&harness));
     assert!(tokio::net::TcpStream::connect(addr).await.is_err());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn usb_share_closes_the_view() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    arm_wifi(&mut harness, WifiMode::Auto);
+    start(&mut harness, "127.0.0.1:0".parse().unwrap())
+        .await
+        .unwrap();
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::PrepareShare, hub, bus, rq, context, runtime)
+    });
+    let events = harness.drain_hub();
+    assert!(!harness.context.api.is_on());
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, Event::Close(ViewId::Companion)))
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn failed_resume_closes_the_view() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    arm_wifi(&mut harness, WifiMode::Auto);
+    start(&mut harness, "127.0.0.1:0".parse().unwrap())
+        .await
+        .unwrap();
+    crate::poll_parts!(harness, |_hub, _bus, _rq, context, _runtime| {
+        suspend(context)
+    });
+    arm_wifi(&mut harness, WifiMode::Off);
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::ApiResume, hub, bus, rq, context, runtime)
+    });
+    let events = harness.drain_hub();
+    assert!(!harness.context.api.is_on());
+    assert!(events.iter().any(|event| matches!(
+        event,
+        Event::Notification(crate::view::NotificationEvent::Show(_))
+    )));
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, Event::Close(ViewId::Companion)))
+    );
+}
+
+#[cfg(feature = "emulator")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn opening_companion_replaces_a_running_session() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    arm_wifi(&mut harness, WifiMode::Auto);
+    start(&mut harness, "127.0.0.1:0".parse().unwrap())
+        .await
+        .unwrap();
+    let old = harness.context.api.local_addr().unwrap();
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(
+            &Event::Select(EntryId::OpenCompanion),
+            hub,
+            bus,
+            rq,
+            context,
+            runtime,
+        )
+    });
+    drive_listener_start(&mut harness).await;
+    assert!(harness.context.api.is_on());
+    assert!(harness.context.api.local_addr().is_some());
+    assert!(tokio::net::TcpStream::connect(old).await.is_err());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -1470,8 +1545,8 @@ async fn three_bad_bearer_credentials_shut_the_public_listener_down() {
         harness
             .drain_hub()
             .iter()
-            .any(|event| matches!(event, Event::Close(ViewId::CompanionDialog))),
-        "the lockout closes the companion dialog"
+            .any(|event| matches!(event, Event::Close(ViewId::Companion))),
+        "the lockout closes the companion view"
     );
     assert!(!harness.context.api.is_on());
     assert!(!holds_public_api_lease(&harness));

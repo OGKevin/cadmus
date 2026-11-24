@@ -1,7 +1,7 @@
 //! Public and private Cadmus APIs.
 //!
 //! Shared command dispatch, settings catalog, file ops, and status live here.
-//! The public listener is on-demand (Companion menu switch). The private
+//! The public listener is on-demand (see [`CompanionView`](crate::view::companion::CompanionView)). The private
 //! loopback listener starts with the process. Handlers do not touch
 //! [`AppContext`]. They queue a command and wake the main loop, which replies
 //! on a oneshot.
@@ -80,17 +80,17 @@ pub(crate) struct ApiSession {
     auth_failures: Arc<AtomicU32>,
     /// Job that is taking the Wi-Fi lease and binding the port, if any.
     pending_start: Option<public::PendingStart>,
-    /// True while a QR panel is owed to a Companion start the user requested
-    /// from the main-menu switch.
+    /// True while a [`CompanionView`](crate::view::companion::CompanionView) is owed to a Companion start the user
+    /// requested from the main menu.
     ///
-    /// The listener binds asynchronously, so the panel can only show the real
+    /// The listener binds asynchronously, so the view can only show the real
     /// URL (including a non-80 emulator port) after `Command::ListenerBound`
-    /// arrives. The menu toggle sets this flag. The matching bind result
-    /// consumes it and pushes the panel if the listener came up. Stop, suspend
-    /// and a second toggle clear it with the pending start. The emulator's
+    /// arrives. The menu entry sets this flag. The matching bind result
+    /// consumes it and pushes the view if the listener came up. Stop, suspend
+    /// and a second menu choice clear it with the pending start. The emulator's
     /// automatic startup session and suspend/resume never set it, so they
-    /// never open the panel.
-    qr_panel_pending: bool,
+    /// never open the view.
+    view_pending: bool,
     /// Bumped per start attempt so a superseded result is ignored.
     start_generation: u64,
     /// Listeners queue commands here and then wake the main loop.
@@ -113,7 +113,7 @@ impl ApiSession {
             token: None,
             auth_failures: Arc::new(AtomicU32::new(0)),
             pending_start: None,
-            qr_panel_pending: false,
+            view_pending: false,
             start_generation: 0,
             tx,
             rx,
@@ -127,7 +127,7 @@ impl ApiSession {
         self.token.is_some()
     }
 
-    /// The bearer token, shown once in the on-device QR panel. Never log it.
+    /// The bearer token, shown once in the on-device [`CompanionView`](crate::view::companion::CompanionView). Never log it.
     pub(crate) fn token(&self) -> Option<String> {
         self.token
             .as_ref()
@@ -148,7 +148,7 @@ impl ApiSession {
     /// Abandon a pending start and return it so the caller can join it.
     fn take_pending_start(&mut self) -> Option<public::PendingStart> {
         self.start_generation = self.start_generation.wrapping_add(1);
-        self.qr_panel_pending = false;
+        self.view_pending = false;
         self.pending_start.take()
     }
 
@@ -181,10 +181,10 @@ pub async fn handle_event(
     runtime: &mut DeviceRuntime<'_>,
 ) -> EventOutcome {
     match event {
-        Event::Select(crate::view::EntryId::ToggleCompanion) => {
-            let outcome = public::toggle(hub, context).await;
+        Event::Select(crate::view::EntryId::OpenCompanion) => {
+            let outcome = public::open(hub, context).await;
             if context.api.is_on() {
-                context.api.qr_panel_pending = true;
+                context.api.view_pending = true;
             }
             outcome
         }
@@ -198,6 +198,13 @@ pub async fn handle_event(
             EventOutcome::Continue
         }
         Event::PrepareShare | Event::Share => {
+            if context.api.is_on() {
+                public::turn_off(context).await;
+                hub.send(Event::Close(ViewId::Companion).into()).ok();
+            }
+            EventOutcome::Continue
+        }
+        Event::Close(ViewId::Companion) => {
             public::turn_off(context).await;
             EventOutcome::Continue
         }
@@ -205,15 +212,15 @@ pub async fn handle_event(
     }
 }
 
-/// Shows the full-screen Companion QR panel after the menu switch turned the
+/// Shows the full-screen [`CompanionView`](crate::view::companion::CompanionView) after the menu entry turned the
 /// listener on.
 ///
-/// The dialog is pushed at the root view level, like `AboutDialog`, so
+/// The view is pushed at the root view level, like `AboutDialog`, so
 /// `Event::Close` reaches it: `locate_by_id` only searches direct children.
 /// The debug emulator's automatic startup session and suspend/resume must not
-/// open the panel; only this menu path does.
+/// open the view; only this menu path does.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-async fn push_companion_panel(
+async fn push_companion_view(
     rq: &mut RenderQueue,
     context: &mut AppContext,
     view: &mut Box<dyn View>,
@@ -221,15 +228,18 @@ async fn push_companion_panel(
     let Some(pin) = context.api.token() else {
         return;
     };
-    if crate::view::common::locate_by_id(view.as_ref(), ViewId::CompanionDialog).is_some() {
+    if crate::view::common::locate_by_id(view.as_ref(), ViewId::Companion).is_some() {
         return;
     }
     let Some(url) = public::companion_url(context) else {
-        tracing::warn!("companion panel url could not be resolved");
+        tracing::warn!("companion view url could not be resolved");
         return;
     };
-    let Some(dialog) = crate::view::companion::CompanionDialog::new(context, &url, &pin) else {
-        tracing::warn!("companion panel could not be built");
+    let ip_url = public::companion_ip_url(context);
+    let Some(dialog) =
+        crate::view::companion::CompanionView::new(context, &url, ip_url.as_deref(), &pin)
+    else {
+        tracing::warn!("companion view could not be built");
         return;
     };
     rq.add(RenderData::new(
@@ -243,7 +253,7 @@ async fn push_companion_panel(
 /// Start the public listener on loopback with a fresh token.
 ///
 /// The debug emulator turns the companion on at startup instead of through
-/// the menu switch. It binds loopback only, so a dev machine never exposes
+/// the menu entry. It binds loopback only, so a dev machine never exposes
 /// file and settings RPCs to the LAN, and the loopback address skips mDNS.
 #[cfg(feature = "emulator")]
 pub(crate) async fn turn_on_default(hub: &Hub, context: &mut AppContext) {
@@ -327,11 +337,11 @@ async fn drain(
                 settings::handle(command, hub, bus, context, runtime).await;
             }
             Command::ListenerBound { generation, result } => {
-                let show_panel = generation == context.api.start_generation
-                    && std::mem::take(&mut context.api.qr_panel_pending);
+                let show_view = generation == context.api.start_generation
+                    && std::mem::take(&mut context.api.view_pending);
                 public::finish_start(hub, context, generation, result).await;
-                if show_panel && context.api.is_on() {
-                    push_companion_panel(rq, context, runtime.view).await;
+                if show_view && context.api.is_on() {
+                    push_companion_view(rq, context, runtime.view).await;
                 }
             }
             Command::AuthFailed => {
@@ -339,8 +349,7 @@ async fn drain(
                 if failures >= MAX_AUTH_FAILURES {
                     tracing::warn!(failures, "public api disabled after repeated bad tokens");
                     public::turn_off(context).await;
-                    hub.send((Event::Close(ViewId::CompanionDialog)).into())
-                        .ok();
+                    hub.send((Event::Close(ViewId::Companion)).into()).ok();
                 }
             }
         }

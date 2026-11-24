@@ -667,8 +667,8 @@ async fn show_suspend_intermission(
 
 /// Forces Wi-Fi on and starts Companion for a debug emulator.
 ///
-/// The emulator has no radio. Always On makes a later menu toggle match a live
-/// session. Companion listens without the QR code or the dialog. Quit still
+/// The emulator has no radio. Always On keeps Wi-Fi up for a later Companion
+/// menu choice. Companion listens without the QR code or the view. Quit still
 /// writes settings, so this mode is what a later launch loads.
 #[cfg(debug_assertions)]
 async fn start_debug_session(context: &mut AppContext, hub: &Hub) {
@@ -1092,7 +1092,7 @@ mod debug_session {
         assert!(
             events
                 .iter()
-                .all(|event| !matches!(event, Event::Select(EntryId::ToggleCompanion)))
+                .all(|event| !matches!(event, Event::Select(EntryId::OpenCompanion)))
         );
         assert!(harness.context.api.is_on());
         for _ in 0..100 {
@@ -1115,8 +1115,7 @@ mod debug_session {
         );
         assert!(harness.view.children().is_empty());
         assert!(
-            crate::view::common::locate_by_id(harness.view.as_ref(), ViewId::CompanionDialog)
-                .is_none()
+            crate::view::common::locate_by_id(harness.view.as_ref(), ViewId::Companion).is_none()
         );
         crate::api::shutdown(&mut harness.context).await;
         assert!(!harness.context.api.is_on());

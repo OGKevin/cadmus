@@ -271,10 +271,9 @@ pub fn toggle_main_menu(
                     ),
                 ],
             ),
-            EntryKind::CheckBox(
+            EntryKind::Command(
                 fl!("top-menu-companion").to_string(),
-                EntryId::ToggleCompanion,
-                context.api.is_on(),
+                EntryId::OpenCompanion,
             ),
             EntryKind::Separator,
             EntryKind::Command("Take Screenshot".to_string(), EntryId::TakeScreenshot),

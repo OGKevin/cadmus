@@ -9,7 +9,7 @@ Cadmus serves two cleartext
 
 | Listener | Bind                                      | Starts                | Token                                                     | Site files |
 | -------- | ----------------------------------------- | --------------------- | --------------------------------------------------------- | ---------- |
-| Public   | `[::]:80`, dual-stack (emulator IPv4 `0`) | Companion menu switch | 6-digit `Authorization: Bearer` on settings/file RPCs     | Yes        |
+| Public   | `[::]:80`, dual-stack (emulator IPv4 `0`) | Companion menu entry  | 6-digit `Authorization: Bearer` on settings/file RPCs     | Yes        |
 | Private  | `127.0.0.1:8474` (tests: port 0)          | Process startup       | No                                                        | No         |
 
 The public listener accepts IPv4 and IPv6 on one socket and falls back to IPv4
@@ -23,10 +23,13 @@ the same token. Debug builds skip the bearer check entirely, so any token —
 or none — works against the emulator.
 
 Three consecutive rejected credentials on one token shut the public listener
-down; the switch has to be turned on again. A matching credential clears the
+down; Companion has to be opened again. A matching credential clears the
 count, so re-entering the code starts over. The count is enforced in the
 listener synchronously and survives suspend/resume, and a request without a
 `Bearer` credential is answered `401` without counting as a strike.
+
+Companion runs exactly while the Companion view is open: closing the view
+stops the public listener, and every way the listener stops closes the view.
 
 The debug emulator's startup companion session binds `127.0.0.1:0`, which also
 skips mDNS. Opening Companion from the emulator menu binds `0.0.0.0:0` instead,
