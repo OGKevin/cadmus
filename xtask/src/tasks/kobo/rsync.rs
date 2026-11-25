@@ -28,12 +28,15 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 use tokio::sync::mpsc as tokio_mpsc;
 use tokio::task::JoinHandle;
 
-use super::INSTALL_DIR;
 use super::ssh::Handler;
 
-/// Runs one delta transfer of `dist/` into [`INSTALL_DIR`].
-pub(crate) async fn run(handle: &mut Handle<Handler>, dist: &Path) -> Result<()> {
-    run_plan(handle, build_plan(dist, INSTALL_DIR)?).await
+/// Runs one delta transfer of `source` into `destination` on the device.
+pub(crate) async fn run(
+    handle: &mut Handle<Handler>,
+    source: &Path,
+    destination: &str,
+) -> Result<()> {
+    run_plan(handle, build_plan(source, destination)?).await
 }
 
 async fn run_plan<H>(handle: &mut Handle<H>, plan: TransferPlan) -> Result<()>
@@ -411,8 +414,8 @@ fn spawn_bridge(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tasks::kobo::SshOptions;
     use crate::tasks::kobo::ssh;
+    use crate::tasks::kobo::{INSTALL_DIR, SshOptions};
 
     struct AcceptAnyKey;
 

@@ -64,7 +64,7 @@ pub fn run(args: BuildKoboArgs) -> Result<()> {
     Ok(())
 }
 
-fn ensure_linaro_toolchain() -> Result<()> {
+pub(crate) fn ensure_linaro_toolchain() -> Result<()> {
     cmd::run(
         "arm-linux-gnueabihf-gcc",
         &["--version"],

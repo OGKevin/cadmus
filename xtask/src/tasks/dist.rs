@@ -88,7 +88,7 @@ pub fn run(args: DistArgs) -> Result<()> {
 
 /// Copies ARM shared libraries from `libs/` into `dist/libs/` with versioned
 /// names expected by the Kobo runtime linker.
-fn copy_libraries(root: &Path, dist_dir: &Path) -> Result<()> {
+pub(crate) fn copy_libraries(root: &Path, dist_dir: &Path) -> Result<()> {
     let libs_dir = root.join("libs");
     let dist_libs = dist_dir.join("libs");
 
@@ -172,8 +172,13 @@ fn copy_binary(root: &Path, dist_dir: &Path) -> Result<()> {
 /// RPATH is removed so the libraries resolve against the device's default
 /// linker search paths rather than the build host's paths.
 fn strip_and_patch(root: &Path, dist_dir: &Path) -> Result<()> {
-    let libs_dir = dist_dir.join("libs");
-    for entry in std::fs::read_dir(&libs_dir)? {
+    strip_and_patch_files(root, &dist_dir.join("cadmus"), &dist_dir.join("libs"))
+}
+
+/// Removes RPATH from every library in `libs_dir`, then strips `binary` and
+/// those libraries.
+pub(crate) fn strip_and_patch_files(root: &Path, binary: &Path, libs_dir: &Path) -> Result<()> {
+    for entry in std::fs::read_dir(libs_dir)? {
         let path = entry?.path();
         cmd::run(
             "patchelf",
@@ -183,10 +188,8 @@ fn strip_and_patch(root: &Path, dist_dir: &Path) -> Result<()> {
         )?;
     }
 
-    // Strip the binary and all libraries to reduce size.
-    let binary = dist_dir.join("cadmus");
     let mut strip_targets = vec![binary.to_string_lossy().into_owned()];
-    for entry in std::fs::read_dir(&libs_dir)? {
+    for entry in std::fs::read_dir(libs_dir)? {
         strip_targets.push(entry?.path().to_string_lossy().into_owned());
     }
 

@@ -10,6 +10,7 @@
 //! a working method is reached. `--identities-only` drops unrelated agent keys
 //! entirely.
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -665,16 +666,39 @@ pub(crate) struct ExecOutput {
 
 /// Runs `command` on the device and collects stdout, stderr, and the status.
 pub(crate) async fn exec(handle: &mut Handle<Handler>, command: &str) -> Result<ExecOutput> {
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let exit_status = exec_to(handle, command, &mut stdout, &mut stderr).await?;
+
+    Ok(ExecOutput {
+        stdout: String::from_utf8_lossy(&stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&stderr).into_owned(),
+        exit_status,
+    })
+}
+
+/// Runs `command` on the device, writing stdout and stderr to the given sinks
+/// as each chunk arrives, and returns the exit status.
+pub(crate) async fn exec_to(
+    handle: &mut Handle<Handler>,
+    command: &str,
+    stdout: &mut (impl Write + Send),
+    stderr: &mut (impl Write + Send),
+) -> Result<Option<u32>> {
     let mut channel = handle.channel_open_session().await?;
     channel.exec(true, command).await?;
 
-    let mut stdout = Vec::new();
-    let mut stderr = Vec::new();
     let mut exit_status = None;
     while let Some(message) = channel.wait().await {
         match message {
-            russh::ChannelMsg::Data { data } => stdout.extend_from_slice(&data),
-            russh::ChannelMsg::ExtendedData { data, .. } => stderr.extend_from_slice(&data),
+            russh::ChannelMsg::Data { data } => {
+                stdout.write_all(&data)?;
+                stdout.flush()?;
+            }
+            russh::ChannelMsg::ExtendedData { data, .. } => {
+                stderr.write_all(&data)?;
+                stderr.flush()?;
+            }
             russh::ChannelMsg::ExitStatus {
                 exit_status: status,
             } => exit_status = Some(status),
@@ -686,11 +710,7 @@ pub(crate) async fn exec(handle: &mut Handle<Handler>, command: &str) -> Result<
         }
     }
 
-    Ok(ExecOutput {
-        stdout: String::from_utf8_lossy(&stdout).into_owned(),
-        stderr: String::from_utf8_lossy(&stderr).into_owned(),
-        exit_status,
-    })
+    Ok(exit_status)
 }
 
 #[cfg(test)]

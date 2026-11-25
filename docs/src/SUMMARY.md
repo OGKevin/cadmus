@@ -43,6 +43,7 @@
   - [DjVuLibre](contributing/thirdparty/djvulibre.md)
   - [SQLite](contributing/thirdparty/sqlite.md)
 - [SSH](contributing/ssh.md)
+- [Benchmarks](contributing/benchmarks.md)
 - [Code Style and Linting](contributing/code-style.md)
 - [Event System](contributing/event-system.md)
 - [Input Pipeline](contributing/input.md)
