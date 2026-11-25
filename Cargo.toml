@@ -45,6 +45,7 @@ io_tee = "0.1"
 jsonschema = { version = "0.61.2", default-features = false }
 lzma-rust2 = { version = "0.24", default-features = false }
 mdns-sd = "0.22"
+memchr = "2"
 octocrab = { version = "0.54.2", default-features = false, features = [
     "jwt-rust-crypto",
 ] }
@@ -72,6 +73,7 @@ tokio-util = { version = "0.7", default-features = false, features = ["compat", 
 toml = "1.1.6"
 tower = { version = "0.5", default-features = false }
 uuid = { version = "1.20.0", features = ["v7"] }
+zip = { version = "9.0.0", default-features = false }
 
 [workspace.lints]
 rustdoc.private_intra_doc_links = "allow"

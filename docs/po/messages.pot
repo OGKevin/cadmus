@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-11-24T17:06:28+01:00\n"
+"POT-Creation-Date: 2026-11-27T12:27:49+01:00\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -167,118 +167,126 @@ msgid "SSH"
 msgstr ""
 
 #: src/SUMMARY.md:47
-msgid "Code Style and Linting"
+msgid "Benchmarks"
 msgstr ""
 
 #: src/SUMMARY.md:48
-msgid "Event System"
+msgid "Code Style and Linting"
 msgstr ""
 
 #: src/SUMMARY.md:49
-msgid "Input Pipeline"
+msgid "Event System"
 msgstr ""
 
 #: src/SUMMARY.md:50
-msgid "WiFi Leases"
+msgid "Input Pipeline"
 msgstr ""
 
 #: src/SUMMARY.md:51
-msgid "mDNS"
+msgid "WiFi Leases"
 msgstr ""
 
 #: src/SUMMARY.md:52
-msgid "API"
+msgid "mDNS"
 msgstr ""
 
 #: src/SUMMARY.md:53
-msgid "Device"
+msgid "API"
 msgstr ""
 
 #: src/SUMMARY.md:54
-msgid "Time and RTC"
+msgid "Companion logs"
 msgstr ""
 
 #: src/SUMMARY.md:55
-msgid "Suspend"
+msgid "Device"
 msgstr ""
 
 #: src/SUMMARY.md:56
-msgid "Suspend orchestrator"
+msgid "Time and RTC"
 msgstr ""
 
 #: src/SUMMARY.md:57
-msgid "Soft suspend"
+msgid "Suspend"
 msgstr ""
 
 #: src/SUMMARY.md:58
-msgid "Inhibitor"
+msgid "Suspend orchestrator"
 msgstr ""
 
 #: src/SUMMARY.md:59
-msgid "Kobo suspend"
+msgid "Soft suspend"
 msgstr ""
 
-#: src/SUMMARY.md:60 src/settings/index.md:1172
-msgid "Telemetry"
+#: src/SUMMARY.md:60
+msgid "Inhibitor"
 msgstr ""
 
 #: src/SUMMARY.md:61
-msgid "Logging"
+msgid "Kobo suspend"
 msgstr ""
 
-#: src/SUMMARY.md:62
-msgid "Tracing"
+#: src/SUMMARY.md:62 src/settings/index.md:1172
+msgid "Telemetry"
 msgstr ""
 
 #: src/SUMMARY.md:63
-msgid "Profiling"
+msgid "Logging"
 msgstr ""
 
 #: src/SUMMARY.md:64
-msgid "Website"
+msgid "Tracing"
 msgstr ""
 
 #: src/SUMMARY.md:65
-msgid "User guide"
+msgid "Profiling"
 msgstr ""
 
 #: src/SUMMARY.md:66
-msgid "Translations"
+msgid "Website"
 msgstr ""
 
 #: src/SUMMARY.md:67
-msgid "For developers"
+msgid "User guide"
 msgstr ""
 
 #: src/SUMMARY.md:68
-msgid "SQLite & SQLx"
+msgid "Translations"
 msgstr ""
 
 #: src/SUMMARY.md:69
-msgid "Library Database"
+msgid "For developers"
 msgstr ""
 
 #: src/SUMMARY.md:70
+msgid "SQLite & SQLx"
+msgstr ""
+
+#: src/SUMMARY.md:71
+msgid "Library Database"
+msgstr ""
+
+#: src/SUMMARY.md:72
 msgid "Runtime Migrations"
 msgstr ""
 
-#: src/SUMMARY.md:74
+#: src/SUMMARY.md:76
 msgid "Investigations"
 msgstr ""
 
-#: src/SUMMARY.md:76
+#: src/SUMMARY.md:78
 msgid "Intro"
 msgstr ""
 
-#: src/SUMMARY.md:77
+#: src/SUMMARY.md:79
 msgid "DHCP IP Address Changes on WiFi Toggle"
 msgstr ""
 
-#: src/SUMMARY.md:78
+#: src/SUMMARY.md:80
 msgid "Reading IP and ESSID via dhcpcd-dbus"
 msgstr ""
 
-#: src/SUMMARY.md:79
+#: src/SUMMARY.md:81
 msgid "Soft suspend via autosleep and wake_lock"
 msgstr ""
 
@@ -1025,7 +1033,8 @@ msgstr ""
 msgid "`/mnt/sd/.cadmus/Settings.toml`"
 msgstr ""
 
-#: src/installation/migration.md:117 src/troubleshooting/index.md:3
+#: src/installation/migration.md:117 src/companion.md:40
+#: src/troubleshooting/index.md:3
 msgid "Logs"
 msgstr ""
 
@@ -3728,25 +3737,25 @@ msgid ""
 msgstr ""
 
 #: src/companion.md:3
-msgid "Companion lets you manage Cadmus from a browser on your phone."
+msgid "Companion lets you manage Cadmus from a browser on another device."
 msgstr ""
 
 #: src/companion.md:5
 msgid ""
 "Open the top menu and tap **Companion**. Cadmus opens the Companion view. It "
 "shows a QR Code, the web address of the Companion page, and a 6-digit code. "
-"Scan the QR Code with your phone to open the page."
+"Scan the QR Code with your device to open the page."
 msgstr ""
 
 #: src/companion.md:9
 msgid ""
 "The Companion view shows the web address twice: once by name and once by "
 "number. If the name does not work on your network, type the number address "
-"into your phone's browser instead."
+"into your device's browser instead."
 msgstr ""
 
 #: src/companion.md:13
-msgid "The phone has to join the same Wi-Fi network as the Kobo."
+msgid "The device has to join the same Wi-Fi network as the Kobo."
 msgstr ""
 
 #: src/companion.md:15
@@ -3766,27 +3775,102 @@ msgstr ""
 msgid ""
 "Companion is on only while the Companion view is open. Tap **Stop "
 "Companion** when you are finished. This closes the view and turns Companion "
-"off. Tapping anywhere else on the view does nothing."
+"off."
 msgstr ""
 
-#: src/companion.md:26
+#: src/companion.md:25
 msgid ""
 "Several wrong codes in a row close the Companion view and turn Companion "
 "off. Open Companion again to get a new code."
 msgstr ""
 
-#: src/companion.md:29
+#: src/companion.md:28
 msgid ""
 "Quitting Cadmus turns Companion off too. Connecting the Kobo to a computer "
 "over USB does the same and closes the view. Open Companion again afterwards "
 "to get a new code."
 msgstr ""
 
-#: src/companion.md:33
+#: src/companion.md:32
 msgid ""
-"When the Kobo goes to sleep, the Companion view stays open. After it wakes, "
-"Companion comes back with the same code. If it cannot reconnect, the view "
-"closes."
+"While Companion is on and the battery is at 20% or more, the Kobo does not "
+"go to sleep by itself. On a lower battery, Companion still runs, but the "
+"Kobo may go to sleep by itself. The Companion view says which. Pressing the "
+"power button, closing the cover, or choosing **Suspend** from the menu still "
+"puts it to sleep. The Companion view stays open while the Kobo sleeps, and "
+"after it wakes, Companion comes back with the same code. If it cannot "
+"reconnect, the view closes."
+msgstr ""
+
+#: src/companion.md:42
+msgid ""
+"Open the **Logs** page from the Companion page to read the Cadmus logs on "
+"your Kobo from another device."
+msgstr ""
+
+#: src/companion.md:45
+msgid ""
+"![The Logs page listing the Current run and older "
+"runs](screenshots/companion-logs-list.png)"
+msgstr ""
+
+#: src/companion.md:47
+msgid ""
+"The page lists the logs with the Current run first, then older runs newest "
+"first, and then the Launcher logs. The run that is going now is marked as "
+"the Current run. Open a log to read it."
+msgstr ""
+
+#: src/companion.md:51
+msgid ""
+"Reading a long log can take a while. A spinner shows how far the page has "
+"scanned and the controls stay locked until it is done. Tap **Stop** to end "
+"the scan and keep the lines found so far."
+msgstr ""
+
+#: src/companion.md:55
+msgid ""
+"![A log open in the viewer, with level colours and target "
+"pills](screenshots/companion-logs-viewer.png)"
+msgstr ""
+
+#: src/companion.md:57
+msgid ""
+"Use the level and target filters and the search box to show only the lines "
+"you need. Press Enter in the search box to search. Picking a Log target also "
+"shows its sub-targets, so picking `cadmus_core::device` keeps "
+"`cadmus_core::device::rtc` too. A line longer than 64 KiB is shortened, so "
+"one long entry cannot fill the page."
+msgstr ""
+
+#: src/companion.md:63
+msgid "Tap **Show entry** under a line to see its full JSON record."
+msgstr ""
+
+#: src/companion.md:65
+msgid ""
+"![An expanded log entry showing its JSON "
+"fields](screenshots/companion-logs-entry.png)"
+msgstr ""
+
+#: src/companion.md:67
+msgid ""
+"To save logs, go back to the list, tick one or more logs, and tap "
+"**Download**. Cadmus packs them into one `.zip` file, which your device "
+"saves. The file is not encrypted, so share it only with people you trust."
+msgstr ""
+
+#: src/companion.md:71
+msgid ""
+"![Downloading selected logs, with progress and a Cancel "
+"button](screenshots/companion-logs-download.png)"
+msgstr ""
+
+#: src/companion.md:73
+msgid ""
+"Making the file takes time for a large log. The page shows how much of it is "
+"ready and offers **Cancel**. Leaving the page cancels a download that is in "
+"progress, and so does stopping Companion."
 msgstr ""
 
 #: src/time-sync.md:3
@@ -4408,30 +4492,57 @@ msgid ""
 msgstr ""
 
 #: src/troubleshooting/index.md:80
-msgid "Crashloop recovery"
+msgid "Report a bug with logs"
 msgstr ""
 
 #: src/troubleshooting/index.md:82
+msgid ""
+"To send your logs with a bug report, open the **Logs** page in Companion and "
+"download the run where the problem happened. See [Companion "
+"logs](../companion.md#logs) for what the page shows and how to save a log. "
+"The logs also live in the folder listed in [Where to find Cadmus "
+"logs](#where-to-find-cadmus-logs) if you need to fetch one without Companion."
+msgstr ""
+
+#: src/troubleshooting/index.md:89
+msgid ""
+"If the problem happened in the Cadmus that is running now, restart Cadmus "
+"first: its log is then a finished Run log, complete up to its last line, and "
+"you do not have to **Refresh** it. Attach the `.zip` to your GitHub issue; "
+"GitHub accepts `.zip` files up to 25 MB, so pick only the run with the "
+"problem. If the file is still too big, say so in the issue and ask a "
+"maintainer how to share it."
+msgstr ""
+
+#: src/troubleshooting/index.md:97
+msgid "Files attached to a public issue can be seen by anyone."
+msgstr ""
+
+#: src/troubleshooting/index.md:99
+msgid "Crashloop recovery"
+msgstr ""
+
+#: src/troubleshooting/index.md:101
 msgid ""
 "If Cadmus crashes 3 times in a row, it will exit back to Nickel instead of "
 "restarting. This prevents the device from getting stuck in an infinite loop "
 "of crashes."
 msgstr ""
 
-#: src/troubleshooting/index.md:86
+#: src/troubleshooting/index.md:105
 msgid ""
 "Only unexpected exits count as crashes; quitting Cadmus normally does not."
 msgstr ""
 
-#: src/troubleshooting/index.md:88
+#: src/troubleshooting/index.md:107
 msgid "When this happens:"
 msgstr ""
 
-#: src/troubleshooting/index.md:90
+#: src/troubleshooting/index.md:109
 msgid "Check `info.log` in the Cadmus folder for the panic error"
 msgstr ""
 
-#: src/troubleshooting/index.md:91
+#: src/troubleshooting/index.md:110
 msgid ""
 "The crash counter resets when you start Cadmus manually (using the restart "
 "option in the menu or rebooting)"

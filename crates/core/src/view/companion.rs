@@ -122,13 +122,14 @@ fn stop_metrics(context: &mut AppContext) -> StopMetrics {
     }
 }
 
-/// Companion view: the QR code, the PIN line, the hint, the Stop Companion
-/// button, and the name and number addresses.
+/// Companion view: the QR code, the PIN line, the hint, the name and number
+/// addresses, the line saying whether Companion keeps the device awake, and
+/// the Stop Companion button.
 ///
-/// `children` holds the QR image (0), the hint label (1), and the Stop
-/// Companion button (2). The address lines are not children: `Label` draws at
-/// a fixed size and the addresses may need a smaller one, so `render` draws
-/// them from `url_texts` into `url_rects`.
+/// `children` holds the QR image (0), the hint label (1), the awake label (2),
+/// and the Stop Companion button (3). The address lines are not children:
+/// `Label` draws at a fixed size and the addresses may need a smaller one, so
+/// `render` draws them from `url_texts` into `url_rects`.
 pub(crate) struct CompanionView {
     id: Id,
     rect: Rectangle,
@@ -146,18 +147,26 @@ impl CompanionView {
     /// Builds the view for the current PIN and display.
     ///
     /// `url` is the name address the QR code encodes; `ip_url`, when present,
-    /// is the number address shown below it. Returns `None` when the QR code
-    /// cannot be generated; the caller then simply skips the view instead of
-    /// failing the start.
+    /// is the number address shown below it. `awake` tells the view whether
+    /// Companion holds the Sleep lease: when it does, the awake label says the
+    /// device stays awake, and otherwise that a low battery may let it sleep.
+    /// Returns `None` when the QR code cannot be generated; the caller then
+    /// simply skips the view instead of failing the start.
     pub(crate) fn new(
         context: &mut AppContext,
         url: &str,
         ip_url: Option<&str>,
         pin: &str,
+        awake: bool,
     ) -> Option<CompanionView> {
         let (width, height) = context.display.dims;
         let code_text = fl!("companion-view-code", code = pin).to_string();
         let hint_text = fl!("companion-view-hint").to_string();
+        let awake_text = if awake {
+            fl!("companion-view-awake").to_string()
+        } else {
+            fl!("companion-view-low-battery").to_string()
+        };
         let mut url_texts = vec![url.to_string()];
         url_texts.extend(ip_url.map(str::to_string));
         let mut dialog = CompanionView {
@@ -181,6 +190,9 @@ impl CompanionView {
             .push(Box::new(Image::new(Rectangle::default(), pixmap)) as Box<dyn View>);
         dialog.children.push(
             Box::new(Label::new(Rectangle::default(), hint_text, Align::Center)) as Box<dyn View>,
+        );
+        dialog.children.push(
+            Box::new(Label::new(Rectangle::default(), awake_text, Align::Center)) as Box<dyn View>,
         );
         dialog.children.push(Box::new(Button::new(
             Rectangle::default(),
@@ -222,8 +234,9 @@ impl CompanionView {
         self.url_size = if fits { URL_LARGE_SIZE } else { URL_SMALL_SIZE };
     }
 
-    /// Largest QR pixel size that keeps the code, the PIN, the address lines,
-    /// and the Stop Companion button zone on the screen.
+    /// Largest QR pixel size that keeps the code, the PIN, the hint, the
+    /// address lines, the awake line, and the Stop Companion button zone on
+    /// the screen.
     ///
     /// Depends on the PIN and address sizes, so it runs after
     /// [`Self::pick_pin_size`] and [`Self::pick_url_size`].
@@ -244,14 +257,14 @@ impl CompanionView {
                 font.set_size(self.url_size, dpi);
                 font.line_height().max(0) as u32
             };
-            gap + code_line + hint_line + self.url_texts.len() as u32 * url_line
+            gap + code_line + 2 * hint_line + self.url_texts.len() as u32 * url_line
         };
         let zone = stop_metrics(context).zone() as u32;
         (width / 2).min(height.saturating_sub(zone + 2 * below))
     }
 
-    /// Places the QR image, PIN line, hint label, address lines, and the Stop
-    /// Companion button from the display dimensions.
+    /// Places the QR image, PIN line, hint label, awake label, address lines,
+    /// and the Stop Companion button from the display dimensions.
     ///
     /// The QR block is centered in the area above the button zone; the PIN,
     /// the hint, and the address lines sit directly below it, and the button
@@ -295,9 +308,10 @@ impl CompanionView {
                 .push(rect![0, line_top, width as i32, line_top + url_line]);
             line_top += url_line;
         }
+        *self.children[2].rect_mut() = rect![0, line_top, width as i32, line_top + hint_line];
         let button_left = (width as i32 - stop.width) / 2;
         let button_bottom = height as i32 - stop.padding;
-        *self.children[2].rect_mut() = rect![
+        *self.children[3].rect_mut() = rect![
             button_left,
             button_bottom - stop.height,
             button_left + stop.width,
@@ -507,6 +521,7 @@ mod tests {
             "http://cadmus.local/en/companion/",
             None,
             "123456",
+            true,
         )
         .expect("view builds");
 
@@ -532,10 +547,11 @@ mod tests {
             "http://cadmus.local/en/companion/",
             None,
             "123456",
+            true,
         )
         .expect("view builds");
 
-        let button = view.children[2].rect().center();
+        let button = view.children[3].rect().center();
         let event = Event::Gesture(GestureEvent::Tap(button));
         assert!(
             crate::view::handle_event(&mut view, &event, &hub, &mut bus, &mut rq, &mut context)
@@ -557,6 +573,7 @@ mod tests {
             "http://cadmus.local/en/companion/",
             None,
             "123456",
+            true,
         )
         .expect("view builds");
         assert_eq!(view.url_texts.len(), 1);
@@ -574,11 +591,11 @@ mod tests {
             65535,
             Locale::LOCALE_EN,
         );
-        let view = CompanionView::new(&mut context, &name_url, Some(&ip_url), "123456")
+        let view = CompanionView::new(&mut context, &name_url, Some(&ip_url), "123456", true)
             .expect("view builds");
         assert_eq!(view.url_rects.len(), 2);
 
-        let button_top = view.children[2].rect().min.y;
+        let button_top = view.children[3].rect().min.y;
         let padding = {
             let font = font_from_style(&mut context.fonts, &NORMAL_STYLE, dpi);
             font.em() as i32
@@ -593,6 +610,54 @@ mod tests {
             );
             assert!(rect.max.x <= width as i32, "line stays on the display");
             assert!(rect.max.y <= button_top, "line clears the Stop button");
+        }
+    }
+
+    fn assert_awake_line(context: &mut AppContext, view: &CompanionView, expected: &str) {
+        let dpi = context.device.dpi();
+        let awake = view.children[2]
+            .downcast_ref::<Label>()
+            .expect("the awake line is a label");
+        assert_eq!(awake.text(), expected);
+        let padding = {
+            let font = font_from_style(&mut context.fonts, &NORMAL_STYLE, dpi);
+            font.em() as i32
+        };
+        let text_width = {
+            let font = font_from_style(&mut context.fonts, &NORMAL_STYLE, dpi);
+            font.plan(awake.text(), None, None).width
+        };
+        assert!(
+            text_width <= awake.rect().width() as i32 - padding,
+            "a Label truncates beyond its width less one em: {text_width}"
+        );
+        let last_url = view.url_rects.last().expect("address lines");
+        assert!(awake.rect().min.y >= last_url.max.y, "below the addresses");
+        assert!(
+            awake.rect().max.y <= view.children[3].rect().min.y,
+            "clears the Stop button"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn awake_line_fits_the_narrowest_display_between_the_addresses_and_the_button() {
+        let mut context = create_test_context().await;
+        let (width, _) = context.display.dims;
+        assert_eq!(width, 600, "600 px is the narrowest Kobo display");
+        let name_url = companion_url("cadmus-2", 65535, Locale::LOCALE_EN);
+        let ip_url = companion_ip_url(
+            IpAddr::V4(Ipv4Addr::new(192, 168, 100, 200)),
+            65535,
+            Locale::LOCALE_EN,
+        );
+
+        for (awake, expected) in [
+            (true, fl!("companion-view-awake").to_string()),
+            (false, fl!("companion-view-low-battery").to_string()),
+        ] {
+            let view = CompanionView::new(&mut context, &name_url, Some(&ip_url), "123456", awake)
+                .expect("view builds");
+            assert_awake_line(&mut context, &view, &expected);
         }
     }
 }

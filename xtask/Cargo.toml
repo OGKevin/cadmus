@@ -48,7 +48,7 @@ tokio = { workspace = true, features = [
     "sync",
 ] }
 toml = { version = "1.1.6", default-features = false, features = ["parse", "serde"] }
-zip = { version = "9", default-features = false, features = ["deflate"] }
+zip = { workspace = true, features = ["deflate"] }
 walkdir = "2"
 wildmatch = "2"
 

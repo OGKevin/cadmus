@@ -77,6 +77,25 @@ Kernel logs will then be saved in the same log file as your Cadmus logs.
 > [!NOTE]
 > Kernel logs will use more disk space, so don't forget to turn it back off.
 
+### Report a bug with logs
+
+To send your logs with a bug report, open the **Logs** page in Companion and
+download the run where the problem happened. See
+[Companion logs](../companion.md#logs) for what the page shows and how to save
+a log. The logs also live in the folder listed in
+[Where to find Cadmus logs](#where-to-find-cadmus-logs) if you need to fetch
+one without Companion.
+
+If the problem happened in the Cadmus that is running now, restart Cadmus
+first: its log is then a finished Run log, complete up to its last line, and
+you do not have to **Refresh** it. Attach the `.zip` to your GitHub issue;
+GitHub accepts `.zip` files up to 25 MB, so pick only the run with the problem.
+If the file is still too big, say so in the issue and ask a maintainer how to
+share it.
+
+> [!NOTE]
+> Files attached to a public issue can be seen by anyone.
+
 ## Crashloop recovery
 
 If Cadmus crashes 3 times in a row, it will exit back to Nickel instead of

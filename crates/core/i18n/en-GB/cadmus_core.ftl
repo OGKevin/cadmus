@@ -70,8 +70,10 @@ top-menu-wifi = WiFi
 
 # Companion View
 
+companion-view-awake = Companion keeps this device awake
 companion-view-code = Code: { $code }
 companion-view-hint = Scan to open Companion on your phone
+companion-view-low-battery = Low battery: this device may sleep
 companion-view-stop = Stop Companion
 
 # OTA

@@ -16,6 +16,10 @@ export function companionSettingsHref(locale: string) {
   return `${basePath}/${locale}/companion/#settings`;
 }
 
+export function companionLogsHref(locale: string) {
+  return `${basePath}/${locale}/companion/#logs`;
+}
+
 export function rustApiHref(locale: string) {
   return `${basePath}/${locale}/api/cadmus_core/`;
 }

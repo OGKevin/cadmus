@@ -1,7 +1,7 @@
 //! Device filesystem RPCs shared by public and private listeners.
 
-use super::handler::PublicRpc;
 use super::serve::FILE_CHUNK_BYTES;
+use super::shared_rpc::SharedRpc;
 use crate::document::file_extension::{FileExtension, UnknownFileExtension};
 use cadmus_api_proto::cadmus::api::shared::v1::{
     DirectoryEntry, DirectoryListing, Extension, FileChunk, FileOps, GetFileRequest,
@@ -21,7 +21,7 @@ include!(concat!(env!("OUT_DIR"), "/api_extension_impls.rs"));
 /// limit the static site uses.
 const MAX_FILE_BYTES: u64 = 32 * 1024 * 1024;
 
-impl FileOps for PublicRpc {
+impl FileOps for SharedRpc {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     fn list_directory<'a>(
         &'a self,

@@ -96,9 +96,11 @@ rewrites to that origin and refuses to start without it. Next itself binds `127.
 unless you pass `-H` or `--hostname`. Start the dev server through `npm run dev`, not a
 bare `next dev`, or the rewrites have no origin. The proxy forwards only the RPCs the Companion page uses and refuses anything
 else loudly: an unknown procedure logs the expected list and answers 404, and a request
-whose `content-type` does not match the procedure (JSON for unary calls, `application/connect+json`
-for `FileOps/GetFile`) logs the expected type and answers 415. A mismatch here means the
-website and the proto contract drifted apart, not a transient failure.
+whose `content-type` does not match the procedure (JSON for unary calls,
+`application/connect+json` for the server-streaming `FileOps/GetFile`, `Logs/Summarize`,
+and `Logs/Download`) logs the expected type and answers 415. The proxy streams those
+server-streaming responses to the browser instead of buffering them. A mismatch here
+means the website and the proto contract drifted apart, not a transient failure.
 
 The proxy finds Companion by probing `cadmus` process listeners on Linux, and by `lsof`
 listeners on macOS. A wildcard bind wins (the emulator with Companion opened from the

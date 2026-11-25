@@ -1,6 +1,8 @@
 //! On-demand public companion listener (LAN, port 80 / ephemeral on emulator).
 
 use super::{ApiSession, Command, JOIN_TIMEOUT, LEASE_NAME, serve};
+use crate::device::DevicePaths;
+use crate::device::inhibitor::{InhibitorGuard, Kind};
 use crate::device::wifi::{WifiLease, WifiSession, WifiSessionError};
 use crate::device::{AppContext, EventOutcome};
 use crate::fl;
@@ -13,9 +15,6 @@ use std::sync::atomic::Ordering;
 use thiserror::Error;
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
-
-#[cfg(any(not(debug_assertions), test))]
-use crate::device::DevicePaths;
 
 /// Listen address for the public API.
 ///
@@ -67,14 +66,29 @@ pub(super) struct PendingStart {
     pub(super) job: Job<()>,
 }
 
-/// Public listener job, companion Wi-Fi lease, optional mDNS, and site locale.
+/// Public listener job, companion leases, optional mDNS, and site locale.
 pub(super) struct Running {
     pub(super) job: Job<()>,
     pub(super) lease: WifiLease,
+    /// Keeps autosleep and Auto Suspend from taking the device away from a
+    /// phone that is using Companion. The power button, the cover and the
+    /// menu's Suspend still sleep it, and every way the listener stops drops
+    /// this lease with it.
+    pub(super) awake: Option<InhibitorGuard>,
     pub(super) mdns: Option<crate::mdns::Registration>,
     pub(super) local_addr: SocketAddr,
     pub(super) locale: cadmus_api_proto::cadmus::api::shared::v1::Locale,
     pub(super) ip: Option<IpAddr>,
+}
+
+impl Running {
+    /// Whether Companion holds the Sleep lease that keeps the device awake.
+    ///
+    /// `false` when the battery was too low or unreadable at start, because
+    /// [`acquire_awake_lease`] then returned `None`.
+    pub(super) fn keeps_awake(&self) -> bool {
+        self.awake.is_some()
+    }
 }
 
 /// Open Companion from the main-menu entry.
@@ -216,6 +230,20 @@ pub(super) fn companion_url(context: &AppContext) -> Option<String> {
     ))
 }
 
+/// Whether Companion holds the Sleep lease that keeps the device awake.
+///
+/// `false` until the listener has bound, and whenever the battery refused the
+/// lease at start. The [`CompanionView`](crate::view::companion::CompanionView)
+/// says so, because the device may then sleep by itself while Companion runs.
+#[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
+pub(super) fn companion_keeps_awake(context: &AppContext) -> bool {
+    context
+        .api
+        .public
+        .as_ref()
+        .is_some_and(Running::keeps_awake)
+}
+
 /// Number-based companion page URL, shown on the [`CompanionView`](crate::view::companion::CompanionView) beside the name URL.
 ///
 /// `None` until the listener has bound and the device has an IP address.
@@ -276,7 +304,9 @@ async fn complete_start(
         None
     };
     let file_root = super::file_root(context);
+    let awake = acquire_awake_lease(context);
     let auth_failures = std::sync::Arc::clone(&context.api.auth_failures);
+    let logs = log_sources(context);
     let job = Job::spawn(move |cancel| async move {
         serve::listen(
             cancel,
@@ -287,6 +317,7 @@ async fn complete_start(
                 scope: serve::Scope::Public,
                 file_root,
                 auth_failures,
+                register: register(logs),
             },
             tx,
             hub_for_job,
@@ -295,6 +326,7 @@ async fn complete_start(
         .await;
     });
     context.api.public = Some(Running {
+        awake,
         job,
         lease,
         mdns,
@@ -384,6 +416,36 @@ fn site_root(context: &AppContext) -> std::path::PathBuf {
     context.device.install_path("website")
 }
 
+/// Adds the public-only services, the Companion `Logs` service, to the shared
+/// router.
+fn register(logs: super::logs::LogSources) -> serve::Register {
+    Box::new(move |_shared, router| super::public_rpc::register(router, logs))
+}
+
+/// Where the Companion-only `Logs` service reads from.
+///
+/// Run logs live in the configured logging directory. Kobo also holds the
+/// launcher script's `info.log` and `archive.log` in the install directory.
+fn log_sources(context: &AppContext) -> super::logs::LogSources {
+    super::logs::LogSources::new(
+        context
+            .device
+            .data_path(&context.settings.logging.directory),
+        launcher_log_dir(context),
+        crate::logging::get_run_id().to_owned(),
+    )
+}
+
+#[cfg(feature = "kobo")]
+fn launcher_log_dir(context: &AppContext) -> Option<std::path::PathBuf> {
+    Some(context.device.install_path(""))
+}
+
+#[cfg(not(feature = "kobo"))]
+fn launcher_log_dir(_context: &AppContext) -> Option<std::path::PathBuf> {
+    None
+}
+
 /// Six decimal digits the user types into the companion client.
 ///
 /// The value is the bearer token for the public listener, drawn from the OS
@@ -394,6 +456,20 @@ fn new_token() -> Result<String, StartError> {
     let mut bytes = [0u8; 4];
     getrandom::fill(&mut bytes).map_err(StartError::Rng)?;
     Ok(format!("{:06}", u32::from_le_bytes(bytes) % 1_000_000))
+}
+
+/// Takes the Sleep lease that keeps the device awake while Companion listens.
+///
+/// A failure is logged and Companion still starts: the device may then sleep
+/// by itself, but a phone can still reach it.
+fn acquire_awake_lease(context: &AppContext) -> Option<InhibitorGuard> {
+    match context.inhibitor.acquire(Kind::Sleep, LEASE_NAME) {
+        Ok(guard) => Some(guard),
+        Err(error) => {
+            tracing::warn!(error = %error, "failed to hold the device awake for companion");
+            None
+        }
+    }
 }
 
 /// Address to put in the mDNS A record, if Wi-Fi has one.
