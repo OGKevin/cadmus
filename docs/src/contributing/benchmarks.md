@@ -37,17 +37,6 @@ An unknown name fails before building and prints the available ones. The SSH
 options, the `KOBO_IP` default and the first-connect host key handling are the
 same as for `kobo deploy`; see [SSH](ssh.md).
 
-The command:
-
-1. Cross-builds the benchmark for ARM.
-2. Syncs the stripped binary and the shared libraries it links to
-   `/mnt/onboard/.adds/cadmus-bench/<name>/` with the same rsync engine as
-   `kobo deploy`. The installed Cadmus is not touched, and repeat runs only send
-   what changed.
-3. Runs it there, streaming its output to your terminal.
-4. Copies the criterion output to `target/kobo-bench/<name>/criterion/` and
-   prints the path.
-
 The benchmark gets these environment variables:
 
 - `CADMUS_BENCH_DIR` points at `<name>/scratch` on flash. `/tmp` is RAM on a
@@ -58,7 +47,9 @@ The benchmark gets these environment variables:
 - `LD_LIBRARY_PATH` points at the synced `libs/`.
 
 Plots are not generated on the device: `--noplot` is passed by default, since
-rendering is slow on a Kobo. The numbers are in
+rendering is slow on a Kobo. After the run, the criterion output is transferred
+back from the device to `target/kobo-bench/<name>/criterion/` on the host. The
+numbers are in
 `target/kobo-bench/<name>/criterion/<group>/<bench>/new/estimates.json`, and the
 command prints how to render the HTML report on your machine from that data:
 
@@ -76,12 +67,7 @@ Open `target/kobo-bench/<name>/criterion/report/index.html` afterwards.
 
 ### Writing a benchmark that runs on the device
 
-The benchmark binary runs on the Kobo, not next to the source tree:
-
-- Do not read fixtures through `env!("CARGO_MANIFEST_DIR")` or any other path
-  fixed at compile time; the source tree does not exist on the device.
-- Generate or download fixtures under `CADMUS_BENCH_DIR`, and check the free
-  space there before writing a large file.
-- Keep the scratch data out of `/tmp`.
+The benchmark binary runs on the Kobo, away from the source tree. The rules for
+fixtures and scratch data are in `crates/core/benches/AGENTS.md`.
 
 <!-- i18n:skip-end -->
