@@ -56,8 +56,12 @@ flowchart TD
 mean **enter sleep now** (after prepare), not “start a new cycle”.
 
 Full inhibit defers `start_cycle` as Explicit origin. Sleep defers the Auto
-path only. `FullInhibitCleared` flushes Auto through `start_cycle_from_auto`
-(Sleep still defers) and Explicit through `start_cycle`. Explicit Sleep cycles
+path only. `InhibitCleared(Kind::Full)` flushes Auto through
+`start_cycle_from_auto` and Explicit through `start_cycle`. A start while a
+suspend cycle is in flight is ignored. The last Sleep release flushes a
+deferred Auto through `start_cycle_from_auto`, which re-defers while a Full or
+Sleep lease is held, and leaves a deferred Explicit for the Full release.
+Explicit Sleep cycles
 pause the nested `"sleep-inhibit"` wake lock; kernel wake re-takes it if Sleep is still held — [Inhibitor § Deferred explicit suspend](inhibitor.md#deferred-explicit-suspend).
 
 ## Kind and phase

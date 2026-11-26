@@ -25,7 +25,7 @@
 //!     │ DeepIdle: PollDeepIdleWait until woke|timeout
 //!     ▼
 //! PostWakeDebounce             // WakeDebounce / CalendarUpdate may reenter
-//!     │ finish_cycle() | cancel_prepare() | start_cycle() again
+//!     │ finish_cycle()
 //!     ▼
 //! Interactive
 //! ```
@@ -51,14 +51,14 @@
 //! explicit Auto Suspend / power-button / sleep-cover path once soft suspend is
 //! armed. Classic hard suspend remains when soft suspend is off.
 //!
-//! # Full inhibit
+//! # Inhibitor kinds and deferred suspend
 //!
 //! [`crate::device::inhibitor::Kind::Full`] does **not** cancel an in-flight
 //! cycle. It blocks **starting** one: [`start_cycle`] sets
 //! [`Context::deferred_suspend`](crate::context::Context::deferred_suspend)
 //! and returns. When the last Full holder drops, Kobo posts
-//! [`Event::FullInhibitCleared`](crate::view::Event::FullInhibitCleared) and
-//! the orchestrator flushes that intent: Auto origin rechecks Sleep via
+//! [`Event::InhibitCleared`](crate::view::Event::InhibitCleared) and the
+//! orchestrator flushes that intent: Auto origin rechecks Sleep via
 //! [`start_cycle_from_auto`](orchestrator::start_cycle_from_auto); Explicit
 //! origin still runs `start_cycle`. OTA success sends
 //! [`Event::ClearDeferredSuspend`](crate::view::Event::ClearDeferredSuspend)
@@ -66,7 +66,9 @@
 //!
 //! [`crate::device::inhibitor::Kind::Sleep`] defers only the Auto Suspend path
 //! ([`start_cycle_from_auto`](orchestrator::start_cycle_from_auto)). Explicit
-//! `start_cycle` still runs. Last Sleep drop does not flush deferred suspend.
+//! `start_cycle` still runs. The last Sleep release flushes a deferred Auto
+//! through that path, which re-defers while a Full or Sleep lease is held; a
+//! deferred Explicit waits for the Full release.
 //!
 //! [`crate::device::reschedule_auto_suspend_alarm`] also clears deferred
 //! intent (user activity) without starting a cycle.

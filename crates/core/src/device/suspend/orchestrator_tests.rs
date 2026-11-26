@@ -368,6 +368,68 @@ async fn cancel_suspend_rtc_reschedules_auto_suspend() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn start_cycle_ignored_while_prepare_pending() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+    });
+    assert!(has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
+    if let Some(cycle) = harness.context.suspend.as_mut() {
+        cycle.consecutive_deep_idle_timeouts = 2;
+    }
+
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+    });
+
+    let cycle = harness
+        .context
+        .suspend
+        .as_ref()
+        .expect("the in-flight cycle must survive");
+    assert_eq!(cycle.kind, SuspendKind::Classic);
+    assert_eq!(cycle.consecutive_deep_idle_timeouts, 2);
+    assert_eq!(intermission_count(harness.view.as_ref()), 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn start_cycle_ignored_after_prepare_keeps_suspend_alarm() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+    });
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
+    });
+    assert!(harness.tasks.is_empty());
+    assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::Suspend));
+    if let Some(cycle) = harness.context.suspend.as_mut() {
+        cycle.deep_idle_restore = Some(AutosleepMode::Off);
+    }
+
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+    });
+
+    assert!(
+        harness.tasks.is_empty(),
+        "no second PrepareSuspend may be scheduled"
+    );
+    assert!(
+        lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::Suspend),
+        "the in-flight cycle's Suspend alarm must stay armed"
+    );
+    let cycle = harness
+        .context
+        .suspend
+        .as_ref()
+        .expect("the in-flight cycle must survive");
+    assert_eq!(cycle.kind, SuspendKind::Classic);
+    assert_eq!(cycle.deep_idle_restore, Some(AutosleepMode::Off));
+    assert_eq!(intermission_count(harness.view.as_ref()), 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn stale_suspend_rtc_after_cancel_skips_hardware_sleep() {
     let mut harness = DeviceRuntimeHarness::new().await;
     harness.context.settings.auto_suspend = 30.0;
@@ -1663,7 +1725,7 @@ async fn start_cycle_defers_while_full_inhibit_active() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn full_inhibit_cleared_flushes_deferred_suspend() {
+async fn inhibit_cleared_full_flushes_deferred_suspend() {
     let mut harness = DeviceRuntimeHarness::new().await;
     let full = harness
         .context
@@ -1676,7 +1738,15 @@ async fn full_inhibit_cleared_flushes_deferred_suspend() {
     assert!(harness.context.deferred_suspend.is_some());
     drop(full);
     crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
-        handle_full_inhibit_cleared(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+        handle_inhibit_cleared(
+            Kind::Full,
+            context,
+            runtime.view.as_mut(),
+            hub,
+            bus,
+            rq,
+            runtime.tasks,
+        )
     });
     assert!(harness.context.deferred_suspend.is_none());
     assert!(has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
@@ -1697,7 +1767,15 @@ async fn clear_deferred_suspend_before_full_release_prevents_flush() {
     handle_clear_deferred_suspend(&mut harness.context);
     assert!(harness.context.deferred_suspend.is_none());
     crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
-        handle_full_inhibit_cleared(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+        handle_inhibit_cleared(
+            Kind::Full,
+            context,
+            runtime.view.as_mut(),
+            hub,
+            bus,
+            rq,
+            runtime.tasks,
+        )
     });
     assert!(!has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
 }
@@ -1742,20 +1820,253 @@ async fn start_cycle_runs_while_sleep_inhibit_active() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn sleep_inhibit_drop_does_not_flush_deferred_suspend() {
+async fn inhibit_cleared_sleep_flushes_deferred_auto() {
     let mut harness = DeviceRuntimeHarness::new().await;
     let sleep = harness
         .context
         .inhibitor
-        .acquire(Kind::Sleep, "main-menu")
+        .acquire(Kind::Sleep, "companion")
         .unwrap();
     crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
         start_cycle_from_auto(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
     });
-    assert!(harness.context.deferred_suspend.is_some());
-    drop(sleep);
-    assert!(harness.context.deferred_suspend.is_some());
+    assert_eq!(
+        harness.context.deferred_suspend,
+        Some(DeferredSuspend::Auto)
+    );
     assert!(!has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
+    drop(sleep);
+    assert_eq!(
+        harness.context.deferred_suspend,
+        Some(DeferredSuspend::Auto),
+        "the intent waits for the release event, not the lease drop"
+    );
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_inhibit_cleared(
+            Kind::Sleep,
+            context,
+            runtime.view.as_mut(),
+            hub,
+            bus,
+            rq,
+            runtime.tasks,
+        )
+    });
+    assert!(harness.context.deferred_suspend.is_none());
+    assert!(has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn inhibit_cleared_sleep_after_touch_starts_no_cycle() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    harness.context.settings.auto_suspend = 5.0;
+    let sleep = harness
+        .context
+        .inhibitor
+        .acquire(Kind::Sleep, "companion")
+        .unwrap();
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        start_cycle_from_auto(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+    });
+    assert_eq!(
+        harness.context.deferred_suspend,
+        Some(DeferredSuspend::Auto)
+    );
+    reschedule_auto_suspend_alarm(&mut harness.context);
+    assert!(harness.context.deferred_suspend.is_none());
+    drop(sleep);
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_inhibit_cleared(
+            Kind::Sleep,
+            context,
+            runtime.view.as_mut(),
+            hub,
+            bus,
+            rq,
+            runtime.tasks,
+        )
+    });
+    assert!(harness.context.deferred_suspend.is_none());
+    assert!(harness.context.suspend.is_none());
+    assert!(!has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
+    assert!(
+        lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::AutoSuspend),
+        "the touch restarts the idle delay"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn inhibit_cleared_sleep_with_full_held_redefers_then_full_flushes() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    let sleep = harness
+        .context
+        .inhibitor
+        .acquire(Kind::Sleep, "companion")
+        .unwrap();
+    let full = harness
+        .context
+        .inhibitor
+        .acquire(Kind::Full, "ota")
+        .unwrap();
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        start_cycle_from_auto(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+    });
+    assert_eq!(
+        harness.context.deferred_suspend,
+        Some(DeferredSuspend::Auto)
+    );
+    drop(sleep);
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_inhibit_cleared(
+            Kind::Sleep,
+            context,
+            runtime.view.as_mut(),
+            hub,
+            bus,
+            rq,
+            runtime.tasks,
+        )
+    });
+    assert_eq!(
+        harness.context.deferred_suspend,
+        Some(DeferredSuspend::Auto),
+        "the Full lease holds the Deferred Auto Suspend"
+    );
+    assert!(!has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
+    drop(full);
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_inhibit_cleared(
+            Kind::Full,
+            context,
+            runtime.view.as_mut(),
+            hub,
+            bus,
+            rq,
+            runtime.tasks,
+        )
+    });
+    assert!(harness.context.deferred_suspend.is_none());
+    assert!(has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn inhibit_cleared_sleep_keeps_deferred_explicit_for_full() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    let sleep = harness
+        .context
+        .inhibitor
+        .acquire(Kind::Sleep, "companion")
+        .unwrap();
+    let full = harness
+        .context
+        .inhibitor
+        .acquire(Kind::Full, "ota")
+        .unwrap();
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+    });
+    assert_eq!(
+        harness.context.deferred_suspend,
+        Some(DeferredSuspend::Explicit)
+    );
+    drop(sleep);
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_inhibit_cleared(
+            Kind::Sleep,
+            context,
+            runtime.view.as_mut(),
+            hub,
+            bus,
+            rq,
+            runtime.tasks,
+        )
+    });
+    assert_eq!(
+        harness.context.deferred_suspend,
+        Some(DeferredSuspend::Explicit),
+        "the Sleep release leaves a deferred Explicit suspend for the Full release"
+    );
+    assert!(!has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
+    drop(full);
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_inhibit_cleared(
+            Kind::Full,
+            context,
+            runtime.view.as_mut(),
+            hub,
+            bus,
+            rq,
+            runtime.tasks,
+        )
+    });
+    assert!(harness.context.deferred_suspend.is_none());
+    assert!(has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn inhibit_cleared_sleep_during_cycle_starts_no_second_cycle() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    harness.context.settings.auto_suspend = 5.0;
+    reschedule_auto_suspend_alarm(&mut harness.context);
+    let sleep = harness
+        .context
+        .inhibitor
+        .acquire(Kind::Sleep, "companion")
+        .unwrap();
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        start_cycle_from_auto(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+    });
+    assert_eq!(
+        harness.context.deferred_suspend,
+        Some(DeferredSuspend::Auto)
+    );
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+    });
+    assert_eq!(
+        harness.context.deferred_suspend,
+        Some(DeferredSuspend::Auto),
+        "starting the cycle does not clear the intent"
+    );
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
+    });
+    assert!(harness.tasks.is_empty());
+    assert!(
+        harness.context.suspend.is_some(),
+        "the explicit start must leave a cycle in flight"
+    );
+    assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::Suspend));
+
+    drop(sleep);
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_inhibit_cleared(
+            Kind::Sleep,
+            context,
+            runtime.view.as_mut(),
+            hub,
+            bus,
+            rq,
+            runtime.tasks,
+        )
+    });
+    assert!(harness.context.deferred_suspend.is_none());
+    assert!(
+        harness.context.suspend.is_some(),
+        "the in-flight cycle must survive"
+    );
+    assert!(
+        harness.tasks.is_empty(),
+        "no second PrepareSuspend may be scheduled"
+    );
+    assert!(
+        lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::Suspend),
+        "the in-flight cycle's Suspend alarm must stay armed"
+    );
+    assert!(
+        !lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::AutoSuspend),
+        "no AutoSuspend alarm may wake the device during the cycle"
+    );
 }
 
 fn holds_sleep_inhibit(harness: &DeviceRuntimeHarness) -> bool {
@@ -1867,7 +2178,7 @@ async fn deep_idle_wake_restores_sleep_inhibit_if_sleep_held() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn full_inhibit_cleared_does_not_flush_auto_while_sleep_held() {
+async fn inhibit_cleared_full_does_not_flush_auto_while_sleep_held() {
     let mut harness = DeviceRuntimeHarness::new().await;
     let _sleep = harness
         .context
@@ -1885,14 +2196,22 @@ async fn full_inhibit_cleared_does_not_flush_auto_while_sleep_held() {
     assert!(harness.context.deferred_suspend.is_some());
     drop(full);
     crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
-        handle_full_inhibit_cleared(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+        handle_inhibit_cleared(
+            Kind::Full,
+            context,
+            runtime.view.as_mut(),
+            hub,
+            bus,
+            rq,
+            runtime.tasks,
+        )
     });
     assert!(harness.context.deferred_suspend.is_some());
     assert!(!has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn full_inhibit_cleared_flushes_explicit_while_sleep_held() {
+async fn inhibit_cleared_full_flushes_explicit_while_sleep_held() {
     let mut harness = DeviceRuntimeHarness::new().await;
     let _sleep = harness
         .context
@@ -1910,7 +2229,15 @@ async fn full_inhibit_cleared_flushes_explicit_while_sleep_held() {
     assert!(harness.context.deferred_suspend.is_some());
     drop(full);
     crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
-        handle_full_inhibit_cleared(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+        handle_inhibit_cleared(
+            Kind::Full,
+            context,
+            runtime.view.as_mut(),
+            hub,
+            bus,
+            rq,
+            runtime.tasks,
+        )
     });
     assert!(harness.context.deferred_suspend.is_none());
     assert!(has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));

@@ -2,8 +2,10 @@
 //!
 //! On startup, registers
 //! [`Inhibitor::set_full_release_notifier`](crate::device::inhibitor::Inhibitor::set_full_release_notifier)
-//! so the last [`Kind::Full`](crate::device::inhibitor::Kind::Full) drop posts
-//! [`Event::FullInhibitCleared`]. Power and exit paths consult
+//! and
+//! [`Inhibitor::set_sleep_release_notifier`](crate::device::inhibitor::Inhibitor::set_sleep_release_notifier)
+//! so the last [`Kind::Full`] and [`Kind::Sleep`] drops post
+//! [`Event::InhibitCleared`] naming their kind. Power and exit paths consult
 //! [`Inhibitor::full_active`](crate::device::inhibitor::Inhibitor::full_active).
 
 mod battery;
@@ -20,7 +22,7 @@ use crate::device::DeviceHardware as _;
 use crate::device::DeviceLifecycle;
 use crate::device::DeviceRotation as _;
 use crate::device::battery::Battery as _;
-use crate::device::inhibitor::SoftSuspendName;
+use crate::device::inhibitor::{Kind, SoftSuspendName};
 use crate::device::power::PowerManager;
 use crate::device::reschedule_auto_suspend_alarm;
 use crate::device::schedule_device_task;
@@ -114,11 +116,19 @@ impl DeviceLifecycle for Device {
             context.settings.indicate_autosleep_led,
             std::time::Duration::from_secs_f32(context.settings.autosleep_grace.max(0.0)),
         );
-        let hub_notify = hub.clone();
+        let hub_full = hub.clone();
         context
             .inhibitor
             .set_full_release_notifier(Arc::new(move || {
-                hub_notify.send(Event::FullInhibitCleared.into()).ok();
+                hub_full.send(Event::InhibitCleared(Kind::Full).into()).ok();
+            }));
+        let hub_sleep = hub.clone();
+        context
+            .inhibitor
+            .set_sleep_release_notifier(Arc::new(move || {
+                hub_sleep
+                    .send(Event::InhibitCleared(Kind::Sleep).into())
+                    .ok();
             }));
         if !wants_on {
             context.online = false;
@@ -271,7 +281,7 @@ impl DeviceLifecycle for Device {
             | Event::Suspend
             | Event::PollDeepIdleWait
             | Event::RtcAlarmFired(_)
-            | Event::FullInhibitCleared
+            | Event::InhibitCleared(_)
             | Event::ClearDeferredSuspend => {
                 handle_suspend_event(event, hub, bus, rq, context, runtime).await
             }
