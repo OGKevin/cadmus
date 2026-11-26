@@ -322,7 +322,7 @@ pub fn handle_event<'a>(
 // one of the rectangles in `bgs`. When we're about to render a view, if `wait` is true, we'll wait
 // for all the updates in `updating` that intersect with the view.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(view, ids, rects, bgs, context, updating), fields(wait = wait)))]
-pub fn render(
+pub async fn render(
     view: &dyn View,
     wait: bool,
     ids: &FxHashMap<Id, Vec<Rectangle>>,
@@ -345,20 +345,25 @@ pub fn render(
             let render_rect = view.render_rect(&rect);
 
             if wait {
-                updating.retain(|update| {
+                let mut retained = Vec::new();
+                for update in std::mem::take(updating) {
                     let overlaps = render_rect.overlaps(&update.rect);
                     if overlaps && !update.has_completed() {
                         context
                             .device
                             .framebuffer()
                             .wait(update.token)
+                            .await
                             .map_err(|e| {
                                 error!("Can't wait for {}, {}: {:#}", update.token, update.rect, e)
                             })
                             .ok();
                     }
-                    !overlaps
-                });
+                    if !overlaps {
+                        retained.push(update);
+                    }
+                }
+                *updating = retained;
             }
 
             view.render(context, rect);
@@ -404,12 +409,21 @@ pub fn render(
     }
 
     for i in 0..view.len() {
-        render(view.child(i), wait, ids, rects, bgs, context, updating);
+        Box::pin(render(
+            view.child(i),
+            wait,
+            ids,
+            rects,
+            bgs,
+            context,
+            updating,
+        ))
+        .await;
     }
 }
 
 #[inline]
-pub fn process_render_queue(
+pub async fn process_render_queue(
     view: &dyn View,
     rq: &mut RenderQueue,
     context: &mut AppContext,
@@ -428,7 +442,7 @@ pub fn process_render_queue(
             }
         }
 
-        render(view, wait, &ids, &mut rects, &mut bgs, context, updating);
+        render(view, wait, &ids, &mut rects, &mut bgs, context, updating).await;
 
         for rect in rects {
             match context.device.framebuffer_mut().update(&rect, mode) {
@@ -448,7 +462,7 @@ pub fn process_render_queue(
 }
 
 #[inline]
-pub fn wait_for_all(updating: &mut Vec<UpdateData>, context: &mut AppContext) {
+pub async fn wait_for_all(updating: &mut Vec<UpdateData>, context: &mut AppContext) {
     for update in updating.drain(..) {
         if update.has_completed() {
             continue;
@@ -457,6 +471,7 @@ pub fn wait_for_all(updating: &mut Vec<UpdateData>, context: &mut AppContext) {
             .device
             .framebuffer()
             .wait(update.token)
+            .await
             .map_err(|e| error!("Can't wait for {}, {}: {:#}", update.token, update.rect, e))
             .ok();
     }
@@ -638,6 +653,12 @@ pub enum Event {
     Suspend,
     /// Advance a non-blocking soft-suspend deep-idle wait (sleep detect / timeout).
     PollDeepIdleWait,
+    /// A synthetic radio reconciliation completed with association, tagged
+    /// with the generation that scheduled it. The Kobo main loop drops stale
+    /// completions and converts current ones to `NetUp` at their original FIFO
+    /// position before delivering them to consumers; genuine `NetUp` events are
+    /// never filtered by this generation.
+    WifiReconciled(u64),
     Share,
     PrepareShare,
     Validate,

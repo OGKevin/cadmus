@@ -117,7 +117,8 @@ impl Home {
             TopBarVariant::Search(Event::Toggle(ToggleEvent::View(ViewId::SearchBar))),
             sort_method.title(),
             context,
-        );
+        )
+        .await;
         children.push(Box::new(top_bar) as Box<dyn View>);
 
         let separator = Filler::new(
@@ -2078,7 +2079,7 @@ impl Home {
             .await;
 
         if let Some(top_bar) = self.child_mut(0).downcast_mut::<TopBar>() {
-            top_bar.reseed(&mut RenderQueue::new(), context);
+            top_bar.reseed(&mut RenderQueue::new(), context).await;
         }
 
         rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
@@ -2201,11 +2202,11 @@ impl View for Home {
                 true
             }
             Event::ToggleNear(ViewId::MainMenu, rect) => {
-                toggle_main_menu(self, rect, None, rq, context);
+                toggle_main_menu(self, rect, None, rq, context).await;
                 true
             }
             Event::ToggleNear(ViewId::BatteryMenu, rect) => {
-                toggle_battery_menu(self, rect, None, rq, context);
+                toggle_battery_menu(self, rect, None, rq, context).await;
                 true
             }
             Event::ToggleNear(ViewId::ClockMenu, rect) => {
@@ -2237,7 +2238,7 @@ impl View for Home {
                 true
             }
             Event::Close(ViewId::MainMenu) => {
-                toggle_main_menu(self, Rectangle::default(), Some(false), rq, context);
+                toggle_main_menu(self, Rectangle::default(), Some(false), rq, context).await;
                 true
             }
             Event::Close(ViewId::GoToPage) => {

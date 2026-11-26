@@ -44,7 +44,7 @@ async fn prepare_usb_share(
             .handle_event(&Event::Back, hub, bus, rq, context)
             .await;
         if item.rotation != context.display.rotation {
-            wait_for_all(updating, context);
+            wait_for_all(updating, context).await;
             if context.set_rotation(item.rotation).is_ok() {
                 context
                     .device
@@ -56,6 +56,7 @@ async fn prepare_usb_share(
     }
     settings_manager
         .save(&context.settings)
+        .await
         .map_err(|error| tracing::error!(error = %error, "Can't save settings"))
         .ok();
     context.database.close().await;
@@ -64,7 +65,7 @@ async fn prepare_usb_share(
     }
 
     if context.settings.frontlight {
-        context.set_frontlight(false);
+        context.set_frontlight(false).await;
     }
     #[cfg(not(feature = "test"))]
     if context.settings.wifi != crate::settings::WifiMode::Off {

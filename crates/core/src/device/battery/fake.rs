@@ -7,6 +7,7 @@
 
 use super::{Battery, Status};
 use anyhow::Error;
+use async_trait::async_trait;
 use std::sync::Mutex;
 
 /// Configurable single-cell battery for emulator and test devices.
@@ -40,14 +41,15 @@ impl FakeBattery {
     }
 }
 
+#[async_trait]
 impl Battery for FakeBattery {
-    fn capacity(&self) -> Result<Vec<f32>, Error> {
+    async fn capacity(&self) -> Result<Vec<f32>, Error> {
         Ok(vec![
             *self.capacity.lock().unwrap_or_else(|e| e.into_inner()),
         ])
     }
 
-    fn status(&self) -> Result<Vec<Status>, Error> {
+    async fn status(&self) -> Result<Vec<Status>, Error> {
         Ok(vec![*self.status.lock().unwrap_or_else(|e| e.into_inner())])
     }
 }
@@ -57,24 +59,24 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
-    #[test]
-    fn shared_read_returns_default_capacity() {
+    #[tokio::test]
+    async fn shared_read_returns_default_capacity() {
         let battery = FakeBattery::new();
-        assert_eq!(battery.capacity().unwrap(), vec![50.0]);
-        assert_eq!(battery.status().unwrap(), vec![Status::Discharging]);
+        assert_eq!(battery.capacity().await.unwrap(), vec![50.0]);
+        assert_eq!(battery.status().await.unwrap(), vec![Status::Discharging]);
     }
 
-    #[test]
-    fn set_capacity_visible_through_shared_read() {
+    #[tokio::test]
+    async fn set_capacity_visible_through_shared_read() {
         let battery = FakeBattery::new();
         battery.set_capacity(12.0);
-        assert_eq!(battery.capacity().unwrap(), vec![12.0]);
+        assert_eq!(battery.capacity().await.unwrap(), vec![12.0]);
     }
 
-    #[test]
-    fn arc_shared_capacity_read() {
+    #[tokio::test]
+    async fn arc_shared_capacity_read() {
         let battery = Arc::new(FakeBattery::new());
         let cloned = Arc::clone(&battery);
-        assert_eq!(cloned.capacity().unwrap(), vec![50.0]);
+        assert_eq!(cloned.capacity().await.unwrap(), vec![50.0]);
     }
 }

@@ -276,7 +276,7 @@ mod tests {
     #[cfg(target_os = "linux")]
     async fn power_includes_soft_suspend_settings_when_supported() {
         let mut context = create_test_context().await;
-        let _linux = crate::context::test_helpers::install_linux_soft_suspend(&mut context);
+        let _linux = crate::context::test_helpers::install_linux_soft_suspend(&mut context).await;
         let identities: Vec<_> = Category::Power
             .settings(&context, None)
             .await

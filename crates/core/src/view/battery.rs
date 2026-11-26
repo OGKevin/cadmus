@@ -36,16 +36,18 @@ impl Battery {
         }
     }
 
-    pub fn update(&mut self, rq: &mut RenderQueue, context: &mut AppContext) {
+    pub async fn update(&mut self, rq: &mut RenderQueue, context: &mut AppContext) {
         self.capacity = context
             .device
             .battery()
             .capacity()
+            .await
             .map_or(self.capacity, |v| v[0]);
         self.status = context
             .device
             .battery()
             .status()
+            .await
             .map_or(self.status, |v| v[0]);
         rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
     }
@@ -65,7 +67,7 @@ impl View for Battery {
     ) -> bool {
         match *evt {
             Event::BatteryTick => {
-                self.update(rq, context);
+                self.update(rq, context).await;
                 true
             }
             Event::Gesture(GestureEvent::Tap(center)) if self.rect.includes(center) => {

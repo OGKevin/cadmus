@@ -54,15 +54,17 @@ impl Intermission {
                 IntermissionDisplay::BlankInverted => (Message::Fill(BLACK), Vec::new()),
                 IntermissionDisplay::Image(path) => (Message::Image(path.clone()), Vec::new()),
                 IntermissionDisplay::Calendar => {
-                    let minutes_until_poweroff = context
-                        .alarm_manager
-                        .as_ref()
-                        .and_then(|am| {
-                            am.lock()
-                                .ok()
-                                .and_then(|guard| guard.time_until_alarm(AlarmType::AutoPowerOff))
-                        })
-                        .map(|secs| secs / 60);
+                    let minutes_until_poweroff = match context.alarm_manager.as_ref() {
+                        Some(alarm_manager) => {
+                            alarm_manager
+                                .lock()
+                                .await
+                                .time_until_alarm(AlarmType::AutoPowerOff)
+                                .await
+                        }
+                        None => None,
+                    }
+                    .map(|secs| secs / 60);
                     let child = CalendarView::new(rect, minutes_until_poweroff, halt);
                     (Message::Calendar, vec![Box::new(child) as Box<dyn View>])
                 }

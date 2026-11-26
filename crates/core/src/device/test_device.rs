@@ -20,8 +20,13 @@ use crate::view::{Bus, Event, Hub, RenderQueue};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-#[derive(Debug)]
 struct TestWifiState {
+    on_enable: Option<Box<dyn FnOnce() + Send + 'static>>,
+    #[cfg(all(test, target_os = "linux"))]
+    on_disable: Option<(
+        tokio::sync::oneshot::Sender<()>,
+        tokio::sync::oneshot::Receiver<()>,
+    )>,
     enabled: Option<bool>,
     enable_calls: u32,
     disable_calls: u32,
@@ -31,7 +36,10 @@ struct TestWifiState {
 impl Default for TestWifiState {
     fn default() -> Self {
         Self {
+            on_enable: None,
             enabled: None,
+            #[cfg(all(test, target_os = "linux"))]
+            on_disable: None,
             enable_calls: 0,
             disable_calls: 0,
             network_info: Err(crate::device::wifi::WifiError::Disabled),
@@ -70,8 +78,31 @@ impl TestWifiManager {
         self.state.lock().map(|s| s.disable_calls).unwrap_or(0)
     }
 
+    pub fn set_on_enable(&self, hook: impl FnOnce() + Send + 'static) {
+        if let Ok(mut state) = self.state.lock() {
+            state.on_enable = Some(Box::new(hook));
+        }
+    }
+
     pub fn was_disable_called(&self) -> bool {
         self.disable_call_count() > 0
+    }
+
+    /// Returns a notification of the next disable and the sender that releases
+    /// its transition to the disabled state.
+    #[cfg(all(test, target_os = "linux"))]
+    pub(crate) fn set_on_disable(
+        &self,
+    ) -> (
+        tokio::sync::oneshot::Receiver<()>,
+        tokio::sync::oneshot::Sender<()>,
+    ) {
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (released_tx, released_rx) = tokio::sync::oneshot::channel();
+        if let Ok(mut state) = self.state.lock() {
+            state.on_disable = Some((started_tx, released_rx));
+        }
+        (started_rx, released_tx)
     }
 
     /// Sets the value returned by subsequent [`network_info`](crate::device::wifi::WifiManager::network_info) calls.
@@ -103,14 +134,32 @@ impl Default for TestWifiManager {
 #[async_trait::async_trait]
 impl crate::device::wifi::WifiManager for TestWifiManager {
     async fn enable(&self) -> Result<(), crate::device::wifi::WifiError> {
-        if let Ok(mut state) = self.state.lock() {
-            state.enabled = Some(true);
-            state.enable_calls += 1;
+        let hook = match self.state.lock() {
+            Ok(mut state) => {
+                state.enabled = Some(true);
+                state.enable_calls += 1;
+                state.on_enable.take()
+            }
+            Err(_) => None,
+        };
+        if let Some(hook) = hook {
+            hook();
         }
         Ok(())
     }
 
     async fn disable(&self) -> Result<(), crate::device::wifi::WifiError> {
+        #[cfg(all(test, target_os = "linux"))]
+        {
+            let gate = match self.state.lock() {
+                Ok(mut state) => state.on_disable.take(),
+                Err(_) => None,
+            };
+            if let Some((started, released)) = gate {
+                started.send(()).expect("notify disable start");
+                released.await.expect("release fake disable");
+            }
+        }
         if let Ok(mut state) = self.state.lock() {
             state.enabled = Some(false);
             state.disable_calls += 1;
@@ -239,7 +288,7 @@ impl crate::device::usb::UsbManager for TestUsbManager {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 struct TestPowerState {
     suspend_calls: u32,
     resume_calls: u32,
@@ -248,6 +297,12 @@ struct TestPowerState {
     suspend_fails: bool,
     wake_lock_probe: Option<PathBuf>,
     wake_lock_at_suspend: Option<String>,
+    on_prepare_suspend: Option<Box<dyn FnOnce() + Send + 'static>>,
+    on_suspend: Option<Box<dyn FnOnce() + Send + 'static>>,
+    resume_gate: Option<(
+        tokio::sync::oneshot::Sender<()>,
+        tokio::sync::oneshot::Receiver<()>,
+    )>,
 }
 
 /// Assertable power manager test double.
@@ -301,6 +356,39 @@ impl TestPowerManager {
         self.resume_call_count() > 0
     }
 
+    /// Installs a one-shot callback run inside `prepare_suspend`, letting tests
+    /// arbitrate a Full acquisition during Classic preparation deterministically.
+    pub fn set_on_prepare_suspend(&self, hook: impl FnOnce() + Send + 'static) {
+        if let Ok(mut state) = self.state.lock() {
+            state.on_prepare_suspend = Some(Box::new(hook));
+        }
+    }
+
+    /// Installs a one-shot callback run at the start of the kernel sleep write,
+    /// letting tests hold the commit in flight before releasing it.
+    pub fn set_on_suspend(&self, hook: impl FnOnce() + Send + 'static) {
+        if let Ok(mut state) = self.state.lock() {
+            state.on_suspend = Some(Box::new(hook));
+        }
+    }
+
+    /// Installs a one-shot asynchronous barrier inside `resume`, ahead of the
+    /// disarm it delegates to. Returns a receiver that fires when `resume` has
+    /// been entered and a sender that releases it.
+    pub fn set_resume_barrier(
+        &self,
+    ) -> (
+        tokio::sync::oneshot::Receiver<()>,
+        tokio::sync::oneshot::Sender<()>,
+    ) {
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+        if let Ok(mut state) = self.state.lock() {
+            state.resume_gate = Some((started_tx, release_rx));
+        }
+        (started_rx, release_tx)
+    }
+
     /// Captures a sysfs wake-lock node at the moment `suspend` is called.
     pub fn set_wake_lock_probe(&self, path: PathBuf) {
         if let Ok(mut state) = self.state.lock() {
@@ -324,16 +412,37 @@ impl Default for TestPowerManager {
 }
 
 impl crate::device::power::PowerManager for TestPowerManager {
-    fn suspend(&self) -> Result<(), crate::device::power::PowerError> {
-        let (fails, probe) = match self.state.lock() {
+    async fn prepare_suspend(&self) -> Result<(), crate::device::power::PowerError> {
+        self.arm_deep_idle().await?;
+        let hook = self
+            .state
+            .lock()
+            .ok()
+            .and_then(|mut state| state.on_prepare_suspend.take());
+        if let Some(hook) = hook {
+            hook();
+        }
+        Ok(())
+    }
+
+    async fn suspend(&self) -> Result<(), crate::device::power::PowerError> {
+        let (fails, probe, hook) = match self.state.lock() {
             Ok(mut state) => {
                 state.suspend_calls += 1;
-                (state.suspend_fails, state.wake_lock_probe.clone())
+                (
+                    state.suspend_fails,
+                    state.wake_lock_probe.clone(),
+                    state.on_suspend.take(),
+                )
             }
-            Err(_) => (false, None),
+            Err(_) => (false, None, None),
         };
+        if let Some(hook) = hook {
+            hook();
+        }
         if let Some(path) = probe {
-            let value = std::fs::read_to_string(path)
+            let value = tokio::fs::read_to_string(path)
+                .await
                 .ok()
                 .map(|value| value.trim().to_owned());
             if let Ok(mut state) = self.state.lock() {
@@ -348,21 +457,35 @@ impl crate::device::power::PowerManager for TestPowerManager {
         Ok(())
     }
 
-    fn resume(&self) -> Result<(), crate::device::power::PowerError> {
-        if let Ok(mut state) = self.state.lock() {
-            state.resume_calls += 1;
+    async fn resume(&self) -> Result<(), crate::device::power::PowerError> {
+        let gate = match self.state.lock() {
+            Ok(mut state) => {
+                state.resume_calls += 1;
+                state.resume_gate.take()
+            }
+            Err(_) => return Err(crate::device::power::PowerError::LockPoisoned),
+        };
+        if let Some((started, release)) = gate {
+            started.send(()).map_err(|()| {
+                crate::device::power::PowerError::Io(std::io::Error::other(
+                    "resume barrier start receiver dropped",
+                ))
+            })?;
+            release.await.map_err(|error| {
+                crate::device::power::PowerError::Io(std::io::Error::other(error))
+            })?;
         }
-        Ok(())
+        self.disarm_deep_idle().await
     }
 
-    fn arm_deep_idle(&self) -> Result<(), crate::device::power::PowerError> {
+    async fn arm_deep_idle(&self) -> Result<(), crate::device::power::PowerError> {
         if let Ok(mut state) = self.state.lock() {
             state.arm_deep_idle_calls += 1;
         }
         Ok(())
     }
 
-    fn disarm_deep_idle(&self) -> Result<(), crate::device::power::PowerError> {
+    async fn disarm_deep_idle(&self) -> Result<(), crate::device::power::PowerError> {
         if let Ok(mut state) = self.state.lock() {
             state.disarm_deep_idle_calls += 1;
         }

@@ -35,7 +35,7 @@ pub trait Rtc: Send + Sync {
     /// # Errors
     ///
     /// Returns an error when the alarm state cannot be read.
-    fn alarm(&self) -> Result<RtcWkalrm, Error>;
+    fn alarm(&self) -> impl Future<Output = Result<RtcWkalrm, Error>> + Send;
 
     /// Returns the wake-alarm slot as the kernel reports it.
     ///
@@ -56,7 +56,10 @@ pub trait Rtc: Send + Sync {
     ///
     /// Returns an error when the alarm cannot be programmed. On success, returns
     /// an implementation-defined status code (often zero).
-    fn set_alarm(&self, wake_time: DateTime<Utc>) -> Result<i32, Error>;
+    fn set_alarm(
+        &self,
+        wake_time: DateTime<Utc>,
+    ) -> impl Future<Output = Result<i32, Error>> + Send;
 
     /// Disables the wake alarm without clearing the stored wake time.
     ///
@@ -66,7 +69,7 @@ pub trait Rtc: Send + Sync {
     ///
     /// Returns an error when the alarm cannot be disabled. On success, returns
     /// an implementation-defined status code (often zero).
-    fn disable_alarm(&self) -> Result<i32, Error>;
+    fn disable_alarm(&self) -> impl Future<Output = Result<i32, Error>> + Send;
 
     /// Returns the current RTC time in UTC.
     ///
@@ -74,7 +77,7 @@ pub trait Rtc: Send + Sync {
     ///
     /// Returns an error when the clock cannot be read or the stored fields are
     /// invalid.
-    fn read_time(&self) -> Result<DateTime<Utc>, Error>;
+    fn read_time(&self) -> impl Future<Output = Result<DateTime<Utc>, Error>> + Send;
 
     /// Sets the RTC to `time`.
     ///
@@ -86,7 +89,7 @@ pub trait Rtc: Send + Sync {
     /// # Errors
     ///
     /// Returns an error when the clock cannot be updated.
-    fn set_time(&self, time: DateTime<Utc>) -> Result<(), Error>;
+    fn set_time(&self, time: DateTime<Utc>) -> impl Future<Output = Result<(), Error>> + Send;
 
     /// Returns the RTC offset from the civil system clock (`RTC_now − system_now`).
     ///
@@ -133,7 +136,7 @@ pub trait Rtc: Send + Sync {
 }
 
 impl<T: Rtc + ?Sized> Rtc for std::sync::Arc<T> {
-    fn alarm(&self) -> Result<RtcWkalrm, Error> {
+    fn alarm(&self) -> impl Future<Output = Result<RtcWkalrm, Error>> + Send {
         (**self).alarm()
     }
 
@@ -141,19 +144,22 @@ impl<T: Rtc + ?Sized> Rtc for std::sync::Arc<T> {
         (**self).wake_alarm()
     }
 
-    fn set_alarm(&self, wake_time: DateTime<Utc>) -> Result<i32, Error> {
+    fn set_alarm(
+        &self,
+        wake_time: DateTime<Utc>,
+    ) -> impl Future<Output = Result<i32, Error>> + Send {
         (**self).set_alarm(wake_time)
     }
 
-    fn disable_alarm(&self) -> Result<i32, Error> {
+    fn disable_alarm(&self) -> impl Future<Output = Result<i32, Error>> + Send {
         (**self).disable_alarm()
     }
 
-    fn read_time(&self) -> Result<DateTime<Utc>, Error> {
+    fn read_time(&self) -> impl Future<Output = Result<DateTime<Utc>, Error>> + Send {
         (**self).read_time()
     }
 
-    fn set_time(&self, time: DateTime<Utc>) -> Result<(), Error> {
+    fn set_time(&self, time: DateTime<Utc>) -> impl Future<Output = Result<(), Error>> + Send {
         (**self).set_time(time)
     }
 

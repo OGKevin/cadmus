@@ -31,21 +31,25 @@ impl StandardFrontlight {
     }
 }
 
+#[async_trait::async_trait]
 impl Frontlight for StandardFrontlight {
     /// # SAFETY
-    /// `self.interface` is an open `/dev/ntx_io` handle owned by this
-    /// `StandardFrontlight`, so `as_raw_fd()` yields a valid descriptor for the
-    /// duration of the call. The ioctl request code and integer payload match the
-    /// kernel frontlight brightness interface expected by `write_frontlight_intensity`.
-    fn set_intensity(&mut self, value: LightLevel) -> Result<(), Error> {
-        unsafe {
-            write_frontlight_intensity(self.interface.as_raw_fd(), libc::c_int::from(value))
-        }?;
+    /// The duplicated `/dev/ntx_io` descriptor is owned by the blocking closure,
+    /// so it remains valid until the ioctl returns, even if the caller stops
+    /// waiting. The ioctl request code and integer payload match the kernel
+    /// frontlight brightness interface expected by `write_frontlight_intensity`.
+    async fn set_intensity(&mut self, value: LightLevel) -> Result<(), Error> {
+        let file = self.interface.try_clone()?;
+        crate::runtime::spawn_blocking(move || unsafe {
+            write_frontlight_intensity(file.as_raw_fd(), libc::c_int::from(value))
+        })
+        .await
+        .map_err(Error::new)??;
         self.value = value;
         Ok(())
     }
 
-    fn set_warmth(&mut self, _value: LightLevel) -> Result<(), Error> {
+    async fn set_warmth(&mut self, _value: LightLevel) -> Result<(), Error> {
         Ok(())
     }
 

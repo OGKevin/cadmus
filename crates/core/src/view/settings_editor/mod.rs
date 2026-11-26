@@ -53,6 +53,7 @@
 //! // that do not exist in the codebase — it illustrates the pattern to follow.
 //! pub struct MyNewSetting;
 //!
+//! #[async_trait::async_trait(?Send)]
 //! impl SettingKind for MyNewSetting {
 //!     fn identity(&self) -> SettingIdentity {
 //!         SettingIdentity::MyNewSetting
@@ -200,12 +201,8 @@ impl SettingsEditor {
         let (bar_height, separator_thickness, separator_top_half, separator_bottom_half) =
             Self::calculate_dimensions(context.device.dpi());
 
-        children.push(Self::build_top_bar(
-            &rect,
-            bar_height,
-            separator_top_half,
-            context,
-        ));
+        let top_bar = Self::build_top_bar(&rect, bar_height, separator_top_half, context).await;
+        children.push(top_bar);
 
         children.push(Self::build_top_separator(
             &rect,
@@ -291,7 +288,7 @@ impl SettingsEditor {
         )
     }
 
-    fn build_top_bar(
+    async fn build_top_bar(
         rect: &Rectangle,
         bar_height: i32,
         separator_top_half: i32,
@@ -307,7 +304,8 @@ impl SettingsEditor {
             TopBarVariant::Back,
             "Settings".to_string(),
             context,
-        );
+        )
+        .await;
         Box::new(top_bar) as Box<dyn View>
     }
 
@@ -437,16 +435,16 @@ impl View for SettingsEditor {
                 )
             }
             Event::ToggleNear(ViewId::MainMenu, rect) => {
-                toggle_main_menu(self, *rect, None, rq, context);
+                toggle_main_menu(self, *rect, None, rq, context).await;
                 true
             }
             Event::Close(ViewId::MainMenu) => {
-                toggle_main_menu(self, Rectangle::default(), Some(false), rq, context);
+                toggle_main_menu(self, Rectangle::default(), Some(false), rq, context).await;
                 true
             }
             Event::Close(view_id) => match view_id {
                 ViewId::MainMenu => {
-                    toggle_main_menu(self, Rectangle::default(), Some(false), rq, context);
+                    toggle_main_menu(self, Rectangle::default(), Some(false), rq, context).await;
                     true
                 }
                 ViewId::FileChooser => {

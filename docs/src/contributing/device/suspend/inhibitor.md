@@ -2,9 +2,9 @@
 
 # Inhibitor
 
-Caller-facing API for acquiring inhibitor guards. Acquires go through
+Caller-facing API for acquiring inhibitor guards. Acquires are async: call
 <a href="/api/cadmus_core/device/inhibitor/struct.Inhibitor.html#method.acquire">`Inhibitor::acquire`</a>
-with `Kind::SoftSuspend`, `Kind::Sleep`, or `Kind::Full`.
+with `Kind::SoftSuspend`, `Kind::Sleep`, or `Kind::Full` and `.await?` it.
 
 Implementation: `crates/core/src/device/inhibitor/`.
 
@@ -50,7 +50,7 @@ for the lifetime of the work or UI. Dropping it releases the lease.
   is open:
 
   ```rust
-  let _guard = inhibitor.acquire(Kind::Sleep, "main-menu")?;
+  let _guard = inhibitor.acquire(Kind::Sleep, "main-menu").await?;
   ```
 
 - <a href="/api/cadmus_core/device/inhibitor/enum.Kind.html#variant.Full">`Kind::Full`</a>
@@ -80,6 +80,31 @@ when capacity cannot be read or the first reported cell is below 20% (the Kobo
 `KoboRoot` install floor). One threshold serves both kinds. `Kind::SoftSuspend`
 is never battery-gated.
 
+### Wake-lock write failures
+
+Wake-lock reconciliation uses one writer: demand is recomputed after every
+completed sysfs write, and only that write changes `held`. Pause reports
+`Paused(epoch)`, `BlockedByFull`, or `UnlockFailed`; resume reports `Restored`,
+`Unheld`, `RestoreFailed`, or `WorkerFailed` (the control worker stopped or
+closed its request channel). A missing live sysfs node is an error, not a NoOp
+success. A Full acquire with unconfirmed kernel protection fails rather than
+letting critical work run unprotected.
+
+A failed restore queues at most three backend retries (100, 200, and 400 ms),
+with demand recomputed each time, even if the only holder never reacquires.
+Obsolete work is cancelled after lease loss, fresh suppression, convergence,
+or shutdown. Exhaustion retains the mismatch for a later explicit resume or
+acquisition. Cycle finish and a Classic commit stop and drain any in-flight
+suppression leg before starting another one.
+
+`acquire` is the async acquisition path for main-loop, input, cycle, and
+shutdown leases. Lease registration is cheap; hardware confirmation is awaited
+through dedicated control workers. Lease drops update intent and notify the
+reconcile worker, including zero grace, so hardware I/O does not block event
+dispatch. At application shutdown, `Inhibitor::shutdown` requests final release
+and awaits the control worker's result; dropping the backend does not perform a
+blocking write on the dropping thread.
+
 ## Deferred explicit suspend
 
 While any Full holder is active,
@@ -92,9 +117,21 @@ queues **Auto** while Full or Sleep is held. Explicit `start_cycle` (cover,
 power button, menu Suspend) still runs during Sleep. The shared `cadmus` lock
 is suppressed at the kernel-sleep boundary and re-acquired on wake if any
 SoftSuspend holder remains, including the nested `"sleep-inhibit"` lease while
-Sleep holders remain. If a worker acquires Full after a cycle starts, the
-orchestrator aborts the cycle before kernel sleep and queues Explicit deferred
-intent.
+Sleep holders remain.
+
+If a worker acquires Full after a cycle starts, the orchestrator aborts the
+cycle before kernel sleep during preparation or a DeepIdle wait. A Classic
+commit holds the Full suspend gate from its final Full recheck through `mem`,
+wake, peripheral cleanup, and wake-lock restoration, and `Kind::Full` acquire
+takes the same gate. A Full acquire during a held Classic gate therefore waits
+for it, cannot interrupt the write, and the abort happens after wake and
+cleanup if Full is still held; a Full holder acquired before the gate is seen
+aborts before `mem`.
+
+The abort preserves the cycle's current origin and any newer queued request:
+Auto remains Auto, while Explicit wins over Auto. If Full has already cleared,
+the intent is flushed immediately; otherwise it waits for
+`FullInhibitCleared`.
 
 When the last Full holder drops, Kobo posts
 <a href="/api/cadmus_core/view/enum.Event.html#variant.InhibitCleared">`Event::InhibitCleared(Kind::Full)`</a>;

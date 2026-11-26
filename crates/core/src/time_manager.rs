@@ -123,7 +123,7 @@ impl<R: Rtc> TimeManager<R> {
         manual: bool,
         geolocation: Option<GeoLocation>,
         hub: &crate::view::Hub,
-        alarm_manager: &Arc<Mutex<AlarmManager<R>>>,
+        alarm_manager: &Arc<tokio::sync::Mutex<AlarmManager<R>>>,
     ) -> Result<(), Error> {
         let timezone_ok = match self.detect_and_set_timezone(geolocation).await {
             Ok(()) => true,
@@ -150,7 +150,7 @@ impl<R: Rtc> TimeManager<R> {
             }
         };
 
-        match self.apply_synchronised_time(ntp_time, alarm_manager) {
+        match self.apply_synchronised_time(ntp_time, alarm_manager).await {
             Ok(()) => {
                 tracing::info!(time = %ntp_time, address = %ntp_server, "time synced");
                 hub.send((Event::ClockTick).into()).ok();
@@ -197,25 +197,26 @@ impl<R: Rtc> TimeManager<R> {
         Ok(())
     }
 
-    fn apply_synchronised_time(
+    async fn apply_synchronised_time(
         &self,
         time: DateTime<Utc>,
-        alarm_manager: &Arc<Mutex<AlarmManager<R>>>,
+        alarm_manager: &Arc<tokio::sync::Mutex<AlarmManager<R>>>,
     ) -> Result<(), Error> {
-        self.system_clock.set(time)?;
-        let mut alarms = alarm_manager.lock().unwrap_or_else(|e| e.into_inner());
-        self.write_hardware_clock(time)?;
-        self.sync_alarms_after_clock_write(&mut alarms)
+        let system_clock = Arc::clone(&self.system_clock);
+        crate::runtime::spawn_blocking(move || system_clock.set(time)).await??;
+        let mut alarms = alarm_manager.lock().await;
+        self.write_hardware_clock(time).await?;
+        self.sync_alarms_after_clock_write(&mut alarms).await
     }
 
-    fn write_hardware_clock(&self, time: DateTime<Utc>) -> Result<(), Error> {
-        match self.rtc.set_time(time) {
+    async fn write_hardware_clock(&self, time: DateTime<Utc>) -> Result<(), Error> {
+        match self.rtc.set_time(time).await {
             Ok(()) => {
                 self.set_last_divergence(None);
                 Ok(())
             }
             Err(error) => {
-                let hardware = self.rtc.read_time().ok();
+                let hardware = self.rtc.read_time().await.ok();
                 let divergence = ClockDivergence {
                     system: time,
                     hardware: hardware.unwrap_or(time),
@@ -232,8 +233,11 @@ impl<R: Rtc> TimeManager<R> {
         }
     }
 
-    fn sync_alarms_after_clock_write(&self, alarms: &mut AlarmManager<R>) -> Result<(), Error> {
-        alarms.sync().inspect_err(|error| {
+    async fn sync_alarms_after_clock_write(
+        &self,
+        alarms: &mut AlarmManager<R>,
+    ) -> Result<(), Error> {
+        alarms.sync().await.inspect_err(|error| {
             tracing::error!(error = %error, "alarm rebase failed");
         })
     }
@@ -254,12 +258,12 @@ impl<R: Rtc> TimeManager<R> {
     /// applied. When the hardware clock is behind, the system clock is
     /// applied so a failed RTC write can be repaired. Mismatch paths go
     /// through [`Self::apply_synchronised_time`].
-    pub fn reconcile_at_startup(
+    pub async fn reconcile_at_startup(
         &self,
-        alarm_manager: &Arc<Mutex<AlarmManager<R>>>,
+        alarm_manager: &Arc<tokio::sync::Mutex<AlarmManager<R>>>,
     ) -> Result<(), Error> {
         let system = self.system_clock.now();
-        let hardware = self.rtc.read_time()?;
+        let hardware = self.rtc.read_time().await?;
         let delta = hardware - system;
 
         if delta.abs() <= CLOCK_AGREEMENT_THRESHOLD {
@@ -269,8 +273,8 @@ impl<R: Rtc> TimeManager<R> {
                 hardware = %hardware,
                 "clocks in agreement"
             );
-            let mut alarms = alarm_manager.lock().unwrap_or_else(|e| e.into_inner());
-            return self.sync_alarms_after_clock_write(&mut alarms);
+            let mut alarms = alarm_manager.lock().await;
+            return self.sync_alarms_after_clock_write(&mut alarms).await;
         }
 
         let target = if delta > CLOCK_AGREEMENT_THRESHOLD {
@@ -289,7 +293,7 @@ impl<R: Rtc> TimeManager<R> {
             system
         };
 
-        self.apply_synchronised_time(target, alarm_manager)?;
+        self.apply_synchronised_time(target, alarm_manager).await?;
         tracing::info!(target = %target, "startup clock reconciliation applied");
         Ok(())
     }
@@ -390,7 +394,7 @@ mod tests {
     type Fixture = (
         TimeManager<TestRtc>,
         Arc<TestRtc>,
-        Arc<Mutex<AlarmManager<TestRtc>>>,
+        Arc<tokio::sync::Mutex<AlarmManager<TestRtc>>>,
         Arc<MockSystemClock>,
     );
 
@@ -406,56 +410,59 @@ mod tests {
             |_| Ok(()),
             Arc::clone(&system_clock) as Arc<dyn SystemClock>,
         );
-        let alarms = Arc::new(Mutex::new(AlarmManager::new(Arc::clone(&rtc))));
+        let alarms = Arc::new(tokio::sync::Mutex::new(AlarmManager::new(Arc::clone(&rtc))));
         (time_manager, rtc, alarms, system_clock)
     }
 
-    #[test]
-    fn reconcile_leaves_clocks_untouched_when_they_agree() {
+    #[tokio::test]
+    async fn reconcile_leaves_clocks_untouched_when_they_agree() {
         let system = instant(12);
         let (time_manager, rtc, alarms, system_clock) = fixture(system, system);
 
         time_manager
             .reconcile_at_startup(&alarms)
+            .await
             .expect("agreement should succeed");
 
         assert_eq!(system_clock.now(), system);
-        assert_eq!(rtc.read_time().expect("rtc"), system);
+        assert_eq!(rtc.read_time().await.expect("rtc"), system);
         assert!(time_manager.last_divergence().is_none());
     }
 
-    #[test]
-    fn reconcile_trusts_hardware_when_system_is_behind() {
+    #[tokio::test]
+    async fn reconcile_trusts_hardware_when_system_is_behind() {
         let system = instant(8);
         let hardware = instant(12);
         let (time_manager, rtc, alarms, system_clock) = fixture(system, hardware);
 
         time_manager
             .reconcile_at_startup(&alarms)
+            .await
             .expect("cold boot reconcile should succeed");
 
         assert_eq!(system_clock.now(), hardware);
-        assert_eq!(rtc.read_time().expect("rtc"), hardware);
+        assert_eq!(rtc.read_time().await.expect("rtc"), hardware);
         assert!(time_manager.last_divergence().is_none());
     }
 
-    #[test]
-    fn reconcile_applies_system_when_hardware_is_behind() {
+    #[tokio::test]
+    async fn reconcile_applies_system_when_hardware_is_behind() {
         let system = instant(12);
         let hardware = instant(8);
         let (time_manager, rtc, alarms, system_clock) = fixture(system, hardware);
 
         time_manager
             .reconcile_at_startup(&alarms)
+            .await
             .expect("repair reconcile should succeed");
 
         assert_eq!(system_clock.now(), system);
-        assert_eq!(rtc.read_time().expect("rtc"), system);
+        assert_eq!(rtc.read_time().await.expect("rtc"), system);
         assert!(time_manager.last_divergence().is_none());
     }
 
-    #[test]
-    fn apply_records_divergence_when_hardware_update_fails() {
+    #[tokio::test]
+    async fn apply_records_divergence_when_hardware_update_fails() {
         let system = instant(12);
         let hardware = instant(8);
         let (time_manager, rtc, alarms, system_clock) = fixture(system, hardware);
@@ -463,19 +470,20 @@ mod tests {
 
         let error = time_manager
             .apply_synchronised_time(system, &alarms)
+            .await
             .expect_err("hardware failure should be reported");
 
         assert!(error.to_string().contains("simulated set_time failure"));
         assert_eq!(system_clock.now(), system);
-        assert_eq!(rtc.read_time().expect("rtc"), hardware);
+        assert_eq!(rtc.read_time().await.expect("rtc"), hardware);
         assert_eq!(
             time_manager.last_divergence(),
             Some(ClockDivergence { system, hardware })
         );
     }
 
-    #[test]
-    fn apply_does_not_record_divergence_when_alarm_sync_fails() {
+    #[tokio::test]
+    async fn apply_does_not_record_divergence_when_alarm_sync_fails() {
         let system = instant(12);
         let hardware = instant(8);
         let (time_manager, rtc, alarms, system_clock) = fixture(system, hardware);
@@ -483,6 +491,7 @@ mod tests {
 
         let error = time_manager
             .apply_synchronised_time(system, &alarms)
+            .await
             .expect_err("alarm sync failure should be reported");
 
         assert!(
@@ -491,26 +500,28 @@ mod tests {
                 .contains("simulated disable_alarm failure")
         );
         assert_eq!(system_clock.now(), system);
-        assert_eq!(rtc.read_time().expect("rtc"), system);
+        assert_eq!(rtc.read_time().await.expect("rtc"), system);
         assert!(time_manager.last_divergence().is_none());
     }
 
-    #[test]
-    fn reconcile_rebases_pending_step_when_clocks_agree() {
+    #[tokio::test]
+    async fn reconcile_rebases_pending_step_when_clocks_agree() {
         let system = instant(12);
         let (time_manager, rtc, alarms, system_clock) = fixture(system, system);
         {
-            let mut manager = alarms.lock().expect("alarms lock");
+            let mut manager = alarms.lock().await;
             manager
                 .schedule_in(AlarmType::AutoSuspend, Duration::minutes(20))
+                .await
                 .expect("schedule");
         }
         let stepped = system + Duration::hours(1);
-        rtc.set_time(stepped).expect("direct rtc write");
+        rtc.set_time(stepped).await.expect("direct rtc write");
         system_clock.set(stepped).expect("system clock");
 
         time_manager
             .reconcile_at_startup(&alarms)
+            .await
             .expect("agreement path should still sync alarms");
 
         let wake_after = rtc.scheduled_wake_time().expect("wake after");
@@ -521,15 +532,16 @@ mod tests {
         assert!(time_manager.last_divergence().is_none());
     }
 
-    #[test]
-    fn reconcile_rebases_alarms_off_the_replaced_clock() {
+    #[tokio::test]
+    async fn reconcile_rebases_alarms_off_the_replaced_clock() {
         let system = instant(12);
         let hardware = instant(8);
         let (time_manager, rtc, alarms, _system_clock) = fixture(system, hardware);
         {
-            let mut manager = alarms.lock().expect("alarms lock");
+            let mut manager = alarms.lock().await;
             manager
                 .schedule_in(AlarmType::AutoSuspend, Duration::minutes(20))
+                .await
                 .expect("schedule");
         }
         let wake_before = rtc.scheduled_wake_time().expect("wake before");
@@ -540,6 +552,7 @@ mod tests {
 
         time_manager
             .reconcile_at_startup(&alarms)
+            .await
             .expect("reconcile");
 
         let wake_after = rtc.scheduled_wake_time().expect("wake after");
@@ -548,7 +561,7 @@ mod tests {
             wake_after.signed_duration_since(system),
             Duration::minutes(20)
         );
-        assert_eq!(rtc.read_time().expect("rtc"), system);
+        assert_eq!(rtc.read_time().await.expect("rtc"), system);
     }
 
     #[ignore]

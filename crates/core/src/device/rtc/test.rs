@@ -112,7 +112,7 @@ impl Default for TestRtc {
 }
 
 impl Rtc for TestRtc {
-    fn alarm(&self) -> Result<RtcWkalrm, Error> {
+    async fn alarm(&self) -> Result<RtcWkalrm, Error> {
         let state = self
             .state
             .lock()
@@ -128,7 +128,7 @@ impl Rtc for TestRtc {
         })
     }
 
-    fn set_alarm(&self, wake_time: DateTime<Utc>) -> Result<i32, Error> {
+    async fn set_alarm(&self, wake_time: DateTime<Utc>) -> Result<i32, Error> {
         let mut state = self
             .state
             .lock()
@@ -139,7 +139,7 @@ impl Rtc for TestRtc {
         Ok(0)
     }
 
-    fn disable_alarm(&self) -> Result<i32, Error> {
+    async fn disable_alarm(&self) -> Result<i32, Error> {
         if self.fail_disable.load(Ordering::Relaxed) {
             return Err(anyhow::anyhow!("simulated disable_alarm failure"));
         }
@@ -152,7 +152,7 @@ impl Rtc for TestRtc {
         Ok(0)
     }
 
-    fn read_time(&self) -> Result<DateTime<Utc>, Error> {
+    async fn read_time(&self) -> Result<DateTime<Utc>, Error> {
         let state = self
             .state
             .lock()
@@ -160,7 +160,7 @@ impl Rtc for TestRtc {
         Ok(state.current_time)
     }
 
-    fn set_time(&self, time: DateTime<Utc>) -> Result<(), Error> {
+    async fn set_time(&self, time: DateTime<Utc>) -> Result<(), Error> {
         if self.fail_set_time.load(Ordering::Relaxed) {
             return Err(anyhow::anyhow!("simulated set_time failure"));
         }

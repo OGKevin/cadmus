@@ -79,10 +79,16 @@ pub(super) fn spawn_wifi_idle_poller(
         level = tracing::Level::TRACE,
     )
 )]
-pub(super) fn handle_event(event: &Event, hub: &Hub, context: &mut AppContext) -> EventOutcome {
+pub(super) async fn handle_event(
+    event: &Event,
+    hub: &Hub,
+    context: &mut AppContext,
+) -> EventOutcome {
     match event {
-        Event::SetWifiMode(mode) => handle_set_wifi_mode(*mode, hub, context),
-        Event::Select(EntryId::SetWifiMode(mode)) => handle_set_wifi_mode(*mode, hub, context),
+        Event::SetWifiMode(mode) => handle_set_wifi_mode(*mode, hub, context).await,
+        Event::Select(EntryId::SetWifiMode(mode)) => {
+            handle_set_wifi_mode(*mode, hub, context).await
+        }
         Event::MightDisableWifi => handle_might_disable_wifi(context),
         _ => EventOutcome::Unhandled,
     }
@@ -97,7 +103,7 @@ pub(super) fn handle_event(event: &Event, hub: &Hub, context: &mut AppContext) -
         level = tracing::Level::TRACE,
     )
 )]
-fn handle_set_wifi_mode(mode: WifiMode, hub: &Hub, context: &mut AppContext) -> EventOutcome {
+async fn handle_set_wifi_mode(mode: WifiMode, hub: &Hub, context: &mut AppContext) -> EventOutcome {
     if context.settings.wifi == mode {
         tracing::trace!(mode = %mode, "wifi mode unchanged");
         return EventOutcome::Handled;
@@ -109,7 +115,7 @@ fn handle_set_wifi_mode(mode: WifiMode, hub: &Hub, context: &mut AppContext) -> 
     tracing::info!(previous = %previous, mode = %mode, "setting wifi mode");
 
     context.settings.wifi = mode;
-    context.wifi_session.set_mode(mode);
+    context.wifi_session.set_mode(mode).await;
 
     match mode {
         WifiMode::AlwaysOn => {
@@ -254,12 +260,17 @@ mod tests {
     async fn handle_set_wifi_mode_noop_on_duplicate() {
         let mut harness = DeviceRuntimeHarness::new().await;
         harness.context.settings.wifi = WifiMode::AlwaysOn;
-        harness.context.wifi_session.set_mode(WifiMode::AlwaysOn);
+        harness
+            .context
+            .wifi_session
+            .set_mode(WifiMode::AlwaysOn)
+            .await;
         let outcome = handle_event(
             &Event::SetWifiMode(WifiMode::AlwaysOn),
             &harness.hub_tx,
             &mut harness.context,
-        );
+        )
+        .await;
         assert_eq!(outcome, EventOutcome::Handled);
         wait_for_wifi_thread();
         assert_eq!(
@@ -280,7 +291,8 @@ mod tests {
             &Event::SetWifiMode(WifiMode::AlwaysOn),
             &harness.hub_tx,
             &mut harness.context,
-        );
+        )
+        .await;
         assert_eq!(outcome, EventOutcome::Handled);
         assert_eq!(harness.context.settings.wifi, WifiMode::AlwaysOn);
         wait_for_wifi_thread();
@@ -298,7 +310,8 @@ mod tests {
             &Event::SetWifiMode(WifiMode::Off),
             &harness.hub_tx,
             &mut harness.context,
-        );
+        )
+        .await;
         assert_eq!(outcome, EventOutcome::Handled);
         assert_eq!(harness.context.settings.wifi, WifiMode::Off);
         assert!(!harness.context.online);
@@ -326,7 +339,8 @@ mod tests {
             &Event::SetWifiMode(WifiMode::AlwaysOn),
             &harness.hub_tx,
             &mut harness.context,
-        );
+        )
+        .await;
         assert_eq!(outcome, EventOutcome::Handled);
         wait_for_wifi_thread();
         let events = harness.drain_hub();
@@ -364,7 +378,7 @@ mod tests {
         let mut harness = DeviceRuntimeHarness::new().await;
         harness.context.settings.wifi = WifiMode::Auto;
         harness.context.settings.wifi_idle_timeout = 0.0;
-        harness.context.wifi_session.set_mode(WifiMode::Auto);
+        harness.context.wifi_session.set_mode(WifiMode::Auto).await;
         harness.context.online = true;
         harness.context.wifi_session.notify_online();
         let _job = spawn_wifi_idle_poller(&harness.hub_tx, 0.0, &harness.context.wifi_session)
@@ -394,7 +408,8 @@ mod tests {
             &Event::MightDisableWifi,
             &harness.hub_tx,
             &mut harness.context,
-        );
+        )
+        .await;
         assert_eq!(outcome, EventOutcome::Handled);
         wait_for_wifi_thread();
         assert!(
@@ -408,7 +423,7 @@ mod tests {
         let mut harness = DeviceRuntimeHarness::new().await;
         harness.context.settings.wifi = WifiMode::Auto;
         harness.context.settings.wifi_idle_timeout = 0.0;
-        harness.context.wifi_session.set_mode(WifiMode::Auto);
+        harness.context.wifi_session.set_mode(WifiMode::Auto).await;
         harness.context.online = true;
         harness.context.wifi_session.notify_online();
         let lease = harness.context.wifi_session.acquire("t").await.unwrap();
@@ -419,7 +434,8 @@ mod tests {
             &Event::MightDisableWifi,
             &harness.hub_tx,
             &mut harness.context,
-        );
+        )
+        .await;
         assert_eq!(outcome, EventOutcome::Handled);
         wait_for_wifi_thread();
         assert!(!harness.context.online);

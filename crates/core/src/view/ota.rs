@@ -822,26 +822,30 @@ fn run_ota_download(ctx: OtaDownloadContext) -> crate::runtime::Job {
                 }
             });
 
-            let _full_hold =
-                match crate::runtime::spawn_blocking(move || inhibitor.acquire(Kind::Full, "ota"))
-                    .await
-                {
-                    Ok(Ok(guard)) => guard,
-                    Ok(Err(InhibitorError::BatteryTooLow)) => {
-                        hub2.send(
-                            (Event::Notification(NotificationEvent::Show(fl!(
-                                "ota-battery-too-low"
-                            ))))
+            let _full_hold = match inhibitor.acquire(Kind::Full, "ota").await {
+                Ok(guard) => guard,
+                Err(InhibitorError::BatteryTooLow) => {
+                    hub2.send(
+                        (Event::Notification(NotificationEvent::Show(fl!("ota-battery-too-low"))))
                             .into(),
-                        )
-                        .ok();
-                        return false;
-                    }
-                    Err(error) => {
-                        error!(error = %error, "OTA inhibit task failed");
-                        return false;
-                    }
-                };
+                    )
+                    .ok();
+                    return false;
+                }
+                Err(error @ InhibitorError::WakeLockWriteFailed) => {
+                    error!(error = %error, "OTA could not acquire kernel wake-lock protection");
+                    hub2.send(
+                        (Event::Notification(NotificationEvent::Show(fl!("ota-download-failed"))))
+                            .into(),
+                    )
+                    .ok();
+                    return false;
+                }
+                Err(InhibitorError::WorkerFailed) => {
+                    error!("OTA inhibitor acquisition worker failed");
+                    return false;
+                }
+            };
 
             let _wifi = match tokio::select! {
                 biased;
@@ -1970,22 +1974,26 @@ mod tests {
     ///
     /// This is the shape the main loop now relies on: stop the job, then drain
     /// what it queued. Asserting only that a request was enqueued is what let
-    /// the reboot be dropped on the floor previously.
-    ///
-    /// The producer posts only after shutdown cancels it, standing in for an
-    /// install still committing when shutdown starts. Without that gate the
-    /// premature drain races a runtime worker for the reboot request.
+    /// the reboot be dropped on the floor previously. Holding the producer
+    /// before its send makes the drain checkpoint independent of scheduling.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn a_committed_install_queues_its_reboot_for_the_shutdown_drain() {
         use std::time::Duration;
 
         let (hub, mut rx) = crate::view::hub_channel();
-        let job = crate::runtime::Job::spawn(move |token| async move {
-            token.cancelled().await;
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+        let job = crate::runtime::Job::spawn(move |_| async move {
+            started_tx.send(()).expect("signal reboot producer start");
+            release_rx.await.expect("wait for reboot producer release");
             request_ota_reboot(hub).await;
         });
 
-        // Draining before the producer finishes is the old bug: the hub looks empty.
+        tokio::time::timeout(Duration::from_secs(5), started_rx)
+            .await
+            .expect("reboot producer must start")
+            .expect("reboot producer start signal");
+
         let premature: Vec<Event> = std::iter::from_fn(|| rx.try_recv().ok())
             .map(|message| message.event)
             .collect();
@@ -1996,7 +2004,11 @@ mod tests {
             "reboot must not be visible before the download job is joined"
         );
 
-        crate::runtime::finish_within_deadline(vec![job], Duration::from_secs(5)).await;
+        release_tx.send(()).expect("release reboot producer");
+        assert!(
+            !crate::runtime::finish_within_deadline(vec![job], Duration::from_secs(5)).await,
+            "reboot job must finish within the shutdown deadline"
+        );
 
         let drained: Vec<Event> = std::iter::from_fn(|| rx.try_recv().ok())
             .map(|message| message.event)

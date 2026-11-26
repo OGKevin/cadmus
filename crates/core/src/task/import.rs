@@ -106,6 +106,7 @@ impl BackgroundTask for ImportTask {
         let _soft_suspend = match self
             .inhibitor
             .acquire(Kind::SoftSuspend, SoftSuspendName::LibraryImport)
+            .await
         {
             Ok(guard) => Some(guard),
             Err(error) => {

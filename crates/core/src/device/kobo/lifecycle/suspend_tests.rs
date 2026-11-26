@@ -17,7 +17,7 @@ use crate::view::intermission::Intermission;
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn power_release_during_wake_debounce_cancels_and_restores_auto_suspend() {
     let mut harness = DeviceRuntimeHarness::new().await;
-    let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
+    let (_dir, _paths) = install_armed_soft_suspend(&mut harness).await;
     harness.context.settings.auto_suspend = 30.0;
     crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
         start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
@@ -26,7 +26,12 @@ async fn power_release_during_wake_debounce_cancels_and_restores_auto_suspend() 
         handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
     });
     pump_deep_idle_wake(&mut harness).await;
-    assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::WakeDebounce));
+    assert!(
+        lock_alarms(&mut harness)
+            .await
+            .is_alarm_scheduled(AlarmType::WakeDebounce)
+            .await
+    );
     assert!(harness.context.suspend.is_some());
     assert_eq!(intermission_count(harness.view.as_ref()), 1);
 
@@ -39,11 +44,20 @@ async fn power_release_during_wake_debounce_cancels_and_restores_auto_suspend() 
         super::Device::handle_event(&wake_release, hub, bus, rq, context, runtime)
     });
     assert_eq!(outcome, EventOutcome::Handled);
-    assert!(!lock_alarms(&mut harness).has_alarm(AlarmType::WakeDebounce));
+    assert!(
+        !lock_alarms(&mut harness)
+            .await
+            .has_alarm(AlarmType::WakeDebounce)
+    );
     assert!(!has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
     assert!(harness.context.suspend.is_none());
     assert!(locate::<Intermission>(harness.view.as_ref()).is_none());
-    assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::AutoSuspend));
+    assert!(
+        lock_alarms(&mut harness)
+            .await
+            .is_alarm_scheduled(AlarmType::AutoSuspend)
+            .await
+    );
 
     let intentional = Event::Device(DeviceEvent::Button {
         code: ButtonCode::Power,
@@ -61,7 +75,7 @@ async fn power_release_during_wake_debounce_cancels_and_restores_auto_suspend() 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn power_release_after_deep_idle_timeout_retry_finishes_and_restores_auto_suspend() {
     let mut harness = DeviceRuntimeHarness::new().await;
-    let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
+    let (_dir, _paths) = install_armed_soft_suspend(&mut harness).await;
     harness.context.settings.auto_suspend = 30.0;
     crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
         start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
@@ -91,7 +105,12 @@ async fn power_release_after_deep_idle_timeout_retry_finishes_and_restores_auto_
     assert!(harness.context.suspend.is_none());
     assert!(!has_task(&harness.tasks, DeviceTaskId::PollDeepIdleWait));
     assert!(locate::<Intermission>(harness.view.as_ref()).is_none());
-    assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::AutoSuspend));
+    assert!(
+        lock_alarms(&mut harness)
+            .await
+            .is_alarm_scheduled(AlarmType::AutoSuspend)
+            .await
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -101,7 +120,7 @@ async fn on_shutdown_preserves_frontlight_levels_during_deep_idle() {
     use crate::frontlight::{Frontlight as _, LightLevel, LightLevels};
 
     let mut harness = DeviceRuntimeHarness::new().await;
-    let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
+    let (_dir, _paths) = install_armed_soft_suspend(&mut harness).await;
     let expected = LightLevels {
         intensity: LightLevel::from(42.0),
         warmth: LightLevel::from(17.0),
@@ -113,12 +132,14 @@ async fn on_shutdown_preserves_frontlight_levels_during_deep_idle() {
         .device
         .frontlight_mut()
         .set_intensity(expected.intensity)
+        .await
         .unwrap();
     harness
         .context
         .device
         .frontlight_mut()
         .set_warmth(expected.warmth)
+        .await
         .unwrap();
 
     crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {

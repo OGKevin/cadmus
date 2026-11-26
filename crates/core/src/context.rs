@@ -42,7 +42,7 @@ const INPUT_HISTORY_SIZE: usize = 32;
 
 pub struct Context<D: Device> {
     pub device: D,
-    pub alarm_manager: Option<std::sync::Arc<std::sync::Mutex<AlarmManager<D::Rtc>>>>,
+    pub alarm_manager: Option<std::sync::Arc<tokio::sync::Mutex<AlarmManager<D::Rtc>>>>,
     pub display: Display,
     pub settings: Settings,
     pub library: Library,
@@ -116,7 +116,7 @@ impl<D: Device> Context<D> {
         );
         let rng = Xoroshiro128Plus::seed_from_u64(Local::now().timestamp_subsec_nanos() as u64);
         let alarm_manager = match device.rtc() {
-            Ok(rtc) => Some(std::sync::Arc::new(std::sync::Mutex::new(
+            Ok(rtc) => Some(std::sync::Arc::new(tokio::sync::Mutex::new(
                 AlarmManager::new(rtc),
             ))),
             Err(e) => {
@@ -125,7 +125,7 @@ impl<D: Device> Context<D> {
             }
         };
         if let (Ok(time_manager), Some(alarms)) = (device.time_manager(), alarm_manager.as_ref())
-            && let Err(error) = time_manager.reconcile_at_startup(alarms)
+            && let Err(error) = time_manager.reconcile_at_startup(alarms).await
         {
             tracing::warn!(error = %error, "startup clock reconciliation failed");
         }
@@ -150,13 +150,21 @@ impl<D: Device> Context<D> {
         let inhibitor = <D as DeviceHardware>::inhibitor(&device, status_led);
         let startup_lease = inhibitor
             .acquire(Kind::SoftSuspend, SoftSuspendName::Startup)
+            .await
             .ok();
-        inhibitor.apply_settings(
-            settings.autosleep_mode,
-            settings.indicate_autosleep_led,
-            std::time::Duration::from_secs_f32(settings.autosleep_grace.max(0.0)),
-        );
-        wifi_session.set_inhibitor(std::sync::Arc::clone(&inhibitor));
+        if let Err(error) = inhibitor
+            .apply_settings(
+                settings.autosleep_mode,
+                settings.indicate_autosleep_led,
+                std::time::Duration::from_secs_f32(settings.autosleep_grace.max(0.0)),
+            )
+            .await
+        {
+            tracing::warn!(error = %error, "failed to apply soft-suspend settings");
+        }
+        wifi_session
+            .set_inhibitor(std::sync::Arc::clone(&inhibitor))
+            .await;
         Context {
             device,
             alarm_manager,
@@ -352,7 +360,7 @@ impl<D: Device> Context<D> {
     /// When automatic frontlight is enabled and coordinates are available,
     /// turning the light on recomputes the effective levels for the current
     /// time before applying them.
-    pub fn set_frontlight(&mut self, enable: bool) {
+    pub async fn set_frontlight(&mut self, enable: bool) {
         self.settings.frontlight = enable;
 
         if enable {
@@ -374,16 +382,21 @@ impl<D: Device> Context<D> {
             } else {
                 self.settings.frontlight_levels
             };
-            if let Err(error) = self.device.frontlight_mut().set_warmth(levels.warmth) {
+            if let Err(error) = self.device.frontlight_mut().set_warmth(levels.warmth).await {
                 tracing::error!(error = %error, "failed to set frontlight warmth");
             }
-            if let Err(error) = self.device.frontlight_mut().set_intensity(levels.intensity) {
+            if let Err(error) = self
+                .device
+                .frontlight_mut()
+                .set_intensity(levels.intensity)
+                .await
+            {
                 tracing::error!(error = %error, "failed to set frontlight intensity");
             }
             self.settings.frontlight_levels = levels;
         } else {
             self.settings.frontlight_levels = self.device.frontlight().levels();
-            if let Err(error) = self.device.frontlight_mut().turn_off() {
+            if let Err(error) = self.device.frontlight_mut().turn_off().await {
                 tracing::error!(error = %error, "failed to turn off frontlight");
             }
         }
@@ -440,7 +453,7 @@ pub struct ShutdownContext<'a, D: Device> {
     pub settings: &'a mut Settings,
     pub inhibitor: &'a Arc<Inhibitor>,
     pub wifi_session: &'a Arc<WifiSession>,
-    pub alarm_manager: Option<&'a Arc<std::sync::Mutex<AlarmManager<D::Rtc>>>>,
+    pub alarm_manager: Option<&'a Arc<tokio::sync::Mutex<AlarmManager<D::Rtc>>>>,
     #[cfg(any(feature = "kobo", docsrs))]
     pub(crate) suspend: Option<&'a SuspendCycle>,
 }
@@ -457,9 +470,9 @@ impl<D: Device> ShutdownContext<'_, D> {
     /// Whether a suspend cycle is pending, over the same signals as
     /// [`is_suspend_active`](crate::device::suspend::is_suspend_active).
     #[cfg(any(feature = "kobo", docsrs))]
-    pub fn is_suspend_active(&self, tasks: &[crate::device::DeviceTask]) -> bool {
+    pub async fn is_suspend_active(&mut self, tasks: &[crate::device::DeviceTask]) -> bool {
         self.is_prepare_suspend_pending(tasks)
-            || crate::device::suspend::is_suspend_rtc_pending_in(self.alarm_manager)
+            || crate::device::suspend::is_suspend_rtc_pending_in(self.alarm_manager.cloned()).await
             || self.suspend.is_some()
     }
 
@@ -518,7 +531,7 @@ pub mod test_helpers {
 
     /// Installs a Linux soft-suspend inhibitor backed by temporary writable sysfs files.
     #[cfg(all(test, target_os = "linux"))]
-    pub fn install_linux_soft_suspend(context: &mut AppContext) -> tempfile::TempDir {
+    pub async fn install_linux_soft_suspend(context: &mut AppContext) -> tempfile::TempDir {
         use crate::device::inhibitor::Inhibitor;
         use crate::device::linux::soft_suspend::paths::SoftSuspendPaths;
         use crate::device::soft_suspend::SoftSuspendBackend as _;
@@ -530,12 +543,18 @@ pub mod test_helpers {
             None,
             std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
         );
-        inhibitor.apply_settings(
-            context.settings.autosleep_mode,
-            context.settings.indicate_autosleep_led,
-            std::time::Duration::from_secs_f32(context.settings.autosleep_grace.max(0.0)),
-        );
-        context.wifi_session.set_inhibitor(Arc::clone(&inhibitor));
+        inhibitor
+            .apply_settings(
+                context.settings.autosleep_mode,
+                context.settings.indicate_autosleep_led,
+                std::time::Duration::from_secs_f32(context.settings.autosleep_grace.max(0.0)),
+            )
+            .await
+            .expect("apply soft-suspend settings");
+        context
+            .wifi_session
+            .set_inhibitor(Arc::clone(&inhibitor))
+            .await;
         context.inhibitor = inhibitor;
         dir
     }
@@ -598,6 +617,7 @@ pub mod test_helpers {
         let _lease = context
             .inhibitor
             .acquire(Kind::SoftSuspend, SoftSuspendName::Test)
+            .await
             .unwrap();
         assert!(!context.inhibitor.is_supported());
         assert!(!context.inhibitor.is_empty());
@@ -631,10 +651,10 @@ pub mod test_helpers {
         assert_eq!(levels.intensity, LightLevels::default().intensity);
         assert_eq!(levels.warmth, LightLevels::default().warmth);
 
-        context.set_frontlight(false);
+        context.set_frontlight(false).await;
         assert!(!context.settings.frontlight);
 
-        context.set_frontlight(true);
+        context.set_frontlight(true).await;
         assert!(context.settings.frontlight);
     }
 
@@ -645,6 +665,7 @@ pub mod test_helpers {
             .device
             .battery()
             .capacity()
+            .await
             .expect("battery capacity");
         assert_eq!(capacity, vec![50.0]);
     }

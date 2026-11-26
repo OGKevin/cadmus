@@ -20,12 +20,18 @@ Auto Suspend / power button / sleep cover use
 1. `AlarmType::AutoSuspend` → `start_cycle` (`Classic`)
 2. Intermission; 3 s prepare delay → PrepareSuspend teardown
 3. 15 s Suspend RTC → `RtcAlarmFired(Suspend)` → `enter_sleep`
-4. Release the shared `cadmus` wake lock, then
-   `KoboPowerManager::suspend`: `state-extended=1`, wait 2 s, `sync`,
-   `state=mem`
-5. Wake: restore `cadmus` while any SoftSuspend holder remains;
-   `state-extended=0` and model-specific touch re-init; AutoPowerOff /
-   Calendar RTC; WakeDebounce re-sleep until user cancels
+4. An owned Classic job first runs `prepare_suspend`: `state-extended=1`, an
+   async 2 s settle, then `sync()` on the blocking pool. It does not write
+   `state=mem`. After a cancel check, the job takes the Full gate token and
+   rechecks Full; Full registration takes the same gate, so a Full acquire
+   arriving while the gate is held waits for it.
+5. After the wake-lock pause, `suspend` submits only `state=mem`; that sysfs
+   write blocks on the runtime's blocking pool until the kernel resumes. The
+   job and gate token stay owned through wake, peripheral cleanup, and
+   wake-lock restoration even if the event caller stops waiting. A Full
+   acquire that waited on the gate aborts the cycle only after that cleanup.
+   `resume` clears `state-extended=0` and re-inits model-specific touch;
+   AutoPowerOff / Calendar RTC; WakeDebounce re-sleep until user cancels
 
 ## Soft-suspend deep idle (autosleep armed)
 
@@ -71,6 +77,6 @@ autosleep after dropping its cycle lease.
 | `AlarmManager` / `AutoSuspend`       | Wall-clock idle deadline                              |
 | `Inhibitor`                          | Wake locks + Full gate — [Inhibitor](../inhibitor.md) |
 | `arm_deep_idle` / `disarm_deep_idle` | DeepIdle `state-extended`                             |
-| `KoboPowerManager::suspend`          | Classic sleep                                         |
+| `KoboPowerManager::suspend`          | Classic `state=mem` write only                        |
 
 <!-- i18n:skip-end -->

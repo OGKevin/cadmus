@@ -9,7 +9,7 @@ use crate::device::AppContext;
 use crate::device::DeviceHardware as _;
 use crate::device::DeviceIdentity;
 #[cfg(feature = "test")]
-use crate::device::inhibitor::{InhibitorGuard, Kind};
+use crate::device::inhibitor::{Inhibitor, InhibitorGuard, Kind};
 use crate::font::{NORMAL_STYLE, font_from_style};
 use crate::framebuffer::Framebuffer as _;
 use crate::framebuffer::UpdateMode;
@@ -245,23 +245,6 @@ impl Menu {
 
         let rect = rect![x_min, y_min, x_max, y_max];
 
-        #[cfg(feature = "test")]
-        let _sleep_lease = if view_id == ViewId::MainMenu {
-            match context.inhibitor.acquire(Kind::Sleep, "main-menu") {
-                Ok(guard) => Some(guard),
-                Err(error) => {
-                    tracing::error!(
-                        error = %error,
-                        sleep_lease = "main-menu",
-                        "failed to acquire sleep lease for top menu"
-                    );
-                    None
-                }
-            }
-        } else {
-            None
-        };
-
         Menu {
             id,
             rect,
@@ -273,12 +256,33 @@ impl Menu {
             sub_id: 0,
             dir,
             #[cfg(feature = "test")]
-            _sleep_lease,
+            _sleep_lease: None,
         }
     }
 
     pub fn root(mut self, root: bool) -> Menu {
         self.root = root;
+        self
+    }
+
+    /// Holds a [`Kind::Sleep`] lease named `"main-menu"` until this menu is dropped.
+    ///
+    /// The top menu pins Sleep so Auto Suspend defers while it is open. The
+    /// lease is acquired here, after construction, because confirming the wake
+    /// lock awaits. A failed acquire is logged and the menu is returned without
+    /// a lease.
+    #[cfg(feature = "test")]
+    pub(crate) async fn hold_sleep_lease(mut self, inhibitor: &Inhibitor) -> Menu {
+        match inhibitor.acquire(Kind::Sleep, "main-menu").await {
+            Ok(guard) => self._sleep_lease = Some(guard),
+            Err(error) => {
+                tracing::error!(
+                    error = %error,
+                    sleep_lease = "main-menu",
+                    "failed to acquire sleep lease for top menu"
+                );
+            }
+        }
         self
     }
 }

@@ -6,6 +6,7 @@ use crate::input::DeviceEvent;
 use crate::lease::{Lease, LeaseName, LeaseObserver, LeaseTracker, WeakLeaseTracker};
 use crate::settings::WifiMode;
 use crate::view::{Event, Hub};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use thiserror::Error;
@@ -63,34 +64,71 @@ impl IdleArmer {
     }
 }
 
-fn sync_inhibitor_lease(state: &mut SessionState, has_holders: bool) {
-    let should_hold = state.radio_on && (state.mode == WifiMode::AlwaysOn || has_holders);
-    if should_hold {
-        if state.inhibitor_lease.is_none()
-            && let Some(inhibitor) = state.inhibitor.clone()
-        {
-            match inhibitor.acquire(Kind::SoftSuspend, SoftSuspendName::Wifi) {
-                Ok(guard) => state.inhibitor_lease = Some(guard),
-                Err(error) => {
-                    tracing::error!(
-                        error = %error,
-                        soft_suspend_lease = %SoftSuspendName::Wifi,
-                        "failed to acquire soft-suspend lease for WiFi radio"
-                    );
-                }
-            }
-        }
-    } else {
+fn wants_inhibitor_lease(state: &SessionState, has_holders: bool) -> bool {
+    state.radio_on && (state.mode == WifiMode::AlwaysOn || has_holders)
+}
+
+/// Drops the SoftSuspend lease once the session no longer needs it.
+///
+/// Release is synchronous so it can run from [`LeaseObserver`] callbacks, which
+/// fire from `Drop`. Acquiring needs the wake-lock confirmation and lives in
+/// [`sync_inhibitor_lease`].
+fn release_unneeded_inhibitor_lease(state: &mut SessionState, has_holders: bool) {
+    if !wants_inhibitor_lease(state, has_holders) {
         state.inhibitor_lease = None;
     }
 }
 
+/// Brings the SoftSuspend lease in line with the session state.
+///
+/// Releases synchronously when the lease is unneeded. When one is needed but
+/// missing, acquires it with the state lock released, since confirming the wake
+/// lock awaits. The need is re-checked under the lock before the guard is
+/// stored, and an unneeded or duplicate guard is dropped outside the lock. A
+/// racing release or state change therefore never leaves a stale lease behind.
+async fn sync_inhibitor_lease(state: &Mutex<SessionState>, tracker: &LeaseTracker) {
+    let inhibitor = {
+        let mut locked = state.lock().unwrap_or_else(|e| e.into_inner());
+        if !wants_inhibitor_lease(&locked, !tracker.is_empty()) {
+            locked.inhibitor_lease = None;
+            return;
+        }
+        match (&locked.inhibitor_lease, &locked.inhibitor) {
+            (None, Some(inhibitor)) => Arc::clone(inhibitor),
+            _ => return,
+        }
+    };
+    match inhibitor
+        .acquire(Kind::SoftSuspend, SoftSuspendName::Wifi)
+        .await
+    {
+        Ok(guard) => {
+            let mut locked = state.lock().unwrap_or_else(|e| e.into_inner());
+            if locked.inhibitor_lease.is_none()
+                && wants_inhibitor_lease(&locked, !tracker.is_empty())
+            {
+                locked.inhibitor_lease = Some(guard);
+            }
+        }
+        Err(error) => {
+            tracing::error!(
+                error = %error,
+                soft_suspend_lease = %SoftSuspendName::Wifi,
+                "failed to acquire soft-suspend lease for WiFi radio"
+            );
+        }
+    }
+}
+
+/// Observer callbacks run synchronously (including from `Drop`), so they only
+/// release the SoftSuspend lease. Acquisition runs from the async paths via
+/// [`sync_inhibitor_lease`]: [`WifiSession::acquire_with_timeout`] covers the
+/// first holder, and radio enable, mode, and inhibitor changes cover the rest.
 impl LeaseObserver for IdleArmer {
     fn on_first_acquire(&self, name: &LeaseName) {
         tracing::debug!(name = %name, "wifi lease first holder");
         if let Ok(mut state) = self.state.lock() {
             state.idle_since = None;
-            sync_inhibitor_lease(&mut state, self.has_holders());
         }
     }
 
@@ -98,7 +136,7 @@ impl LeaseObserver for IdleArmer {
         tracing::debug!(name = %name, "wifi lease last holder released");
         if let Ok(mut state) = self.state.lock() {
             let has_holders = self.has_holders();
-            sync_inhibitor_lease(&mut state, has_holders);
+            release_unneeded_inhibitor_lease(&mut state, has_holders);
             if !has_holders && state.mode == WifiMode::Auto {
                 state.idle_since = Some(Instant::now());
                 state.idle_wake.notify_one();
@@ -112,6 +150,9 @@ pub struct WifiSession {
     tracker: LeaseTracker,
     wifi: Arc<dyn WifiManager>,
     state: Arc<Mutex<SessionState>>,
+    /// Latest owned radio-reconcile generation; completions must match this to
+    /// reach consumers, even if they were queued before invalidation.
+    reconcile_generation: AtomicU64,
     /// Wakes [`WifiSession::acquire`] waiters to re-read [`SessionState::online`].
     ///
     /// `notify_waiters` runs after online flips to `true` ([`Self::notify_online`],
@@ -196,8 +237,8 @@ async fn finish_enable_bookkeeping(
     {
         let mut locked = state.lock().unwrap_or_else(|e| e.into_inner());
         locked.radio_on = true;
-        sync_inhibitor_lease(&mut locked, !tracker.is_empty());
     }
+    sync_inhibitor_lease(state, tracker).await;
     if wifi.is_enabled().await && matches!(wifi.network_info().await, Ok(Some(_))) {
         {
             let mut locked = state.lock().unwrap_or_else(|e| e.into_inner());
@@ -220,7 +261,7 @@ fn finish_disable_bookkeeping(
     {
         let mut locked = state.lock().unwrap_or_else(|e| e.into_inner());
         locked.radio_on = false;
-        sync_inhibitor_lease(&mut locked, !tracker.is_empty());
+        release_unneeded_inhibitor_lease(&mut locked, !tracker.is_empty());
         locked.online = false;
         locked.idle_since = None;
     }
@@ -293,7 +334,20 @@ impl WifiSession {
             state,
             online: Arc::new(Notify::new()),
             radio: Arc::new(tokio::sync::Mutex::new(())),
+            reconcile_generation: AtomicU64::new(0),
         })
+    }
+
+    /// Advances the radio-reconcile generation, invalidating a stale job even
+    /// when its completion has already been queued.
+    pub fn next_reconcile_generation(&self) -> u64 {
+        self.reconcile_generation.fetch_add(1, Ordering::SeqCst) + 1
+    }
+
+    /// Whether a tagged radio completion still carries the latest intent.
+    #[cfg(any(feature = "kobo", docsrs))]
+    pub(crate) fn is_current_reconcile_generation(&self, generation: u64) -> bool {
+        self.reconcile_generation.load(Ordering::SeqCst) == generation
     }
 
     /// Handle that fires when the last lease is released into idle, so the
@@ -319,10 +373,12 @@ impl WifiSession {
     }
 
     /// Links the inhibitor so AlwaysOn or WiFi holders keep SoftSuspend armed.
-    pub fn set_inhibitor(&self, inhibitor: Arc<Inhibitor>) {
-        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        state.inhibitor = Some(inhibitor);
-        sync_inhibitor_lease(&mut state, !self.tracker.is_empty());
+    pub async fn set_inhibitor(&self, inhibitor: Arc<Inhibitor>) {
+        self.state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .inhibitor = Some(inhibitor);
+        sync_inhibitor_lease(&self.state, &self.tracker).await;
     }
 
     /// Records the radio state the session should settle on.
@@ -344,25 +400,27 @@ impl WifiSession {
         feature = "tracing",
         tracing::instrument(skip(self), fields(mode = %mode), level = tracing::Level::TRACE)
     )]
-    pub fn set_mode(&self, mode: WifiMode) {
-        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        let previous = state.mode;
-        state.mode = mode;
-        state.desired_radio_on =
-            mode.wants_radio_at_rest() || (mode != WifiMode::Off && !self.tracker.is_empty());
-        if mode != WifiMode::Auto {
-            state.idle_since = None;
-        } else if self.tracker.is_empty() && state.online {
-            state.idle_since = Some(Instant::now());
+    pub async fn set_mode(&self, mode: WifiMode) {
+        {
+            let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let previous = state.mode;
+            state.mode = mode;
+            state.desired_radio_on =
+                mode.wants_radio_at_rest() || (mode != WifiMode::Off && !self.tracker.is_empty());
+            if mode != WifiMode::Auto {
+                state.idle_since = None;
+            } else if self.tracker.is_empty() && state.online {
+                state.idle_since = Some(Instant::now());
+            }
+            tracing::debug!(
+                previous = %previous,
+                mode = %mode,
+                online = state.online,
+                holders = self.tracker.len(),
+                "wifi mode updated"
+            );
         }
-        sync_inhibitor_lease(&mut state, !self.tracker.is_empty());
-        tracing::debug!(
-            previous = %previous,
-            mode = %mode,
-            online = state.online,
-            holders = self.tracker.len(),
-            "wifi mode updated"
-        );
+        sync_inhibitor_lease(&self.state, &self.tracker).await;
     }
 
     /// Returns the current mode snapshot.
@@ -537,10 +595,7 @@ impl WifiSession {
         );
 
         let inner = self.tracker.acquire(name.clone());
-        {
-            let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            sync_inhibitor_lease(&mut state, !self.tracker.is_empty());
-        }
+        sync_inhibitor_lease(&self.state, &self.tracker).await;
 
         if self.is_online() {
             #[cfg(feature = "tracing")]
@@ -571,11 +626,11 @@ impl WifiSession {
             true
         };
 
-        {
-            let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            state.radio_on = applied_on;
-            sync_inhibitor_lease(&mut state, !self.tracker.is_empty());
-        }
+        self.state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .radio_on = applied_on;
+        sync_inhibitor_lease(&self.state, &self.tracker).await;
 
         if self.mark_online_if_associated().await {
             tracing::debug!(name = %name, "wifi lease acquired; already associated");
@@ -755,15 +810,15 @@ mod tests {
         (session, wifi)
     }
 
-    #[test]
-    fn set_mode_records_the_radio_intent_it_implies() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn set_mode_records_the_radio_intent_it_implies() {
         for (mode, expected) in [
             (WifiMode::AlwaysOn, true),
             (WifiMode::Auto, false),
             (WifiMode::Off, false),
         ] {
             let (session, _wifi) = session(mode);
-            session.set_mode(mode);
+            session.set_mode(mode).await;
             let recorded = session
                 .state
                 .lock()
@@ -1076,7 +1131,7 @@ mod tests {
         let lease = session.acquire("hold").await.unwrap();
         assert!(session.has_holders());
 
-        session.set_mode(WifiMode::Auto);
+        session.set_mode(WifiMode::Auto).await;
         let recorded = session
             .state
             .lock()
@@ -1088,7 +1143,7 @@ mod tests {
         );
 
         drop(lease);
-        session.set_mode(WifiMode::Auto);
+        session.set_mode(WifiMode::Auto).await;
         let recorded = session
             .state
             .lock()
@@ -1306,10 +1361,10 @@ mod tests {
     async fn always_on_holds_soft_suspend_only_while_radio_on() {
         let soft = soft_suspend_inhibitor();
         let (session, _) = session(WifiMode::Auto);
-        session.set_inhibitor(Arc::clone(&soft));
+        session.set_inhibitor(Arc::clone(&soft)).await;
         assert!(soft.is_empty());
 
-        session.set_mode(WifiMode::AlwaysOn);
+        session.set_mode(WifiMode::AlwaysOn).await;
         assert!(
             soft.is_empty(),
             "AlwaysOn without radio must not pin soft-suspend"
@@ -1324,15 +1379,47 @@ mod tests {
             "disable_radio must drop soft-suspend wifi lease"
         );
 
-        session.set_mode(WifiMode::Off);
+        session.set_mode(WifiMode::Off).await;
         assert!(soft.is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn entering_always_on_with_radio_up_acquires_soft_suspend() {
+        let soft = soft_suspend_inhibitor();
+        let (session, _) = session(WifiMode::Auto);
+        session.set_inhibitor(Arc::clone(&soft)).await;
+        session.enable_radio().await.unwrap();
+        assert!(
+            soft.is_empty(),
+            "Auto without holders must not pin soft-suspend"
+        );
+
+        session.set_mode(WifiMode::AlwaysOn).await;
+        assert!(
+            !soft.is_empty(),
+            "set_mode must acquire the soft-suspend lease once AlwaysOn applies"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn linking_inhibitor_with_radio_up_acquires_soft_suspend() {
+        let soft = soft_suspend_inhibitor();
+        let (session, _) = session(WifiMode::AlwaysOn);
+        session.enable_radio().await.unwrap();
+        assert!(soft.is_empty());
+
+        session.set_inhibitor(Arc::clone(&soft)).await;
+        assert!(
+            !soft.is_empty(),
+            "set_inhibitor must acquire the soft-suspend lease when the radio is already up"
+        );
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn always_on_keeps_soft_suspend_after_last_wifi_holder() {
         let soft = soft_suspend_inhibitor();
         let (session, _) = session(WifiMode::AlwaysOn);
-        session.set_inhibitor(Arc::clone(&soft));
+        session.set_inhibitor(Arc::clone(&soft)).await;
         session.enable_radio().await.unwrap();
         session.notify_online();
         assert!(!soft.is_empty());
@@ -1347,12 +1434,12 @@ mod tests {
     async fn leaving_always_on_keeps_soft_suspend_while_holders_remain() {
         let soft = soft_suspend_inhibitor();
         let (session, _) = session(WifiMode::AlwaysOn);
-        session.set_inhibitor(Arc::clone(&soft));
+        session.set_inhibitor(Arc::clone(&soft)).await;
         session.enable_radio().await.unwrap();
         session.notify_online();
         let lease = session.acquire("a").await.unwrap();
 
-        session.set_mode(WifiMode::Auto);
+        session.set_mode(WifiMode::Auto).await;
         assert!(!soft.is_empty());
 
         drop(lease);
@@ -1363,7 +1450,7 @@ mod tests {
     async fn disable_radio_drops_always_on_soft_suspend_lease() {
         let soft = soft_suspend_inhibitor();
         let (session, _) = session(WifiMode::AlwaysOn);
-        session.set_inhibitor(Arc::clone(&soft));
+        session.set_inhibitor(Arc::clone(&soft)).await;
         session.enable_radio().await.unwrap();
         assert!(!soft.is_empty());
 
@@ -1379,7 +1466,7 @@ mod tests {
     async fn auto_holder_pins_soft_suspend_while_radio_on() {
         let soft = soft_suspend_inhibitor();
         let (session, _) = session(WifiMode::Auto);
-        session.set_inhibitor(Arc::clone(&soft));
+        session.set_inhibitor(Arc::clone(&soft)).await;
         session.enable_radio().await.unwrap();
         session.notify_online();
 
@@ -1398,7 +1485,7 @@ mod tests {
 
         let soft = soft_suspend_inhibitor();
         let (session, _) = session(WifiMode::Auto);
-        session.set_inhibitor(Arc::clone(&soft));
+        session.set_inhibitor(Arc::clone(&soft)).await;
         session.enable_radio().await.unwrap();
         session.notify_online();
 

@@ -42,12 +42,12 @@ pub(super) async fn handle_event(
             status: ButtonStatus::Pressed,
             ..
         } => handle_light_button_pressed(hub),
-        DeviceEvent::RotateScreen(n) => handle_rotate_screen(*n, hub, context, runtime),
+        DeviceEvent::RotateScreen(n) => handle_rotate_screen(*n, hub, context, runtime).await,
         DeviceEvent::NetUp => handle_net_up(hub, context, runtime).await,
         DeviceEvent::CoverOn => handle_cover_on(hub, bus, rq, context, runtime).await,
-        DeviceEvent::CoverOff => handle_cover_off(hub, rq, context, runtime),
-        DeviceEvent::UserActivity => handle_user_activity(context, runtime),
-        DeviceEvent::Plug(source) => handle_plug(*source, hub, rq, context, runtime),
+        DeviceEvent::CoverOff => handle_cover_off(hub, rq, context, runtime).await,
+        DeviceEvent::UserActivity => handle_user_activity(context, runtime).await,
+        DeviceEvent::Plug(source) => handle_plug(*source, hub, rq, context, runtime).await,
         DeviceEvent::Unplug(..) => handle_unplug(hub, rq, context, runtime).await,
         _ => EventOutcome::Unhandled,
     }
@@ -68,8 +68,8 @@ async fn handle_power_button_released(
         return EventOutcome::Handled;
     }
 
-    if is_suspend_active(context, runtime.tasks) {
-        cancel_suspend_if_pending(context, runtime.tasks, runtime.view.as_mut(), hub, rq);
+    if is_suspend_active(context, runtime.tasks).await {
+        cancel_suspend_if_pending(context, runtime.tasks, runtime.view.as_mut(), hub, rq).await;
     } else {
         start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks).await;
     }
@@ -87,13 +87,13 @@ fn handle_light_button_pressed(hub: &Hub) -> EventOutcome {
 ///
 /// Blocked during USB share, active suspend, or when rotation lock forbids the
 /// target orientation. Forwards [`Event::Select(EntryId::Rotate)`] on success.
-fn handle_rotate_screen(
+async fn handle_rotate_screen(
     n: i8,
     hub: &Hub,
     context: &AppContext,
     runtime: &DeviceRuntime<'_>,
 ) -> EventOutcome {
-    let suspend_active = is_suspend_active(context, runtime.tasks);
+    let suspend_active = is_suspend_active(context, runtime.tasks).await;
     tracing::debug!(
         rotation = n,
         current_rotation = context.display.rotation,
@@ -146,7 +146,7 @@ async fn handle_net_up(
     context: &mut AppContext,
     runtime: &mut DeviceRuntime<'_>,
 ) -> EventOutcome {
-    if is_suspend_active(context, runtime.tasks) || context.online {
+    if is_suspend_active(context, runtime.tasks).await || context.online {
         return EventOutcome::Handled;
     }
 
@@ -205,7 +205,7 @@ async fn handle_cover_on(
 ///
 /// Clears `context.covered` and cancels a pending suspend when sleep-cover
 /// suspend was active.
-fn handle_cover_off(
+async fn handle_cover_off(
     hub: &Hub,
     rq: &mut RenderQueue,
     context: &mut AppContext,
@@ -220,22 +220,25 @@ fn handle_cover_off(
         return EventOutcome::Handled;
     }
 
-    cancel_suspend_if_pending(context, runtime.tasks, runtime.view.as_mut(), hub, rq);
+    cancel_suspend_if_pending(context, runtime.tasks, runtime.view.as_mut(), hub, rq).await;
 
     EventOutcome::Handled
 }
 
 /// Reschedules the Auto Suspend RTC deadline when auto-suspend is enabled.
-fn handle_user_activity(context: &mut AppContext, runtime: &mut DeviceRuntime<'_>) -> EventOutcome {
+async fn handle_user_activity(
+    context: &mut AppContext,
+    runtime: &mut DeviceRuntime<'_>,
+) -> EventOutcome {
     let _ = runtime;
     if context.settings.auto_suspend > 0.0 {
-        reschedule_auto_suspend_alarm(context);
+        reschedule_auto_suspend_alarm(context).await;
     }
     EventOutcome::Handled
 }
 
 /// Handles a charger or USB-host plug event.
-fn handle_plug(
+async fn handle_plug(
     power_source: PowerSource,
     hub: &Hub,
     rq: &mut RenderQueue,
@@ -257,11 +260,11 @@ fn handle_plug(
 
     match power_source {
         PowerSource::Wall => {
-            if is_suspend_rtc_pending(context) {
+            if is_suspend_rtc_pending(context).await {
                 return EventOutcome::Handled;
             }
         }
-        PowerSource::Host => handle_plug_host(hub, rq, context, runtime),
+        PowerSource::Host => handle_plug_host(hub, rq, context, runtime).await,
     }
 
     hub.send((Event::BatteryTick).into()).ok();
@@ -270,13 +273,13 @@ fn handle_plug(
 }
 
 /// Handles USB-host plug: cancels suspend, prompts or auto-starts USB share.
-fn handle_plug_host(
+async fn handle_plug_host(
     hub: &Hub,
     rq: &mut RenderQueue,
     context: &mut AppContext,
     runtime: &mut DeviceRuntime<'_>,
 ) {
-    cancel_suspend_if_pending(context, runtime.tasks, runtime.view.as_mut(), hub, rq);
+    cancel_suspend_if_pending(context, runtime.tasks, runtime.view.as_mut(), hub, rq).await;
 
     if context.settings.auto_share {
         hub.send((Event::PrepareShare).into()).ok();
@@ -294,7 +297,7 @@ fn handle_plug_host(
     }
 
     if context.settings.auto_suspend > 0.0 {
-        reschedule_auto_suspend_alarm(context);
+        reschedule_auto_suspend_alarm(context).await;
     }
 }
 
@@ -332,7 +335,7 @@ async fn handle_unplug(
         hub,
         runtime.tasks,
     );
-    if is_suspend_rtc_pending(context) {
+    if is_suspend_rtc_pending(context).await {
         if !context.covered {
             crate::device::suspend::cancel_suspend_if_pending(
                 context,
@@ -340,7 +343,8 @@ async fn handle_unplug(
                 runtime.view.as_mut(),
                 hub,
                 rq,
-            );
+            )
+            .await;
         }
     } else {
         hub.send((Event::BatteryTick).into()).ok();
@@ -413,23 +417,19 @@ mod tests {
     async fn handle_rotate_screen_blocked_during_suspend() {
         let mut harness = DeviceRuntimeHarness::new().await;
         {
-            let mut alarms = harness
-                .context
-                .alarm_manager
-                .as_ref()
-                .unwrap()
-                .lock()
-                .unwrap();
+            let mut alarms = harness.context.alarm_manager.as_ref().unwrap().lock().await;
             alarms
                 .schedule_in(
                     crate::AlarmType::Suspend,
                     crate::chrono::Duration::seconds(15),
                 )
+                .await
                 .unwrap();
         }
         let hub = harness.hub_tx.clone();
-        let outcome = harness
-            .with_runtime_only(|context, runtime| handle_rotate_screen(0, &hub, context, runtime));
+        let outcome = crate::poll_runtime_only!(harness, |context, runtime| {
+            handle_rotate_screen(0, &hub, context, runtime)
+        });
         assert_eq!(outcome, EventOutcome::Handled);
     }
 
@@ -437,8 +437,9 @@ mod tests {
     async fn handle_rotate_screen_forwards_select() {
         let mut harness = DeviceRuntimeHarness::new().await;
         let hub = harness.hub_tx.clone();
-        let outcome = harness
-            .with_runtime_only(|context, runtime| handle_rotate_screen(1, &hub, context, runtime));
+        let outcome = crate::poll_runtime_only!(harness, |context, runtime| {
+            handle_rotate_screen(1, &hub, context, runtime)
+        });
         assert_eq!(outcome, EventOutcome::Handled);
         assert!(
             harness
@@ -549,8 +550,8 @@ mod tests {
         harness.context.covered = true;
         harness.push_task(DeviceTaskId::PrepareSuspend);
         let hub = harness.hub_tx.clone();
-        let outcome = harness.with_runtime_only(|context, runtime| {
-            handle_cover_off(&hub, &mut RenderQueue::new(), context, runtime)
+        let outcome = crate::poll_runtime_only!(harness, |context, runtime| async {
+            handle_cover_off(&hub, &mut RenderQueue::new(), context, runtime).await
         });
         assert_eq!(outcome, EventOutcome::Handled);
         assert!(!harness.context.covered);
@@ -561,16 +562,23 @@ mod tests {
     async fn handle_user_activity_reschedules_auto_suspend() {
         let mut harness = DeviceRuntimeHarness::new().await;
         harness.context.settings.auto_suspend = 60.0;
-        let outcome = harness.with_runtime_only(handle_user_activity);
+        let outcome = crate::poll_runtime_only!(harness, |context, runtime| {
+            handle_user_activity(context, runtime)
+        });
         assert_eq!(outcome, EventOutcome::Handled);
-        assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::AutoSuspend));
+        assert!(
+            lock_alarms(&mut harness)
+                .await
+                .is_alarm_scheduled(AlarmType::AutoSuspend)
+                .await
+        );
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn handle_plug_host_auto_share() {
         let mut harness = DeviceRuntimeHarness::new().await;
         harness.context.settings.auto_share = true;
-        let outcome = harness.with_parts(|hub, _bus, rq, context, runtime| {
+        let outcome = crate::poll_parts!(harness, |hub, _bus, rq, context, runtime| {
             handle_plug(PowerSource::Host, hub, rq, context, runtime)
         });
         assert_eq!(outcome, EventOutcome::Handled);

@@ -50,7 +50,7 @@ pub(super) async fn handle_event(
         runtime.tasks,
     );
 
-    if is_suspend_active(context, runtime.tasks) {
+    if is_suspend_active(context, runtime.tasks).await {
         return EventOutcome::Handled;
     }
 
@@ -58,6 +58,7 @@ pub(super) async fn handle_event(
         .device
         .battery()
         .capacity()
+        .await
         .ok()
         .map(|values| values[0])
     else {

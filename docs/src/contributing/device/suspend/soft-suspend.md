@@ -13,7 +13,7 @@ User-facing behaviour: [Soft Suspend](../../../soft-suspend.md).
 
 ```mermaid
 flowchart TD
-  acquire["Inhibitor::acquire(Kind::SoftSuspend)"] --> kind["SoftSuspendKind backend"]
+  acquire["Inhibitor::acquire(Kind::SoftSuspend).await?"] --> kind["SoftSuspendKind backend"]
   settings["AutosleepMode Off / Freeze / Mem"] --> apply["write autosleep sysfs"]
   ledSetting["indicate autosleep LED"] --> led["StatusLed soft-indicate"]
   graceSetting["autosleep grace"] --> armer["WakeLockArmer"]
@@ -26,8 +26,8 @@ flowchart TD
   unlock --> kernel
 ```
 
-Acquire leases through
-<a href="/api/cadmus_core/device/inhibitor/struct.Inhibitor.html#method.acquire">`Inhibitor::acquire(Kind::SoftSuspend, …)`</a>.
+Acquire leases by awaiting
+<a href="/api/cadmus_core/device/inhibitor/struct.Inhibitor.html#method.acquire">`Inhibitor::acquire(Kind::SoftSuspend, …).await?`</a>.
 To also block **explicit** suspend, use
 <a href="/api/cadmus_core/device/inhibitor/enum.Kind.html#variant.Full">`Kind::Full`</a>
 — [Inhibitor](inhibitor.md).
@@ -72,6 +72,14 @@ On Linux the live kind:
 - Optionally drives `soft-indicate` on the shared
   <a href="/api/cadmus_core/device/leds/struct.StatusLed.html">`StatusLed`</a>
   arbiter ([priorities in Inhibitor doc](inhibitor.md#status-led-arbiter))
+
+All wake-lock hardware writes share one `reconcile` loop, which serializes the
+single writer, runs on dedicated blocking-pool control workers, and
+re-evaluates live demand after every write. `available_modes`
+is discovered once when the Linux policy is constructed, not re-read from
+`/sys/power/state` on each mode change. Autosleep mode updates are cached only
+after a successful `/sys/power/autosleep` write; other writes return errors to
+the caller, so a failed mode change is not mistaken for the requested mode.
 
 Upstream:
 [sysfs-power ABI](https://www.kernel.org/doc/Documentation/ABI/testing/sysfs-power).

@@ -59,19 +59,29 @@ impl PremixedFrontlight {
     }
 }
 
+#[async_trait::async_trait]
 impl Frontlight for PremixedFrontlight {
-    fn set_intensity(&mut self, intensity: LightLevel) -> Result<(), Error> {
-        write!(self.white, "{}", i16::from(intensity))?;
+    async fn set_intensity(&mut self, intensity: LightLevel) -> Result<(), Error> {
+        let mut file = self.white.try_clone()?;
+        crate::runtime::spawn_blocking(move || write!(file, "{}", i16::from(intensity)))
+            .await
+            .map_err(Error::new)??;
         self.intensity = intensity;
         Ok(())
     }
 
-    fn set_warmth(&mut self, warmth: LightLevel) -> Result<(), Error> {
-        if self.mark != 8 {
-            write!(self.orange, "{}", warmth.as_10_base_inverted())?;
-        } else {
-            write!(self.orange, "{}", warmth.as_10_base())?;
-        }
+    async fn set_warmth(&mut self, warmth: LightLevel) -> Result<(), Error> {
+        let mark = self.mark;
+        let mut file = self.orange.try_clone()?;
+        crate::runtime::spawn_blocking(move || {
+            if mark != 8 {
+                write!(file, "{}", warmth.as_10_base_inverted())
+            } else {
+                write!(file, "{}", warmth.as_10_base())
+            }
+        })
+        .await
+        .map_err(Error::new)??;
         self.warmth = warmth;
         Ok(())
     }

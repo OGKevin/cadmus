@@ -7,18 +7,24 @@ pub use error::PowerError;
 pub use manager::PowerManager;
 
 #[cfg(all(target_os = "linux", feature = "kobo"))]
-pub(crate) fn discover_cores(
+pub(crate) async fn discover_cores(
     cpu_dir: &std::path::Path,
 ) -> Result<Vec<(std::path::PathBuf, String)>, std::io::Error> {
     let mut discovered = Vec::new();
-    if !cpu_dir.is_dir() {
+    if !tokio::fs::metadata(cpu_dir)
+        .await
+        .is_ok_and(|metadata| metadata.is_dir())
+    {
         return Ok(discovered);
     }
 
-    for entry in std::fs::read_dir(cpu_dir)? {
-        let entry = entry?;
+    let mut entries = tokio::fs::read_dir(cpu_dir).await?;
+    while let Some(entry) = entries.next_entry().await? {
         let path = entry.path();
-        if !path.is_dir() {
+        if !tokio::fs::metadata(&path)
+            .await
+            .is_ok_and(|metadata| metadata.is_dir())
+        {
             continue;
         }
 
@@ -36,13 +42,15 @@ pub(crate) fn discover_cores(
         }
 
         let online_path = path.join("online");
-        if !online_path.is_file() {
+        if !tokio::fs::metadata(&online_path)
+            .await
+            .is_ok_and(|metadata| metadata.is_file())
+        {
             continue;
         }
 
-        if let Ok(state_str) = std::fs::read_to_string(&online_path) {
-            let trimmed = state_str.trim().to_string();
-            discovered.push((online_path, trimmed));
+        if let Ok(state_str) = tokio::fs::read_to_string(&online_path).await {
+            discovered.push((online_path, state_str.trim().to_owned()));
         }
     }
 
@@ -53,8 +61,8 @@ pub(crate) fn discover_cores(
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_discover_cores() {
+    #[tokio::test]
+    async fn test_discover_cores() {
         let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
         let cpu_dir = temp_dir.path();
 
@@ -76,7 +84,9 @@ mod tests {
         let not_cpu_online = not_cpu_dir.join("online");
         std::fs::write(&not_cpu_online, "1").expect("failed to write not_cpu online");
 
-        let mut cores = discover_cores(cpu_dir).expect("failed to discover cores");
+        let mut cores = discover_cores(cpu_dir)
+            .await
+            .expect("failed to discover cores");
         cores.sort_by(|a, b| a.0.cmp(&b.0));
 
         assert_eq!(cores.len(), 2);

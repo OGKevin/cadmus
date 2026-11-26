@@ -136,7 +136,7 @@ async fn query_to_content(
 
 impl Dictionary {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    pub fn new(
+    pub async fn new(
         rect: Rectangle,
         query: &str,
         language: &str,
@@ -161,7 +161,8 @@ impl Dictionary {
             TopBarVariant::Back,
             "Dictionary".to_string(),
             context,
-        );
+        )
+        .await;
         children.push(Box::new(top_bar) as Box<dyn View>);
 
         let separator = Filler::new(
@@ -558,9 +559,9 @@ impl Dictionary {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, rq, context)))]
-    fn reseed(&mut self, rq: &mut RenderQueue, context: &mut AppContext) {
+    async fn reseed(&mut self, rq: &mut RenderQueue, context: &mut AppContext) {
         if let Some(top_bar) = self.child_mut(0).downcast_mut::<TopBar>() {
-            top_bar.reseed(rq, context);
+            top_bar.reseed(rq, context).await;
         }
 
         rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
@@ -833,11 +834,11 @@ impl View for Dictionary {
                 true
             }
             Event::ToggleNear(ViewId::MainMenu, rect) => {
-                toggle_main_menu(self, rect, None, rq, context);
+                toggle_main_menu(self, rect, None, rq, context).await;
                 true
             }
             Event::ToggleNear(ViewId::BatteryMenu, rect) => {
-                toggle_battery_menu(self, rect, None, rq, context);
+                toggle_battery_menu(self, rect, None, rq, context).await;
                 true
             }
             Event::ToggleNear(ViewId::ClockMenu, rect) => {
@@ -845,7 +846,7 @@ impl View for Dictionary {
                 true
             }
             Event::Reseed => {
-                self.reseed(rq, context);
+                self.reseed(rq, context).await;
                 true
             }
             Event::Gesture(GestureEvent::Cross(_)) => {

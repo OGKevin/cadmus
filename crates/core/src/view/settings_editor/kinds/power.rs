@@ -17,6 +17,7 @@ use std::time::Duration;
 /// Auto suspend timeout setting
 pub struct AutoSuspend;
 
+#[async_trait::async_trait(?Send)]
 impl SettingKind for AutoSuspend {
     fn identity(&self) -> SettingIdentity {
         SettingIdentity::AutoSuspend
@@ -39,7 +40,7 @@ impl SettingKind for AutoSuspend {
         }
     }
 
-    fn handle(
+    async fn handle(
         &self,
         evt: &Event,
         context: &mut AppContext,
@@ -47,7 +48,7 @@ impl SettingKind for AutoSuspend {
     ) -> (Option<String>, bool) {
         if let Event::Submit(ViewId::AutoSuspendInput, text) = evt {
             let display = self.apply_text(text, &mut context.settings);
-            reschedule_auto_suspend_alarm(context);
+            reschedule_auto_suspend_alarm(context).await;
             return (Some(display), true);
         }
 
@@ -166,6 +167,7 @@ impl InputSettingKind for AutoPowerOff {
 /// Sleep cover enable/disable toggle setting
 pub struct SleepCover;
 
+#[async_trait::async_trait(?Send)]
 impl SettingKind for SleepCover {
     fn identity(&self) -> SettingIdentity {
         SettingIdentity::SleepCover
@@ -187,7 +189,7 @@ impl SettingKind for SleepCover {
         }
     }
 
-    fn handle(
+    async fn handle(
         &self,
         evt: &Event,
         context: &mut AppContext,
@@ -220,6 +222,26 @@ fn resolve_autosleep_mode(saved: AutosleepMode, available: &[AutosleepMode]) -> 
     }
 }
 
+/// Pushes the current autosleep settings to the soft-suspend backend.
+///
+/// A failed write leaves the backend on its previous configuration; the setting is
+/// still saved so the user's choice persists, hence the error is only logged.
+async fn apply_autosleep_settings(context: &mut AppContext) {
+    let result = context
+        .inhibitor
+        .apply_settings(
+            context.settings.autosleep_mode,
+            context.settings.indicate_autosleep_led,
+            Duration::from_secs_f32(context.settings.autosleep_grace.max(0.0)),
+        )
+        .await;
+
+    if let Err(error) = result {
+        tracing::warn!(error = %error, "Failed to apply soft-suspend settings");
+    }
+}
+
+#[async_trait::async_trait(?Send)]
 impl SettingKind for AutosleepModeSetting {
     fn identity(&self) -> SettingIdentity {
         SettingIdentity::AutosleepMode
@@ -250,7 +272,7 @@ impl SettingKind for AutosleepModeSetting {
         }
     }
 
-    fn handle(
+    async fn handle(
         &self,
         evt: &Event,
         context: &mut AppContext,
@@ -258,11 +280,7 @@ impl SettingKind for AutosleepModeSetting {
     ) -> (Option<String>, bool) {
         if let Event::Select(EntryId::SetAutosleepMode(mode)) = evt {
             context.settings.autosleep_mode = *mode;
-            context.inhibitor.apply_settings(
-                context.settings.autosleep_mode,
-                context.settings.indicate_autosleep_led,
-                Duration::from_secs_f32(context.settings.autosleep_grace.max(0.0)),
-            );
+            apply_autosleep_settings(context).await;
             return (Some(mode.to_i18n_string()), true);
         }
         (None, false)
@@ -272,6 +290,7 @@ impl SettingKind for AutosleepModeSetting {
 /// Use the status LED to show that soft suspend is armed while awake.
 pub struct IndicateAutosleepLed;
 
+#[async_trait::async_trait(?Send)]
 impl SettingKind for IndicateAutosleepLed {
     fn identity(&self) -> SettingIdentity {
         SettingIdentity::IndicateAutosleepLed
@@ -295,7 +314,7 @@ impl SettingKind for IndicateAutosleepLed {
         }
     }
 
-    fn handle(
+    async fn handle(
         &self,
         evt: &Event,
         context: &mut AppContext,
@@ -303,11 +322,7 @@ impl SettingKind for IndicateAutosleepLed {
     ) -> (Option<String>, bool) {
         if let Event::Toggle(ToggleEvent::Setting(ToggleSettings::IndicateAutosleepLed)) = evt {
             context.settings.indicate_autosleep_led = !context.settings.indicate_autosleep_led;
-            context.inhibitor.apply_settings(
-                context.settings.autosleep_mode,
-                context.settings.indicate_autosleep_led,
-                Duration::from_secs_f32(context.settings.autosleep_grace.max(0.0)),
-            );
+            apply_autosleep_settings(context).await;
             return (
                 Some(context.settings.indicate_autosleep_led.to_string()),
                 true,
@@ -320,6 +335,7 @@ impl SettingKind for IndicateAutosleepLed {
 /// Delay after the last soft-suspend lease before writing `wake_unlock`.
 pub struct AutosleepGrace;
 
+#[async_trait::async_trait(?Send)]
 impl SettingKind for AutosleepGrace {
     fn identity(&self) -> SettingIdentity {
         SettingIdentity::AutosleepGrace
@@ -336,7 +352,7 @@ impl SettingKind for AutosleepGrace {
         }
     }
 
-    fn handle(
+    async fn handle(
         &self,
         evt: &Event,
         context: &mut AppContext,
@@ -344,11 +360,7 @@ impl SettingKind for AutosleepGrace {
     ) -> (Option<String>, bool) {
         if let Event::Submit(ViewId::AutosleepGraceInput, text) = evt {
             let display = self.apply_text(text, &mut context.settings);
-            context.inhibitor.apply_settings(
-                context.settings.autosleep_mode,
-                context.settings.indicate_autosleep_led,
-                Duration::from_secs_f32(context.settings.autosleep_grace.max(0.0)),
-            );
+            apply_autosleep_settings(context).await;
             return (Some(display), true);
         }
         (None, false)
@@ -441,23 +453,26 @@ mod tests {
             let setting = AutoSuspend;
             let mut context = create_test_context().await;
             context.settings.auto_suspend = 30.0;
-            reschedule_auto_suspend_alarm(&mut context);
+            reschedule_auto_suspend_alarm(&mut context).await;
             let first = context
                 .alarm_manager
                 .as_ref()
                 .unwrap()
                 .lock()
-                .unwrap()
+                .await
                 .time_until_alarm(AlarmType::AutoSuspend)
+                .await
                 .unwrap();
             let mut bus: Bus = VecDeque::new();
 
-            std::thread::sleep(std::time::Duration::from_millis(20));
-            let (display, handled) = setting.handle(
-                &Event::Submit(ViewId::AutoSuspendInput, "15.0".to_string()),
-                &mut context,
-                &mut bus,
-            );
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            let (display, handled) = setting
+                .handle(
+                    &Event::Submit(ViewId::AutoSuspendInput, "15.0".to_string()),
+                    &mut context,
+                    &mut bus,
+                )
+                .await;
 
             assert!(handled);
             assert_eq!(display.as_deref(), Some("15.0"));
@@ -467,8 +482,9 @@ mod tests {
                 .as_ref()
                 .unwrap()
                 .lock()
-                .unwrap()
+                .await
                 .time_until_alarm(AlarmType::AutoSuspend)
+                .await
                 .unwrap();
             assert!((second - 15 * 60).abs() < 2);
             assert!(second < first);
@@ -481,14 +497,16 @@ mod tests {
             let setting = AutoSuspend;
             let mut context = create_test_context().await;
             context.settings.auto_suspend = 30.0;
-            reschedule_auto_suspend_alarm(&mut context);
+            reschedule_auto_suspend_alarm(&mut context).await;
             let mut bus: Bus = VecDeque::new();
 
-            let (display, handled) = setting.handle(
-                &Event::Submit(ViewId::AutoSuspendInput, "0".to_string()),
-                &mut context,
-                &mut bus,
-            );
+            let (display, handled) = setting
+                .handle(
+                    &Event::Submit(ViewId::AutoSuspendInput, "0".to_string()),
+                    &mut context,
+                    &mut bus,
+                )
+                .await;
 
             assert!(handled);
             assert_eq!(display, Some(fl!("settings-general-never")));
@@ -499,7 +517,7 @@ mod tests {
                     .as_ref()
                     .unwrap()
                     .lock()
-                    .unwrap()
+                    .await
                     .has_alarm(AlarmType::AutoSuspend)
             );
         }
@@ -560,7 +578,7 @@ mod tests {
             let mut bus: Bus = VecDeque::new();
             let event = Event::Toggle(ToggleEvent::Setting(ToggleSettings::SleepCover));
 
-            let result = setting.handle(&event, &mut context, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus).await;
 
             assert!(result.0.is_some());
             assert_eq!(result.0.unwrap(), "false");
@@ -574,7 +592,9 @@ mod tests {
             context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
-            let result = setting.handle(&Event::Select(EntryId::About), &mut context, &mut bus);
+            let result = setting
+                .handle(&Event::Select(EntryId::About), &mut context, &mut bus)
+                .await;
 
             assert!(result.0.is_none());
         }
@@ -649,12 +669,13 @@ mod tests {
                 AutosleepMode::Mem,
             ]);
             let mut context = create_test_context().await;
-            let _linux = crate::context::test_helpers::install_linux_soft_suspend(&mut context);
+            let _linux =
+                crate::context::test_helpers::install_linux_soft_suspend(&mut context).await;
             context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
             let event = Event::Select(EntryId::SetAutosleepMode(AutosleepMode::Off));
 
-            let result = setting.handle(&event, &mut context, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus).await;
 
             assert_eq!(result.0, Some(AutosleepMode::Off.to_i18n_string()));
             assert!(result.1);
@@ -683,18 +704,52 @@ mod tests {
                 None,
                 std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
             );
-            context.wifi_session.set_inhibitor(Arc::clone(&inhibitor));
+            context
+                .wifi_session
+                .set_inhibitor(Arc::clone(&inhibitor))
+                .await;
             context.inhibitor = inhibitor;
             context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
             let event = Event::Select(EntryId::SetAutosleepMode(AutosleepMode::Mem));
 
-            let result = setting.handle(&event, &mut context, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus).await;
 
             assert_eq!(result.0, Some(AutosleepMode::Mem.to_i18n_string()));
             assert!(result.1);
             assert_eq!(context.settings.autosleep_mode, AutosleepMode::Mem);
             assert_eq!(context.inhibitor.mode(), AutosleepMode::Off);
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        #[cfg(target_os = "linux")]
+        async fn handle_select_keeps_requested_mode_when_backend_write_fails() {
+            let setting = AutosleepModeSetting::new(vec![
+                AutosleepMode::Off,
+                AutosleepMode::Freeze,
+                AutosleepMode::Mem,
+            ]);
+            let mut context = create_test_context().await;
+            context.settings = Settings::default();
+            let dir = crate::context::test_helpers::install_linux_soft_suspend(&mut context).await;
+            context
+                .inhibitor
+                .set_mode(AutosleepMode::Freeze)
+                .await
+                .expect("initial freeze write succeeds");
+            let autosleep_node = dir.path().join("autosleep");
+            std::fs::remove_file(&autosleep_node).expect("remove autosleep node");
+            let mut bus: Bus = VecDeque::new();
+            let event = Event::Select(EntryId::SetAutosleepMode(AutosleepMode::Mem));
+
+            let result = setting.handle(&event, &mut context, &mut bus).await;
+
+            assert_eq!(result.0, Some(AutosleepMode::Mem.to_i18n_string()));
+            assert!(result.1);
+            assert_eq!(context.settings.autosleep_mode, AutosleepMode::Mem);
+            assert_eq!(context.inhibitor.mode(), AutosleepMode::Freeze);
+            assert!(!autosleep_node.exists());
+            assert!(bus.is_empty());
         }
 
         #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -708,7 +763,9 @@ mod tests {
             context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
-            let result = setting.handle(&Event::Select(EntryId::About), &mut context, &mut bus);
+            let result = setting
+                .handle(&Event::Select(EntryId::About), &mut context, &mut bus)
+                .await;
 
             assert!(result.0.is_none());
             assert!(!result.1);
@@ -760,7 +817,8 @@ mod tests {
         async fn handle_toggle_event_toggles_value_and_session() {
             let setting = IndicateAutosleepLed;
             let mut context = create_test_context().await;
-            let _linux = crate::context::test_helpers::install_linux_soft_suspend(&mut context);
+            let _linux =
+                crate::context::test_helpers::install_linux_soft_suspend(&mut context).await;
             context.settings = Settings {
                 indicate_autosleep_led: true,
                 ..Default::default()
@@ -768,7 +826,7 @@ mod tests {
             let mut bus: Bus = VecDeque::new();
             let event = Event::Toggle(ToggleEvent::Setting(ToggleSettings::IndicateAutosleepLed));
 
-            let result = setting.handle(&event, &mut context, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus).await;
 
             assert_eq!(result.0.as_deref(), Some("false"));
             assert!(result.1);
@@ -782,7 +840,8 @@ mod tests {
         async fn handle_toggle_enables_when_disabled() {
             let setting = IndicateAutosleepLed;
             let mut context = create_test_context().await;
-            let _linux = crate::context::test_helpers::install_linux_soft_suspend(&mut context);
+            let _linux =
+                crate::context::test_helpers::install_linux_soft_suspend(&mut context).await;
             context.settings = Settings {
                 indicate_autosleep_led: false,
                 ..Default::default()
@@ -790,7 +849,7 @@ mod tests {
             let mut bus: Bus = VecDeque::new();
             let event = Event::Toggle(ToggleEvent::Setting(ToggleSettings::IndicateAutosleepLed));
 
-            let result = setting.handle(&event, &mut context, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus).await;
 
             assert_eq!(result.0.as_deref(), Some("true"));
             assert!(result.1);
@@ -805,7 +864,9 @@ mod tests {
             context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
-            let result = setting.handle(&Event::Select(EntryId::About), &mut context, &mut bus);
+            let result = setting
+                .handle(&Event::Select(EntryId::About), &mut context, &mut bus)
+                .await;
 
             assert!(result.0.is_none());
             assert!(!result.1);
@@ -907,12 +968,13 @@ mod tests {
         async fn handle_submit_applies_grace_to_session() {
             let setting = AutosleepGrace;
             let mut context = create_test_context().await;
-            let _linux = crate::context::test_helpers::install_linux_soft_suspend(&mut context);
+            let _linux =
+                crate::context::test_helpers::install_linux_soft_suspend(&mut context).await;
             context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
             let event = Event::Submit(ViewId::AutosleepGraceInput, "2.5".into());
 
-            let result = setting.handle(&event, &mut context, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus).await;
 
             assert_eq!(result.0.as_deref(), Some("2.5"));
             assert!(result.1);
@@ -931,7 +993,9 @@ mod tests {
             context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
-            let result = setting.handle(&Event::Select(EntryId::About), &mut context, &mut bus);
+            let result = setting
+                .handle(&Event::Select(EntryId::About), &mut context, &mut bus)
+                .await;
 
             assert!(result.0.is_none());
             assert!(!result.1);

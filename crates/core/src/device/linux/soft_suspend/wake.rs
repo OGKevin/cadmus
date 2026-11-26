@@ -14,151 +14,179 @@
 //!   bypassing grace, and suppresses acquire/release writes while holder
 //!   accounting stays live. Resume re-locks only when holders remain.
 //!
-//! This module does **not** write `/sys/power/autosleep` or drive the status
-//! LED — that is [`super::autosleep`]. Cadmus suspend / exit gating is
-//! [`Kind::Full`](crate::device::inhibitor::Kind::Full), not SoftSuspend.
+//! All hardware writes go through one [`UnlockInner::reconcile`] loop. The loop
+//! computes demand from live Full holders, suppression, leases, and the grace
+//! deadline, then serializes one sysfs writer at a time. A completed write is
+//! the only evidence that `held` changed: a failed write returns a typed error
+//! instead of pretending the intended state was applied.
 //!
 //! # Architecture
 //!
 //! ```text
 //!   acquire("wifi") ──► LeaseTracker ──► WakeLockArmer (LeaseObserver)
 //!                              │                    │
-//!                              │         on_first_acquire → wake_lock
-//!                              │         on_last_release  → schedule unlock
+//!                       │              on_first_acquire → cancel grace
+//!                       │              confirm_leases → reconcile
+//!                              │         on_last_release  → deadline → reconcile
 //!                              ▼
 //!                        Lease (RAII drop releases)
 //!
 //!   UnlockInner (background thread)
-//!        waits on due_at ──► wake_unlock when grace elapses and no pins
+//!        waits on due_at ──► grace expiry and bounded restore retries
 //! ```
 
 use super::WAKE_LOCK_NAME;
-use super::paths::{SoftSuspendPaths, SysfsWrite, write_sysfs};
-use crate::device::inhibitor::soft_suspend::WakeLockPauseOutcome;
+use super::paths::{SoftSuspendPaths, SysfsWrite, SysfsWriteError, write_sysfs_blocking};
+use crate::device::inhibitor::InhibitorError;
+use crate::device::inhibitor::soft_suspend::{
+    SuppressionEpoch, WakeLockPauseOutcome, WakeLockResumeOutcome,
+};
 use crate::lease::{Lease, LeaseName, LeaseObserver, LeaseTracker, WeakLeaseTracker};
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
+use tokio::sync::{mpsc, oneshot};
 
-fn write_sysfs_applied(path: &Path, value: &str) -> bool {
-    match write_sysfs(path, value) {
-        Ok(SysfsWrite::Written) => {
-            tracing::debug!(path = %path.display(), value, "wrote soft-suspend sysfs");
-            true
-        }
-        Ok(SysfsWrite::Missing) => {
-            tracing::debug!(path = %path.display(), value, "soft-suspend sysfs path missing");
-            true
-        }
-        Err(error) => {
-            tracing::warn!(error = %error, value, "failed to write soft-suspend sysfs");
-            false
-        }
-    }
+/// Delayed attempts after a failed wake-lock restore.
+const RECOVERY_DELAYS: [Duration; 3] = [
+    Duration::from_millis(100),
+    Duration::from_millis(200),
+    Duration::from_millis(400),
+];
+
+/// Point at which the retry budget is replenished by an explicit operation.
+const RECOVERY_ATTEMPTS: usize = RECOVERY_DELAYS.len();
+
+/// Test seam for deterministic sysfs failures and in-flight write barriers.
+#[cfg(all(test, target_os = "linux"))]
+pub(crate) type WakeWriteHook =
+    Arc<dyn Fn(&Path, &str) -> Result<SysfsWrite, SysfsWriteError> + Send + Sync + 'static>;
+
+/// One wake-control request whose response resolves after hardware reconciliation.
+enum WakeRequest {
+    Acquire(oneshot::Sender<Result<bool, SysfsWriteError>>),
+    Pause(oneshot::Sender<WakeLockPauseOutcome>),
+    Resume {
+        grace: Duration,
+        reply: oneshot::Sender<WakeLockResumeOutcome>,
+    },
+    Shutdown(oneshot::Sender<Result<(), SysfsWriteError>>),
 }
 
 struct UnlockState {
+    /// Next grace expiry or restore retry deadline.
     due_at: Option<Instant>,
-    /// Whether the kernel wake lock is currently locked.
+    /// Last kernel state confirmed by a completed write.
     held: bool,
+    suppressed: bool,
+    suppress_epoch: u64,
+    /// While true, another thread owns the sysfs write and only it may clear it.
+    writing: bool,
     paths: SoftSuspendPaths,
     shutdown: bool,
-    paused: bool,
+    recovery_remaining: usize,
 }
 
 struct UnlockInner {
     state: Mutex<UnlockState>,
+    requests: mpsc::UnboundedSender<WakeRequest>,
     cv: Condvar,
     pins: AtomicUsize,
-    writers: AtomicUsize,
     tracker: OnceLock<WeakLeaseTracker>,
     full_tracker: OnceLock<WeakLeaseTracker>,
+    #[cfg(all(test, target_os = "linux"))]
+    write_hook: Mutex<Option<WakeWriteHook>>,
 }
 
 impl UnlockInner {
     fn new(paths: SoftSuspendPaths) -> Arc<Self> {
+        let (requests, control) = mpsc::unbounded_channel();
         let inner = Arc::new(Self {
+            requests,
             state: Mutex::new(UnlockState {
                 due_at: None,
                 held: false,
+                suppressed: false,
+                suppress_epoch: 0,
+                writing: false,
                 paths,
                 shutdown: false,
-                paused: false,
+                recovery_remaining: 0,
             }),
             cv: Condvar::new(),
             pins: AtomicUsize::new(0),
-            writers: AtomicUsize::new(0),
             tracker: OnceLock::new(),
             full_tracker: OnceLock::new(),
+            #[cfg(all(test, target_os = "linux"))]
+            write_hook: Mutex::new(None),
         });
         let worker = Arc::clone(&inner);
         crate::runtime::spawn_blocking(move || worker.run());
+        let worker = Arc::clone(&inner);
+        crate::runtime::spawn_blocking(move || worker.run_requests(control));
         inner
     }
 
-    /// Waits for the release grace to elapse, then unlocks.
-    ///
-    /// The state mutex is never held across a sysfs write. Every other writer
-    /// in this file releases it first, because a write that blocks while
-    /// holding the lock would serialise every other wake-lock operation behind
-    /// it.
+    #[cfg(all(test, target_os = "linux"))]
+    fn set_write_hook(&self, hook: WakeWriteHook) {
+        *self.write_hook.lock().unwrap_or_else(|e| e.into_inner()) = Some(hook);
+    }
+
+    fn write(&self, path: &Path) -> Result<SysfsWrite, SysfsWriteError> {
+        #[cfg(all(test, target_os = "linux"))]
+        if let Some(hook) = self
+            .write_hook
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+        {
+            return hook(path, WAKE_LOCK_NAME);
+        }
+        write_sysfs_blocking(path, WAKE_LOCK_NAME)
+    }
+
+    /// Waits for grace deadlines, then reconciles demand or retries a failed
+    /// restore autonomously. State locks are never held across a sysfs write.
     fn run(self: &Arc<Self>) {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         loop {
             if state.shutdown {
                 break;
             }
-
-            if state.paused {
-                state.due_at = None;
-                state = self.cv.wait(state).unwrap_or_else(|e| e.into_inner());
-                continue;
-            }
-
             let Some(due) = state.due_at else {
                 state = self.cv.wait(state).unwrap_or_else(|e| e.into_inner());
                 continue;
             };
-
             let now = Instant::now();
             if due > now {
-                let wait = due - now;
                 let (guard, _) = self
                     .cv
-                    .wait_timeout(state, wait)
+                    .wait_timeout(state, due - now)
                     .unwrap_or_else(|e| e.into_inner());
                 state = guard;
                 continue;
             }
-
-            if state.due_at.is_some_and(|d| d <= Instant::now()) {
-                if self.has_holders() {
-                    state.due_at = None;
-                    continue;
+            drop(state);
+            match self.reconcile() {
+                Ok(_) => {
+                    state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                    state.recovery_remaining = 0;
                 }
-                if self.writers.load(Ordering::SeqCst) != 0 {
-                    state = self.cv.wait(state).unwrap_or_else(|e| e.into_inner());
-                    continue;
+                Err(error) => {
+                    tracing::warn!(error = %error, "soft-suspend wake-lock write failed");
+                    self.schedule_recovery();
+                    state = self.state.lock().unwrap_or_else(|e| e.into_inner());
                 }
-                self.writers.fetch_add(1, Ordering::SeqCst);
-                let paths = state.paths.clone();
-                state.due_at = None;
-                tracing::info!(
-                    wake_lock = WAKE_LOCK_NAME,
-                    "soft-suspend release grace elapsed; unlocking"
-                );
-                drop(state);
-                self.write_unlock_unless_reacquired(&paths);
-                self.end_sysfs_write();
-                state = self.state.lock().unwrap_or_else(|e| e.into_inner());
             }
         }
     }
 
     fn pin(&self) {
         self.pins.fetch_add(1, Ordering::SeqCst);
-        self.cancel_pending_unlock();
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        state.due_at = None;
+        self.cv.notify_all();
     }
 
     fn unpin(&self) {
@@ -167,24 +195,6 @@ impl UnlockInner {
         self.cv.notify_all();
     }
 
-    fn begin_sysfs_write(&self) {
-        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        while self.writers.load(Ordering::SeqCst) != 0 {
-            state = self.cv.wait(state).unwrap_or_else(|e| e.into_inner());
-        }
-        self.writers.fetch_add(1, Ordering::SeqCst);
-    }
-
-    fn end_sysfs_write(&self) {
-        let _state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        self.writers.fetch_sub(1, Ordering::SeqCst);
-        self.cv.notify_all();
-    }
-
-    /// Reports whether any SoftSuspend lease is live or being acquired.
-    ///
-    /// `state.held` is the last known kernel lock state; this is the
-    /// lease-tracker side of that distinction.
     fn has_holders(&self) -> bool {
         self.pins.load(Ordering::SeqCst) != 0
             || self
@@ -207,205 +217,282 @@ impl UnlockInner {
         let _ = self.full_tracker.set(tracker);
     }
 
-    fn commit_lock_write(&self, paths: &SoftSuspendPaths, locked: bool) {
-        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        if state.paused {
-            drop(state);
-            let unlocked = write_sysfs_applied(&paths.wake_unlock, WAKE_LOCK_NAME);
-            let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            if unlocked {
-                state.held = false;
-            } else if locked {
-                state.held = true;
-            }
-        } else if locked {
-            state.held = true;
-        }
-    }
-
-    fn commit_unlock_write(&self, unlocked: bool) {
-        if unlocked {
-            let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            state.held = false;
-        }
-    }
-
-    fn write_unlock_unless_reacquired(&self, paths: &SoftSuspendPaths) {
-        let unlocked = write_sysfs_applied(&paths.wake_unlock, WAKE_LOCK_NAME);
-        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        if state.paused {
-            if unlocked {
-                state.held = false;
-            }
-        } else if self.has_holders() {
-            drop(state);
-            let relocked = write_sysfs_applied(&paths.wake_lock, WAKE_LOCK_NAME);
-            self.commit_lock_write(paths, relocked);
-        } else if unlocked {
-            state.held = false;
-        }
-    }
-
-    fn take_wake_lock(&self) {
-        self.begin_sysfs_write();
-        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        if state.paused {
-            drop(state);
-            self.end_sysfs_write();
-            return;
-        }
-        let paths = state.paths.clone();
-        state.due_at = None;
-        self.cv.notify_one();
-        drop(state);
-        let locked = write_sysfs_applied(&paths.wake_lock, WAKE_LOCK_NAME);
-        self.commit_lock_write(&paths, locked);
-        self.end_sysfs_write();
-    }
-
-    /// Writes `wake_unlock` only when the kernel lock is actually held.
+    /// Computes kernel demand and clears suppression before waiting on I/O.
     ///
-    /// `state.held` tracks the last known kernel write; `has_holders()` tracks
-    /// live leases. Checking both avoids unlocking for suppression that never
-    /// took the lock and avoids removing protection when an acquire raced in.
-    fn release_wake_lock_now(&self) {
-        self.begin_sysfs_write();
-        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        if state.paused || !state.held || self.has_holders() {
-            drop(state);
-            self.end_sysfs_write();
-            return;
+    /// Full acquisition invalidates the pause epoch here, while its intent is
+    /// live, rather than relying on a holder count sampled after the write.
+    ///
+    /// A “past epoch” is a generation recorded for an older sleep leg, not a
+    /// timestamp. It is no longer current once suppression ends or its value
+    /// changes. [`Self::wake_lock_epoch_is_current`] checks both state and
+    /// generation, so a Full interruption remains visible even if the Full
+    /// holder disappeared before the next poll. Cleanup is separate: consuming
+    /// the cycle's saved epoch with `Option::take` limits restoration to one call
+    /// for that sleep leg.
+    fn compute_desired(&self, state: &mut UnlockState) -> bool {
+        if state.shutdown {
+            state.due_at = None;
+            return false;
         }
-        let paths = state.paths.clone();
+        if self.has_full_holders() {
+            if state.suppressed {
+                state.suppressed = false;
+                state.suppress_epoch += 1;
+            }
+            state.due_at = None;
+            return true;
+        }
+        if state.suppressed {
+            state.due_at = None;
+            return false;
+        }
+        if self.has_holders() {
+            state.due_at = None;
+            return true;
+        }
+        if !state.held {
+            state.due_at = None;
+            return false;
+        }
+        if state.due_at.is_some_and(|due| due > Instant::now()) {
+            return true;
+        }
         state.due_at = None;
-        self.cv.notify_one();
-        drop(state);
-        tracing::debug!(
-            wake_lock = WAKE_LOCK_NAME,
-            "soft-suspend writing wake_unlock"
-        );
-        self.write_unlock_unless_reacquired(&paths);
-        self.end_sysfs_write();
+        false
     }
 
-    fn schedule_unlock(&self, grace: Duration) {
-        if grace.is_zero() {
-            self.release_wake_lock_now();
-            return;
-        }
-
+    /// Drives the confirmed kernel state towards live demand.
+    ///
+    /// Only one caller writes at a time. After each write the loop re-reads
+    /// holder and suppression state, because both may have changed while the
+    /// mutex was dropped. A missing node on this live Linux backend is an
+    /// error, not a successful no-op.
+    fn reconcile(&self) -> Result<bool, SysfsWriteError> {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        if state.paused || !state.held {
-            state.due_at = None;
-            self.cv.notify_one();
-            return;
-        }
-        let due_at = Instant::now() + grace;
-        state.due_at = Some(due_at);
-        tracing::debug!(
-            wake_lock = WAKE_LOCK_NAME,
-            grace_secs = grace.as_secs_f32(),
-            "soft-suspend last holder released; scheduling unlock"
-        );
-        self.cv.notify_one();
-    }
-
-    fn reconcile_after_resume_lock(&self, paths: &SoftSuspendPaths, grace: Duration) {
-        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        if state.paused || !state.held || self.has_holders() {
-            return;
-        }
-        if grace.is_zero() {
-            state.due_at = None;
+        loop {
+            while state.writing {
+                state = self.cv.wait(state).unwrap_or_else(|e| e.into_inner());
+            }
+            let desired = self.compute_desired(&mut state);
+            self.cv.notify_all();
+            if desired == state.held {
+                return Ok(state.held);
+            }
+            state.writing = true;
+            let path = if desired {
+                state.paths.wake_lock.clone()
+            } else {
+                state.paths.wake_unlock.clone()
+            };
             drop(state);
-            self.write_unlock_unless_reacquired(paths);
-        } else if state.due_at.is_none() {
-            state.due_at = Some(Instant::now() + grace);
-            self.cv.notify_one();
+            let result = self.write(&path);
+            state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            state.writing = false;
+            match result {
+                Ok(SysfsWrite::Written) => {
+                    state.held = desired;
+                    self.cv.notify_all();
+                }
+                Ok(SysfsWrite::Missing) => {
+                    self.cv.notify_all();
+                    return Err(SysfsWriteError::missing(&path));
+                }
+                Err(error) => {
+                    self.cv.notify_all();
+                    return Err(error);
+                }
+            }
         }
     }
 
-    fn pause(&self) -> WakeLockPauseOutcome {
+    /// Arms the next bounded retry, or records budget exhaustion.
+    ///
+    /// Public pause/resume and acquisition replenish the budget; the grace
+    /// worker performs the delayed attempts without any further API calls.
+    fn schedule_recovery(&self) {
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if state.shutdown {
+            return;
+        }
+        if state.recovery_remaining == 0 {
+            tracing::error!(
+                wake_lock = WAKE_LOCK_NAME,
+                "soft-suspend wake-lock restore retries exhausted; mismatch retained"
+            );
+            state.due_at = None;
+            self.cv.notify_all();
+            return;
+        }
+        state.recovery_remaining -= 1;
+        let attempt = RECOVERY_ATTEMPTS - state.recovery_remaining - 1;
+        let delay = RECOVERY_DELAYS[attempt];
+        state.due_at = Some(Instant::now() + delay);
+        tracing::debug!(
+            attempt = attempt + 1,
+            delay_ms = delay.as_millis(),
+            "soft-suspend wake-lock restore retry scheduled"
+        );
+        self.cv.notify_all();
+    }
+
+    fn replenish_recovery(&self) {
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        state.recovery_remaining = RECOVERY_ATTEMPTS;
+    }
+
+    fn run_requests(&self, mut requests: mpsc::UnboundedReceiver<WakeRequest>) {
+        while let Some(request) = requests.blocking_recv() {
+            match request {
+                WakeRequest::Acquire(reply) => {
+                    self.replenish_recovery();
+                    let result = self.reconcile();
+                    if let Err(error) = &result {
+                        tracing::warn!(error = %error, "soft-suspend wake-lock acquisition failed");
+                        self.schedule_recovery();
+                    }
+                    let _ = reply.send(result);
+                }
+                WakeRequest::Pause(reply) => {
+                    let _ = reply.send(self.pause_now());
+                }
+                WakeRequest::Resume { grace, reply } => {
+                    let _ = reply.send(self.resume_now(grace));
+                }
+                WakeRequest::Shutdown(reply) => {
+                    let result = self.shutdown_now();
+                    let _ = reply.send(result);
+                    break;
+                }
+            }
+        }
+    }
+
+    /// Arms the grace deadline after the last holder releases.
+    ///
+    /// A write in flight may still confirm `held` after the holder is gone,
+    /// so the deadline is kept for it; only a settled unheld state clears it.
+    fn schedule_unlock(&self, grace: Duration) {
+        let zero = grace.is_zero();
         {
+            let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            if state.suppressed || (!state.held && !state.writing) || self.has_holders() {
+                state.due_at = None;
+                self.cv.notify_all();
+                return;
+            }
+            state.recovery_remaining = 0;
+            state.due_at = if zero {
+                Some(Instant::now())
+            } else {
+                Some(Instant::now() + grace)
+            };
+            self.cv.notify_all();
+        }
+    }
+
+    async fn request<T: Send + 'static>(
+        &self,
+        make_request: impl FnOnce(oneshot::Sender<T>) -> WakeRequest + Send + 'static,
+    ) -> Option<T> {
+        let (reply, outcome) = oneshot::channel();
+        self.requests.send(make_request(reply)).ok()?;
+        outcome.await.ok()
+    }
+
+    async fn acquire(&self) -> Option<Result<bool, SysfsWriteError>> {
+        self.request(WakeRequest::Acquire).await
+    }
+
+    async fn pause(&self) -> WakeLockPauseOutcome {
+        self.request(WakeRequest::Pause)
+            .await
+            .unwrap_or(WakeLockPauseOutcome::UnlockFailed)
+    }
+
+    async fn resume(&self, grace: Duration) -> WakeLockResumeOutcome {
+        self.request(move |reply| WakeRequest::Resume { grace, reply })
+            .await
+            .unwrap_or(WakeLockResumeOutcome::WorkerFailed)
+    }
+
+    fn pause_now(&self) -> WakeLockPauseOutcome {
+        let epoch = {
             let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
             if self.has_full_holders() {
                 return WakeLockPauseOutcome::BlockedByFull;
             }
-            if state.paused {
-                return WakeLockPauseOutcome::Paused;
+            if state.suppressed {
+                state.suppress_epoch
+            } else {
+                state.suppressed = true;
+                state.suppress_epoch += 1;
+                state.suppress_epoch
             }
-            state.paused = true;
-            state.due_at = None;
-            self.cv.notify_all();
-        }
-
-        self.begin_sysfs_write();
-        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        if self.has_full_holders() {
-            if state.held || !self.has_holders() {
-                state.paused = false;
-                drop(state);
-                self.end_sysfs_write();
-                return WakeLockPauseOutcome::BlockedByFull;
-            }
-            let paths = state.paths.clone();
-            state.paused = false;
-            drop(state);
-            let locked = write_sysfs_applied(&paths.wake_lock, WAKE_LOCK_NAME);
-            self.commit_lock_write(&paths, locked);
-            self.end_sysfs_write();
-            return WakeLockPauseOutcome::BlockedByFull;
-        }
-        if !state.paused {
-            drop(state);
-            self.end_sysfs_write();
-            return WakeLockPauseOutcome::Paused;
-        }
-        let paths = state.paths.clone();
-        drop(state);
-        tracing::debug!(
-            wake_lock = WAKE_LOCK_NAME,
-            "soft-suspend dropping kernel wake lock"
-        );
-        let unlocked = write_sysfs_applied(&paths.wake_unlock, WAKE_LOCK_NAME);
-        self.commit_unlock_write(unlocked);
-        self.end_sysfs_write();
-        WakeLockPauseOutcome::Paused
-    }
-
-    fn resume(&self, grace: Duration) {
+        };
         {
             let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            if !state.paused {
-                return;
-            }
-            state.paused = false;
             state.due_at = None;
+            state.recovery_remaining = 0;
             self.cv.notify_all();
         }
+        match self.reconcile() {
+            Ok(_) => {
+                let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                if !state.suppressed || state.suppress_epoch != epoch {
+                    return WakeLockPauseOutcome::BlockedByFull;
+                }
+                if state.held || state.writing {
+                    return WakeLockPauseOutcome::UnlockFailed;
+                }
+                WakeLockPauseOutcome::Paused(SuppressionEpoch(epoch))
+            }
+            Err(error) => {
+                tracing::warn!(error = %error, "soft-suspend wake-lock unlock failed");
+                let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                if state.suppressed && state.suppress_epoch == epoch {
+                    state.suppressed = false;
+                    state.suppress_epoch += 1;
+                }
+                drop(state);
+                self.replenish_recovery();
+                self.schedule_recovery();
+                WakeLockPauseOutcome::UnlockFailed
+            }
+        }
+    }
 
-        self.begin_sysfs_write();
+    fn wake_lock_epoch_is_current(&self, epoch: SuppressionEpoch) -> bool {
         let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        if state.paused {
-            drop(state);
-            self.end_sysfs_write();
-            return;
+        state.suppressed && state.suppress_epoch == epoch.0
+    }
+
+    fn resume_now(&self, grace: Duration) -> WakeLockResumeOutcome {
+        {
+            let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            if state.suppressed {
+                state.suppressed = false;
+                state.suppress_epoch += 1;
+            }
+            if !state.suppressed
+                && state.held
+                && !self.has_holders()
+                && !grace.is_zero()
+                && state.due_at.is_none()
+            {
+                state.due_at = Some(Instant::now() + grace);
+            }
+            state.recovery_remaining = RECOVERY_ATTEMPTS;
+            self.cv.notify_all();
         }
-        let paths = state.paths.clone();
-        drop(state);
-        if !self.has_holders() {
-            self.reconcile_after_resume_lock(&paths, grace);
-            self.end_sysfs_write();
-            return;
+        match self.reconcile() {
+            Ok(true) => WakeLockResumeOutcome::Restored,
+            Ok(false) => WakeLockResumeOutcome::Unheld,
+            Err(error) => {
+                tracing::warn!(error = %error, "soft-suspend wake-lock restore failed");
+                self.schedule_recovery();
+                WakeLockResumeOutcome::RestoreFailed
+            }
         }
-        tracing::debug!(
-            wake_lock = WAKE_LOCK_NAME,
-            "soft-suspend retaking kernel wake lock"
-        );
-        let locked = write_sysfs_applied(&paths.wake_lock, WAKE_LOCK_NAME);
-        self.commit_lock_write(&paths, locked);
-        self.reconcile_after_resume_lock(&paths, grace);
-        self.end_sysfs_write();
     }
 
     fn cancel_pending_unlock(&self) {
@@ -416,28 +503,33 @@ impl UnlockInner {
                 "soft-suspend pending unlock cancelled"
             );
         }
-        self.cv.notify_one();
-    }
-
-    fn is_held(&self) -> bool {
-        self.state.lock().unwrap_or_else(|e| e.into_inner()).held
-    }
-
-    fn shutdown(&self) {
-        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        let paths = state.paths.clone();
-        let should_unlock = state.held;
-        state.shutdown = true;
-        state.due_at = None;
-        state.held = false;
         self.cv.notify_all();
-        drop(state);
-        if should_unlock {
-            tracing::info!(
-                wake_lock = WAKE_LOCK_NAME,
-                "soft-suspend session teardown; unlocking"
-            );
-            write_sysfs_applied(&paths.wake_unlock, WAKE_LOCK_NAME);
+    }
+
+    /// True when the lock is confirmed held or a write that may confirm it is in flight.
+    fn may_be_held(&self) -> bool {
+        let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        state.held || state.writing
+    }
+
+    fn shutdown_now(&self) -> Result<(), SysfsWriteError> {
+        {
+            let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            state.shutdown = true;
+            state.due_at = None;
+            state.suppressed = false;
+            self.cv.notify_all();
+        }
+        match self.reconcile() {
+            Ok(_) => Ok(()),
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    wake_lock = WAKE_LOCK_NAME,
+                    "soft-suspend session teardown could not confirm unlock"
+                );
+                Err(error)
+            }
         }
     }
 }
@@ -473,14 +565,15 @@ impl WakeLockArmer {
 
 impl Drop for WakeLockArmer {
     fn drop(&mut self) {
-        self.unlock.shutdown();
+        let (reply, _outcome) = oneshot::channel();
+        let _ = self.unlock.requests.send(WakeRequest::Shutdown(reply));
     }
 }
 
 impl LeaseObserver for WakeLockArmer {
     fn on_first_acquire(&self, name: &LeaseName) {
         tracing::debug!(name = %name, wake_lock = WAKE_LOCK_NAME, "soft-suspend first holder");
-        self.unlock.take_wake_lock();
+        self.unlock.cancel_pending_unlock();
     }
 
     fn on_last_release(&self, name: &LeaseName) {
@@ -512,12 +605,20 @@ impl WakeLock {
         })
     }
 
-    pub(crate) fn acquire(&self, name: impl Into<LeaseName>) -> Lease {
+    pub(crate) fn register(&self, name: impl Into<LeaseName>) -> Lease {
         let name = name.into();
         self.armer.unlock.pin();
         let lease = self.tracker.acquire(name);
         self.armer.unlock.unpin();
         lease
+    }
+
+    /// Awaits worker reconciliation and preserves logical leases for retryable writes.
+    pub(crate) async fn confirm_leases(&self) -> Result<(), InhibitorError> {
+        match self.armer.unlock.acquire().await {
+            Some(Ok(_) | Err(_)) => Ok(()),
+            None => Err(InhibitorError::WorkerFailed),
+        }
     }
 
     pub(crate) fn len(&self) -> usize {
@@ -535,20 +636,42 @@ impl WakeLock {
 
     /// Releases `cadmus` and suppresses wake-lock writes until [`Self::resume`].
     ///
-    /// Lease tracking stays active, so holders acquired or dropped while paused
-    /// are still reflected when the lock is restored. A live Full holder blocks
-    /// suppression.
-    pub(crate) fn pause(&self) -> WakeLockPauseOutcome {
-        self.armer.unlock.pause()
+    /// A transient Full interruption returns `BlockedByFull` even when the
+    /// holder has already gone away: Full registration invalidates the pause
+    /// epoch before its release can clear it.
+    pub(crate) async fn pause(&self) -> WakeLockPauseOutcome {
+        self.armer.unlock.pause().await
     }
 
-    /// Ends suppression and retakes `cadmus` when any lease remains.
-    pub(crate) fn resume(&self) {
+    /// Ends suppression and reports the confirmed restore outcome.
+    pub(crate) async fn resume(&self) -> WakeLockResumeOutcome {
         let grace = *self
             .autosleep_grace
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        self.armer.unlock.resume(grace);
+        self.armer.unlock.resume(grace).await
+    }
+
+    pub(crate) fn wake_lock_epoch_is_current(&self, epoch: SuppressionEpoch) -> bool {
+        self.armer.unlock.wake_lock_epoch_is_current(epoch)
+    }
+
+    pub(crate) async fn shutdown(&self) -> Result<(), InhibitorError> {
+        let (reply, outcome) = oneshot::channel();
+        self.armer
+            .unlock
+            .requests
+            .send(WakeRequest::Shutdown(reply))
+            .map_err(|_| InhibitorError::WorkerFailed)?;
+        outcome
+            .await
+            .map_err(|_| InhibitorError::WorkerFailed)?
+            .map_err(|_| InhibitorError::WakeLockWriteFailed)
+    }
+
+    #[cfg(all(test, target_os = "linux"))]
+    pub(crate) fn set_write_hook(&self, hook: WakeWriteHook) {
+        self.armer.unlock.set_write_hook(hook);
     }
 
     pub(crate) fn set_autosleep_grace(&self, grace: Duration) {
@@ -556,8 +679,10 @@ impl WakeLock {
             .autosleep_grace
             .lock()
             .unwrap_or_else(|e| e.into_inner()) = grace;
-        self.armer.unlock.cancel_pending_unlock();
-        if self.tracker.is_empty() && self.armer.unlock.is_held() {
+        if !self.armer.unlock.has_holders() {
+            self.armer.unlock.cancel_pending_unlock();
+        }
+        if self.tracker.is_empty() && self.armer.unlock.may_be_held() {
             self.armer.schedule_unlock(&LeaseName::from("grace-update"));
         }
     }

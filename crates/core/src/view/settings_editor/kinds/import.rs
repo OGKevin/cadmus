@@ -12,6 +12,7 @@ use crate::view::{Bus, EntryId, EntryKind, Event, ToggleEvent};
 /// Force full library re-import action setting.
 pub struct ForceFullImport;
 
+#[async_trait::async_trait(?Send)]
 impl SettingKind for ForceFullImport {
     fn identity(&self) -> SettingIdentity {
         SettingIdentity::ForceFullImport
@@ -28,7 +29,7 @@ impl SettingKind for ForceFullImport {
         }
     }
 
-    fn handle(
+    async fn handle(
         &self,
         _evt: &Event,
         _context: &mut AppContext,
@@ -41,6 +42,7 @@ impl SettingKind for ForceFullImport {
 /// Sync metadata toggle setting
 pub struct ImportSyncMetadata;
 
+#[async_trait::async_trait(?Send)]
 impl SettingKind for ImportSyncMetadata {
     fn identity(&self) -> SettingIdentity {
         SettingIdentity::ImportSyncMetadata
@@ -62,7 +64,7 @@ impl SettingKind for ImportSyncMetadata {
         }
     }
 
-    fn handle(
+    async fn handle(
         &self,
         evt: &Event,
         context: &mut AppContext,
@@ -82,6 +84,7 @@ impl SettingKind for ImportSyncMetadata {
 /// File extensions whose metadata is extracted during import.
 pub struct MetadataKindsSetting;
 
+#[async_trait::async_trait(?Send)]
 impl SettingKind for MetadataKindsSetting {
     fn identity(&self) -> SettingIdentity {
         SettingIdentity::MetadataKinds
@@ -110,7 +113,7 @@ impl SettingKind for MetadataKindsSetting {
         }
     }
 
-    fn handle(
+    async fn handle(
         &self,
         evt: &Event,
         context: &mut AppContext,
@@ -138,6 +141,7 @@ impl SettingKind for MetadataKindsSetting {
 /// Allowed file extensions setting.
 pub struct AllowedKindsSetting;
 
+#[async_trait::async_trait(?Send)]
 impl SettingKind for AllowedKindsSetting {
     fn identity(&self) -> SettingIdentity {
         SettingIdentity::AllowedKinds
@@ -166,7 +170,7 @@ impl SettingKind for AllowedKindsSetting {
         }
     }
 
-    fn handle(
+    async fn handle(
         &self,
         evt: &Event,
         context: &mut AppContext,
@@ -235,7 +239,9 @@ mod tests {
             context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
-            let result = setting.handle(&Event::Select(EntryId::About), &mut context, &mut bus);
+            let result = setting
+                .handle(&Event::Select(EntryId::About), &mut context, &mut bus)
+                .await;
 
             assert!(result.0.is_none());
             assert!(!result.1);
@@ -254,7 +260,7 @@ mod tests {
             let mut bus: Bus = VecDeque::new();
             let event = Event::Toggle(ToggleEvent::Setting(ToggleSettings::ImportSyncMetadata));
 
-            let result = setting.handle(&event, &mut context, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus).await;
 
             assert!(result.0.is_some());
             assert!(!context.settings.import.sync_metadata);
@@ -269,7 +275,7 @@ mod tests {
             let mut bus: Bus = VecDeque::new();
             let event = Event::Toggle(ToggleEvent::Setting(ToggleSettings::ImportSyncMetadata));
 
-            let result = setting.handle(&event, &mut context, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus).await;
 
             assert!(result.0.is_some());
             assert!(context.settings.import.sync_metadata);
@@ -283,7 +289,9 @@ mod tests {
             let mut bus: Bus = VecDeque::new();
             use crate::view::EntryId;
 
-            let result = setting.handle(&Event::Select(EntryId::About), &mut context, &mut bus);
+            let result = setting
+                .handle(&Event::Select(EntryId::About), &mut context, &mut bus)
+                .await;
 
             assert!(result.0.is_none());
         }
@@ -295,11 +303,13 @@ mod tests {
             context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
-            let result = setting.handle(
-                &Event::Toggle(ToggleEvent::Setting(ToggleSettings::SleepCover)),
-                &mut context,
-                &mut bus,
-            );
+            let result = setting
+                .handle(
+                    &Event::Toggle(ToggleEvent::Setting(ToggleSettings::SleepCover)),
+                    &mut context,
+                    &mut bus,
+                )
+                .await;
 
             assert!(result.0.is_none());
         }
@@ -344,11 +354,13 @@ mod tests {
                 .remove(&FileExtension::Cbz);
             let mut bus: Bus = VecDeque::new();
 
-            let add = setting.handle(
-                &Event::Select(EntryId::ToggleMetadataKind(FileExtension::Cbz)),
-                &mut context,
-                &mut bus,
-            );
+            let add = setting
+                .handle(
+                    &Event::Select(EntryId::ToggleMetadataKind(FileExtension::Cbz)),
+                    &mut context,
+                    &mut bus,
+                )
+                .await;
             assert_eq!(
                 add.0,
                 Some(kinds_summary(context.settings.import.metadata_kinds.len()))
@@ -361,11 +373,13 @@ mod tests {
                     .contains(&FileExtension::Cbz)
             );
 
-            let remove = setting.handle(
-                &Event::Select(EntryId::ToggleMetadataKind(FileExtension::Cbz)),
-                &mut context,
-                &mut bus,
-            );
+            let remove = setting
+                .handle(
+                    &Event::Select(EntryId::ToggleMetadataKind(FileExtension::Cbz)),
+                    &mut context,
+                    &mut bus,
+                )
+                .await;
             assert_eq!(
                 remove.0,
                 Some(kinds_summary(context.settings.import.metadata_kinds.len()))
@@ -419,11 +433,13 @@ mod tests {
                 .remove(&FileExtension::Cbr);
             let mut bus: Bus = VecDeque::new();
 
-            let add = setting.handle(
-                &Event::Select(EntryId::ToggleAllowedKind(FileExtension::Cbr)),
-                &mut context,
-                &mut bus,
-            );
+            let add = setting
+                .handle(
+                    &Event::Select(EntryId::ToggleAllowedKind(FileExtension::Cbr)),
+                    &mut context,
+                    &mut bus,
+                )
+                .await;
             assert_eq!(
                 add.0,
                 Some(kinds_summary(context.settings.import.allowed_kinds.len()))
@@ -436,11 +452,13 @@ mod tests {
                     .contains(&FileExtension::Cbr)
             );
 
-            let remove = setting.handle(
-                &Event::Select(EntryId::ToggleAllowedKind(FileExtension::Cbr)),
-                &mut context,
-                &mut bus,
-            );
+            let remove = setting
+                .handle(
+                    &Event::Select(EntryId::ToggleAllowedKind(FileExtension::Cbr)),
+                    &mut context,
+                    &mut bus,
+                )
+                .await;
             assert_eq!(
                 remove.0,
                 Some(kinds_summary(context.settings.import.allowed_kinds.len()))

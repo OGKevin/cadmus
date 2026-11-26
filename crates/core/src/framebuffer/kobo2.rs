@@ -247,6 +247,7 @@ impl KoboFramebuffer2 {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl Framebuffer for KoboFramebuffer2 {
     fn set_pixel(&mut self, x: u32, y: u32, color: Color) {
         let mut c = (self.transform)(x, y, color);
@@ -359,11 +360,16 @@ impl Framebuffer for KoboFramebuffer2 {
         }
     }
 
-    // Wait for a specific update to complete.
-    fn wait(&self, token: u32) -> Result<i32, Error> {
-        let marker_data = SunxiDispEinkWaitFrameSyncComplete { frame_id: token };
-        let result = unsafe { wait_for_update(self.display.as_raw_fd(), &marker_data) };
-        result.context("can't wait for framebuffer update")
+    /// Waits for a specific update to complete on an owned driver handle.
+    async fn wait(&self, token: u32) -> Result<i32, Error> {
+        let file = self.display.try_clone()?;
+        crate::runtime::spawn_blocking(move || {
+            let marker_data = SunxiDispEinkWaitFrameSyncComplete { frame_id: token };
+            let result = unsafe { wait_for_update(file.as_raw_fd(), &marker_data) };
+            result.context("can't wait for framebuffer update")
+        })
+        .await
+        .map_err(Error::new)?
     }
 
     fn save(&self, path: &str) -> Result<(), Error> {

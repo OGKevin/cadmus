@@ -10,7 +10,7 @@
 
 use crate::device::inhibitor::{Inhibitor, InhibitorGuard, Kind, SoftSuspendName};
 use crate::view::Event;
-#[cfg(any(feature = "kobo", feature = "emulator", docsrs))]
+#[cfg(any(feature = "emulator", feature = "kobo", docsrs))]
 use crate::view::Hub;
 
 /// RAII lease attached to a [`HubMessage`] while it is in flight on the hub.
@@ -51,12 +51,12 @@ impl HubMessage {
 
     /// Wraps `event` with a soft-suspend lease when acquire succeeds; otherwise logs and
     /// returns a bare message.
-    pub fn try_with_soft_suspend(
+    pub async fn try_with_soft_suspend(
         inhibitor: &Inhibitor,
         name: SoftSuspendName,
         event: Event,
     ) -> Self {
-        match inhibitor.acquire(Kind::SoftSuspend, name) {
+        match inhibitor.acquire(Kind::SoftSuspend, name).await {
             Ok(lease) => Self::with_soft_suspend(event, lease),
             Err(error) => {
                 tracing::error!(
@@ -89,9 +89,12 @@ impl From<Event> for HubMessage {
 ///
 /// A short-lived overlap lease keeps the wake lock held until the message lease
 /// is attached; on acquire failure the event is sent without a lease.
-#[cfg(any(feature = "kobo", feature = "emulator", docsrs))]
-pub(crate) fn send_input_hub_message(tx: &Hub, inhibitor: &Inhibitor, event: Event) {
-    let overlap = match inhibitor.acquire(Kind::SoftSuspend, SoftSuspendName::Input) {
+#[cfg(any(feature = "emulator", feature = "kobo", docsrs))]
+pub(crate) async fn send_input_hub_message(tx: &Hub, inhibitor: &Inhibitor, event: Event) {
+    let overlap = match inhibitor
+        .acquire(Kind::SoftSuspend, SoftSuspendName::Input)
+        .await
+    {
         Ok(guard) => guard,
         Err(error) => {
             tracing::error!(
@@ -103,7 +106,7 @@ pub(crate) fn send_input_hub_message(tx: &Hub, inhibitor: &Inhibitor, event: Eve
             return;
         }
     };
-    let message = HubMessage::try_with_soft_suspend(inhibitor, SoftSuspendName::Input, event);
+    let message = HubMessage::try_with_soft_suspend(inhibitor, SoftSuspendName::Input, event).await;
     tx.send(message).ok();
     drop(overlap);
 }
@@ -132,11 +135,13 @@ mod tests {
 
         let _short = inhibitor
             .acquire(Kind::SoftSuspend, SoftSuspendName::Input)
+            .await
             .unwrap();
         let message = HubMessage::with_soft_suspend(
             Event::ClockTick,
             inhibitor
                 .acquire(Kind::SoftSuspend, SoftSuspendName::Input)
+                .await
                 .unwrap(),
         );
 
@@ -155,6 +160,7 @@ mod tests {
             Event::RtcAlarmFired(crate::AlarmType::AutoSuspend),
             inhibitor
                 .acquire(Kind::SoftSuspend, SoftSuspendName::Rtc)
+                .await
                 .unwrap(),
         );
 
@@ -170,6 +176,19 @@ mod tests {
         let message = HubMessage::from(Event::ClockTick);
 
         assert!(inhibitor.is_empty());
+        drop(message);
+        assert!(inhibitor.is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn try_with_soft_suspend_attaches_lease_until_dropped() {
+        let (_dir, inhibitor) = fixture();
+
+        let message =
+            HubMessage::try_with_soft_suspend(&inhibitor, SoftSuspendName::Input, Event::ClockTick)
+                .await;
+
+        assert!(!inhibitor.is_empty());
         drop(message);
         assert!(inhibitor.is_empty());
     }

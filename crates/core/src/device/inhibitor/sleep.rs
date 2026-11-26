@@ -90,7 +90,7 @@ impl LeaseObserver for SleepInhibitResources {
     fn on_first_acquire(&self, _name: &LeaseName) {
         *self.wake_lease.lock().unwrap_or_else(|e| e.into_inner()) = Some(
             self.soft_suspend
-                .acquire_lease(LeaseName::new(SLEEP_INHIBIT_NAME)),
+                .register_lease(LeaseName::new(SLEEP_INHIBIT_NAME)),
         );
     }
 
@@ -117,21 +117,29 @@ pub(super) struct SleepInhibitState {
     tracker: LeaseTracker,
     #[cfg(any(test, feature = "kobo", docsrs))]
     resources: Arc<SleepInhibitResources>,
+    soft_suspend: Arc<dyn SoftSuspendKind>,
 }
 
 impl SleepInhibitState {
     /// Builds a tracker whose observer drives the nested wake lock on first/last.
     pub(super) fn new(soft_suspend: Arc<dyn SoftSuspendKind>) -> Self {
-        let resources = SleepInhibitResources::new(soft_suspend);
+        let resources = SleepInhibitResources::new(Arc::clone(&soft_suspend));
         let tracker = LeaseTracker::with_observer(Arc::clone(&resources) as Arc<dyn LeaseObserver>);
         #[cfg(any(test, feature = "kobo", docsrs))]
         {
-            Self { tracker, resources }
+            Self {
+                tracker,
+                resources,
+                soft_suspend,
+            }
         }
         #[cfg(not(any(test, feature = "kobo", docsrs)))]
         {
             drop(resources);
-            Self { tracker }
+            Self {
+                tracker,
+                soft_suspend,
+            }
         }
     }
 
@@ -142,8 +150,10 @@ impl SleepInhibitState {
     }
 
     /// Adds a named Sleep holder. Nested wake lock starts on 0→1 only.
-    pub(super) fn acquire(&self, name: LeaseName) -> Lease {
-        self.tracker.acquire(name)
+    pub(super) async fn acquire(&self, name: LeaseName) -> Result<Lease, super::InhibitorError> {
+        let lease = self.tracker.acquire(name);
+        self.soft_suspend.confirm_leases().await?;
+        Ok(lease)
     }
 
     /// Whether any named Sleep holder is still alive.

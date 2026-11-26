@@ -25,7 +25,7 @@
 //!     │ DeepIdle: PollDeepIdleWait until woke|timeout
 //!     ▼
 //! PostWakeDebounce             // WakeDebounce / CalendarUpdate may reenter
-//!     │ finish_cycle()
+//!     │ finish_cycle() | start_cycle() again
 //!     ▼
 //! Interactive
 //! ```
@@ -36,7 +36,6 @@
 //! | `prepare_for_sleep` | Shared teardown; then arm classic RTC or enter DeepIdle |
 //! | `enter_sleep` | Actually sleep (classic `power.suspend` or deep-idle wait) |
 //! | `finish_cycle` | Tear down cycle → interactive |
-//! | `cancel_prepare` | Abort during PrepareSuspend only |
 //!
 //! [`Event::Suspend`] / Suspend RTC mean **enter sleep now** (after prepare),
 //! not “start a new cycle”. Those handlers live in [`orchestrator`] and are
@@ -57,8 +56,12 @@
 //! [`start_cycle`] sets
 //! [`Context::deferred_suspend`](crate::context::Context::deferred_suspend)
 //! and returns. If a worker acquires Full after a cycle has started, the
-//! orchestrator aborts the cycle before kernel sleep and queues the same
-//! Explicit deferred intent. When the last Full holder drops, Kobo posts
+//! orchestrator aborts before kernel sleep during DeepIdle or before Classic
+//! gate acquisition. After a Classic gate is taken, Full acquisition waits
+//! until wake and cleanup before the cycle aborts. The abort preserves the
+//! cycle's origin and any newer intent, with Explicit winning over Auto, and
+//! flushes it immediately if Full is already gone. When the last Full holder
+//! otherwise drops, Kobo posts
 //! [`Event::InhibitCleared`](crate::view::Event::InhibitCleared) and the
 //! orchestrator flushes that intent: Auto origin rechecks Sleep via
 //! [`start_cycle_from_auto`](orchestrator::start_cycle_from_auto); Explicit
@@ -87,6 +90,7 @@ pub(crate) use cycle::SuspendCycle;
 #[cfg(test)]
 pub(crate) use helpers::has_task;
 pub(crate) use helpers::{cancel_suspend_if_pending, is_suspend_active};
+pub use orchestrator::drain_committed_suspend;
 pub(crate) use orchestrator::{
     DeferredSuspend, clear_deferred_suspend, handle_event, is_suspend_rtc_pending,
     is_suspend_rtc_pending_in, show_power_off_intermission, start_cycle,

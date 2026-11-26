@@ -6,6 +6,23 @@ use std::fs::File;
 use std::io::BufReader;
 use std::io::Cursor;
 use std::path::Path;
+#[cfg(all(test, target_os = "linux"))]
+use std::sync::Mutex;
+
+#[cfg(all(test, target_os = "linux"))]
+type WaitHook = Box<dyn Fn(u32) -> anyhow::Result<i32> + Send + Sync + 'static>;
+
+#[cfg(all(test, target_os = "linux"))]
+static WAIT_HOOK: std::sync::OnceLock<Mutex<Option<WaitHook>>> = std::sync::OnceLock::new();
+
+/// Installs a one-shot update-wait hook, letting tests hold a marker while the
+/// runtime continues polling other work.
+#[cfg(all(test, feature = "kobo", target_os = "linux"))]
+pub(crate) fn set_wait_hook_for_test(
+    hook: impl Fn(u32) -> anyhow::Result<i32> + Send + Sync + 'static,
+) {
+    *WAIT_HOOK.get_or_init(|| Mutex::new(None)).lock().unwrap() = Some(Box::new(hook));
+}
 
 #[derive(Debug, Clone)]
 pub struct Pixmap {
@@ -122,6 +139,7 @@ impl Pixmap {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl Framebuffer for Pixmap {
     fn set_pixel(&mut self, x: u32, y: u32, color: Color) {
         if x >= self.width || y >= self.height {
@@ -201,7 +219,19 @@ impl Framebuffer for Pixmap {
         Ok(1)
     }
 
-    fn wait(&self, _: u32) -> Result<i32, Error> {
+    async fn wait(&self, _token: u32) -> Result<i32, Error> {
+        #[cfg(all(test, target_os = "linux"))]
+        let hook = WAIT_HOOK
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .take();
+        #[cfg(all(test, target_os = "linux"))]
+        if let Some(hook) = hook {
+            return crate::runtime::spawn_blocking(move || hook(_token))
+                .await
+                .map_err(Error::new)?;
+        }
         Ok(1)
     }
 

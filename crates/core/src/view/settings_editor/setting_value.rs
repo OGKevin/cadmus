@@ -251,7 +251,7 @@ impl View for SettingValue {
 
         if let Event::FileChooserClosed(_) = evt {
             if self.active_file_chooser {
-                if let (Some(display), _) = self.kind.handle(evt, context, bus) {
+                if let (Some(display), _) = self.kind.handle(evt, context, bus).await {
                     self.update(display, &context.settings, rq);
                 }
                 return false;
@@ -274,7 +274,7 @@ impl View for SettingValue {
             }
         }
 
-        if let (Some(display), handled) = self.kind.handle(evt, context, bus) {
+        if let (Some(display), handled) = self.kind.handle(evt, context, bus).await {
             self.update(display, &context.settings, rq);
             if let Event::Submit(submitted_id, _) = evt
                 && self.active_input == Some(*submitted_id)
@@ -553,14 +553,15 @@ mod tests {
 
         let mut context = create_test_context().await;
         context.settings.auto_suspend = 30.0;
-        reschedule_auto_suspend_alarm(&mut context);
+        reschedule_auto_suspend_alarm(&mut context).await;
         let first = context
             .alarm_manager
             .as_ref()
             .unwrap()
             .lock()
-            .unwrap()
+            .await
             .time_until_alarm(AlarmType::AutoSuspend)
+            .await
             .unwrap();
 
         let settings = context.settings.clone();
@@ -587,7 +588,7 @@ mod tests {
                 &mut context,
             )
             .await;
-        std::thread::sleep(Duration::from_millis(20));
+        tokio::time::sleep(Duration::from_millis(20)).await;
         value
             .handle_event(
                 &Event::Submit(ViewId::AutoSuspendInput, "15.0".to_string()),
@@ -605,8 +606,9 @@ mod tests {
             .as_ref()
             .unwrap()
             .lock()
-            .unwrap()
+            .await
             .time_until_alarm(AlarmType::AutoSuspend)
+            .await
             .unwrap();
         assert!((second - 15 * 60).abs() < 2);
         assert!(second < first);
@@ -619,14 +621,14 @@ mod tests {
 
         let mut context = create_test_context().await;
         context.settings.auto_suspend = 30.0;
-        reschedule_auto_suspend_alarm(&mut context);
+        reschedule_auto_suspend_alarm(&mut context).await;
         assert!(
             context
                 .alarm_manager
                 .as_ref()
                 .unwrap()
                 .lock()
-                .unwrap()
+                .await
                 .has_alarm(AlarmType::AutoSuspend)
         );
 
@@ -670,7 +672,7 @@ mod tests {
                 .as_ref()
                 .unwrap()
                 .lock()
-                .unwrap()
+                .await
                 .has_alarm(AlarmType::AutoSuspend)
         );
     }

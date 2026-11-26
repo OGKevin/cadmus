@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use crate::device::rtc::{AlarmManager, Rtc};
 use crate::device::wifi::WifiSession;
@@ -15,7 +15,7 @@ pub struct TimeSyncTask<R: Rtc> {
     ntp_server: NetworkAddress,
     manual: bool,
     wifi_session: Arc<WifiSession>,
-    alarm_manager: Arc<Mutex<AlarmManager<R>>>,
+    alarm_manager: Arc<tokio::sync::Mutex<AlarmManager<R>>>,
 }
 
 impl<R: Rtc> TimeSyncTask<R> {
@@ -24,7 +24,7 @@ impl<R: Rtc> TimeSyncTask<R> {
         ntp_server: NetworkAddress,
         manual: bool,
         wifi_session: Arc<WifiSession>,
-        alarm_manager: Arc<Mutex<AlarmManager<R>>>,
+        alarm_manager: Arc<tokio::sync::Mutex<AlarmManager<R>>>,
     ) -> Self {
         TimeSyncTask {
             time_manager,

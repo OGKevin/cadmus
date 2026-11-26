@@ -1934,7 +1934,7 @@ impl Reader {
         }
     }
 
-    fn toggle_search_bar(
+    async fn toggle_search_bar(
         &mut self,
         enable: bool,
         hub: &Hub,
@@ -1951,7 +1951,7 @@ impl Reader {
             }
 
             if self.child(0).is::<TopBar>() {
-                self.toggle_bars(Some(false), hub, rq, context);
+                self.toggle_bars(Some(false), hub, rq, context).await;
             } else {
                 let mut rect = *self.child(index).rect();
                 rect.absorb(self.child(index - 1).rect());
@@ -2030,7 +2030,7 @@ impl Reader {
         }
     }
 
-    fn toggle_bars(
+    async fn toggle_bars(
         &mut self,
         enable: Option<bool>,
         hub: &Hub,
@@ -2069,9 +2069,6 @@ impl Reader {
                 scale_by_dpi(BIG_BAR_HEIGHT, dpi) as i32,
             );
 
-            let mut doc = self.doc.lock().unwrap();
-            let mut index = 0;
-
             let top_bar = TopBar::new(
                 rect![
                     self.rect.min.x,
@@ -2082,7 +2079,11 @@ impl Reader {
                 TopBarVariant::Back,
                 self.info.display_title(),
                 context,
-            );
+            )
+            .await;
+
+            let mut doc = self.doc.lock().unwrap();
+            let mut index = 0;
 
             self.children
                 .insert(index, Box::new(top_bar) as Box<dyn View>);
@@ -2240,7 +2241,7 @@ impl Reader {
         }
     }
 
-    fn toggle_margin_cropper(
+    async fn toggle_margin_cropper(
         &mut self,
         enable: bool,
         hub: &Hub,
@@ -2262,7 +2263,7 @@ impl Reader {
                 return;
             }
 
-            self.toggle_bars(Some(false), hub, rq, context);
+            self.toggle_bars(Some(false), hub, rq, context).await;
 
             let dpi = context.device.dpi();
             let padding = scale_by_dpi(BUTTON_DIAMETER / 2.0, dpi) as i32;
@@ -3851,10 +3852,10 @@ impl Reader {
         })
     }
 
-    fn reseed(&mut self, rq: &mut RenderQueue, context: &mut AppContext) {
+    async fn reseed(&mut self, rq: &mut RenderQueue, context: &mut AppContext) {
         if let Some(index) = locate::<TopBar>(self) {
             if let Some(top_bar) = self.child_mut(index).downcast_mut::<TopBar>() {
-                top_bar.reseed(rq, context);
+                top_bar.reseed(rq, context).await;
             }
         }
 
@@ -4092,11 +4093,11 @@ impl View for Reader {
                     }
                     Dir::North => {
                         self.search_direction = LinearDir::Backward;
-                        self.toggle_search_bar(true, hub, rq, context);
+                        self.toggle_search_bar(true, hub, rq, context).await;
                     }
                     Dir::South => {
                         self.search_direction = LinearDir::Forward;
-                        self.toggle_search_bar(true, hub, rq, context);
+                        self.toggle_search_bar(true, hub, rq, context).await;
                     }
                 }
                 true
@@ -4133,13 +4134,16 @@ impl View for Reader {
                                     &context.settings.frontlight_presets,
                                 ) {
                                     let LightLevels { intensity, warmth } = *frontlight_levels;
-                                    if let Err(error) =
-                                        context.device.frontlight_mut().set_intensity(intensity)
+                                    if let Err(error) = context
+                                        .device
+                                        .frontlight_mut()
+                                        .set_intensity(intensity)
+                                        .await
                                     {
                                         tracing::error!(error = %error, "failed to set frontlight intensity");
                                     }
                                     if let Err(error) =
-                                        context.device.frontlight_mut().set_warmth(warmth)
+                                        context.device.frontlight_mut().set_warmth(warmth).await
                                     {
                                         tracing::error!(error = %error, "failed to set frontlight warmth");
                                     }
@@ -4172,7 +4176,7 @@ impl View for Reader {
                 true
             }
             Event::Gesture(GestureEvent::Diamond(_)) => {
-                self.toggle_bars(None, hub, rq, context);
+                self.toggle_bars(None, hub, rq, context).await;
                 true
             }
             Event::Gesture(GestureEvent::HoldButtonShort(code, ..)) => {
@@ -4568,7 +4572,7 @@ impl View for Reader {
                             Dir::South => self.directional_scroll(pt!(0, dy), hub, rq, context),
                             Dir::West => self.directional_scroll(pt!(-dx, 0), hub, rq, context),
                         },
-                        Region::Center => self.toggle_bars(None, hub, rq, context),
+                        Region::Center => self.toggle_bars(None, hub, rq, context).await,
                     }
 
                     return true;
@@ -4652,15 +4656,15 @@ impl View for Reader {
                         }
                         Dir::South => match context.settings.reader.south_strip {
                             SouthStripAction::ToggleBars => {
-                                self.toggle_bars(None, hub, rq, context);
+                                self.toggle_bars(None, hub, rq, context).await;
                             }
                             SouthStripAction::NextPage => {
                                 self.go_to_neighbor(CycleDir::Next, hub, rq, context).await;
                             }
                         },
-                        Dir::North => self.toggle_bars(None, hub, rq, context),
+                        Dir::North => self.toggle_bars(None, hub, rq, context).await,
                     },
-                    Region::Center => self.toggle_bars(None, hub, rq, context),
+                    Region::Center => self.toggle_bars(None, hub, rq, context).await,
                 }
 
                 true
@@ -4908,7 +4912,7 @@ impl View for Reader {
                 true
             }
             Event::Toggle(ToggleEvent::View(ViewId::TopBottomBars)) => {
-                self.toggle_bars(None, hub, rq, context);
+                self.toggle_bars(None, hub, rq, context).await;
                 true
             }
             Event::Toggle(ToggleEvent::View(ViewId::GoToPage)) => {
@@ -4936,11 +4940,11 @@ impl View for Reader {
                 true
             }
             Event::ToggleNear(ViewId::MainMenu, rect) => {
-                toggle_main_menu(self, rect, None, rq, context);
+                toggle_main_menu(self, rect, None, rq, context).await;
                 true
             }
             Event::ToggleNear(ViewId::BatteryMenu, rect) => {
-                toggle_battery_menu(self, rect, None, rq, context);
+                toggle_battery_menu(self, rect, None, rq, context).await;
                 true
             }
             Event::ToggleNear(ViewId::ClockMenu, rect) => {
@@ -4988,12 +4992,12 @@ impl View for Reader {
                 true
             }
             Event::Close(ViewId::MainMenu) => {
-                toggle_main_menu(self, Rectangle::default(), Some(false), rq, context);
+                toggle_main_menu(self, Rectangle::default(), Some(false), rq, context).await;
                 true
             }
             Event::Close(ViewId::SearchBar) => {
                 self.toggle_results_bar(false, rq, context, context.device.dpi());
-                self.toggle_search_bar(false, hub, rq, context);
+                self.toggle_search_bar(false, hub, rq, context).await;
                 if let Some(ref mut s) = self.search {
                     s.running.store(false, AtomicOrdering::Relaxed);
                     self.render_results(rq);
@@ -5033,7 +5037,7 @@ impl View for Reader {
             }
             Event::Show(ViewId::TableOfContents) => {
                 {
-                    self.toggle_bars(Some(false), hub, rq, context);
+                    self.toggle_bars(Some(false), hub, rq, context).await;
                 }
                 let mut doc = self.doc.lock().unwrap();
                 if let Some(toc) = self
@@ -5054,7 +5058,7 @@ impl View for Reader {
                 true
             }
             Event::Select(EntryId::Annotations) => {
-                self.toggle_bars(Some(false), hub, rq, context);
+                self.toggle_bars(Some(false), hub, rq, context).await;
                 let mut starts = self
                     .annotations
                     .values()
@@ -5078,7 +5082,7 @@ impl View for Reader {
                 true
             }
             Event::Select(EntryId::Bookmarks) => {
-                self.toggle_bars(Some(false), hub, rq, context);
+                self.toggle_bars(Some(false), hub, rq, context).await;
                 if let Some(bookmarks) = self.info.reader.as_ref().map(|r| &r.bookmarks) {
                     let html = bookmarks_as_html(bookmarks, self.current_page, self.synthetic);
                     let link_uri = bookmarks
@@ -5090,15 +5094,15 @@ impl View for Reader {
                 true
             }
             Event::Show(ViewId::SearchBar) => {
-                self.toggle_search_bar(true, hub, rq, context);
+                self.toggle_search_bar(true, hub, rq, context).await;
                 true
             }
             Event::Show(ViewId::MarginCropper) => {
-                self.toggle_margin_cropper(true, hub, rq, context);
+                self.toggle_margin_cropper(true, hub, rq, context).await;
                 true
             }
             Event::Close(ViewId::MarginCropper) => {
-                self.toggle_margin_cropper(false, hub, rq, context);
+                self.toggle_margin_cropper(false, hub, rq, context).await;
                 true
             }
             Event::SearchResult(location, ref rects) => {
@@ -5128,7 +5132,7 @@ impl View for Reader {
 
                 if results_count == 1 {
                     self.toggle_results_bar(false, rq, context, context.device.dpi());
-                    self.toggle_search_bar(false, hub, rq, context);
+                    self.toggle_search_bar(false, hub, rq, context).await;
                     self.go_to_page(location, true, hub, rq, context).await;
                 } else if location == self.current_page {
                     self.update(None, hub, rq, context);
@@ -5152,7 +5156,7 @@ impl View for Reader {
                         context,
                     );
                     self.children.push(Box::new(notif) as Box<dyn View>);
-                    self.toggle_search_bar(true, hub, rq, context);
+                    self.toggle_search_bar(true, hub, rq, context).await;
                     hub.send((Event::Focus(Some(ViewId::ReaderSearchInput))).into())
                         .ok();
                 }
@@ -5374,7 +5378,7 @@ impl View for Reader {
                 false
             }
             Event::Reseed => {
-                self.reseed(rq, context);
+                self.reseed(rq, context).await;
                 true
             }
             Event::ToggleFrontlight => {

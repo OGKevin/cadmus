@@ -137,6 +137,7 @@ impl KoboFramebuffer1 {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl Framebuffer for KoboFramebuffer1 {
     fn set_pixel(&mut self, x: u32, y: u32, color: Color) {
         let c = (self.transform)(x, y, color);
@@ -333,18 +334,24 @@ impl Framebuffer for KoboFramebuffer1 {
         }
     }
 
-    // Wait for a specific update to complete.
-    fn wait(&self, token: u32) -> Result<i32, Error> {
-        let result = if self.mark >= 7 {
-            let mut marker_data = MxcfbUpdateMarkerData {
-                update_marker: token,
-                collision_test: 0,
+    /// Waits for a specific update to complete on an owned driver handle.
+    async fn wait(&self, token: u32) -> Result<i32, Error> {
+        let file = self.file.try_clone()?;
+        let mark = self.mark;
+        crate::runtime::spawn_blocking(move || {
+            let result = if mark >= 7 {
+                let mut marker_data = MxcfbUpdateMarkerData {
+                    update_marker: token,
+                    collision_test: 0,
+                };
+                unsafe { wait_for_update_v2(file.as_raw_fd(), &mut marker_data) }
+            } else {
+                unsafe { wait_for_update_v1(file.as_raw_fd(), &token) }
             };
-            unsafe { wait_for_update_v2(self.file.as_raw_fd(), &mut marker_data) }
-        } else {
-            unsafe { wait_for_update_v1(self.file.as_raw_fd(), &token) }
-        };
-        result.context("can't wait for framebuffer update")
+            result.context("can't wait for framebuffer update")
+        })
+        .await
+        .map_err(Error::new)?
     }
 
     fn save(&self, path: &str) -> Result<(), Error> {

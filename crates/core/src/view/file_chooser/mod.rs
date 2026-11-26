@@ -136,7 +136,7 @@ impl FileChooser {
     }
 
     #[inline]
-    fn build_children(
+    async fn build_children(
         rect: Rectangle,
         initial_path: &Path,
         mode: SelectionMode,
@@ -154,7 +154,8 @@ impl FileChooser {
             TopBarVariant::Cancel(Event::Close(ViewId::FileChooser)),
             title.to_string(),
             context,
-        );
+        )
+        .await;
         children.push(Box::new(top_bar) as Box<dyn View>);
 
         children.push(Self::create_separator(layout.first_separator_rect(&rect)));
@@ -188,7 +189,7 @@ impl FileChooser {
         let layout = FileChooserLayout::new(dpi);
 
         let (children, nav_bar_index) =
-            Self::build_children(rect, &initial_path, mode, &layout, context);
+            Self::build_children(rect, &initial_path, mode, &layout, context).await;
         let entries_start_index = children.len();
 
         rq.add(RenderData::new(id, rect, UpdateMode::Gui));

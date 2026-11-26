@@ -112,7 +112,7 @@ impl crate::device::InputSource for InputSource {
                     () = touch_cancel.cancelled() => break,
                     evt = touch_screen.recv() => match evt {
                         Some(evt) => {
-                            crate::view::hub_message::send_input_hub_message(&tx2, &inhibitor2, evt);
+                            crate::view::hub_message::send_input_hub_message(&tx2, &inhibitor2, evt).await;
                         }
                         None => break,
                     },
@@ -134,7 +134,8 @@ impl crate::device::InputSource for InputSource {
                                 &tx3,
                                 &inhibitor3,
                                 Event::Device(evt),
-                            );
+                            )
+                            .await;
                         }
                         None => break,
                     },

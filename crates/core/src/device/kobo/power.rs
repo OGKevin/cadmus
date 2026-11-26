@@ -6,10 +6,8 @@
 
 use crate::device::kobo::Model;
 use crate::device::power::{PowerError, PowerManager};
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::thread;
 use std::time::Duration;
 
 const STATE_EXTENDED_PATH: &str = "/sys/power/state-extended";
@@ -47,19 +45,19 @@ impl KoboPowerManager {
         }
     }
 
-    fn write_state_extended(&self, value: &str) -> Result<(), PowerError> {
+    async fn write_state_extended(&self, value: &str) -> Result<(), PowerError> {
         tracing::debug!(path = %STATE_EXTENDED_PATH, value, "Writing state-extended");
-        fs::write(STATE_EXTENDED_PATH, value).map_err(|e| {
+        tokio::fs::write(STATE_EXTENDED_PATH, value).await.map_err(|e| {
             tracing::error!(error = %e, path = %STATE_EXTENDED_PATH, value, "Failed to write state-extended");
             PowerError::Io(e)
         })
     }
 
-    fn restore_touch_controller(&self) -> Result<(), PowerError> {
+    async fn restore_touch_controller(&self) -> Result<(), PowerError> {
         match self.model {
             Model::GloHD | Model::AuraH2O => {
                 tracing::debug!(path = %NEOCMD_PATH, value = "a", "Reinitializing touch controller");
-                fs::write(NEOCMD_PATH, "a").map_err(|e| {
+                tokio::fs::write(NEOCMD_PATH, "a").await.map_err(|e| {
                     tracing::warn!(error = %e, path = %NEOCMD_PATH, "Failed to write neocmd");
                     PowerError::Io(e)
                 })
@@ -70,30 +68,35 @@ impl KoboPowerManager {
 }
 
 impl PowerManager for KoboPowerManager {
-    /// Suspends the Kobo device.
+    /// Arms peripherals, waits for pending sysfs writes, then flushes buffers.
     ///
-    /// This method performs a sequenced hardware shutdown:
-    /// 1. Deactivates the touch screen to prevent phantom touches on wake up.
-    /// 2. Sleeps for 2 seconds to allow pending sysfs writes to finalize safely.
-    /// 3. Synchronizes filesystem buffers (`sync()`).
-    /// 4. Writes `"mem"` to `/sys/power/state` to trigger low-power RAM suspension.
+    /// The two-second settle uses an async timer and `sync()` runs on the
+    /// blocking pool, so preparation never stalls the runtime.
+    async fn prepare_suspend(&self) -> Result<(), PowerError> {
+        self.arm_deep_idle().await?;
+
+        tracing::debug!("Sleeping to prevent write errors");
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        tracing::debug!("Synchronizing file system buffers");
+
+        crate::runtime::spawn_blocking(nix::unistd::sync)
+            .await
+            .map_err(|error| PowerError::Io(std::io::Error::other(error)))?;
+
+        Ok(())
+    }
+
+    /// Triggers low-power RAM suspension by writing `"mem"` to `/sys/power/state`.
     ///
     /// # Errors
     ///
-    /// Returns [`PowerError::Io`] if writing to any of the sysfs control nodes fails.
-    fn suspend(&self) -> Result<(), PowerError> {
+    /// Returns [`PowerError::Io`] if the suspend trigger write fails. A
+    /// submitted write cannot be cancelled by dropping this future.
+    async fn suspend(&self) -> Result<(), PowerError> {
         tracing::info!("Suspending device to RAM");
-        self.arm_deep_idle()?;
-
-        tracing::debug!("Sleeping to prevent write errors");
-        thread::sleep(Duration::from_secs(2));
-        tracing::debug!("Synchronizing file system buffers");
-
-        nix::unistd::sync();
-
         tracing::debug!(path = %STATE_PATH, value = "mem", "Triggering low power state");
 
-        fs::write(STATE_PATH, "mem").map_err(|e| {
+        tokio::fs::write(STATE_PATH, "mem").await.map_err(|e| {
             tracing::error!(error = %e, path = %STATE_PATH, "Failed to write suspend trigger");
 
             PowerError::Io(e)
@@ -112,30 +115,31 @@ impl PowerManager for KoboPowerManager {
     /// # Errors
     ///
     /// Returns [`PowerError::Io`] if writing to any of the sysfs wake up nodes fails.
-    fn resume(&self) -> Result<(), PowerError> {
+    async fn resume(&self) -> Result<(), PowerError> {
         tracing::info!("Resuming device");
-        self.disarm_deep_idle()
+        self.disarm_deep_idle().await
     }
 
-    fn arm_deep_idle(&self) -> Result<(), PowerError> {
+    async fn arm_deep_idle(&self) -> Result<(), PowerError> {
         tracing::debug!("Arming Kobo deep-idle peripheral state");
-        self.write_state_extended("1")
+        self.write_state_extended("1").await
     }
 
-    fn disarm_deep_idle(&self) -> Result<(), PowerError> {
+    async fn disarm_deep_idle(&self) -> Result<(), PowerError> {
         tracing::debug!("Clearing Kobo deep-idle peripheral state");
-        self.write_state_extended("0")?;
-        self.restore_touch_controller()?;
+        self.write_state_extended("0").await?;
+        self.restore_touch_controller().await?;
 
         Ok(())
     }
 
-    fn init_cores(&self) -> Result<(), PowerError> {
-        let cpu_dir = Path::new("/sys/devices/system/cpu");
-        let discovered = crate::device::power::discover_cores(cpu_dir).map_err(|e| {
-            tracing::warn!(error = %e, "Failed to discover CPU cores");
-            e
-        })?;
+    async fn init_cores(&self) -> Result<(), PowerError> {
+        let discovered = crate::device::power::discover_cores(Path::new("/sys/devices/system/cpu"))
+            .await
+            .map_err(|e| {
+                tracing::warn!(error = %e, "Failed to discover CPU cores");
+                PowerError::Io(e)
+            })?;
 
         let mut modified_cores = Vec::new();
         let mut first_error: Option<PowerError> = None;
@@ -143,7 +147,7 @@ impl PowerManager for KoboPowerManager {
         for (online_path, initial_state) in discovered {
             if initial_state == "0" {
                 tracing::info!(path = ?online_path, "Enabling offline CPU core");
-                match fs::write(&online_path, "1") {
+                match tokio::fs::write(&online_path, "1").await {
                     Ok(()) => modified_cores.push(online_path),
                     Err(e) => {
                         tracing::error!(path = ?online_path, error = %e, "Failed to enable CPU core");
@@ -167,17 +171,18 @@ impl PowerManager for KoboPowerManager {
         }
     }
 
-    fn restore_cores(&self) -> Result<(), PowerError> {
+    async fn restore_cores(&self) -> Result<(), PowerError> {
         let states = self
             .initial_cpu_states
             .lock()
-            .map_err(|_| PowerError::LockPoisoned)?;
+            .map_err(|_| PowerError::LockPoisoned)?
+            .clone();
 
         let mut first_error: Option<PowerError> = None;
 
-        for path in states.iter() {
+        for path in states {
             tracing::info!(path = ?path, "Disabling CPU core on exit");
-            if let Err(e) = fs::write(path, "0") {
+            if let Err(e) = tokio::fs::write(&path, "0").await {
                 tracing::error!(path = ?path, error = %e, "Failed to restore CPU core state");
                 if first_error.is_none() {
                     first_error = Some(PowerError::Io(e));

@@ -185,7 +185,7 @@ fn button_scheme_entries(button_scheme: ButtonScheme) -> Vec<EntryKind> {
     .collect()
 }
 
-pub fn toggle_main_menu(
+pub async fn toggle_main_menu(
     view: &mut dyn View,
     rect: Rectangle,
     enable: Option<bool>,
@@ -301,6 +301,8 @@ pub fn toggle_main_menu(
         ]);
 
         let main_menu = Menu::new(rect, ViewId::MainMenu, MenuKind::DropDown, entries, context);
+        #[cfg(feature = "test")]
+        let main_menu = main_menu.hold_sleep_lease(&context.inhibitor).await;
         rq.add(RenderData::new(
             main_menu.id(),
             *main_menu.rect(),
@@ -311,7 +313,7 @@ pub fn toggle_main_menu(
     }
 }
 
-pub fn toggle_battery_menu(
+pub async fn toggle_battery_menu(
     view: &mut dyn View,
     rect: Rectangle,
     enable: Option<bool>,
@@ -334,13 +336,9 @@ pub fn toggle_battery_menu(
 
         let mut entries = Vec::new();
 
-        match context
-            .device
-            .battery()
-            .status()
-            .ok()
-            .zip(context.device.battery().capacity().ok())
-        {
+        let status = context.device.battery().status().await.ok();
+        let capacity = context.device.battery().capacity().await.ok();
+        match status.zip(capacity) {
             Some((status, capacity)) => {
                 for (i, (s, c)) in status.iter().zip(capacity.iter()).enumerate() {
                     entries.push(EntryKind::Message(
@@ -531,7 +529,7 @@ mod tests {
         let mut parent = Filler::new(rect![0, 0, 600, 800], WHITE);
         let mut rq = RenderQueue::new();
         let target = rect![10, 10, 100, 40];
-        toggle_main_menu(&mut parent, target, Some(true), &mut rq, &mut context);
+        toggle_main_menu(&mut parent, target, Some(true), &mut rq, &mut context).await;
         if cfg!(feature = "test") {
             assert!(context.inhibitor.sleep_active());
             assert!(
@@ -544,7 +542,7 @@ mod tests {
         } else {
             assert!(!context.inhibitor.sleep_active());
         }
-        toggle_main_menu(&mut parent, target, Some(false), &mut rq, &mut context);
+        toggle_main_menu(&mut parent, target, Some(false), &mut rq, &mut context).await;
         assert!(!context.inhibitor.sleep_active());
     }
 

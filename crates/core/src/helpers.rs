@@ -7,7 +7,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::Cow;
 use std::char;
 use std::fmt;
-use std::fs::{self, File};
+use std::fs::File;
 use std::io::{self, BufReader, BufWriter};
 use std::ops::Deref;
 use std::path::{Component, Path, PathBuf};
@@ -74,7 +74,6 @@ where
     let reader = BufReader::new(file);
     serde_json::from_reader(reader)
         .with_context(|| format!("can't parse JSON from {}", path.as_ref().display()))
-        .map_err(Into::into)
 }
 
 pub fn save_json<T, P: AsRef<Path>>(data: &T, path: P) -> Result<(), Error>
@@ -86,22 +85,33 @@ where
     let writer = BufWriter::new(file);
     serde_json::to_writer_pretty(writer, data)
         .with_context(|| format!("can't serialize to JSON file {}", path.as_ref().display()))
-        .map_err(Into::into)
 }
 
+/// Blocking TOML load retained for synchronous callers such as fetcher.
 pub fn load_toml<T, P: AsRef<Path>>(path: P) -> Result<T, Error>
 where
     for<'a> T: Deserialize<'a>,
 {
-    let s = fs::read_to_string(path.as_ref())
+    let s = std::fs::read_to_string(path.as_ref())
         .with_context(|| format!("can't read file {}", path.as_ref().display()))?;
     toml::from_str(&s)
         .with_context(|| format!("can't parse TOML content from {}", path.as_ref().display()))
-        .map_err(Into::into)
+}
+
+/// Reads a TOML file with Tokio's async filesystem for core async paths.
+pub(crate) async fn read_toml<T, P: AsRef<Path>>(path: P) -> Result<T, Error>
+where
+    for<'a> T: Deserialize<'a>,
+{
+    let s = tokio::fs::read_to_string(path.as_ref())
+        .await
+        .with_context(|| format!("can't read file {}", path.as_ref().display()))?;
+    toml::from_str(&s)
+        .with_context(|| format!("can't parse TOML content from {}", path.as_ref().display()))
 }
 
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(data, path), fields(file_path = %path.as_ref().display())))]
-pub fn save_toml<T, P: AsRef<Path>>(data: &T, path: P) -> Result<(), Error>
+pub async fn save_toml<T, P: AsRef<Path>>(data: &T, path: P) -> Result<(), Error>
 where
     T: Serialize,
 {
@@ -115,9 +125,9 @@ where
         "writing TOML to file"
     );
 
-    match fs::write(path_ref, &s) {
+    match tokio::fs::write(path_ref, &s).await {
         Ok(()) => {
-            let file_size = path_ref.metadata().ok().map(|m| m.len());
+            let file_size = tokio::fs::metadata(path_ref).await.ok().map(|m| m.len());
 
             tracing::debug!(
                 file_path = %path_ref.display(),

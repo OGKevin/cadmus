@@ -19,6 +19,8 @@ use crate::geom::{Point, Rectangle, lerp, nearest_segment_point, surface_area};
 use anyhow::Error;
 
 pub use self::image::Pixmap;
+#[cfg(all(test, feature = "kobo", target_os = "linux"))]
+pub(crate) use self::image::set_wait_hook_for_test;
 #[cfg(any(feature = "kobo", docsrs))]
 pub use self::kobo1::KoboFramebuffer1;
 #[cfg(any(feature = "kobo", docsrs))]
@@ -39,13 +41,19 @@ pub enum UpdateMode {
     FastMono,
 }
 
+/// Drawing and e-ink update surface.
+///
+/// Uses `#[async_trait(?Send)]` because `wait` borrows `&self`. Kobo
+/// framebuffers are `Send` but not `Sync`: they hold raw memory-mapped pointers,
+/// so the future returned by `wait` cannot be sent between threads.
+#[async_trait::async_trait(?Send)]
 pub trait Framebuffer {
     fn set_pixel(&mut self, x: u32, y: u32, color: Color);
     fn set_blended_pixel(&mut self, x: u32, y: u32, color: Color, alpha: f32);
     fn invert_region(&mut self, rect: &Rectangle);
     fn shift_region(&mut self, rect: &Rectangle, drift: u8);
     fn update(&mut self, rect: &Rectangle, mode: UpdateMode) -> Result<u32, Error>;
-    fn wait(&self, token: u32) -> Result<i32, Error>;
+    async fn wait(&self, token: u32) -> Result<i32, Error>;
     fn save(&self, path: &str) -> Result<(), Error>;
     fn set_rotation(&mut self, n: i8) -> Result<(u32, u32), Error>;
     fn set_monochrome(&mut self, enable: bool);
@@ -459,6 +467,7 @@ pub trait Framebuffer {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl<T: Framebuffer + ?Sized> Framebuffer for Box<T> {
     fn set_pixel(&mut self, x: u32, y: u32, color: Color) {
         (**self).set_pixel(x, y, color);
@@ -475,8 +484,8 @@ impl<T: Framebuffer + ?Sized> Framebuffer for Box<T> {
     fn update(&mut self, rect: &Rectangle, mode: UpdateMode) -> Result<u32, Error> {
         (**self).update(rect, mode)
     }
-    fn wait(&self, token: u32) -> Result<i32, Error> {
-        (**self).wait(token)
+    async fn wait(&self, token: u32) -> Result<i32, Error> {
+        (**self).wait(token).await
     }
     fn save(&self, path: &str) -> Result<(), Error> {
         (**self).save(path)
