@@ -10,7 +10,6 @@
 //! a working method is reached. `--identities-only` drops unrelated agent keys
 //! entirely.
 
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -18,6 +17,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, anyhow, bail};
 use russh::client::{self, Handle};
 use russh::keys::agent::client::{AgentClient, AgentStream};
+use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use super::SshOptions;
 
@@ -682,8 +682,8 @@ pub(crate) async fn exec(handle: &mut Handle<Handler>, command: &str) -> Result<
 pub(crate) async fn exec_to(
     handle: &mut Handle<Handler>,
     command: &str,
-    stdout: &mut (impl Write + Send),
-    stderr: &mut (impl Write + Send),
+    stdout: &mut (impl AsyncWrite + Unpin + Send),
+    stderr: &mut (impl AsyncWrite + Unpin + Send),
 ) -> Result<Option<u32>> {
     let mut channel = handle.channel_open_session().await?;
     channel.exec(true, command).await?;
@@ -692,12 +692,12 @@ pub(crate) async fn exec_to(
     while let Some(message) = channel.wait().await {
         match message {
             russh::ChannelMsg::Data { data } => {
-                stdout.write_all(&data)?;
-                stdout.flush()?;
+                stdout.write_all(&data).await?;
+                stdout.flush().await?;
             }
             russh::ChannelMsg::ExtendedData { data, .. } => {
-                stderr.write_all(&data)?;
-                stderr.flush()?;
+                stderr.write_all(&data).await?;
+                stderr.flush().await?;
             }
             russh::ChannelMsg::ExitStatus {
                 exit_status: status,

@@ -48,8 +48,9 @@ The benchmark gets these environment variables:
 
 Plots are not generated on the device: `--noplot` is passed by default, since
 rendering is slow on a Kobo. After the run, the criterion output is transferred
-back from the device to `target/kobo-bench/<name>/criterion/` on the host. The
-numbers are in
+back from the device to `target/kobo-bench/<name>/criterion/` on the host. If
+the benchmark fails, the output of the benchmarks that finished is still copied
+back before the command reports the failure. The numbers are in
 `target/kobo-bench/<name>/criterion/<group>/<bench>/new/estimates.json`, and the
 command prints how to render the HTML report on your machine from that data:
 
@@ -63,6 +64,7 @@ CRITERION_HOME=target/kobo-bench/<name>/criterion \
 measuring again, so the report shows the Kobo's numbers; the host only builds
 and starts the benchmark. Criterion panics for a benchmark that has no copied
 sample, so the printed command repeats the filters you passed to the device run.
+It leaves out `--noplot`, which would also suppress the HTML report.
 Open `target/kobo-bench/<name>/criterion/report/index.html` afterwards.
 
 ### Writing a benchmark that runs on the device

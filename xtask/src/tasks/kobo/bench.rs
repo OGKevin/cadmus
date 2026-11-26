@@ -114,11 +114,24 @@ pub(crate) async fn run(args: BenchArgs) -> Result<()> {
     let status = ssh::exec_to(
         &mut handle,
         &run_script(&remote, &with_noplot(&args.args)),
-        &mut std::io::stdout(),
-        &mut std::io::stderr(),
+        &mut tokio::io::stdout(),
+        &mut tokio::io::stderr(),
     )
     .await?;
+    let results = metadata
+        .target_directory
+        .join("kobo-bench")
+        .join(&target.name);
+    let pulled = pull_results(&mut handle, &remote, &results).await;
     if status != Some(0) {
+        match pulled {
+            Ok(true) => println!(
+                "Results of the benchmarks that finished copied to {}",
+                results.display()
+            ),
+            Ok(false) => {}
+            Err(error) => eprintln!("Failed to copy the partial results: {error:#}"),
+        }
         bail!(
             "benchmark {} exited with status {} on {}",
             target.name,
@@ -127,11 +140,7 @@ pub(crate) async fn run(args: BenchArgs) -> Result<()> {
         );
     }
 
-    let results = metadata
-        .target_directory
-        .join("kobo-bench")
-        .join(&target.name);
-    if pull_results(&mut handle, &remote, &results).await? {
+    if pulled? {
         println!("Results copied to {}", results.display());
         println!("{}", view_hint(&results, &target, &args.args));
     } else {
@@ -280,6 +289,7 @@ fn with_noplot(bench_args: &[String]) -> Vec<String> {
 /// and starts the benchmark; the numbers stay the Kobo's. Criterion panics for
 /// a benchmark that has no stored sample, so the arguments of the device run
 /// (filters) are repeated to select exactly the benchmarks that were measured.
+/// `--noplot`/`-n` is dropped: it would also suppress the HTML report.
 fn view_hint(results: &Path, target: &BenchTarget, bench_args: &[String]) -> String {
     let criterion = results.join("criterion");
     let mut command = format!(
@@ -289,7 +299,10 @@ fn view_hint(results: &Path, target: &BenchTarget, bench_args: &[String]) -> Str
         package = target.package,
         name = target.name,
     );
-    for arg in bench_args {
+    for arg in bench_args
+        .iter()
+        .filter(|arg| *arg != "--noplot" && *arg != "-n")
+    {
         command.push(' ');
         command.push_str(&shell_quote(arg));
     }
@@ -492,7 +505,11 @@ mod tests {
         let hint = view_hint(
             Path::new("/w/it's/target/kobo-bench/parse"),
             &target("cadmus-core", "parse"),
-            &["normalize/sorted 10k".to_owned()],
+            &[
+                "--noplot".to_owned(),
+                "normalize/sorted 10k".to_owned(),
+                "-n".to_owned(),
+            ],
         );
         assert!(hint.contains(
             "CRITERION_HOME='/w/it'\\''s/target/kobo-bench/parse/criterion' cargo bench \
