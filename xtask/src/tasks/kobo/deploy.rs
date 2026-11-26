@@ -32,7 +32,7 @@ pub(crate) async fn run(args: DeployArgs) -> Result<()> {
 
     println!("Syncing dist/ to {} ({INSTALL_DIR})…", settings.host());
     let mut handle = ssh::connect(&settings).await?;
-    rsync::run(&mut handle, &root.join("dist")).await?;
+    rsync::run(&mut handle, &root.join("dist"), INSTALL_DIR).await?;
 
     if args.restart {
         restart::restart(&mut handle, settings.host()).await

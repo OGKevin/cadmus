@@ -1,11 +1,13 @@
-//! `cadmuscli kobo` — deploy and restart Cadmus on a Kobo over SSH.
+//! `cadmuscli kobo` — deploy, restart and benchmark Cadmus on a Kobo over SSH.
 //!
 //! `deploy` cross-compiles the test feature set, assembles `dist/`, and syncs
 //! it with rsync's delta protocol. `restart` sends `SIGUSR1` to the Cadmus
-//! process whose working directory is [`INSTALL_DIR`]. Both use the native
-//! `russh` connection built by [`ssh`], which resolves `~/.ssh/config`, host
-//! keys, and authentication in process.
+//! process whose working directory is [`INSTALL_DIR`]. `bench` runs one
+//! criterion benchmark on the device from [`BENCH_DIR`] and copies its results
+//! back. All use the native `russh` connection built by [`ssh`], which
+//! resolves `~/.ssh/config`, host keys, and authentication in process.
 
+mod bench;
 mod deploy;
 mod restart;
 mod rsync;
@@ -18,6 +20,9 @@ use clap::{Args, Subcommand};
 
 /// Where a test deploy installs Cadmus on the device.
 pub(crate) const INSTALL_DIR: &str = "/mnt/onboard/.adds/cadmus-tst";
+
+/// Where `kobo bench` stages benchmark binaries on the device's flash storage.
+pub(crate) const BENCH_DIR: &str = "/mnt/onboard/.adds/cadmus-bench";
 
 /// Features every test deploy pins, in this order, ahead of any extras.
 const REQUIRED_FEATURES: [&str; 2] = ["test", "kobo"];
@@ -36,6 +41,9 @@ pub enum KoboCommand {
     Deploy(DeployArgs),
     /// Restart the Cadmus process running from the test install.
     Restart(RestartArgs),
+    /// Run one criterion benchmark on the device and copy its results to
+    /// `target/kobo-bench/<name>/`.
+    Bench(BenchArgs),
 }
 
 /// SSH transport options shared by `kobo deploy` and `kobo restart`.
@@ -105,11 +113,27 @@ pub struct RestartArgs {
     pub ssh: SshOptions,
 }
 
+/// Arguments for `cadmuscli kobo bench`.
+#[derive(Debug, Args)]
+pub struct BenchArgs {
+    #[command(flatten)]
+    pub ssh: SshOptions,
+
+    /// Benchmark target to run, as named in `cargo metadata` (e.g. `parse`).
+    #[arg(long, value_name = "NAME")]
+    pub bench: String,
+
+    /// Arguments passed unchanged to the benchmark binary (after `--`).
+    #[arg(last = true, value_name = "BENCH_ARGS")]
+    pub args: Vec<String>,
+}
+
 /// Dispatches a `kobo` subcommand.
 pub async fn run(args: KoboArgs) -> Result<()> {
     match args.command {
         KoboCommand::Deploy(args) => deploy::run(args).await,
         KoboCommand::Restart(args) => restart::run(args).await,
+        KoboCommand::Bench(args) => bench::run(args).await,
     }
 }
 
@@ -243,11 +267,46 @@ mod tests {
     }
 
     #[test]
+    fn bench_passes_arguments_after_the_separator_unchanged() {
+        let cli = Cli::try_parse_from([
+            "cadmuscli",
+            "kobo",
+            "bench",
+            "--ip",
+            "kobo.local",
+            "--bench",
+            "parse",
+            "--",
+            "epub",
+            "--noplot",
+            "--sample-size",
+            "10",
+        ])
+        .unwrap();
+
+        let Command::Kobo(KoboArgs {
+            command: KoboCommand::Bench(args),
+        }) = cli.command
+        else {
+            panic!("expected `kobo bench`");
+        };
+
+        assert_eq!(args.ssh.ip, "kobo.local");
+        assert_eq!(args.bench, "parse");
+        assert_eq!(args.args, ["epub", "--noplot", "--sample-size", "10"]);
+    }
+
+    #[test]
+    fn bench_requires_a_benchmark_name() {
+        assert!(Cli::try_parse_from(["cadmuscli", "kobo", "bench", "--ip", "kobo.local"]).is_err());
+    }
+
+    #[test]
     fn device_address_falls_back_to_kobo_ip() {
         let command = Cli::command();
         let kobo = command.find_subcommand("kobo").unwrap();
 
-        for name in ["deploy", "restart"] {
+        for name in ["deploy", "restart", "bench"] {
             let subcommand = kobo.find_subcommand(name).unwrap();
             let ip = subcommand
                 .get_arguments()
