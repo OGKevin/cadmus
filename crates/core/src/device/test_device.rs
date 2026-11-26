@@ -147,6 +147,7 @@ struct TestUsbState {
     enabled: Option<bool>,
     enable_calls: u32,
     disable_calls: u32,
+    fail_disable: bool,
 }
 
 /// Assertable USB manager test double.
@@ -173,6 +174,14 @@ impl TestUsbManager {
     pub fn disable_call_count(&self) -> u32 {
         self.state.lock().map(|s| s.disable_calls).unwrap_or(0)
     }
+
+    /// Makes subsequent [`disable`](crate::device::usb::UsbManager::disable)
+    /// calls fail without changing the recorded enabled state.
+    pub fn set_fail_disable(&self, fail: bool) {
+        if let Ok(mut state) = self.state.lock() {
+            state.fail_disable = fail;
+        }
+    }
 }
 
 impl Default for TestUsbManager {
@@ -191,9 +200,20 @@ impl crate::device::usb::UsbManager for TestUsbManager {
     }
 
     async fn disable(&self) -> Result<(), crate::device::usb::UsbError> {
-        if let Ok(mut state) = self.state.lock() {
-            state.enabled = Some(false);
-            state.disable_calls += 1;
+        let fail = match self.state.lock() {
+            Ok(mut state) => {
+                state.disable_calls += 1;
+                if !state.fail_disable {
+                    state.enabled = Some(false);
+                }
+                state.fail_disable
+            }
+            Err(_) => false,
+        };
+        if fail {
+            return Err(crate::device::usb::UsbError::GadgetConfig(
+                "injected disable failure".to_string(),
+            ));
         }
         Ok(())
     }

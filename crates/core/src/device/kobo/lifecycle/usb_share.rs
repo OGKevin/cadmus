@@ -1,11 +1,10 @@
 //! USB mass-storage share preparation and session handling.
 
-use super::KOBO_UPDATE_BUNDLE;
 use crate::device::DeviceHardware as _;
 use crate::device::schedule_device_task;
 use crate::device::usb::UsbManager;
 use crate::device::{
-    AppContext, DeviceRuntime, DeviceTask, DeviceTaskId, EventOutcome, HistoryItem,
+    AppContext, DeviceRuntime, DeviceTask, DeviceTaskId, EventOutcome, ExitStatus, HistoryItem,
 };
 use crate::device::{DeviceInput, DevicePaths as _, InputSource};
 use crate::framebuffer::Framebuffer as _;
@@ -175,15 +174,21 @@ async fn enable_usb_share(
 
 /// Disables USB mass-storage mode after the host unplugs.
 ///
-/// Restores logging and the original working directory, then triggers a
-/// reboot if `KoboRoot.tgz` is present on onboard storage or an app restart
-/// otherwise.
+/// Returns [`ExitStatus::Reboot`] immediately if the USB manager cannot be
+/// created or disabling fails. Otherwise it restores logging and the original
+/// working directory, then returns [`ExitStatus::Reboot`] when `update_bundle`
+/// is present on onboard storage and [`ExitStatus::Restart`] otherwise.
+///
+/// This sends no [`Event::Select`]. Those exits carry user intent and the
+/// device may refuse them while a USB share session or a Full lease is active;
+/// lifecycle code that must end the process returns [`EventOutcome::Exit`]
+/// with the required [`ExitStatus`] instead.
 pub(super) async fn disable_usb_share(
     context: &AppContext,
     startup_cwd: Option<&Path>,
     logging_settings: &crate::settings::LoggingSettings,
-    hub: &crate::view::Hub,
-) {
+    update_bundle: &Path,
+) -> ExitStatus {
     tracing::info!("USB unplugged after sharing; disabling USB mass storage");
 
     match context.device.usb_manager() {
@@ -201,14 +206,12 @@ pub(super) async fn disable_usb_share(
             }
             Err(error) => {
                 tracing::error!(error = %error, "Failed to disable USB sharing, triggering reboot");
-                hub.send((Event::Select(EntryId::Reboot)).into()).ok();
-                return;
+                return ExitStatus::Reboot;
             }
         },
         Err(error) => {
             tracing::error!(error = %error, "Failed to create USB manager, triggering reboot");
-            hub.send((Event::Select(EntryId::Reboot)).into()).ok();
-            return;
+            return ExitStatus::Reboot;
         }
     }
 
@@ -218,17 +221,15 @@ pub(super) async fn disable_usb_share(
         tracing::error!(error = %error, original_cwd = %cwd.display(), "failed to restore working directory after USB share");
     }
 
-    let update_bundle_exists = tokio::fs::try_exists(KOBO_UPDATE_BUNDLE)
-        .await
-        .unwrap_or(false);
+    let update_bundle_exists = tokio::fs::try_exists(update_bundle).await.unwrap_or(false);
     tracing::info!(update_bundle_exists, "filesystem state after USB disable");
 
     if update_bundle_exists {
         tracing::info!("KoboRoot.tgz detected; triggering reboot");
-        hub.send((Event::Select(EntryId::Reboot)).into()).ok();
+        ExitStatus::Reboot
     } else {
         tracing::info!("triggering app restart");
-        hub.send((Event::Select(EntryId::Restart)).into()).ok();
+        ExitStatus::Restart
     }
 }
 
@@ -301,7 +302,6 @@ pub(super) async fn handle_event(
 mod tests {
     use super::*;
     use crate::device::test_harness::DeviceRuntimeHarness;
-    use crate::view::EntryId;
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn handle_prepare_share_returns_error_without_settings_manager() {
@@ -361,22 +361,63 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn disable_usb_share_disables_mass_storage() {
-        let mut harness = DeviceRuntimeHarness::new().await;
-        disable_usb_share(
+        let harness = DeviceRuntimeHarness::new().await;
+        let dir = tempfile::tempdir().expect("temp dir");
+        let status = disable_usb_share(
             &harness.context,
             None,
             &harness.context.settings.logging,
-            &harness.hub_tx,
+            &dir.path().join("KoboRoot.tgz"),
         )
         .await;
+        assert_eq!(status, ExitStatus::Restart);
         let usb = harness.context.device.usb_manager_for_test();
         assert_eq!(usb.disable_call_count(), 1);
         assert_eq!(usb.enabled(), Some(false));
-        assert!(
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn disable_usb_share_reboots_when_update_bundle_present() {
+        let harness = DeviceRuntimeHarness::new().await;
+        let dir = tempfile::tempdir().expect("temp dir");
+        let bundle = dir.path().join("KoboRoot.tgz");
+        tokio::fs::write(&bundle, b"update")
+            .await
+            .expect("write bundle");
+        let status = disable_usb_share(
+            &harness.context,
+            None,
+            &harness.context.settings.logging,
+            &bundle,
+        )
+        .await;
+        assert_eq!(status, ExitStatus::Reboot);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn disable_usb_share_reboots_when_disable_fails() {
+        let harness = DeviceRuntimeHarness::new().await;
+        let dir = tempfile::tempdir().expect("temp dir");
+        harness
+            .context
+            .device
+            .usb_manager_for_test()
+            .set_fail_disable(true);
+        let status = disable_usb_share(
+            &harness.context,
+            None,
+            &harness.context.settings.logging,
+            &dir.path().join("KoboRoot.tgz"),
+        )
+        .await;
+        assert_eq!(status, ExitStatus::Reboot);
+        assert_eq!(
             harness
-                .drain_hub()
-                .iter()
-                .any(|e| matches!(e, Event::Select(EntryId::Restart)))
+                .context
+                .device
+                .usb_manager_for_test()
+                .disable_call_count(),
+            1
         );
     }
 }

@@ -1313,6 +1313,7 @@ pub async fn run() -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cadmus_core::input::PowerSource;
 
     #[test]
     fn reboot_outranks_a_later_quit() {
@@ -1347,6 +1348,13 @@ mod tests {
         assert!(!is_shutdown_related_event(&Event::PrepareShare));
         assert!(!is_shutdown_related_event(&Event::Share));
         assert!(!is_shutdown_related_event(&Event::ToggleFrontlight));
+    }
+
+    #[test]
+    fn a_queued_host_unplug_is_not_replayed_through_the_handler() {
+        assert!(!is_shutdown_related_event(&Event::Device(
+            DeviceEvent::Unplug(PowerSource::Host)
+        )));
     }
 
     #[test]

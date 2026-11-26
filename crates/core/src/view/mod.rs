@@ -1016,10 +1016,22 @@ pub enum EntryId {
     New,
     Refresh,
     TakeScreenshot,
+    /// The user asked to restart Cadmus.
+    ///
+    /// `Event::Select` with this entry is user intent, whether from a menu or a Unix signal
+    /// (`SIGUSR1` posts this entry), so the device may refuse it while a Full lease is held or a
+    /// USB share session is active. Lifecycle code that must end the process must return
+    /// `EventOutcome::Exit` instead of sending this event.
     Restart,
+    /// The user asked to reboot the device. The device refuses this while a Full lease is held.
     Reboot,
+    /// The user asked to quit Cadmus.
+    ///
+    /// `SIGTERM` and `SIGINT` post this entry; the device refuses it while a Full lease is held or
+    /// a USB share session is active.
     Quit,
     Suspend,
+    /// The user asked to power off the device. The device refuses this while a Full lease is held.
     PowerOff,
     /// Switch to the peer Cadmus install (main ↔ test).
     SwitchInstall,
