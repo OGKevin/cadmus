@@ -608,12 +608,18 @@ pub enum Event {
     SetWifiMode(crate::settings::WifiMode),
     /// Periodic check whether Auto-mode WiFi should power down after idle.
     MightDisableWifi,
-    /// Last [`crate::device::inhibitor::Kind::Full`] inhibitor guard released.
+    /// The last inhibitor guard of the given [`crate::device::inhibitor::Kind`] was released.
     ///
-    /// Posted from the Full last-release notifier (often the OTA worker thread).
-    /// The orchestrator starts a cycle only if a deferred suspend intent is
-    /// still queued.
-    FullInhibitCleared,
+    /// Posted from that kind's last-release notifier on whichever thread drops
+    /// the last guard: the main loop for every current
+    /// [`Kind::Sleep`](crate::device::inhibitor::Kind::Sleep) holder, the OTA
+    /// worker for [`Kind::Full`](crate::device::inhibitor::Kind::Full). It only
+    /// enqueues. The orchestrator starts a cycle only if a deferred suspend
+    /// intent is still queued:
+    /// [`Kind::Sleep`](crate::device::inhibitor::Kind::Sleep) flushes only a
+    /// Deferred Auto Suspend, leaving a deferred Explicit suspend for the
+    /// [`Kind::Full`](crate::device::inhibitor::Kind::Full) release.
+    InhibitCleared(crate::device::inhibitor::Kind),
     /// Drop a queued deferred suspend intent without starting a cycle (e.g. before OTA reboot).
     ///
     /// <div class="warning">

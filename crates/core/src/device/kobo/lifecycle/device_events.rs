@@ -176,7 +176,8 @@ async fn handle_net_up(
 /// Handles the sleep cover closing.
 ///
 /// Sets `context.covered` and begins suspend when sleep-cover is enabled and
-/// no suspend or USB-share session is active.
+/// USB sharing is off. A start while a cycle is already in flight is ignored by
+/// [`start_cycle`].
 async fn handle_cover_on(
     hub: &Hub,
     bus: &mut crate::view::Bus,
@@ -189,8 +190,7 @@ async fn handle_cover_on(
     }
 
     context.covered = true;
-    if !context.settings.sleep_cover || context.shared || is_suspend_active(context, runtime.tasks)
-    {
+    if !context.settings.sleep_cover || context.shared {
         return EventOutcome::Handled;
     }
 

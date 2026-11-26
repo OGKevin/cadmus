@@ -31,10 +31,10 @@
 //! # Last-holder notifier
 //!
 //! Kobo registers a last-release notifier that posts
-//! [`Event::FullInhibitCleared`](crate::view::Event::FullInhibitCleared)
-//! so the suspend orchestrator can flush a deferred explicit suspend on the
-//! main loop. The callback runs on the thread that drops the last guard
-//! (OTA worker, test, …), not on the UI thread.
+//! [`Event::InhibitCleared`](crate::view::Event::InhibitCleared) with
+//! [`Kind::Full`](super::Kind::Full), so the suspend orchestrator can flush a
+//! deferred suspend on the main loop. The callback runs on the thread that
+//! drops the last guard (OTA worker, test, …), not on the UI thread.
 //!
 //! The `resources` handle used to install that callback is compiled only for
 //! `kobo`, tests, and rustdoc — emulator / standalone-deviceless lib builds
@@ -72,7 +72,8 @@ struct FullInhibitResources {
     /// Pulse guard; dropped on last Full release so soft-indicate can return.
     led_guard: Mutex<Option<StatusLedGuard>>,
     /// Optional callback after the last Full holder drops (Kobo posts
-    /// [`Event::FullInhibitCleared`](crate::view::Event::FullInhibitCleared)).
+    /// [`Event::InhibitCleared`](crate::view::Event::InhibitCleared) with
+    /// [`Kind::Full`](super::Kind::Full)).
     on_last_release: Mutex<Option<Arc<dyn Fn() + Send + Sync>>>,
 }
 

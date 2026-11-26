@@ -22,16 +22,17 @@
 //! injected as [`SoftSuspendKind`]. Linux wake
 //! lock and autosleep live under [`crate::device::linux::soft_suspend`] and are
 //! built by device probe code, then passed into [`Inhibitor::new`].
-//! Full acquire reads capacity from the shared [`Battery`] and compares it to
-//! [`FULL_INHIBIT_MIN_CAPACITY_PERCENT`].
+//! Full and Sleep acquire read capacity from the shared [`Battery`] and compare
+//! it to [`INHIBIT_MIN_CAPACITY_PERCENT`].
 //!
 //! [`Kind::Full`] tracking, the nested `"full-inhibit"` wake lock, and the
-//! status-LED pulse live in the `full` implementation module. On Kobo the last
-//! Full drop posts [`Event::FullInhibitCleared`](crate::view::Event::FullInhibitCleared)
-//! so the suspend orchestrator can flush a deferred explicit suspend.
+//! status-LED pulse live in the `full` implementation module.
 //! [`Kind::Sleep`] tracking and the nested `"sleep-inhibit"` wake lock live in
-//! the `sleep` implementation module. Last Sleep drop does not post
-//! `FullInhibitCleared`.
+//! the `sleep` implementation module. On Kobo the last drop of either kind
+//! posts [`Event::InhibitCleared`](crate::view::Event::InhibitCleared) naming
+//! the kind, so the suspend orchestrator can flush a deferred suspend on the
+//! main loop. The last Sleep lease release flushes a Deferred Auto Suspend; it
+//! leaves a deferred Explicit suspend for the Full release.
 //!
 //! ```ignore
 //! match inhibitor.acquire(Kind::SoftSuspend, SoftSuspendName::Wifi) {
@@ -68,13 +69,16 @@ use crate::device::linux::soft_suspend::kind::LinuxSoftSuspendKind;
 #[cfg(all(test, target_os = "linux"))]
 use crate::device::linux::soft_suspend::paths::SoftSuspendPaths;
 
-/// Minimum battery capacity (percent) required to acquire [`Kind::Full`].
+/// Minimum battery capacity (percent) required to acquire [`Kind::Full`] or
+/// [`Kind::Sleep`].
 ///
 /// Matches Kobo firmware: Nickel refuses to install `KoboRoot.tgz` (and similar
 /// onboard updates) when capacity is below 20%. Full inhibit is used for work
 /// that ends in such an update path (for example OTA), so Cadmus uses the same
 /// floor rather than [`BatterySettings::power_off`](crate::settings::BatterySettings::power_off).
-pub(crate) const FULL_INHIBIT_MIN_CAPACITY_PERCENT: f32 = 20.0;
+/// Sleep uses the same floor because holding the device awake on an almost
+/// empty battery has the same problem.
+pub(crate) const INHIBIT_MIN_CAPACITY_PERCENT: f32 = 20.0;
 
 /// Top-level inhibitor: Kind orchestration over injected backends.
 ///
@@ -159,8 +163,8 @@ impl Inhibitor {
 
     /// Registers a callback invoked on the thread that drops the last Full holder.
     ///
-    /// Kobo lifecycle posts [`Event::FullInhibitCleared`](crate::view::Event::FullInhibitCleared)
-    /// so [`start_cycle`](crate::device::suspend::start_cycle) can run if
+    /// Kobo lifecycle posts [`Event::InhibitCleared`](crate::view::Event::InhibitCleared)
+    /// with [`Kind::Full`] so a deferred suspend can run when
     /// [`Context::deferred_suspend`](crate::context::Context::deferred_suspend)
     /// is set. The callback is **not** the UI thread; it only enqueues.
     ///
@@ -170,6 +174,21 @@ impl Inhibitor {
     #[cfg(any(test, feature = "kobo", docsrs))]
     pub(crate) fn set_full_release_notifier(&self, notify: Arc<dyn Fn() + Send + Sync>) {
         self.full.set_on_last_release(notify);
+    }
+
+    /// Registers a callback invoked on the thread that drops the last Sleep holder.
+    ///
+    /// Kobo lifecycle posts [`Event::InhibitCleared`](crate::view::Event::InhibitCleared)
+    /// with [`Kind::Sleep`] so the suspend orchestrator can flush a Deferred
+    /// Auto Suspend; a deferred Explicit suspend stays queued for the Full
+    /// release. Every current Sleep holder releases on the main loop, so the
+    /// callback must only enqueue. [`Kind::Full`] OTA releases are the off-thread
+    /// case; see [`Self::set_full_release_notifier`].
+    ///
+    /// Replacing the notifier drops the previous callback.
+    #[cfg(any(test, feature = "kobo", docsrs))]
+    pub(crate) fn set_sleep_release_notifier(&self, notify: Arc<dyn Fn() + Send + Sync>) {
+        self.sleep.set_on_last_release(notify);
     }
 
     /// Returns whether any [`Kind::Full`] holder is active.
@@ -213,21 +232,23 @@ impl Inhibitor {
     ///
     /// [`Kind::SoftSuspend`] maps to the injected SoftSuspend-kind wake lock and
     /// always succeeds on supported backends. [`Kind::Sleep`] registers a Sleep
-    /// holder and nested `"sleep-inhibit"` wake lock and always succeeds.
-    /// [`Kind::Full`] also registers a Full holder, nested `"full-inhibit"` wake
-    /// lock, and status-LED blink.
+    /// holder and nested `"sleep-inhibit"` wake lock; [`Kind::Full`] also
+    /// registers a Full holder, nested `"full-inhibit"` wake lock, and
+    /// status-LED blink. Both Sleep and Full read shared battery capacity first
+    /// and refuse the lease when it is too low or unreadable.
     ///
-    /// Drop the returned [`InhibitorGuard`] to release. The last Full drop
-    /// fires the last-release notifier if one is installed (Kobo posts
-    /// [`Event::FullInhibitCleared`](crate::view::Event::FullInhibitCleared)).
-    /// The last Sleep drop does not fire that notifier.
+    /// Drop the returned [`InhibitorGuard`] to release. The last Full drop and
+    /// the last Sleep drop each fire their last-release notifier if one is
+    /// installed (Kobo posts [`Event::InhibitCleared`](crate::view::Event::InhibitCleared)
+    /// with [`Kind::Full`] or [`Kind::Sleep`]).
     ///
     /// # Errors
     ///
-    /// [`Kind::Full`] fails with [`InhibitorError::BatteryTooLow`] when shared
-    /// battery capacity is below [`FULL_INHIBIT_MIN_CAPACITY_PERCENT`] or
-    /// cannot be read. [`Kind::SoftSuspend`] and [`Kind::Sleep`] are never
-    /// battery-gated.
+    /// [`Kind::Sleep`] and [`Kind::Full`] fail with
+    /// [`InhibitorError::BatteryTooLow`] when shared battery capacity is below
+    /// [`INHIBIT_MIN_CAPACITY_PERCENT`] or cannot be read. A refused acquire
+    /// registers no holder and takes no nested wake lock.
+    /// [`Kind::SoftSuspend`] is never battery-gated.
     pub fn acquire(
         &self,
         kind: Kind,
@@ -238,23 +259,26 @@ impl Inhibitor {
             Kind::SoftSuspend => Ok(InhibitorGuard::soft_suspend(
                 self.soft_suspend.acquire_lease(name),
             )),
-            Kind::Sleep => Ok(InhibitorGuard::sleep(self.sleep.acquire(name))),
+            Kind::Sleep => {
+                self.ensure_battery_allows_lease()?;
+                Ok(InhibitorGuard::sleep(self.sleep.acquire(name)))
+            }
             Kind::Full => {
-                self.ensure_battery_allows_full()?;
+                self.ensure_battery_allows_lease()?;
                 let lease = self.full.acquire(name);
                 Ok(InhibitorGuard::full(lease))
             }
         }
     }
 
-    fn ensure_battery_allows_full(&self) -> Result<(), InhibitorError> {
+    fn ensure_battery_allows_lease(&self) -> Result<(), InhibitorError> {
         let capacity = self
             .battery
             .capacity()
             .ok()
             .and_then(|values| values.into_iter().next())
             .ok_or(InhibitorError::BatteryTooLow)?;
-        if capacity < FULL_INHIBIT_MIN_CAPACITY_PERCENT {
+        if capacity < INHIBIT_MIN_CAPACITY_PERCENT {
             return Err(InhibitorError::BatteryTooLow);
         }
         Ok(())
@@ -322,6 +346,18 @@ mod tests {
         )
     }
 
+    struct UnreadableBattery;
+
+    impl Battery for UnreadableBattery {
+        fn capacity(&self) -> Result<Vec<f32>, anyhow::Error> {
+            Err(anyhow::anyhow!("capacity unreadable"))
+        }
+
+        fn status(&self) -> Result<Vec<crate::device::battery::Status>, anyhow::Error> {
+            Err(anyhow::anyhow!("status unreadable"))
+        }
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn soft_suspend_acquire_on_noop() {
         let inhibitor = Inhibitor::noop();
@@ -366,7 +402,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn full_acquire_rejected_below_min_capacity() {
-        let inhibitor = inhibitor_with_capacity(FULL_INHIBIT_MIN_CAPACITY_PERCENT - 1.0);
+        let inhibitor = inhibitor_with_capacity(INHIBIT_MIN_CAPACITY_PERCENT - 1.0);
         let result = inhibitor.acquire(Kind::Full, "ota");
         assert!(matches!(result, Err(InhibitorError::BatteryTooLow)));
         assert!(!inhibitor.full_active());
@@ -374,7 +410,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn full_acquire_allowed_at_min_capacity() {
-        let inhibitor = inhibitor_with_capacity(FULL_INHIBIT_MIN_CAPACITY_PERCENT);
+        let inhibitor = inhibitor_with_capacity(INHIBIT_MIN_CAPACITY_PERCENT);
         assert!(inhibitor.acquire(Kind::Full, "ota").is_ok());
     }
 
@@ -393,12 +429,45 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn sleep_acquire_allowed_below_min_capacity() {
-        let inhibitor = inhibitor_with_capacity(FULL_INHIBIT_MIN_CAPACITY_PERCENT - 1.0);
+    async fn sleep_acquire_rejected_below_min_capacity() {
+        let inhibitor = inhibitor_with_capacity(INHIBIT_MIN_CAPACITY_PERCENT - 1.0);
+        let result = inhibitor.acquire(Kind::Sleep, "main-menu");
+        assert!(matches!(result, Err(InhibitorError::BatteryTooLow)));
+        assert!(!inhibitor.sleep_active());
+        assert!(!inhibitor.full_active());
+        assert!(
+            !inhibitor
+                .holders()
+                .iter()
+                .any(|name| name.as_str() == "sleep-inhibit")
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn sleep_acquire_allowed_at_min_capacity() {
+        let inhibitor = inhibitor_with_capacity(INHIBIT_MIN_CAPACITY_PERCENT);
         let guard = inhibitor.acquire(Kind::Sleep, "main-menu").unwrap();
         assert!(guard.is_active());
         assert!(inhibitor.sleep_active());
-        assert!(!inhibitor.full_active());
+        assert!(
+            inhibitor
+                .holders()
+                .iter()
+                .any(|name| name.as_str() == "sleep-inhibit")
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn sleep_acquire_rejected_when_capacity_unreadable() {
+        let inhibitor = Inhibitor::new(
+            NoOpSoftSuspendKind::new(),
+            StatusLed::new(Arc::new(NoopLeds)),
+            Arc::new(UnreadableBattery),
+        );
+        let result = inhibitor.acquire(Kind::Sleep, "main-menu");
+        assert!(matches!(result, Err(InhibitorError::BatteryTooLow)));
+        assert!(!inhibitor.sleep_active());
+        assert!(inhibitor.holders().is_empty());
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -436,5 +505,53 @@ mod tests {
         assert!(inhibitor.full_active());
         drop(full);
         assert!(!inhibitor.full_active());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn sleep_release_notifier_runs_on_last_drop() {
+        let inhibitor = Inhibitor::noop();
+        let fired = Arc::new(AtomicU32::new(0));
+        let fired_cb = Arc::clone(&fired);
+        inhibitor.set_sleep_release_notifier(Arc::new(move || {
+            fired_cb.fetch_add(1, Ordering::SeqCst);
+        }));
+        let guard = inhibitor.acquire(Kind::Sleep, "main-menu").unwrap();
+        assert_eq!(fired.load(Ordering::SeqCst), 0);
+        drop(guard);
+        assert_eq!(fired.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn sleep_release_notifier_waits_for_last_holder() {
+        let inhibitor = Inhibitor::noop();
+        let fired = Arc::new(AtomicU32::new(0));
+        let fired_cb = Arc::clone(&fired);
+        inhibitor.set_sleep_release_notifier(Arc::new(move || {
+            fired_cb.fetch_add(1, Ordering::SeqCst);
+        }));
+        let first = inhibitor.acquire(Kind::Sleep, "main-menu").unwrap();
+        let last = inhibitor.acquire(Kind::Sleep, "companion").unwrap();
+        drop(first);
+        assert_eq!(fired.load(Ordering::SeqCst), 0);
+        drop(last);
+        assert_eq!(fired.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn sleep_release_notifier_replacement_drops_previous() {
+        let inhibitor = Inhibitor::noop();
+        let previous = Arc::new(AtomicU32::new(0));
+        let previous_cb = Arc::clone(&previous);
+        inhibitor.set_sleep_release_notifier(Arc::new(move || {
+            previous_cb.fetch_add(1, Ordering::SeqCst);
+        }));
+        let fired = Arc::new(AtomicU32::new(0));
+        let fired_cb = Arc::clone(&fired);
+        inhibitor.set_sleep_release_notifier(Arc::new(move || {
+            fired_cb.fetch_add(1, Ordering::SeqCst);
+        }));
+        drop(inhibitor.acquire(Kind::Sleep, "main-menu").unwrap());
+        assert_eq!(previous.load(Ordering::SeqCst), 0);
+        assert_eq!(fired.load(Ordering::SeqCst), 1);
     }
 }

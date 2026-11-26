@@ -63,7 +63,7 @@ const POWER_NODE_READ_TIMEOUT: Duration = Duration::from_millis(100);
 /// owns any further retries.
 const DEEP_IDLE_TIMEOUT_RETRY_CAP: u32 = 3;
 
-/// Origin of a deferred suspend so Full-release flush can pick the right path.
+/// Origin of a deferred suspend so a release flush can pick the right path.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum DeferredSuspend {
     Auto,
@@ -280,9 +280,17 @@ pub(crate) async fn handle_event(
         Event::RtcAlarmFired(alarm_type) => {
             handle_rtc_alarm_fired(*alarm_type, hub, bus, rq, context, runtime).await
         }
-        Event::FullInhibitCleared => {
-            handle_full_inhibit_cleared(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
-                .await
+        Event::InhibitCleared(kind) => {
+            handle_inhibit_cleared(
+                *kind,
+                context,
+                runtime.view.as_mut(),
+                hub,
+                bus,
+                rq,
+                runtime.tasks,
+            )
+            .await
         }
         Event::ClearDeferredSuspend => handle_clear_deferred_suspend(context),
         _ => EventOutcome::Unhandled,
@@ -312,13 +320,22 @@ fn handle_clear_deferred_suspend(context: &mut AppContext) -> EventOutcome {
     EventOutcome::Handled
 }
 
-/// Flushes a deferred suspend intent queued while Full inhibit was active.
+/// Flushes a deferred suspend intent when the last guard of `kind` is released.
 ///
-/// Posted by the Full last-release notifier
-/// ([`Inhibitor::set_full_release_notifier`](crate::device::inhibitor::Inhibitor::set_full_release_notifier)).
-/// Explicit origin runs [`start_cycle`] even if Sleep is held. Auto origin
-/// goes through [`start_cycle_from_auto`], which re-defers while Sleep remains.
-async fn handle_full_inhibit_cleared(
+/// Posted through [`Event::InhibitCleared`] by the last-release notifier of
+/// that kind (see `Inhibitor::set_full_release_notifier` and
+/// `Inhibitor::set_sleep_release_notifier`).
+///
+/// [`Kind::Full`] flushes either origin: an Explicit intent runs
+/// [`start_cycle`] even while Sleep is held, an Auto intent goes through
+/// [`start_cycle_from_auto`], which re-defers while another gate remains.
+/// [`Kind::Sleep`] flushes only a Deferred Auto Suspend; a deferred Explicit
+/// suspend stays queued for the Full release. The intent is taken before the
+/// start call: a start ignored because a cycle is already in flight drops it,
+/// and that cycle's end ([`finish_cycle`] / [`cancel_prepare`]) re-arms the
+/// timer; a start deferred by a held Full or Sleep lease queues it again.
+async fn handle_inhibit_cleared(
+    kind: Kind,
     context: &mut AppContext,
     view: &mut dyn View,
     hub: &Hub,
@@ -326,19 +343,23 @@ async fn handle_full_inhibit_cleared(
     rq: &mut RenderQueue,
     tasks: &mut Vec<DeviceTask>,
 ) -> EventOutcome {
-    match context.deferred_suspend.take() {
+    let reason = match kind {
+        Kind::Full => "full_inhibit_cleared",
+        Kind::Sleep => "sleep_inhibit_cleared",
+        Kind::SoftSuspend => "soft_suspend_inhibit_cleared",
+    };
+    let origin = match (kind, context.deferred_suspend) {
+        (Kind::Full, _) => context.deferred_suspend.take(),
+        (Kind::Sleep, Some(DeferredSuspend::Auto)) => context.deferred_suspend.take(),
+        (Kind::Sleep | Kind::SoftSuspend, _) => None,
+    };
+    match origin {
         Some(DeferredSuspend::Explicit) => {
-            tracing::debug!(
-                reason = "full_inhibit_cleared",
-                "flushing deferred explicit suspend"
-            );
+            tracing::debug!(reason, "flushing deferred explicit suspend");
             start_cycle(context, view, hub, bus, rq, tasks).await;
         }
         Some(DeferredSuspend::Auto) => {
-            tracing::debug!(
-                reason = "full_inhibit_cleared",
-                "flushing deferred Auto suspend"
-            );
+            tracing::debug!(reason, "flushing deferred Auto suspend");
             start_cycle_from_auto(context, view, hub, bus, rq, tasks).await;
         }
         None => {}
@@ -1229,9 +1250,10 @@ async fn handle_post_wake(
 ///
 /// Explicit callers ([`start_cycle`]) still run while Sleep is held. Cover,
 /// power button, and menu Suspend use that path. Queues
-/// [`DeferredSuspend::Auto`] so [`handle_full_inhibit_cleared`] rechecks Sleep
-/// instead of flushing through `start_cycle`. Last Sleep drop does not
-/// flush deferred suspend; the next gesture's
+/// [`DeferredSuspend::Auto`] so [`handle_inhibit_cleared`] rechecks the
+/// remaining gates instead of flushing through `start_cycle`. The last Sleep
+/// lease release also flushes through this function, so a Full lease or
+/// another Sleep holder still re-defers the intent; the next gesture's
 /// [`crate::device::reschedule_auto_suspend_alarm`] clears it.
 pub(crate) async fn start_cycle_from_auto(
     context: &mut AppContext,
@@ -1254,8 +1276,11 @@ pub(crate) async fn start_cycle_from_auto(
 /// Start an explicit suspend cycle: fix kind, show intermission, schedule prepare.
 ///
 /// Does **not** put the SoC to sleep. Sleep happens later via
-/// [`prepare_for_sleep`] → [`enter_sleep`]. Kind is taken from an existing cycle
-/// (re-entry) or from soft-suspend armedness (`DeepIdle` vs `Classic`).
+/// [`prepare_for_sleep`] → [`enter_sleep`]. Kind is fixed from soft-suspend
+/// armedness (`DeepIdle` vs `Classic`).
+///
+/// A call while a suspend cycle is already in flight is ignored: it creates no
+/// second cycle and leaves the running cycle's tasks and RTC alarms untouched.
 ///
 /// When [`Inhibitor::full_active`](crate::device::inhibitor::Inhibitor::full_active)
 /// is true, sets
@@ -1272,6 +1297,11 @@ pub(crate) async fn start_cycle(
     rq: &mut crate::view::RenderQueue,
     tasks: &mut Vec<DeviceTask>,
 ) {
+    if is_suspend_active(context, tasks) {
+        tracing::debug!("ignoring suspend start while a suspend cycle is active");
+        return;
+    }
+
     if context.inhibitor.full_active() {
         queue_deferred_suspend(context, DeferredSuspend::Explicit);
         tracing::debug!("deferring suspend while Full inhibit active");
@@ -1283,17 +1313,13 @@ pub(crate) async fn start_cycle(
     cancel_auto_suspend_alarm(context);
     cancel_suspend_rtcs(context);
 
-    let kind = if let Some(existing) = context.suspend.as_ref() {
-        existing.kind
-    } else if context.inhibitor.mode().is_armed() {
+    let kind = if context.inhibitor.mode().is_armed() {
         SuspendKind::DeepIdle
     } else {
         SuspendKind::Classic
     };
-    let preserved_restore = context.suspend.as_ref().and_then(|c| c.deep_idle_restore);
 
     let mut cycle = SuspendCycle::new(kind);
-    cycle.deep_idle_restore = preserved_restore;
     if kind == SuspendKind::DeepIdle {
         match context
             .inhibitor

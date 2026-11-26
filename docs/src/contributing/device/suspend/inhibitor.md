@@ -40,9 +40,9 @@ for the lifetime of the work or UI. Dropping it releases the lease.
   held. Kernel wake and `finish_cycle` re-take `"sleep-inhibit"` if Sleep
   holders remain (top menu still open).
   Live AutoPowerOff is not
-  blocked. No battery gate, no status LED, last drop does not post
-  `FullInhibitCleared`. cadmus-test holds this kind while the top menu
-  (`ViewId::MainMenu`) is open:
+  blocked. No status LED. Acquire shares the battery gate described below.
+  cadmus-test holds this kind while
+  the top menu (`ViewId::MainMenu`) is open:
 
   ```rust
   let _guard = inhibitor.acquire(Kind::Sleep, "main-menu")?;
@@ -60,15 +60,15 @@ uses
 <a href="/api/cadmus_core/device/inhibitor/enum.SoftSuspendName.html">`SoftSuspendName`</a>
 where a standard name exists.
 
-### Full battery gate
+### Battery gate
 
-`Kind::Full` acquire reads shared
+`Kind::Sleep` and `Kind::Full` acquire read shared
 <a href="/api/cadmus_core/device/battery/trait.Battery.html">`Battery`</a>
-capacity and fails with
+capacity and fail with
 <a href="/api/cadmus_core/device/inhibitor/enum.InhibitorError.html#variant.BatteryTooLow">`BatteryTooLow`</a>
 when capacity cannot be read or the first reported cell is below 20% (the Kobo
-`KoboRoot` install floor). `Kind::SoftSuspend` and `Kind::Sleep` are never
-battery-gated.
+`KoboRoot` install floor). One threshold serves both kinds. `Kind::SoftSuspend`
+is never battery-gated.
 
 ## Deferred explicit suspend
 
@@ -83,16 +83,20 @@ power button, menu Suspend) still runs during Sleep. Nested `"sleep-inhibit"`
 is paused for kernel sleep and re-taken on wake if Sleep holders remain.
 
 When the last Full holder drops, Kobo posts
-<a href="/api/cadmus_core/view/enum.Event.html#variant.FullInhibitCleared">`Event::FullInhibitCleared`</a>;
+<a href="/api/cadmus_core/view/enum.Event.html#variant.InhibitCleared">`Event::InhibitCleared(Kind::Full)`</a>;
 the orchestrator flushes on the main loop. Auto origin goes through
-`start_cycle_from_auto` (Sleep still defers). Explicit origin runs
-`start_cycle` even if Sleep is held. Last Sleep drop does **not** flush.
-The next user gesture calls
+`start_cycle_from_auto`; Explicit origin runs `start_cycle` even if Sleep is
+held.
+
+When the last Sleep holder drops, Kobo posts `InhibitCleared(Kind::Sleep)`. The
+orchestrator flushes a waiting **Auto** through `start_cycle_from_auto`, which
+re-defers while a Full lease or another Sleep lease is held; a waiting
+**Explicit** suspend stays queued for the Full release. A release during a
+suspend cycle starts nothing.
+
+A touch calls
 <a href="/api/cadmus_core/device/fn.reschedule_auto_suspend_alarm.html">`reschedule_auto_suspend_alarm`</a>,
 which clears deferred intent without starting a cycle.
-
-Calling `reschedule_auto_suspend_alarm` also clears deferred intent without
-flushing on other user-activity paths.
 
 **OTA success** posts
 <a href="/api/cadmus_core/view/enum.Event.html#variant.ClearDeferredSuspend">`Event::ClearDeferredSuspend`</a>
