@@ -39,6 +39,7 @@ pub mod lease;
 pub mod library;
 pub mod lightsensor;
 pub mod logging;
+pub(crate) mod mdns;
 mod memory;
 pub mod metadata;
 pub mod network_address;

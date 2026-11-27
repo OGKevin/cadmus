@@ -93,9 +93,10 @@ impl DeviceLifecycle for Device {
 
     /// Initializes cores, inhibitor callbacks, and startup Wi-Fi.
     ///
-    /// The spawned radio reconcile reads the live session mode rather than a
-    /// snapshot captured before spawn, so a mode change queued in between
-    /// cannot power the radio the other way.
+    /// Raises `lo` for the private API on `127.0.0.1:8474` and for loopback
+    /// mDNS announcements. The spawned radio reconcile reads the live session
+    /// mode rather than a snapshot captured before spawn, so a mode change
+    /// queued in between cannot power the radio the other way.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(context, hub, runtime), level = tracing::Level::TRACE
     ))]
     async fn on_startup(
@@ -103,6 +104,10 @@ impl DeviceLifecycle for Device {
         hub: &crate::view::Hub,
         runtime: &mut DeviceRuntime<'_>,
     ) -> Result<(), anyhow::Error> {
+        if let Err(error) = crate::device::linux::loopback::bring_up().await {
+            tracing::warn!(error = %error, "Failed to bring up loopback interface");
+        }
+
         if let Ok(power) = context.device.power_manager()
             && let Err(error) = power.init_cores()
         {
@@ -255,6 +260,10 @@ impl DeviceLifecycle for Device {
             && let Err(error) = context.wifi_session.disable_radio().await
         {
             tracing::error!(error = %error, "Failed to disable WiFi on exit");
+        }
+
+        if let Err(error) = crate::device::linux::loopback::bring_down().await {
+            tracing::warn!(error = %error, "Failed to bring down loopback interface");
         }
 
         Ok(())
