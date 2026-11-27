@@ -760,6 +760,7 @@ dependencies = [
  "log",
  "lzma-rust2",
  "mdns-sd",
+ "memchr",
  "nix",
  "octocrab",
  "once_cell",
@@ -8860,6 +8861,7 @@ checksum = "eaeb7f16d2605b49aef586996ded29e65642fab7259a3077e537351df6d80426"
 dependencies = [
  "aes",
  "bzip2",
+ "chrono",
  "constant_time_eq 0.6.1",
  "crc32fast",
  "deflate64",

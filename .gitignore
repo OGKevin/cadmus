@@ -43,6 +43,7 @@ devenv.local.yaml
 
 .tmp
 logs
+!/crates/core/src/api/logs/
 .workspaces/
 **/.fat32-epoch
 /node_modules

@@ -1,5 +1,11 @@
 //! Connect RPC dispatch shared by the public and private HTTP listeners.
 //!
+//! [`SharedRpc`] implements `cadmus.api.shared.v1` and serves both listeners.
+//! Each listener layers its own handler over it: [`super::public_rpc::PublicRpc`]
+//! implements `cadmus.api.public.v1` for the Companion listener and
+//! [`super::internal_rpc::InternalRpc`] implements `cadmus.api.internal.v1` for
+//! the loopback listener.
+//!
 //! Handlers never touch [`crate::device::AppContext`]. They enqueue a [`Command`] on the API
 //! channel and wake the main loop with [`crate::view::Event::Api`]. The loop
 //! drains commands and replies on a oneshot. That path is the same for loopback
@@ -17,14 +23,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{Semaphore, mpsc};
 
-/// Public Connect handler: the `cadmus.api.shared.v1` services.
+/// Shared Connect handler: the `cadmus.api.shared.v1` services.
 ///
-/// Private-only services are implemented on
-/// [`super::internal::InternalRpc`], which wraps this type, so a private
-/// handler can reuse the shared plumbing without re-implementing the public
-/// services.
+/// Both listeners serve these. Scope-specific services live on
+/// [`super::public_rpc::PublicRpc`] and [`super::internal_rpc::InternalRpc`],
+/// each registered only for its own listener.
 #[derive(Clone)]
-pub(super) struct PublicRpc {
+pub(super) struct SharedRpc {
     pub tx: mpsc::UnboundedSender<Command>,
     pub hub: Hub,
     pub inhibitor: Arc<Inhibitor>,

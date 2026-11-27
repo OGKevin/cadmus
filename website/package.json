@@ -24,6 +24,7 @@
   "dependencies": {
     "@cloudflare/kumo": "^2.6.0",
     "@phosphor-icons/react": "^2.1.10",
+    "@tanstack/react-virtual": "^3.14.28",
     "fumadocs-core": "^16.19.7",
     "fumadocs-openapi": "^12.6.7",
     "fumadocs-ui": "^16.19.7",

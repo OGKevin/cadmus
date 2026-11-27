@@ -2,7 +2,7 @@
 //! optional bearer auth.
 
 use super::Command;
-use super::handler::PublicRpc;
+use super::shared_rpc::SharedRpc;
 use crate::device::inhibitor::{Inhibitor, InhibitorGuard, Kind, SoftSuspendName};
 use crate::view::{Event, Hub};
 use bytes::Bytes;
@@ -334,12 +334,12 @@ fn now_ms() -> u64 {
     START.elapsed().as_millis() as u64
 }
 
-/// Which RPC surface a listener exposes.
+/// Which listener a request reached, for access-log labels.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Scope {
-    /// Companion listener: shared RPCs only.
+    /// Companion listener on the LAN.
     Public,
-    /// Loopback listener: shared RPCs plus `cadmus.api.internal.v1`.
+    /// Loopback listener.
     Internal,
 }
 
@@ -360,16 +360,22 @@ pub(super) struct ListenConfig {
     pub token: Option<SecretString>,
     /// Install-directory site. `None` serves RPCs only.
     pub site_root: Option<PathBuf>,
-    /// RPC surface. Private-only services are never registered when public.
+    /// Which listener this is, for access-log labels.
     pub scope: Scope,
     /// Uppermost directory `FileOps` may read. `None` is unrestricted.
     pub file_root: Option<PathBuf>,
     /// Rejected bearer credentials, shared with the main loop's session.
     pub auth_failures: Arc<AtomicU32>,
+    /// RPCs this listener adds over the shared router, supplied by the
+    /// listener's own module.
+    pub register: Register,
 }
 
+/// Layers one listener's scope-specific RPCs over the shared router.
+pub(super) type Register = Box<dyn FnOnce(&Arc<SharedRpc>, Router) -> Router + Send>;
+
 /// RPCs both listeners serve, all from `cadmus.api.shared.v1`.
-fn shared_router(handler: &Arc<PublicRpc>) -> Router {
+fn shared_router(handler: &Arc<SharedRpc>) -> Router {
     let router = StatusExt::register(Arc::clone(handler), Router::new());
     let router = SettingsExt::register(Arc::clone(handler), router);
     FileOpsExt::register(Arc::clone(handler), router)
@@ -387,7 +393,7 @@ pub(super) async fn listen(
     hub: Hub,
     inhibitor: Arc<Inhibitor>,
 ) {
-    let handler = Arc::new(PublicRpc {
+    let handler = Arc::new(SharedRpc {
         tx: tx.clone(),
         hub: hub.clone(),
         inhibitor: Arc::clone(&inhibitor),
@@ -395,10 +401,7 @@ pub(super) async fn listen(
         file_limit: Arc::new(Semaphore::new(MAX_FILE_READS)),
     });
     let router = shared_router(&handler);
-    let router = match config.scope {
-        Scope::Public => router,
-        Scope::Internal => super::internal::register(&handler, router),
-    };
+    let router = (config.register)(&handler, router);
     let rpc = Auth {
         inner: ConnectRpcService::new(router),
         token: config.token,

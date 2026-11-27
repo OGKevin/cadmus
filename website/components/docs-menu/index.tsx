@@ -5,6 +5,7 @@ import { List } from "@phosphor-icons/react";
 import { useLocale, useTranslations } from "next-intl";
 import {
   apiHref,
+  companionLogsHref,
   companionSettingsHref,
   guideHref,
   rustApiHref,
@@ -18,12 +19,18 @@ export type DocsMenuProps = {
   settingsCurrent?: boolean;
   /** Open Settings in place. Without it, Settings links to the companion page. */
   onSettings?: () => void;
+  /** Highlight the Logs entry as the current page. */
+  logsCurrent?: boolean;
+  /** Open Logs in place. Without it, Logs links to the companion page. */
+  onLogs?: () => void;
 };
 
 /** Hamburger menu shared by the companion and explorer pages. */
 export function DocsMenu({
   settingsCurrent = false,
   onSettings,
+  logsCurrent = false,
+  onLogs,
 }: DocsMenuProps) {
   const t = useTranslations("companion");
   const docs = useTranslations("docs");
@@ -119,6 +126,31 @@ export function DocsMenu({
                 aria-current={settingsCurrent ? "page" : undefined}
               >
                 {t("settings")}
+              </a>
+            )}
+          </li>
+          <li role="none">
+            {onLogs ? (
+              <button
+                type="button"
+                role="menuitem"
+                className={menuItemClass}
+                aria-current={logsCurrent ? "page" : undefined}
+                onClick={() => {
+                  onLogs();
+                  setOpen(false);
+                }}
+              >
+                {t("logs")}
+              </button>
+            ) : (
+              <a
+                href={companionLogsHref(locale)}
+                role="menuitem"
+                className={menuItemClass}
+                aria-current={logsCurrent ? "page" : undefined}
+              >
+                {t("logs")}
               </a>
             )}
           </li>

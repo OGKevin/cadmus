@@ -2,6 +2,7 @@
 
 use super::public::{StartError, suspend, turn_off, turn_on};
 use super::*;
+use crate::device::DeviceHardware as _;
 use crate::device::DevicePaths;
 use crate::device::test_harness::DeviceRuntimeHarness;
 use crate::device::wifi::{Essid, NetworkInfo};
@@ -12,6 +13,7 @@ use crate::i18n::I18nDisplay;
 use crate::settings::WifiMode;
 #[cfg(feature = "emulator")]
 use crate::view::EntryId;
+use cadmus_api_proto::cadmus::api::public::v1 as public_proto;
 use connectrpc::ConnectError;
 use secrecy::ExposeSecret;
 use std::future::Future;
@@ -366,6 +368,80 @@ async fn suspend_and_resume_keep_the_token() {
     assert!(holds_public_api_lease(&harness));
     let again = harness.context.api.local_addr().unwrap();
     tokio::net::TcpStream::connect(again).await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn companion_keeps_the_device_awake_until_it_stops() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    arm_wifi(&mut harness, WifiMode::Auto);
+    assert!(!harness.context.inhibitor.sleep_active());
+    start(&mut harness, "127.0.0.1:0".parse().unwrap())
+        .await
+        .unwrap();
+    assert!(harness.context.inhibitor.sleep_active());
+    assert!(super::public::companion_keeps_awake(&harness.context));
+
+    crate::poll_parts!(harness, |_hub, _bus, _rq, context, _runtime| {
+        suspend(context)
+    });
+    assert!(!harness.context.inhibitor.sleep_active());
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::ApiResume, hub, bus, rq, context, runtime)
+    });
+    drive_listener_start(&mut harness).await;
+    assert!(harness.context.inhibitor.sleep_active());
+
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(
+            &Event::Close(ViewId::Companion),
+            hub,
+            bus,
+            rq,
+            context,
+            runtime,
+        )
+    });
+    assert!(!harness.context.inhibitor.sleep_active());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn companion_starts_without_the_awake_lease_on_a_low_battery() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    arm_wifi(&mut harness, WifiMode::Auto);
+    harness
+        .context
+        .device
+        .battery()
+        .set_capacity(crate::device::inhibitor::INHIBIT_MIN_CAPACITY_PERCENT - 1.0);
+    assert!(!harness.context.inhibitor.sleep_active());
+    start(&mut harness, "127.0.0.1:0".parse().unwrap())
+        .await
+        .unwrap();
+    assert!(harness.context.api.local_addr().is_some());
+    assert!(!harness.context.inhibitor.sleep_active());
+    assert!(!super::public::companion_keeps_awake(&harness.context));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn shutdown_and_a_blocked_start_release_the_awake_lease() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    arm_wifi(&mut harness, WifiMode::Auto);
+    start(&mut harness, "127.0.0.1:0".parse().unwrap())
+        .await
+        .unwrap();
+    assert!(harness.context.inhibitor.sleep_active());
+    crate::api::shutdown(&mut harness.context).await;
+    assert!(!harness.context.inhibitor.sleep_active());
+
+    let mut busy = DeviceRuntimeHarness::new().await;
+    arm_wifi(&mut busy, WifiMode::Auto);
+    let taken = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = taken.local_addr().unwrap();
+    start(&mut busy, addr).await.unwrap();
+    assert!(busy.context.api.local_addr().is_none());
+    assert!(!busy.context.inhibitor.sleep_active());
+    assert!(!holds_public_api_lease(&busy));
+    drop(taken);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -1913,6 +1989,16 @@ async fn openapi_json_is_served_without_a_token() {
             .is_some(),
         "private RPC missing from the document: {body}"
     );
+    assert!(
+        document["paths"]
+            .get("/cadmus.api.public.v1.Logs/List")
+            .is_some(),
+        "Companion-only RPC missing from the document: {body}"
+    );
+    assert!(
+        body.contains("Companion-only"),
+        "Logs service description does not say Companion-only: {body}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -1988,6 +2074,201 @@ async fn private_rpc_is_only_routed_on_the_loopback_listener() {
     );
     assert!(on_public.starts_with("HTTP/1.1 404"), "{on_public}");
     assert!(on_private.starts_with("HTTP/1.1 200"), "{on_private}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn logs_are_only_routed_on_the_companion_listener() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    arm_wifi(&mut harness, WifiMode::Auto);
+    start(&mut harness, "127.0.0.1:0".parse().unwrap())
+        .await
+        .unwrap();
+    crate::poll_parts!(harness, |hub, _bus, _rq, context, _runtime| {
+        super::start_private(hub, context)
+    });
+    let public = harness.context.api.local_addr().unwrap();
+    let private = harness.context.api.private_addr.unwrap();
+    let token = exposed_token(&harness).expect("token");
+    let authorization = format!("Bearer {token}");
+    let (with_pin, without_pin, on_loopback) = tokio::join!(
+        logs_list(public, Some(&authorization)),
+        logs_list(public, None),
+        logs_list(private, None)
+    );
+    assert!(with_pin.starts_with("HTTP/1.1 200"), "{with_pin}");
+    assert!(without_pin.starts_with("HTTP/1.1 401"), "{without_pin}");
+    assert!(on_loopback.starts_with("HTTP/1.1 404"), "{on_loopback}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn summarize_streams_to_done_and_reuses_the_cached_scan() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    arm_wifi(&mut harness, WifiMode::Auto);
+    let log_id = write_run_log(&harness);
+    start(&mut harness, "127.0.0.1:0".parse().unwrap())
+        .await
+        .unwrap();
+    let addr = harness.context.api.local_addr().unwrap();
+    let token = exposed_token(&harness).expect("token");
+    let authorization = format!("Bearer {token}");
+
+    let (head, body) = logs_summarize(addr, &authorization, log_id).await;
+    assert!(head.starts_with("HTTP/1.1 200"), "{head}");
+    let first = summary_messages(&body);
+    assert!(
+        first.len() > 1,
+        "the scan should stream snapshots: {}",
+        first.len()
+    );
+    assert!(first.last().expect("a summary").done);
+    let lines = first.last().expect("a summary").lines;
+
+    let (head, body) = logs_summarize(addr, &authorization, log_id).await;
+    assert!(head.starts_with("HTTP/1.1 200"), "{head}");
+    let second = summary_messages(&body);
+    assert_eq!(second.len(), 1, "an unchanged log comes from the cache");
+    assert!(second[0].done);
+    assert_eq!(second[0].lines, lines);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn summarize_of_an_unknown_log_is_not_found() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    arm_wifi(&mut harness, WifiMode::Auto);
+    start(&mut harness, "127.0.0.1:0".parse().unwrap())
+        .await
+        .unwrap();
+    let addr = harness.context.api.local_addr().unwrap();
+    let token = exposed_token(&harness).expect("token");
+    let authorization = format!("Bearer {token}");
+    let (head, body) = logs_summarize(addr, &authorization, "no-such-log").await;
+    assert!(head.starts_with("HTTP/1.1 200"), "{head}");
+    let text = String::from_utf8_lossy(&body);
+    assert!(text.contains("not_found"), "{text}");
+}
+
+/// Writes a Run log large enough to stream more than one snapshot, and returns
+/// the canonical run ID that names it.
+fn write_run_log(harness: &DeviceRuntimeHarness) -> &'static str {
+    const ID: &str = "01a20edc-8083-75d7-b900-35f14f330c68";
+    const LINE: &str = "{\"timestamp\":\"2026-11-25T10:00:00Z\",\"level\":\"INFO\",\"fields\":{\"message\":\"line\"},\"target\":\"cadmus_core::device\"}\n";
+    let dir = harness
+        .context
+        .device
+        .data_path(&harness.context.settings.logging.directory);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = std::fs::File::create(dir.join(format!("cadmus-{ID}.json"))).unwrap();
+    let mut writer = std::io::BufWriter::new(file);
+    let mut written = 0usize;
+    while written <= 9 * 1024 * 1024 {
+        std::io::Write::write_all(&mut writer, LINE.as_bytes()).unwrap();
+        written += LINE.len();
+    }
+    std::io::Write::flush(&mut writer).unwrap();
+    ID
+}
+
+/// One `cadmus.api.public.v1.Logs/Summarize` call: response head and body.
+async fn logs_summarize(addr: SocketAddr, authorization: &str, log_id: &str) -> (String, Vec<u8>) {
+    let payload = format!("{{\"logId\":\"{log_id}\"}}");
+    let mut request = format!(
+        "POST /cadmus.api.public.v1.Logs/Summarize HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/connect+json\r\nConnect-Protocol-Version: 1\r\nAuthorization: {authorization}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        5 + payload.len()
+    )
+    .into_bytes();
+    request.push(0);
+    request.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+    request.extend_from_slice(payload.as_bytes());
+    http_parts(&http_exchange_bytes(addr, &request).await)
+}
+
+/// Splits raw response bytes into the header block and the decoded body.
+fn http_parts(response: &[u8]) -> (String, Vec<u8>) {
+    let split = response
+        .windows(4)
+        .position(|window| window == b"\r\n\r\n")
+        .expect("response headers");
+    let head = String::from_utf8_lossy(&response[..split]).to_string();
+    let body = &response[split + 4..];
+    let chunked = head
+        .to_ascii_lowercase()
+        .contains("transfer-encoding: chunked");
+    (
+        head,
+        if chunked {
+            dechunk(body)
+        } else {
+            body.to_vec()
+        },
+    )
+}
+
+/// Bytes of a chunked HTTP body.
+fn dechunk(mut body: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    loop {
+        let line_end = body
+            .windows(2)
+            .position(|window| window == b"\r\n")
+            .expect("chunk size line");
+        let line = std::str::from_utf8(&body[..line_end]).expect("chunk size");
+        let size = usize::from_str_radix(line.split(';').next().unwrap().trim(), 16)
+            .expect("chunk size in hex");
+        body = &body[line_end + 2..];
+        if size == 0 {
+            return out;
+        }
+        out.extend_from_slice(&body[..size]);
+        body = &body[size + 2..];
+    }
+}
+
+/// Summaries carried by a Connect server-stream body.
+fn summary_messages(body: &[u8]) -> Vec<public_proto::LogSummary> {
+    let mut messages = Vec::new();
+    let mut at = 0;
+    while at + 5 <= body.len() {
+        let flags = body[at];
+        let len =
+            u32::from_be_bytes([body[at + 1], body[at + 2], body[at + 3], body[at + 4]]) as usize;
+        let payload = &body[at + 5..at + 5 + len];
+        at += 5 + len;
+        if flags & 0x02 != 0 {
+            break;
+        }
+        messages.push(
+            serde_json::from_slice::<public_proto::LogSummary>(payload)
+                .expect("summary JSON message"),
+        );
+    }
+    messages
+}
+
+/// Raw response bytes, headers and body.
+async fn http_exchange_bytes(addr: SocketAddr, req: &[u8]) -> Vec<u8> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let mut stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+    stream.write_all(req).await.unwrap();
+    let mut buf = Vec::new();
+    tokio::time::timeout(Duration::from_secs(20), stream.read_to_end(&mut buf))
+        .await
+        .expect("response read timed out")
+        .unwrap();
+    buf
+}
+
+/// `cadmus.api.public.v1.Logs/List`.
+async fn logs_list(addr: SocketAddr, authorization: Option<&str>) -> String {
+    let auth = authorization
+        .map(|value| format!("Authorization: {value}\r\n"))
+        .unwrap_or_default();
+    http_exchange(
+        addr,
+        &format!(
+            "POST /cadmus.api.public.v1.Logs/List HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nConnect-Protocol-Version: 1\r\n{auth}Content-Length: 2\r\nConnection: close\r\n\r\n{{}}"
+        ),
+    )
+    .await
 }
 
 /// `cadmus.api.internal.v1.Placeholder/Ping`, a no-op internal RPC.

@@ -1,18 +1,45 @@
 import { execFileSync, spawn } from "node:child_process";
 import { createServer } from "node:http";
+import { Readable } from "node:stream";
 import { readdirSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 
 const websiteRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+const UNARY_TYPE = "application/json";
+const STREAM_TYPE = "application/connect+json";
+
+// Every method the Companion site calls, with the request content type it
+// sends: a stream frames its messages, a unary method sends one JSON body.
 const procedures = new Map([
-  ["/cadmus.api.shared.v1.Status/", new Set(["GetStatus"])],
+  ["/cadmus.api.shared.v1.Status/", new Map([["GetStatus", UNARY_TYPE]])],
   [
     "/cadmus.api.shared.v1.Settings/",
-    new Set(["List", "Update", "AddLibrary", "RemoveLibrary"]),
+    new Map([
+      ["List", UNARY_TYPE],
+      ["Update", UNARY_TYPE],
+      ["AddLibrary", UNARY_TYPE],
+      ["RemoveLibrary", UNARY_TYPE],
+    ]),
   ],
-  ["/cadmus.api.shared.v1.FileOps/", new Set(["ListDirectory", "GetFile"])],
+  [
+    "/cadmus.api.shared.v1.FileOps/",
+    new Map([
+      ["ListDirectory", UNARY_TYPE],
+      ["GetFile", STREAM_TYPE],
+    ]),
+  ],
+  [
+    "/cadmus.api.public.v1.Logs/",
+    new Map([
+      ["List", UNARY_TYPE],
+      ["Read", UNARY_TYPE],
+      ["Summarize", STREAM_TYPE],
+      ["Download", STREAM_TYPE],
+    ]),
+  ],
 ]);
 
 const OPENAPI_PATH = "/openapi.json";
@@ -203,7 +230,9 @@ function procedureName(url = "") {
   for (const [prefix, names] of procedures) {
     if (!path.startsWith(prefix)) continue;
     const name = path.slice(prefix.length);
-    return names.has(name) ? name : null;
+    if (names.has(name)) {
+      return { name, type: names.get(name) };
+    }
   }
   return null;
 }
@@ -221,7 +250,7 @@ function sendJson(res, status, value) {
 function allowedProcedures() {
   const list = [];
   for (const [prefix, names] of procedures) {
-    for (const name of names) {
+    for (const name of names.keys()) {
       list.push(`${prefix}${name}`);
     }
   }
@@ -258,7 +287,7 @@ function readBody(req) {
   });
 }
 
-function forward(port, req, body) {
+function forward(port, req, body, signal) {
   const path = (req.url ?? "/").split("?")[0];
   const headers = {
     "connect-protocol-version": req.headers["connect-protocol-version"] ?? "1",
@@ -272,6 +301,7 @@ function forward(port, req, body) {
   return fetch(`http://127.0.0.1:${port}${path}`, {
     method: req.method ?? "GET",
     headers,
+    signal,
     ...(req.method === "POST" ? { body } : {}),
   });
 }
@@ -299,8 +329,8 @@ function createHandler(discover) {
   return async function handler(req, res) {
     const path = (req.url ?? "/").split("?")[0];
     const isSpec = path === OPENAPI_PATH;
-    const name = procedureName(req.url);
-    if (!isSpec && !name) {
+    const procedure = procedureName(req.url);
+    if (!isSpec && !procedure) {
       refuse(
         res,
         404,
@@ -321,30 +351,47 @@ function createHandler(discover) {
       return;
     }
     if (!isSpec) {
-      const expectedType =
-        name === "GetFile" ? "application/connect+json" : "application/json";
       const gotType = req.headers["content-type"] ?? "";
-      if (gotType !== expectedType) {
+      if (gotType !== procedure.type) {
         refuse(
           res,
           415,
           `Wrong content-type for ${path}.`,
-          expectedType,
+          procedure.type,
           gotType || "(none)",
         );
         return;
       }
     }
     const body = isSpec ? Buffer.alloc(0) : await readBody(req);
+    const streaming = procedure?.type === STREAM_TYPE;
     for (let attempt = 0; attempt < 2 && port; attempt += 1) {
+      const abort = new AbortController();
       let upstream;
       try {
-        upstream = await forward(port, req, body);
+        upstream = await forward(port, req, body, abort.signal);
       } catch {
+        abort.abort();
         port = await resolvePort(true);
         continue;
       }
       note(`emulator :${port}`);
+      res.on("close", () => abort.abort());
+      if (streaming) {
+        res.writeHead(upstream.status, {
+          "content-type": upstream.headers.get("content-type") ?? STREAM_TYPE,
+          "cache-control": "no-store",
+        });
+        if (!upstream.body) {
+          res.end();
+          return;
+        }
+        const stream = Readable.fromWeb(upstream.body);
+        stream.on("error", () => res.destroy());
+        res.on("close", () => stream.destroy());
+        stream.pipe(res);
+        return;
+      }
       let bytes;
       try {
         bytes = Buffer.from(await upstream.arrayBuffer());
@@ -542,7 +589,106 @@ async function check() {
   );
   assert.equal(mismatch.status, 415);
   assert.match((await mismatch.json()).error, /connect\+json/);
+  const streamMismatch = await fetch(
+    `http://127.0.0.1:${liveAddress.port}/cadmus.api.public.v1.Logs/Summarize`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    },
+  );
+  assert.equal(streamMismatch.status, 415);
+  assert.match((await streamMismatch.json()).error, /connect\+json/);
   live.close();
+
+  function frame(flags, text) {
+    const bytes = Buffer.from(text);
+    const out = Buffer.alloc(5 + bytes.length);
+    out[0] = flags;
+    out.writeUInt32BE(bytes.length, 1);
+    bytes.copy(out, 5);
+    return out;
+  }
+
+  const firstFrame = frame(0, JSON.stringify({ lines: "1" }));
+  const secondFrame = frame(0, JSON.stringify({ lines: "2" }));
+  const endFrame = frame(2, "{}");
+  let resolveStreamingClosed;
+  const streamingClosed = new Promise((resolve) => {
+    resolveStreamingClosed = resolve;
+  });
+  const streamingStub = createServer((_req, res) => {
+    res.writeHead(200, { "content-type": STREAM_TYPE });
+    res.write(firstFrame);
+    setTimeout(() => {
+      res.write(secondFrame);
+      res.end(endFrame);
+    }, 10);
+    res.on("finish", () => resolveStreamingClosed());
+  });
+  await new Promise((resolve) => streamingStub.listen(0, "127.0.0.1", resolve));
+  const streamingProxy = listen(async () => streamingStub.address().port);
+  await new Promise((resolve) =>
+    streamingProxy.listen(0, "127.0.0.1", resolve),
+  );
+  const streamed = await fetch(
+    `http://127.0.0.1:${streamingProxy.address().port}/cadmus.api.public.v1.Logs/Summarize`,
+    {
+      method: "POST",
+      headers: { "content-type": STREAM_TYPE },
+      body: Buffer.alloc(0),
+    },
+  );
+  assert.equal(streamed.status, 200);
+  assert.equal(streamed.headers.get("content-length"), null);
+  assert.deepEqual(
+    Buffer.from(await streamed.arrayBuffer()),
+    Buffer.concat([firstFrame, secondFrame, endFrame]),
+  );
+  await streamingClosed;
+  streamingProxy.close();
+  streamingStub.close();
+
+  let resolveClientClosed;
+  const clientClosed = new Promise((resolve) => {
+    resolveClientClosed = resolve;
+  });
+  const endlessStub = createServer((_req, res) => {
+    res.writeHead(200, { "content-type": STREAM_TYPE });
+    res.write(firstFrame);
+    res.on("close", () => resolveClientClosed());
+  });
+  await new Promise((resolve) => endlessStub.listen(0, "127.0.0.1", resolve));
+  const endlessProxy = listen(async () => endlessStub.address().port);
+  await new Promise((resolve) => endlessProxy.listen(0, "127.0.0.1", resolve));
+  const abort = new AbortController();
+  const endless = await fetch(
+    `http://127.0.0.1:${endlessProxy.address().port}/cadmus.api.public.v1.Logs/Download`,
+    {
+      method: "POST",
+      headers: { "content-type": STREAM_TYPE },
+      body: Buffer.alloc(0),
+      signal: abort.signal,
+    },
+  );
+  const reader = endless.body.getReader();
+  const chunk = await reader.read();
+  assert.equal(
+    Buffer.from(chunk.value).subarray(0, firstFrame.length).equals(firstFrame),
+    true,
+  );
+  abort.abort();
+  await Promise.race([
+    clientClosed,
+    new Promise((_, reject) =>
+      setTimeout(
+        () => reject(new Error("client abort did not reach the emulator")),
+        2000,
+      ),
+    ),
+  ]);
+  endlessProxy.close();
+  endlessStub.close();
 
   const closed = createServer();
   await new Promise((resolve) => closed.listen(0, "127.0.0.1", resolve));

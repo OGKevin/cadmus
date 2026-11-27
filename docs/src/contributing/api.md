@@ -4,13 +4,14 @@
 
 Cadmus serves two cleartext
 [Connect](https://connectrpc.com/) listeners. Both serve the shared
-`cadmus.api.shared.v1` RPCs; only the loopback listener serves
+`cadmus.api.shared.v1` RPCs; only the Companion listener serves
+`cadmus.api.public.v1`, and only the loopback listener serves
 `cadmus.api.internal.v1`.
 
-| Listener | Bind                                      | Starts                | Token                                                     | Site files |
-| -------- | ----------------------------------------- | --------------------- | --------------------------------------------------------- | ---------- |
-| Public   | `[::]:80`, dual-stack (emulator IPv4 `0`) | Companion menu entry  | 6-digit `Authorization: Bearer` on settings/file RPCs     | Yes        |
-| Private  | `127.0.0.1:8474` (tests: port 0)          | Process startup       | No                                                        | No         |
+| Listener | Bind                                      | Starts               | Token                                                      | Site files |
+| -------- | ----------------------------------------- | -------------------- | ---------------------------------------------------------- | ---------- |
+| Public   | `[::]:80`, dual-stack (emulator IPv4 `0`) | Companion menu entry | 6-digit `Authorization: Bearer` on settings/file/logs RPCs | Yes        |
+| Private  | `127.0.0.1:8474` (tests: port 0)          | Process startup      | No                                                         | No         |
 
 The public listener accepts IPv4 and IPv6 on one socket and falls back to IPv4
 where the host has no IPv6. The private listener is loopback-only and is not
@@ -30,6 +31,9 @@ listener synchronously and survives suspend/resume, and a request without a
 
 Companion runs exactly while the Companion view is open: closing the view
 stops the public listener, and every way the listener stops closes the view.
+While it runs, the public listener holds a
+<a href="/api/cadmus_core/device/inhibitor/enum.Kind.html#variant.Sleep">`Kind::Sleep`</a>
+inhibitor lease, so autosleep and Auto Suspend wait until Companion stops.
 
 The debug emulator's startup companion session binds `127.0.0.1:0`, which also
 skips mDNS. Opening Companion from the emulator menu binds `0.0.0.0:0` instead,
@@ -39,11 +43,22 @@ without a token.
 `GetStatus` and static `GET`s are open on the public listener. There is no
 `Access-Control-Allow-Origin` header.
 
-`cadmus.api.shared.v1` is the whole public surface. `cadmus.api.internal.v1`
-holds loopback-only RPCs, starting with the no-op `Placeholder` service,
-and is registered only when the listener scope is private, so a public request
-to a private method is an unknown route. The OpenAPI document still lists those
-methods, because plugins and other on-device callers use it as their reference.
+`cadmus.api.shared.v1` is served by both listeners. The other two packages are
+each served by one, and each listener registers only its own package, so a
+request to the wrong listener is an unknown route (HTTP `404`, Connect code
+`unimplemented`):
+
+| Package                  | Served by | Handler       | Registered by                          |
+| ------------------------ | --------- | ------------- | -------------------------------------- |
+| `cadmus.api.shared.v1`   | Both      | `SharedRpc`   | `shared_router` in `serve.rs`          |
+| `cadmus.api.public.v1`   | Public    | `PublicRpc`   | `public_rpc::register`                 |
+| `cadmus.api.internal.v1` | Private   | `InternalRpc` | `internal_rpc::register`               |
+
+`cadmus.api.public.v1` is Companion-only: its `Logs` service needs the PIN like
+the shared services, and the loopback listener does not route it. The OpenAPI
+document lists all three packages, with the Companion-only and loopback-only
+wording on their services, because the site and plugins use it as their
+reference.
 
 Both listeners log every RPC at `trace` level through the `Auth` layer, with a
 `router` field set to `public` or `internal`, plus method, path, status, and
@@ -89,10 +104,17 @@ suspend cancels it before it can publish a superseded listener.
 
 Shared services live in
 [`proto/cadmus/api/shared/v1/`](../../../proto/cadmus/api/shared/v1/).
+Companion-only services, such as `Logs`, live in
+[`proto/cadmus/api/public/v1/`](../../../proto/cadmus/api/public/v1/).
 Internal-only RPCs go in
 [`proto/cadmus/api/internal/v1/`](../../../proto/cadmus/api/internal/v1/)
 when those callers exist. `crates/api-proto/build.rs` compiles every Cadmus
 `.proto` plus generated enums.
+
+The `Logs` contract is described in [Companion logs](companion/logs.md): its
+`LogFilter.targets` keeps a Log target and its sub-targets, every time is a
+`google.protobuf.Timestamp`, and `Download` streams a
+`cadmus-logs-<UTC yyyymmddThhmmssZ>.zip` Log bundle.
 
 `Extension`, `CategoryId`, `SettingIdentityKind`, and `TextMode` are defined
 once in [`crates/build-deps/src/api_enums.json`](../../../crates/build-deps/src/api_enums.json),
@@ -121,7 +143,9 @@ flag; the field number is reserved.
 
 Generated Rust is `cadmus-api-proto`. Message and service docs are on the
 <a href="/api/cadmus_api_proto/cadmus/api/shared/v1/index.html">`cadmus.api.shared.v1`</a>
-rustdoc page, not copied here.
+and
+<a href="/api/cadmus_api_proto/cadmus/api/public/v1/index.html">`cadmus.api.public.v1`</a>
+rustdoc pages, not copied here.
 
 ## Exploring the API
 
@@ -133,7 +157,7 @@ rustdoc page, not copied here.
 `info.version` with the same git-describe string as `GetStatus`. Both listeners
 serve it, and the public listener serves it without a bearer token: the protos
 are public documentation. Paths use the Connect form
-`/cadmus.api.shared.v1.<Service>/<Method>`.
+`/<package>.<Service>/<Method>`, for example `/cadmus.api.public.v1.Logs/List`.
 
 The document-level default is `bearerAuth`, declared in
 [`proto/cadmus/api/shared/v1/openapi.proto`](../../../proto/cadmus/api/shared/v1/openapi.proto).

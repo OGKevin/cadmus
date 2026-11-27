@@ -13,6 +13,7 @@ import { Text } from "@cloudflare/kumo/components/text";
 import { useLocale, useTranslations } from "next-intl";
 import { CategoryList } from "@/components/companion-categories/index";
 import { CompanionInstructions } from "@/components/companion-instructions/index";
+import { CompanionLogs } from "@/components/companion-logs/index";
 import { LanguageSwitcher } from "@/components/language-switcher/index";
 import { apiHref, guideHref, rustApiHref } from "@/lib/doc-hrefs";
 import { DocsMenu } from "@/components/docs-menu/index";
@@ -37,6 +38,8 @@ import {
 } from "@/lib/companion";
 import { TOKEN_KEY } from "@/lib/companion-token";
 
+type CompanionView = "home" | "settings" | "logs";
+
 export function CompanionPage({
   token,
   categories,
@@ -49,7 +52,7 @@ export function CompanionPage({
   token?: string;
   categories?: Category[];
   status?: CompanionStatus;
-  view?: "home" | "settings";
+  view?: CompanionView;
   onToken?: (token: string) => void;
   onTokenRejected?: () => void;
   tokenRejected?: boolean;
@@ -57,16 +60,18 @@ export function CompanionPage({
   const probe = useCompanionProbe(status === undefined);
   const shown = status ? { state: "up" as const, ...status } : probe;
   const [view, setView] = useState(initialView);
-  useSettingsHash(setView);
+  useViewHash(setView);
   const version = shown?.state === "up" ? shown.version : "";
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-kumo-base text-kumo-default">
       <CompanionTopBar
         settingsCurrent={view === "settings"}
+        logsCurrent={view === "logs"}
         version={version}
         onHome={() => setView("home")}
         onSettings={() => setView("settings")}
+        onLogs={() => setView("logs")}
       />
       <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-6 py-8">
         <CompanionBody
@@ -75,6 +80,7 @@ export function CompanionPage({
           token={token}
           view={view}
           onSettings={() => setView("settings")}
+          onLogs={() => setView("logs")}
           onToken={onToken}
           onTokenRejected={onTokenRejected}
           tokenRejected={tokenRejected}
@@ -119,33 +125,40 @@ function useCompanionProbe(enabled: boolean): CompanionProbe | null {
   return probe;
 }
 
-function useSettingsHash(setView: (view: "home" | "settings") => void) {
+function useViewHash(setView: (view: CompanionView) => void) {
   useEffect(() => {
-    function openSettingsHash() {
-      if (window.location.hash !== "#settings") return;
-      setView("settings");
+    function openViewHash() {
+      let view: CompanionView | null = null;
+      if (window.location.hash === "#settings") view = "settings";
+      if (window.location.hash === "#logs") view = "logs";
+      if (!view) return;
+      setView(view);
       window.history.replaceState(
         null,
         "",
         `${window.location.pathname}${window.location.search}`,
       );
     }
-    openSettingsHash();
-    window.addEventListener("hashchange", openSettingsHash);
-    return () => window.removeEventListener("hashchange", openSettingsHash);
+    openViewHash();
+    window.addEventListener("hashchange", openViewHash);
+    return () => window.removeEventListener("hashchange", openViewHash);
   }, [setView]);
 }
 
 function CompanionTopBar({
   settingsCurrent,
+  logsCurrent,
   version,
   onHome,
   onSettings,
+  onLogs,
 }: {
   settingsCurrent: boolean;
+  logsCurrent: boolean;
   version: string;
   onHome: () => void;
   onSettings: () => void;
+  onLogs: () => void;
 }) {
   const t = useTranslations("companion");
 
@@ -158,7 +171,12 @@ function CompanionTopBar({
       >
         {version ? `Cadmus ${version}` : t("home")}
       </button>
-      <DocsMenu settingsCurrent={settingsCurrent} onSettings={onSettings} />
+      <DocsMenu
+        settingsCurrent={settingsCurrent}
+        onSettings={onSettings}
+        logsCurrent={logsCurrent}
+        onLogs={onLogs}
+      />
       <div className="ml-auto">
         <LanguageSwitcher />
       </div>
@@ -172,6 +190,7 @@ function CompanionBody({
   probe,
   view,
   onSettings,
+  onLogs,
   onToken,
   onTokenRejected,
   tokenRejected,
@@ -179,8 +198,9 @@ function CompanionBody({
   token?: string;
   categories?: Category[];
   probe: CompanionProbe | null;
-  view: "home" | "settings";
+  view: CompanionView;
   onSettings: () => void;
+  onLogs: () => void;
   onToken?: (token: string) => void;
   onTokenRejected?: () => void;
   tokenRejected?: boolean;
@@ -203,8 +223,12 @@ function CompanionBody({
     );
   } else if (view === "settings") {
     body = <CompanionEditor token={token} onTokenRejected={onTokenRejected} />;
+  } else if (view === "logs") {
+    body = <CompanionLogs token={token} onTokenRejected={onTokenRejected} />;
   } else {
-    body = <CompanionHome status={probe} onSettings={onSettings} />;
+    body = (
+      <CompanionHome status={probe} onSettings={onSettings} onLogs={onLogs} />
+    );
   }
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{body}</div>
@@ -214,9 +238,11 @@ function CompanionBody({
 function CompanionHome({
   status,
   onSettings,
+  onLogs,
 }: {
   status: CompanionStatus;
   onSettings: () => void;
+  onLogs: () => void;
 }) {
   const t = useTranslations("companion");
   const docs = useTranslations("docs");
@@ -241,6 +267,9 @@ function CompanionHome({
         </LinkButton>
         <Button type="button" onClick={onSettings}>
           {t("settings")}
+        </Button>
+        <Button type="button" variant="secondary" onClick={onLogs}>
+          {t("logs")}
         </Button>
       </div>
     </div>

@@ -91,8 +91,12 @@ const removeLibraryUrl = "/cadmus.api.shared.v1.Settings/RemoveLibrary";
 const statusUrl = "/cadmus.api.shared.v1.Status/GetStatus";
 const listDirectoryUrl = "/cadmus.api.shared.v1.FileOps/ListDirectory";
 const getFileUrl = "/cadmus.api.shared.v1.FileOps/GetFile";
+const logsListUrl = "/cadmus.api.public.v1.Logs/List";
+const logsReadUrl = "/cadmus.api.public.v1.Logs/Read";
+const logsSummarizeUrl = "/cadmus.api.public.v1.Logs/Summarize";
+const logsDownloadUrl = "/cadmus.api.public.v1.Logs/Download";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -459,7 +463,7 @@ function decodeBase64(value: string): ArrayBuffer {
     }
     return bytes.buffer;
   } catch {
-    throw new Error("Companion file response is invalid");
+    throw new Error("Companion response is invalid");
   }
 }
 
@@ -485,7 +489,7 @@ function parseFrameJson(payload: Uint8Array): unknown {
     return JSON.parse(new TextDecoder().decode(payload)) as unknown;
   } catch {
     throw new Error(
-      "Companion file response frame is not JSON; expected application/connect+json frames",
+      "Companion stream response frame is not JSON; expected application/connect+json frames",
     );
   }
 }
@@ -495,7 +499,7 @@ function connectStreamError(error: Record<string, unknown>): Error {
   const message = typeof error.message === "string" ? error.message : code;
   return Object.assign(
     new Error(`Companion request failed: ${code}: ${message}`),
-    { status: code === "unauthenticated" ? 401 : 500 },
+    { status: code === "unauthenticated" ? 401 : 500, code },
   );
 }
 
@@ -505,48 +509,53 @@ async function readConnectMessages(
 ): Promise<void> {
   const body = response.body;
   if (!body) {
-    throw new Error("Companion file response is empty");
+    throw new Error("Companion stream response is empty");
   }
   const reader = body.getReader();
-  let buffer: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer = buffer.length === 0 ? value : mergeBytes(buffer, value);
-    let offset = 0;
-    while (buffer.length - offset >= 5) {
-      const flags = buffer[offset];
-      const length =
-        buffer[offset + 1] * 2 ** 24 +
-        buffer[offset + 2] * 2 ** 16 +
-        buffer[offset + 3] * 2 ** 8 +
-        buffer[offset + 4];
-      if (buffer.length - offset < 5 + length) break;
-      const payload = buffer.subarray(offset + 5, offset + 5 + length);
-      offset += 5 + length;
-      if (flags === 0x02) {
-        const message = parseFrameJson(payload);
-        const error = isRecord(message) ? message.error : undefined;
-        if (isRecord(error)) throw connectStreamError(error);
-        return;
+  try {
+    let buffer: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer = buffer.length === 0 ? value : mergeBytes(buffer, value);
+      let offset = 0;
+      while (buffer.length - offset >= 5) {
+        const flags = buffer[offset];
+        const length =
+          buffer[offset + 1] * 2 ** 24 +
+          buffer[offset + 2] * 2 ** 16 +
+          buffer[offset + 3] * 2 ** 8 +
+          buffer[offset + 4];
+        if (buffer.length - offset < 5 + length) break;
+        const payload = buffer.subarray(offset + 5, offset + 5 + length);
+        offset += 5 + length;
+        if (flags === 0x02) {
+          const message = parseFrameJson(payload);
+          const error = isRecord(message) ? message.error : undefined;
+          if (isRecord(error)) throw connectStreamError(error);
+          return;
+        }
+        if (flags !== 0x00) {
+          throw new Error(
+            `Companion stream response frame flag ${flags} is not a JSON message frame; expected 0 or 2`,
+          );
+        }
+        onMessage(parseFrameJson(payload));
       }
-      if (flags !== 0x00) {
-        throw new Error(
-          `Companion file response frame flag ${flags} is not a JSON message frame; expected 0 or 2`,
-        );
-      }
-      onMessage(parseFrameJson(payload));
+      buffer =
+        offset === 0
+          ? buffer
+          : offset === buffer.length
+            ? new Uint8Array(0)
+            : buffer.slice(offset);
     }
-    buffer =
-      offset === 0
-        ? buffer
-        : offset === buffer.length
-          ? new Uint8Array(0)
-          : buffer.slice(offset);
+    throw new Error(
+      "Companion stream response ended without an end-of-stream frame; expected application/connect+json frames",
+    );
+  } catch (error) {
+    await reader.cancel().catch(() => {});
+    throw error;
   }
-  throw new Error(
-    "Companion file response ended without an end-of-stream frame; expected application/connect+json frames",
-  );
 }
 
 async function parseFileChunks(response: Response): Promise<Blob> {
@@ -780,7 +789,9 @@ async function requestError(response: Response): Promise<Error> {
     isRecord(body) && typeof body.message === "string" && body.message
       ? body.message
       : "Companion request failed";
-  return Object.assign(new Error(message), { status: response.status });
+  const code =
+    isRecord(body) && typeof body.code === "string" ? body.code : undefined;
+  return Object.assign(new Error(message), { status: response.status, code });
 }
 
 async function postJson(
@@ -957,4 +968,338 @@ export async function updateSetting(
   value: SettingInput,
 ): Promise<void> {
   await postJson(token, updateUrl, updateBody(setting, value));
+}
+
+export type LogKind = "run" | "launcher";
+export type LogLevel = "trace" | "debug" | "info" | "warn" | "error";
+export type LogDirection = "forward" | "backward";
+
+export type LogFile = {
+  id: string;
+  kind: LogKind;
+  name: string;
+  size: number;
+  /** RFC 3339 modification time; empty when the device sent none. */
+  modified: string;
+  /** RFC 3339 run start; empty for Launcher logs. */
+  started: string;
+  current: boolean;
+  runId: string;
+};
+
+export type LogFilter = {
+  levels: LogLevel[];
+  targets: string[];
+  text: string;
+};
+
+export type LogLine = {
+  offset: number;
+  text: string;
+  /** Full line length in bytes when `text` was cut; 0 when it was not. */
+  cutFrom: number;
+};
+
+export type LogPage = {
+  lines: LogLine[];
+  start: number;
+  end: number;
+  scannedTo: number;
+  size: number;
+  partial: boolean;
+};
+
+export type LogReadRequest = {
+  logId: string;
+  fromEnd: boolean;
+  cursor: number;
+  direction: LogDirection;
+  limit: number;
+  filter: LogFilter;
+};
+
+export type LogSummary = {
+  targets: { target: string; lines: number }[];
+  levels: { level: LogLevel; lines: number }[];
+  lines: number;
+  firstTimestamp: string;
+  lastTimestamp: string;
+  scanned: number;
+  size: number;
+  done: boolean;
+};
+
+export type LogDownloadEvent = {
+  read: number;
+  total: number;
+  data: ArrayBuffer;
+  fileName: string;
+};
+
+const LOG_KINDS: Record<string, LogKind> = {
+  LOG_KIND_RUN: "run",
+  LOG_KIND_LAUNCHER: "launcher",
+};
+
+const LOG_LEVEL_NAMES: Record<LogLevel, string> = {
+  trace: "LOG_LEVEL_TRACE",
+  debug: "LOG_LEVEL_DEBUG",
+  info: "LOG_LEVEL_INFO",
+  warn: "LOG_LEVEL_WARN",
+  error: "LOG_LEVEL_ERROR",
+};
+
+const LOG_LEVELS: Record<string, LogLevel> = {
+  LOG_LEVEL_TRACE: "trace",
+  LOG_LEVEL_DEBUG: "debug",
+  LOG_LEVEL_INFO: "info",
+  LOG_LEVEL_WARN: "warn",
+  LOG_LEVEL_ERROR: "error",
+};
+
+export function companionErrorCode(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return undefined;
+  }
+  return typeof error.code === "string" ? error.code : undefined;
+}
+
+function expectRecord(value: unknown, what: string): Record<string, unknown> {
+  if (!isRecord(value)) {
+    throw new Error(`Companion logs response ${what} is not an object`);
+  }
+  return value;
+}
+
+function uint64Field(record: Record<string, unknown>, key: string): number {
+  const value = record[key];
+  if (value === undefined) return 0;
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && /^\d+$/.test(value)
+        ? Number(value)
+        : Number.NaN;
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    throw new Error(
+      `Companion logs response ${key} is ${JSON.stringify(value)}; expected an unsigned integer`,
+    );
+  }
+  return parsed;
+}
+
+function textField(record: Record<string, unknown>, key: string): string {
+  const value = record[key];
+  if (value === undefined) return "";
+  if (typeof value !== "string") {
+    throw new Error(
+      `Companion logs response ${key} is ${JSON.stringify(value)}; expected a string`,
+    );
+  }
+  return value;
+}
+
+function boolField(record: Record<string, unknown>, key: string): boolean {
+  const value = record[key];
+  if (value === undefined) return false;
+  if (typeof value !== "boolean") {
+    throw new Error(
+      `Companion logs response ${key} is ${JSON.stringify(value)}; expected a boolean`,
+    );
+  }
+  return value;
+}
+
+function listField(record: Record<string, unknown>, key: string): unknown[] {
+  const value = record[key];
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) {
+    throw new Error(
+      `Companion logs response ${key} is ${JSON.stringify(value)}; expected a list`,
+    );
+  }
+  return value;
+}
+
+function enumField<T>(
+  record: Record<string, unknown>,
+  key: string,
+  names: Record<string, T>,
+): T | null {
+  const value = record[key];
+  if (
+    value === undefined ||
+    (typeof value === "string" && value.endsWith("_UNSPECIFIED"))
+  ) {
+    return null;
+  }
+  if (typeof value === "string" && Object.hasOwn(names, value)) {
+    return names[value];
+  }
+  throw new Error(
+    `Companion logs response ${key} is ${JSON.stringify(value)}; expected one of ${Object.keys(names).join(", ")}`,
+  );
+}
+
+function parseLogFile(value: unknown): LogFile {
+  const record = expectRecord(value, "log");
+  const kind = enumField(record, "kind", LOG_KINDS);
+  if (kind === null) {
+    throw new Error("Companion logs response log has no kind");
+  }
+  return {
+    id: textField(record, "id"),
+    kind,
+    name: textField(record, "name"),
+    size: uint64Field(record, "size"),
+    modified: textField(record, "modified"),
+    started: textField(record, "started"),
+    current: boolField(record, "current"),
+    runId: textField(record, "runId"),
+  };
+}
+
+function parseLogLine(value: unknown): LogLine {
+  const record = expectRecord(value, "line");
+  return {
+    offset: uint64Field(record, "offset"),
+    text: textField(record, "text"),
+    cutFrom: uint64Field(record, "cutFrom"),
+  };
+}
+
+function parseLogPage(value: unknown): LogPage {
+  const record = expectRecord(value, "page");
+  return {
+    lines: listField(record, "lines").map(parseLogLine),
+    start: uint64Field(record, "start"),
+    end: uint64Field(record, "end"),
+    scannedTo: uint64Field(record, "scannedTo"),
+    size: uint64Field(record, "size"),
+    partial: boolField(record, "partial"),
+  };
+}
+
+function parseLogSummary(value: unknown): LogSummary {
+  const record = expectRecord(value, "summary");
+  return {
+    targets: listField(record, "targets").map((entry) => {
+      const target = expectRecord(entry, "target count");
+      return {
+        target: textField(target, "target"),
+        lines: uint64Field(target, "lines"),
+      };
+    }),
+    levels: listField(record, "levels").map((entry) => {
+      const level = expectRecord(entry, "level count");
+      const name = enumField(level, "level", LOG_LEVELS);
+      if (name === null) {
+        throw new Error("Companion logs response level count has no level");
+      }
+      return { level: name, lines: uint64Field(level, "lines") };
+    }),
+    lines: uint64Field(record, "lines"),
+    firstTimestamp: textField(record, "firstTimestamp"),
+    lastTimestamp: textField(record, "lastTimestamp"),
+    scanned: uint64Field(record, "scanned"),
+    size: uint64Field(record, "size"),
+    done: boolField(record, "done"),
+  };
+}
+
+function parseDownloadEvent(value: unknown): LogDownloadEvent {
+  const record = expectRecord(value, "download event");
+  return {
+    read: uint64Field(record, "read"),
+    total: uint64Field(record, "total"),
+    data: decodeBase64(textField(record, "data")),
+    fileName: textField(record, "fileName"),
+  };
+}
+
+async function postStream(
+  token: string,
+  url: string,
+  body: unknown,
+  onMessage: (message: unknown) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const response = await fetch(url, {
+    method: "POST",
+    cache: "no-store",
+    referrerPolicy: "no-referrer",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": CONNECT_STREAM_TYPE,
+      "Connect-Protocol-Version": "1",
+    },
+    body: connectFrame(JSON.stringify(body)),
+    signal,
+  });
+  if (!response.ok) throw await requestError(response);
+  const type = response.headers.get("content-type") ?? "";
+  if (!type.startsWith(CONNECT_STREAM_TYPE)) {
+    throw new Error(
+      `Companion stream response content type is ${type}; expected ${CONNECT_STREAM_TYPE} frames`,
+    );
+  }
+  await readConnectMessages(response, onMessage);
+}
+
+export async function listLogs(token: string): Promise<LogFile[]> {
+  const body = expectRecord(await postJson(token, logsListUrl, {}), "list");
+  return listField(body, "logs").map(parseLogFile);
+}
+
+export async function readLogPage(
+  token: string,
+  request: LogReadRequest,
+): Promise<LogPage> {
+  return parseLogPage(
+    await postJson(token, logsReadUrl, {
+      logId: request.logId,
+      fromEnd: request.fromEnd,
+      cursor: request.cursor,
+      direction:
+        request.direction === "forward"
+          ? "READ_DIRECTION_FORWARD"
+          : "READ_DIRECTION_BACKWARD",
+      limit: request.limit,
+      filter: {
+        levels: request.filter.levels.map((level) => LOG_LEVEL_NAMES[level]),
+        targets: request.filter.targets,
+        text: request.filter.text,
+      },
+    }),
+  );
+}
+
+export async function summarizeLog(
+  token: string,
+  logId: string,
+  onSummary: (summary: LogSummary) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  await postStream(
+    token,
+    logsSummarizeUrl,
+    { logId },
+    (message) => onSummary(parseLogSummary(message)),
+    signal,
+  );
+}
+
+export async function downloadLogs(
+  token: string,
+  logIds: string[],
+  onEvent: (event: LogDownloadEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  await postStream(
+    token,
+    logsDownloadUrl,
+    { logIds },
+    (message) => onEvent(parseDownloadEvent(message)),
+    signal,
+  );
 }

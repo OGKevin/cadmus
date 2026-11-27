@@ -1,6 +1,6 @@
 //! Shared Status RPCs.
 
-use super::handler::{PublicRpc, ask};
+use super::shared_rpc::{SharedRpc, ask};
 use crate::device::AppContext;
 use crate::version::BuildKind;
 use cadmus_api_proto::cadmus::api::shared::v1::{
@@ -19,7 +19,7 @@ pub(super) enum Command {
     },
 }
 
-impl Status for PublicRpc {
+impl Status for SharedRpc {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     fn get_status<'a>(
         &'a self,

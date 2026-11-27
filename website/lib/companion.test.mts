@@ -2,15 +2,22 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   classifyCompanionFailure,
+  companionErrorCode,
+  downloadLogs,
   fillColorChoice,
   getFile,
   isUnauthorized,
+  listLogs,
   listSettings,
+  readLogPage,
   shouldReloadAfterLibraryChange,
+  summarizeLog,
   takeQueuedUpdate,
   updateSetting,
   withSettingValue,
   type Category,
+  type LogDownloadEvent,
+  type LogSummary,
   type Setting,
   type SettingChoice,
   type SettingInput,
@@ -492,4 +499,406 @@ test("401 failures are unauthorized and other failures keep their message", () =
 test("only removing a library reloads the settings view", () => {
   assert.equal(shouldReloadAfterLibraryChange("remove"), true);
   assert.equal(shouldReloadAfterLibraryChange("update"), false);
+});
+
+test("log list parses run and launcher logs with proto3 defaults", async () => {
+  await withStubbedFetch(
+    () =>
+      jsonResponse({
+        logs: [
+          {
+            id: "run-1",
+            kind: "LOG_KIND_RUN",
+            name: "cadmus-r1.json",
+            size: "2048",
+            modified: "2025-11-14T22:13:20Z",
+            started: "2025-11-14T22:13:19Z",
+            current: true,
+            runId: "r1",
+          },
+          {
+            id: "launcher",
+            kind: "LOG_KIND_LAUNCHER",
+            name: "info.log",
+            size: 10,
+            modified: "2025-11-14T21:13:20.000000Z",
+          },
+        ],
+      }),
+    async (calls) => {
+      assert.deepEqual(await listLogs("1234"), [
+        {
+          id: "run-1",
+          kind: "run",
+          name: "cadmus-r1.json",
+          size: 2048,
+          modified: "2025-11-14T22:13:20Z",
+          started: "2025-11-14T22:13:19Z",
+          current: true,
+          runId: "r1",
+        },
+        {
+          id: "launcher",
+          kind: "launcher",
+          name: "info.log",
+          size: 10,
+          modified: "2025-11-14T21:13:20.000000Z",
+          started: "",
+          current: false,
+          runId: "",
+        },
+      ]);
+      const [call] = calls;
+      assert.ok(call);
+      assert.equal(call.url, "/cadmus.api.public.v1.Logs/List");
+    },
+  );
+});
+
+test("log reads send level names, targets, direction and cursor", async () => {
+  await withStubbedFetch(
+    () =>
+      jsonResponse({
+        lines: [{ offset: "5", text: "hi", cutFrom: "9000" }],
+        start: "5",
+        end: "7",
+        scannedTo: "7",
+        size: "100",
+        partial: true,
+      }),
+    async (calls) => {
+      const page = await readLogPage("1234", {
+        logId: "run-1",
+        fromEnd: false,
+        cursor: 5,
+        direction: "backward",
+        limit: 200,
+        filter: {
+          levels: ["warn", "error"],
+          targets: ["cadmus", "cadmus_core::device"],
+          text: "",
+        },
+      });
+      assert.deepEqual(page, {
+        lines: [{ offset: 5, text: "hi", cutFrom: 9000 }],
+        start: 5,
+        end: 7,
+        scannedTo: 7,
+        size: 100,
+        partial: true,
+      });
+      const [call] = calls;
+      assert.ok(call);
+      assert.deepEqual(JSON.parse(String(call.init.body)), {
+        logId: "run-1",
+        fromEnd: false,
+        cursor: 5,
+        direction: "READ_DIRECTION_BACKWARD",
+        limit: 200,
+        filter: {
+          levels: ["LOG_LEVEL_WARN", "LOG_LEVEL_ERROR"],
+          targets: ["cadmus", "cadmus_core::device"],
+          text: "",
+        },
+      });
+    },
+  );
+});
+
+test("summary streams cumulative snapshots", async () => {
+  const response = streamResponse([
+    connectFrame(
+      0,
+      JSON.stringify({ lines: "10", scanned: "100", size: "100" }),
+    ),
+    connectFrame(
+      0,
+      JSON.stringify({
+        targets: [{ target: "cadmus::app", lines: "7" }],
+        levels: [{ level: "LOG_LEVEL_WARN", lines: "3" }],
+        lines: "10",
+        firstTimestamp: "2025-01-01T00:00:00Z",
+        lastTimestamp: "2025-01-01T00:00:09Z",
+        scanned: "100",
+        size: "100",
+        done: true,
+      }),
+    ),
+    connectFrame(2, "{}"),
+  ]);
+  const snapshots: LogSummary[] = [];
+  await withStubbedFetch(
+    () => response,
+    async () => {
+      await summarizeLog("1234", "run-1", (summary) => snapshots.push(summary));
+    },
+  );
+  assert.deepEqual(snapshots, [
+    {
+      targets: [],
+      levels: [],
+      lines: 10,
+      firstTimestamp: "",
+      lastTimestamp: "",
+      scanned: 100,
+      size: 100,
+      done: false,
+    },
+    {
+      targets: [{ target: "cadmus::app", lines: 7 }],
+      levels: [{ level: "warn", lines: 3 }],
+      lines: 10,
+      firstTimestamp: "2025-01-01T00:00:00Z",
+      lastTimestamp: "2025-01-01T00:00:09Z",
+      scanned: 100,
+      size: 100,
+      done: true,
+    },
+  ]);
+});
+
+test("summary rejects unknown log levels", async () => {
+  const response = streamResponse([
+    connectFrame(
+      0,
+      JSON.stringify({ levels: [{ level: "LOG_LEVEL_FATAL", lines: "1" }] }),
+    ),
+    connectFrame(2, "{}"),
+  ]);
+  await withStubbedFetch(
+    () => response,
+    async () => {
+      await assert.rejects(
+        summarizeLog("1234", "run-1", () => {}),
+        /LOG_LEVEL_FATAL/,
+      );
+    },
+  );
+});
+
+test("download sends the ids and keeps the zip file name", async () => {
+  const response = streamResponse([
+    connectFrame(
+      0,
+      JSON.stringify({
+        read: "3",
+        total: "6",
+        data: btoa("abc"),
+        fileName: "cadmus-logs-20250101T000000Z.zip",
+      }),
+    ),
+    connectFrame(
+      0,
+      JSON.stringify({ read: "6", total: "6", data: btoa("def") }),
+    ),
+    connectFrame(0, JSON.stringify({ read: "6", total: "6" })),
+    connectFrame(2, "{}"),
+  ]);
+  const events: LogDownloadEvent[] = [];
+  await withStubbedFetch(
+    () => response,
+    async (calls) => {
+      await downloadLogs("1234", ["run-1"], (event) => events.push(event));
+      const [call] = calls;
+      assert.ok(call);
+      assert.equal(call.url, "/cadmus.api.public.v1.Logs/Download");
+      const request = call.init.body as Uint8Array;
+      const length = new DataView(request.buffer).getUint32(1);
+      assert.deepEqual(
+        JSON.parse(new TextDecoder().decode(request.subarray(5, 5 + length))),
+        { logIds: ["run-1"] },
+      );
+    },
+  );
+  assert.deepEqual(
+    events.map((event) => [
+      event.read,
+      event.total,
+      new TextDecoder().decode(event.data),
+      event.fileName,
+    ]),
+    [
+      [3, 6, "abc", "cadmus-logs-20250101T000000Z.zip"],
+      [6, 6, "def", ""],
+      [6, 6, "", ""],
+    ],
+  );
+});
+
+test("summarize sends one framed request to the Summarize method", async () => {
+  const response = streamResponse([connectFrame(2, "{}")]);
+  await withStubbedFetch(
+    () => response,
+    async (calls) => {
+      await summarizeLog("1234", "run-1", () => {});
+      const [call] = calls;
+      assert.ok(call);
+      assert.equal(call.url, "/cadmus.api.public.v1.Logs/Summarize");
+      const request = call.init.body as Uint8Array;
+      const length = new DataView(request.buffer).getUint32(1);
+      assert.deepEqual(
+        JSON.parse(new TextDecoder().decode(request.subarray(5, 5 + length))),
+        { logId: "run-1" },
+      );
+    },
+  );
+});
+
+function chunkedResponse(chunks: Uint8Array[]): Response {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(chunk);
+      controller.close();
+    },
+  });
+  return new Response(stream, {
+    status: 200,
+    headers: { "content-type": "application/connect+json" },
+  });
+}
+
+function splitBytes(bytes: Uint8Array, cuts: number[]): Uint8Array[] {
+  const parts: Uint8Array[] = [];
+  let start = 0;
+  for (const cut of cuts) {
+    parts.push(bytes.slice(start, cut));
+    start = cut;
+  }
+  parts.push(bytes.slice(start));
+  return parts;
+}
+
+test("frames split across chunks are reassembled", async () => {
+  const first = connectFrame(0, JSON.stringify({ lines: "3", scanned: "5" }));
+  const end = connectFrame(2, "{}");
+  const bytes = new Uint8Array(first.length + end.length);
+  bytes.set(first);
+  bytes.set(end, first.length);
+  const response = chunkedResponse(
+    splitBytes(bytes, [2, 5, first.length - 3, first.length + 1]),
+  );
+  const snapshots: LogSummary[] = [];
+  await withStubbedFetch(
+    () => response,
+    async () => {
+      await summarizeLog("1234", "run-1", (summary) => snapshots.push(summary));
+    },
+  );
+  assert.deepEqual(
+    snapshots.map((summary) => [summary.lines, summary.scanned]),
+    [[3, 5]],
+  );
+});
+
+test("an unauthenticated end-of-stream frame is unauthorized", async () => {
+  const response = streamResponse([
+    connectFrame(
+      2,
+      JSON.stringify({
+        error: { code: "unauthenticated", message: "wrong code" },
+      }),
+    ),
+  ]);
+  await withStubbedFetch(
+    () => response,
+    async () => {
+      await assert.rejects(
+        summarizeLog("1234", "run-1", () => {}),
+        (error: unknown) =>
+          isUnauthorized(error) &&
+          companionErrorCode(error) === "unauthenticated",
+      );
+    },
+  );
+});
+
+test("a stream with the wrong content type fails", async () => {
+  const response = new Response(JSON.stringify({ done: true }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+  await withStubbedFetch(
+    () => response,
+    async () => {
+      await assert.rejects(
+        downloadLogs("1234", ["run-1"], () => {}),
+        /content type/,
+      );
+    },
+  );
+});
+
+test("a parse failure cancels the stream reader", async () => {
+  let cancelled = false;
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(
+        connectFrame(
+          0,
+          JSON.stringify({
+            levels: [{ level: "LOG_LEVEL_FATAL", lines: "1" }],
+          }),
+        ),
+      );
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+  const response = new Response(stream, {
+    status: 200,
+    headers: { "content-type": "application/connect+json" },
+  });
+  await withStubbedFetch(
+    () => response,
+    async () => {
+      await assert.rejects(
+        summarizeLog("1234", "run-1", () => {}),
+        /LOG_LEVEL_FATAL/,
+      );
+    },
+  );
+  assert.equal(cancelled, true);
+});
+
+test("busy stream errors keep the resource_exhausted code", async () => {
+  const response = streamResponse([
+    connectFrame(
+      2,
+      JSON.stringify({
+        error: {
+          code: "resource_exhausted",
+          message: "another download is running",
+        },
+      }),
+    ),
+  ]);
+  await withStubbedFetch(
+    () => response,
+    async () => {
+      await assert.rejects(
+        downloadLogs("1234", ["run-1"], () => {}),
+        (error: unknown) => companionErrorCode(error) === "resource_exhausted",
+      );
+    },
+  );
+});
+
+test("unary errors keep the Connect code and message", async () => {
+  await withStubbedFetch(
+    () =>
+      new Response(
+        JSON.stringify({ code: "resource_exhausted", message: "busy" }),
+        { status: 429, headers: { "content-type": "application/json" } },
+      ),
+    async () => {
+      await assert.rejects(
+        listLogs("1234"),
+        (error: unknown) =>
+          companionErrorCode(error) === "resource_exhausted" &&
+          error instanceof Error &&
+          error.message === "busy",
+      );
+    },
+  );
 });

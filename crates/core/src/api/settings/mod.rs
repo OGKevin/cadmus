@@ -7,7 +7,7 @@ mod libraries;
 mod refresh;
 mod values;
 
-use super::handler::{PublicRpc, ask};
+use super::shared_rpc::{SharedRpc, ask};
 use crate::device::{AppContext, DeviceRuntime};
 use crate::view::{Bus, Hub};
 use cadmus_api_proto::cadmus::api::shared::v1::{
@@ -115,7 +115,7 @@ pub(super) async fn handle(
     }
 }
 
-impl Settings for PublicRpc {
+impl Settings for SharedRpc {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     fn list<'a>(
         &'a self,

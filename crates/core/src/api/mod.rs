@@ -7,12 +7,17 @@
 //! on a oneshot.
 
 mod files;
-mod handler;
-mod internal;
+mod internal_rpc;
+cfg_select! {
+    feature = "bench" => { pub mod logs; }
+    _ => { mod logs; }
+}
 mod private;
 mod public;
+mod public_rpc;
 mod serve;
 mod settings;
+mod shared_rpc;
 mod status;
 
 #[cfg(test)]
@@ -236,8 +241,9 @@ async fn push_companion_view(
         return;
     };
     let ip_url = public::companion_ip_url(context);
+    let awake = public::companion_keeps_awake(context);
     let Some(dialog) =
-        crate::view::companion::CompanionView::new(context, &url, ip_url.as_deref(), &pin)
+        crate::view::companion::CompanionView::new(context, &url, ip_url.as_deref(), &pin, awake)
     else {
         tracing::warn!("companion view could not be built");
         return;

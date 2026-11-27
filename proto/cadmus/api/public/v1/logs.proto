@@ -1,0 +1,207 @@
+syntax = "proto3";
+
+package cadmus.api.public.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// Cadmus logs on the device. Companion-only: served by the Companion listener
+// with the PIN, never by the loopback listener.
+//
+// Logs are named by IDs that `List` issues; no method accepts a path. An ID
+// names the same log until its file is deleted.
+service Logs {
+  // The Current run first, then the other Run logs newest first by start, then
+  // Launcher logs.
+  rpc List(ListLogsRequest) returns (LogList);
+  // One page of matching lines next to a cursor. A page stops after a bounded
+  // amount of reading and reports how far it got, so every call makes
+  // progress.
+  rpc Read(ReadLogRequest) returns (LogPage);
+  // Targets, level counts, line count and time range of one log, streamed as
+  // cumulative snapshots while the log is scanned. The last snapshot has
+  // `done` set.
+  rpc Summarize(SummarizeLogRequest) returns (stream LogSummary);
+  // Zip Log bundle of the selected logs. Events carry progress and bundle
+  // bytes in order. One Download runs at a time; another fails with
+  // `resource_exhausted`. Closing the stream cancels the job.
+  rpc Download(DownloadLogsRequest) returns (stream DownloadEvent);
+}
+
+// Where a log comes from.
+enum LogKind {
+  LOG_KIND_UNSPECIFIED = 0;
+  // Structured JSON log of one Cadmus run.
+  LOG_KIND_RUN = 1;
+  // Plain process output captured by the Kobo launcher script.
+  LOG_KIND_LAUNCHER = 2;
+}
+
+// Severity of a Run log line.
+enum LogLevel {
+  LOG_LEVEL_UNSPECIFIED = 0;
+  LOG_LEVEL_TRACE = 1;
+  LOG_LEVEL_DEBUG = 2;
+  LOG_LEVEL_INFO = 3;
+  LOG_LEVEL_WARN = 4;
+  LOG_LEVEL_ERROR = 5;
+}
+
+// Which way `Read` scans from its cursor.
+enum ReadDirection {
+  // Same as backward.
+  READ_DIRECTION_UNSPECIFIED = 0;
+  // Towards the end of the file.
+  READ_DIRECTION_FORWARD = 1;
+  // Towards the start of the file.
+  READ_DIRECTION_BACKWARD = 2;
+}
+
+// Empty.
+message ListLogsRequest {}
+
+// Logs on the device.
+message LogList {
+  // The Current run first, then the other Run logs newest first by start,
+  // then Launcher logs.
+  repeated LogFile logs = 1;
+}
+
+// One log the device can read.
+message LogFile {
+  // Opaque ID to pass to the other methods.
+  string id = 1;
+  LogKind kind = 2;
+  // File name, e.g. `cadmus-<run id>.json` or `info.log`.
+  string name = 3;
+  // Size in bytes when listed.
+  uint64 size = 4;
+  // Last modification.
+  google.protobuf.Timestamp modified = 5;
+  // Run start from the run ID. Unset for Launcher logs.
+  google.protobuf.Timestamp started = 6;
+  // The log of the run serving this Companion session.
+  bool current = 7;
+  // Run ID, lowercase and hyphenated. Empty for Launcher logs. Only this exact
+  // spelling is accepted as an ID.
+  string run_id = 8;
+}
+
+// Lines to keep. Every set condition must hold.
+message LogFilter {
+  // Keep only these levels. Empty keeps all. Lines that are not JSON have no
+  // level and are dropped by a non-empty set. `LOG_LEVEL_UNSPECIFIED` is
+  // ignored.
+  repeated LogLevel levels = 1;
+  // Keep lines whose Log target is one of these or one of their sub-targets:
+  // `a::b` keeps `a::b` and `a::b::c` but not `a::bc`. Empty keeps all. Empty
+  // strings are ignored. Lines that are not JSON are dropped by a non-empty
+  // list.
+  repeated string targets = 2;
+  // Case-insensitive text in the message or any field value, or anywhere in a
+  // line that is not JSON. Empty keeps all.
+  string text = 3;
+}
+
+// One page request.
+message ReadLogRequest {
+  // ID from `List`.
+  string log_id = 1;
+  // Start at the end of the file and read backward; `cursor` and `direction`
+  // are ignored.
+  bool from_end = 2;
+  // Byte offset to scan from, on a line boundary: a page's `start` to go
+  // backward or its `end` to go forward.
+  uint64 cursor = 3;
+  ReadDirection direction = 4;
+  // Most lines to return, at most 1000. 0 means 200.
+  uint32 limit = 5;
+  LogFilter filter = 6;
+}
+
+// One line of a log.
+message LogLine {
+  // Byte offset of the line start.
+  uint64 offset = 1;
+  // The line without its newline, lossily decoded as UTF-8. A line longer than
+  // 64 KiB is cut to its first 64 KiB, ending on a character boundary.
+  string text = 2;
+  // Length in bytes of the whole line when `text` was cut; 0 when it was not.
+  uint64 cut_from = 3;
+}
+
+// Matching lines between `start` and `end`.
+message LogPage {
+  // Matching lines in file order.
+  repeated LogLine lines = 1;
+  // Offset of the first byte this page covered.
+  uint64 start = 2;
+  // Offset after the last byte this page covered.
+  uint64 end = 3;
+  // How far the scan reached: `start` when reading backward, `end` forward.
+  uint64 scanned_to = 4;
+  // File size when the page was read.
+  uint64 size = 5;
+  // The read budget ran out before `limit` lines matched. Ask again from
+  // `scanned_to` to continue. A partial page always moves `scanned_to` past
+  // `cursor`.
+  bool partial = 6;
+}
+
+// One summary request.
+message SummarizeLogRequest {
+  // ID from `List`.
+  string log_id = 1;
+}
+
+// Lines of one target.
+message TargetCount {
+  string target = 1;
+  uint64 lines = 2;
+}
+
+// Lines of one level.
+message LevelCount {
+  LogLevel level = 1;
+  uint64 lines = 2;
+}
+
+// Summary of the scanned part of a log.
+message LogSummary {
+  // Targets seen so far, most lines first, then by name.
+  repeated TargetCount targets = 1;
+  // Lines per level seen so far.
+  repeated LevelCount levels = 2;
+  // Lines scanned so far, JSON or not.
+  uint64 lines = 3;
+  // First and last `timestamp` in file order, not the earliest and latest:
+  // the clock can step back during a run. Unset when no line had a timestamp
+  // the device could parse.
+  google.protobuf.Timestamp first_timestamp = 4;
+  google.protobuf.Timestamp last_timestamp = 5;
+  // Bytes scanned so far.
+  uint64 scanned = 6;
+  // Bytes to scan.
+  uint64 size = 7;
+  // The scan reached the end of the file. An unterminated last line is not
+  // counted, so `scanned` can be below `size`.
+  bool done = 8;
+}
+
+// Logs to bundle.
+message DownloadLogsRequest {
+  // IDs from `List`, at least one. An ID named twice is bundled once.
+  repeated string log_ids = 1;
+}
+
+// Download progress and bundle bytes.
+message DownloadEvent {
+  // Log bytes read so far.
+  uint64 read = 1;
+  // Log bytes to read.
+  uint64 total = 2;
+  // Next bundle bytes. May be empty in a progress-only event.
+  bytes data = 3;
+  // Bundle file name, `cadmus-logs-<UTC yyyymmddThhmmssZ>.zip`. Set on the
+  // first event only.
+  string file_name = 4;
+}

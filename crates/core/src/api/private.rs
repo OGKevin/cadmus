@@ -9,6 +9,12 @@ use crate::runtime::Job;
 use crate::view::Hub;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
+/// Adds the loopback-only `cadmus.api.internal.v1` services to the shared
+/// router.
+fn register() -> serve::Register {
+    Box::new(|_shared, router| super::internal_rpc::register(router))
+}
+
 /// Loopback listen address.
 ///
 /// The port is fixed because this listener is never advertised: mDNS cannot
@@ -54,6 +60,7 @@ pub(super) async fn start(hub: &Hub, context: &mut AppContext) {
                 scope: serve::Scope::Internal,
                 file_root,
                 auth_failures,
+                register: register(),
             },
             tx,
             hub_for_job,
