@@ -11,9 +11,9 @@ use super::{
     UpdateMode, View, ViewId,
 };
 use crate::color::WHITE;
-use crate::device::AppContext;
 use crate::device::inhibitor::{Inhibitor, InhibitorError, Kind};
 use crate::device::wifi::WifiSession;
+use crate::device::{AppContext, ExitStatus};
 use crate::device::{DeviceIdentity as _, DevicePaths as _};
 use crate::fl;
 use crate::font::{NORMAL_STYLE, font_from_style};
@@ -147,7 +147,7 @@ impl OtaDownloadKind {
 /// screen showing a status label, a [`ProgressBar`], and a Cancel button.
 /// Downloads run on the runtime via [`run_ota_download`]. On successful
 /// deployment the label updates to "Installing and rebooting…" and the app
-/// reboots automatically via [`Event::Select`] with [`EntryId::Reboot`].
+/// reboots automatically via [`Event::Exit`] with [`ExitStatus::Reboot`].
 ///
 /// When a GitHub token is required but not present, the view pushes a
 /// [`DeviceAuthView`] child to guide the user through device flow
@@ -1030,11 +1030,11 @@ fn close_ota_view_after_panic(hub: &Hub, ota_view_id: ViewId) {
 /// After a committed OTA install, queues reboot on the hub.
 ///
 /// The final progress event is sent before this runs; the main loop processes
-/// hub events in order, so the UI can update before [`EntryId::Reboot`] is handled.
+/// hub events in order, so the UI can update before [`Event::Exit`] is handled.
 /// Exit markers are written in [`AppDevice::on_shutdown`] when the reboot event
 /// is handled.
 async fn request_ota_reboot(hub: Hub) {
-    if hub.send((Event::Select(EntryId::Reboot)).into()).is_err() {
+    if hub.send((Event::Exit(ExitStatus::Reboot)).into()).is_err() {
         tracing::warn!("hub closed after OTA commit");
     }
 }
@@ -1963,7 +1963,7 @@ mod tests {
         crate::runtime::finish_within_deadline(vec![job], Duration::from_secs(5)).await;
 
         let message = rx.try_recv().expect("reboot request");
-        assert!(matches!(message.event, Event::Select(EntryId::Reboot)));
+        assert!(matches!(message.event, Event::Exit(ExitStatus::Reboot)));
     }
 
     /// A committed install asks for reboot once its producers have stopped.
@@ -1992,7 +1992,7 @@ mod tests {
         assert!(
             !premature
                 .iter()
-                .any(|event| matches!(event, Event::Select(EntryId::Reboot))),
+                .any(|event| matches!(event, Event::Exit(ExitStatus::Reboot))),
             "reboot must not be visible before the download job is joined"
         );
 
@@ -2004,7 +2004,7 @@ mod tests {
         assert!(
             drained
                 .iter()
-                .any(|event| matches!(event, Event::Select(EntryId::Reboot))),
+                .any(|event| matches!(event, Event::Exit(ExitStatus::Reboot))),
             "a committed install must leave a reboot request for the drain"
         );
     }

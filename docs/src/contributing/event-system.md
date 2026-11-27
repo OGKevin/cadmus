@@ -249,6 +249,32 @@ nested views, either:
 See [Why ViewId Matters for Close](#why-viewid-matters-for-close) and
 [Closing Nested Views via the Bus](#closing-nested-views-via-the-bus) for details.
 
+### Exit events
+
+Cadmus has two kinds of exit event:
+
+- **User intent**: `Event::Select` with
+  <a href="/api/cadmus_core/view/enum.EntryId.html#variant.Restart">`EntryId::Restart`</a>,
+  <a href="/api/cadmus_core/view/enum.EntryId.html#variant.Reboot">`Reboot`</a>,
+  <a href="/api/cadmus_core/view/enum.EntryId.html#variant.Quit">`Quit`</a>,
+  <a href="/api/cadmus_core/view/enum.EntryId.html#variant.PowerOff">`PowerOff`</a> or
+  <a href="/api/cadmus_core/view/enum.EntryId.html#variant.SwitchInstall">`SwitchInstall`</a>,
+  plus long-press power and Unix signals. These express what the user asked for, so a device
+  lifecycle may refuse them while critical work runs. A refused exit re-arms the Unix-signal
+  listener so the signal can be delivered again.
+- **Cadmus decision**: <a href="/api/cadmus_core/view/enum.Event.html#variant.Exit">`Event::Exit`</a>
+  carrying an <a href="/api/cadmus_core/device/enum.ExitStatus.html">`ExitStatus`</a>. Cadmus
+  sends this itself when it has decided to end the process, for example a failed USB share
+  start or an OTA reboot after a committed install. Lifecycles turn it into
+  <a href="/api/cadmus_core/device/enum.EventOutcome.html#variant.Exit">`EventOutcome::Exit`</a>
+  and never refuse it. Unlike a refused `Select`, it does not re-arm the signal listener.
+
+New internal senders must use `Event::Exit`, never `Select`.
+
+During the shutdown drain, exit events are replayed and the highest-precedence status wins:
+`Reboot` > `Restart` > `PowerOff` > `Quit`. The emulator maps `Exit(Reboot)` like
+`Select(Reboot)`: it waits three seconds, then quits.
+
 ## Practical Example: Dialog Outside-Tap
 
 When a `Dialog` is tapped outside its bounds, the following sequence occurs:
@@ -369,12 +395,14 @@ a restart request can never turn a pending quit into a restart. A later
 stops during process teardown, `SIGTERM` and `SIGINT` return to the default
 disposition so a hung teardown can still be killed.
 
-Signals are subject to the same rules as the menu commands. The Full inhibit
-(an OTA in progress) blocks Quit and Restart, so a `SIGTERM` during an OTA is
-refused. Quit and Restart are also refused while onboard storage is exported
-(USB share): `on_shutdown` does not tear the share down, and quitting then
-would save settings against unmounted storage. A refused signal is not retried;
-send it again once the OTA ends or the share is released.
+Signals are user intent and are subject to the same rules as the menu commands.
+The Full inhibit (an OTA in progress) blocks Quit and Restart, so a `SIGTERM`
+during an OTA is refused. Quit and Restart are also refused while onboard
+storage is exported (USB share): `on_shutdown` does not tear the share down, and
+quitting then would save settings against unmounted storage. A refused signal is
+not retried; send it again once the OTA ends or the share is released. Internal
+`Event::Exit` events are not signals and are never refused; see
+[Exit events](#exit-events).
 
 ## Summary
 

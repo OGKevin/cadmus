@@ -63,6 +63,7 @@ use self::key::KeyKind;
 use crate::color::Color;
 use crate::device::AppContext;
 use crate::device::DeviceHardware as _;
+use crate::device::ExitStatus;
 use crate::document::file_extension::FileExtension;
 use crate::document::{Location, TextLocation};
 use crate::framebuffer::Framebuffer as _;
@@ -643,7 +644,15 @@ pub enum Event {
     Cancel,
     Reseed,
     Back,
-    Quit,
+    /// An exit Cadmus decided on its own.
+    ///
+    /// This is **not** user intent. Lifecycles turn it into
+    /// [`EventOutcome::Exit`](crate::device::EventOutcome::Exit) without
+    /// consulting the user-exit checks, so a Full lease or a USB share session
+    /// cannot refuse it. Use [`Event::Select`] with an exit [`EntryId`] for user
+    /// intent (menu entries, Unix signals, emulator window close), which stays
+    /// refusable. Senders of internal exits should send this event.
+    Exit(ExitStatus),
     WakeUp,
     Hold(EntryId),
     AutoFrontlightCoordinates(crate::geolocation::Coordinates),
@@ -1024,22 +1033,29 @@ pub enum EntryId {
     TakeScreenshot,
     /// The user asked to restart Cadmus.
     ///
-    /// `Event::Select` with this entry is user intent, whether from a menu or a Unix signal
-    /// (`SIGUSR1` posts this entry), so the device may refuse it while a Full lease is held or a
-    /// USB share session is active. Lifecycle code that must end the process must return
-    /// `EventOutcome::Exit` instead of sending this event.
+    /// This is user intent and a device may refuse it. To end the process on Cadmus's own
+    /// decision, send [`Event::Exit`] instead.
     Restart,
-    /// The user asked to reboot the device. The device refuses this while a Full lease is held.
+    /// The user asked to reboot the device.
+    ///
+    /// This is user intent and a device may refuse it. To end the process on Cadmus's own
+    /// decision, send [`Event::Exit`] instead.
     Reboot,
     /// The user asked to quit Cadmus.
     ///
-    /// `SIGTERM` and `SIGINT` post this entry; the device refuses it while a Full lease is held or
-    /// a USB share session is active.
+    /// This is user intent and a device may refuse it. To end the process on Cadmus's own
+    /// decision, send [`Event::Exit`] instead.
     Quit,
     Suspend,
-    /// The user asked to power off the device. The device refuses this while a Full lease is held.
+    /// The user asked to power off the device.
+    ///
+    /// This is user intent and a device may refuse it. To end the process on Cadmus's own
+    /// decision, send [`Event::Exit`] instead.
     PowerOff,
     /// Switch to the peer Cadmus install (main ↔ test).
+    ///
+    /// Lifecycle code that must end the process must send [`Event::Exit`] or return
+    /// [`EventOutcome::Exit`](crate::device::EventOutcome::Exit) instead of sending this event.
     SwitchInstall,
     CheckForUpdates,
     FileEntry(PathBuf),
