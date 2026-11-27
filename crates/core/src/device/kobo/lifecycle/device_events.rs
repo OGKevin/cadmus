@@ -1,6 +1,7 @@
 //! Device input event handling for suspend, power, cover, and USB plug events.
 
 use super::super::input::BATTERY_REFRESH_INTERVAL;
+use super::KOBO_UPDATE_BUNDLE;
 use super::usb_share::disable_usb_share;
 use crate::device::DeviceHardware as _;
 use crate::device::DeviceRotation as _;
@@ -16,6 +17,7 @@ use crate::framebuffer::UpdateMode;
 use crate::input::{ButtonCode, ButtonStatus, DeviceEvent, PowerSource};
 use crate::view::dialog::Dialog;
 use crate::view::{EntryId, Event, Hub, NotificationEvent, RenderData, RenderQueue, View, ViewId};
+use std::path::Path;
 
 /// Dispatches a lifecycle [`Event`] to the appropriate device-input handler.
 pub(super) async fn handle_event(
@@ -298,8 +300,9 @@ fn handle_plug_host(
 
 /// Handles charger or USB-host unplug.
 ///
-/// Disables USB share when active, otherwise reschedules battery checks and
-/// may cancel suspend on wall-power removal.
+/// When a USB share session is active, ends it and returns the resulting exit
+/// status directly; otherwise reschedules battery checks and may cancel
+/// suspend on wall-power removal.
 async fn handle_unplug(
     hub: &Hub,
     rq: &mut RenderQueue,
@@ -311,35 +314,36 @@ async fn handle_unplug(
     }
 
     if context.shared {
-        disable_usb_share(
+        let status = disable_usb_share(
             context,
             runtime.startup_cwd.and_then(|cwd| cwd.as_deref()),
             &context.settings.logging,
-            hub,
+            Path::new(KOBO_UPDATE_BUNDLE),
         )
         .await;
-    } else {
-        context.plugged = false;
-        schedule_device_task(
-            DeviceTaskId::CheckBattery,
-            Event::CheckBattery,
-            BATTERY_REFRESH_INTERVAL,
-            hub,
-            runtime.tasks,
-        );
-        if is_suspend_rtc_pending(context) {
-            if !context.covered {
-                crate::device::suspend::cancel_suspend_if_pending(
-                    context,
-                    runtime.tasks,
-                    runtime.view.as_mut(),
-                    hub,
-                    rq,
-                );
-            }
-        } else {
-            hub.send((Event::BatteryTick).into()).ok();
+        return EventOutcome::Exit(status);
+    }
+
+    context.plugged = false;
+    schedule_device_task(
+        DeviceTaskId::CheckBattery,
+        Event::CheckBattery,
+        BATTERY_REFRESH_INTERVAL,
+        hub,
+        runtime.tasks,
+    );
+    if is_suspend_rtc_pending(context) {
+        if !context.covered {
+            crate::device::suspend::cancel_suspend_if_pending(
+                context,
+                runtime.tasks,
+                runtime.view.as_mut(),
+                hub,
+                rq,
+            );
         }
+    } else {
+        hub.send((Event::BatteryTick).into()).ok();
     }
 
     EventOutcome::Handled
@@ -349,6 +353,8 @@ async fn handle_unplug(
 mod tests {
     use super::*;
     use crate::AlarmType;
+    use crate::device::ExitStatus;
+    use crate::device::inhibitor::Kind;
     use crate::device::suspend::has_task;
     use crate::device::suspend::test_support::lock_alarms;
     use crate::device::test_harness::DeviceRuntimeHarness;
@@ -596,15 +602,47 @@ mod tests {
         let outcome = crate::poll_parts!(harness, |hub, _bus, rq, context, runtime| {
             handle_unplug(hub, rq, context, runtime)
         });
-        assert_eq!(outcome, EventOutcome::Handled);
+        assert_eq!(outcome, EventOutcome::Exit(ExitStatus::Restart));
         let usb = harness.context.device.usb_manager_for_test();
         assert_eq!(usb.disable_call_count(), 1);
         assert_eq!(usb.enabled(), Some(false));
+        let events = harness.drain_hub();
         assert!(
-            harness
-                .drain_hub()
+            !events
                 .iter()
                 .any(|e| matches!(e, Event::Select(EntryId::Restart)))
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_unplug_when_shared_and_disable_fails_reboots() {
+        let mut harness = DeviceRuntimeHarness::new().await;
+        harness.context.plugged = true;
+        harness.context.shared = true;
+        harness
+            .context
+            .device
+            .usb_manager_for_test()
+            .set_fail_disable(true);
+        let outcome = crate::poll_parts!(harness, |hub, _bus, rq, context, runtime| {
+            handle_unplug(hub, rq, context, runtime)
+        });
+        assert_eq!(outcome, EventOutcome::Exit(ExitStatus::Reboot));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_unplug_when_shared_exits_while_full_lease_held() {
+        let mut harness = DeviceRuntimeHarness::new().await;
+        harness.context.plugged = true;
+        harness.context.shared = true;
+        let _guard = harness
+            .context
+            .inhibitor
+            .acquire(Kind::Full, "ota")
+            .unwrap();
+        let outcome = crate::poll_parts!(harness, |hub, _bus, rq, context, runtime| {
+            handle_unplug(hub, rq, context, runtime)
+        });
+        assert_eq!(outcome, EventOutcome::Exit(ExitStatus::Restart));
     }
 }
