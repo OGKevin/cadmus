@@ -53,6 +53,7 @@ device-auth-enter-code = Enter code: { $code }
 device-auth-cancelled-on-github = Authorization cancelled
 
 # Top Menu Strings
+top-menu-companion = Companion
 top-menu-exit = Exit
 top-menu-reboot-device = Reboot Device
 top-menu-restart-app = Restart {-app-name}
@@ -66,6 +67,12 @@ top-menu-power-off = Power Off
 top-menu-switch-to = Switch to { $build }
 top-menu-sync-time = Sync Time
 top-menu-wifi = WiFi
+
+# Companion View
+
+companion-view-code = Code: { $code }
+companion-view-hint = Scan to open Companion on your phone
+companion-view-stop = Stop Companion
 
 # OTA
 

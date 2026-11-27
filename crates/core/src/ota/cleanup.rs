@@ -6,15 +6,29 @@ include!(concat!(env!("OUT_DIR"), "/bundled_assets.rs"));
 
 /// Top-level directories of the install directory that hold only Cadmus-owned
 /// files, so they are removed and measured as a whole.
-const OWNED_DIRS: [&str; 1] = ["libs"];
+const OWNED_DIRS: [&str; 2] = ["libs", "website"];
 
 /// Deletes Cadmus-owned bundled files from an install directory before OTA reboot.
 ///
 /// Files listed in the generated `BUNDLED_ASSET_FILES` manifest are removed
 /// individually so user-added files in shared asset directories remain intact.
-/// The [`OWNED_DIRS`] are removed whole because everything shipped in them is
-/// Cadmus-owned.
+/// The [`OWNED_DIRS`] are Cadmus-owned and replaced wholesale by the next
+/// bundle, so they are removed whole: stale files must not survive an update.
 pub async fn clean_bundled_files(install_dir: &Path) -> io::Result<()> {
+    if !INSTALL_DIR_IS_OWNED {
+        return Ok(());
+    }
+
+    clean_owned_install_dir(install_dir).await
+}
+
+/// Whether the install directory holds only Cadmus-installed files.
+///
+/// The emulator installs into the repository checkout, which holds source
+/// files (`fonts/`, `icons/`, `website/`), so nothing there is Cadmus-owned.
+const INSTALL_DIR_IS_OWNED: bool = !cfg!(feature = "emulator");
+
+async fn clean_owned_install_dir(install_dir: &Path) -> io::Result<()> {
     for asset in BUNDLED_ASSET_FILES {
         remove_file_if_exists(&install_dir.join(asset)).await?;
         remove_empty_parent_dirs(&install_dir.join(asset), install_dir).await?;
@@ -44,6 +58,14 @@ async fn remove_dir_tree_if_exists(dir: &Path) -> io::Result<()> {
 /// Counts allocated blocks, so it matches what the filesystem gives back.
 /// Missing entries count as zero, and user-added files are never counted.
 pub(super) async fn bundled_files_size(install_dir: &Path) -> u64 {
+    if !INSTALL_DIR_IS_OWNED {
+        return 0;
+    }
+
+    owned_install_dir_size(install_dir).await
+}
+
+async fn owned_install_dir_size(install_dir: &Path) -> u64 {
     let mut total = 0u64;
 
     for asset in BUNDLED_ASSET_FILES {
@@ -238,19 +260,22 @@ mod tests {
         std::fs::create_dir_all(install_dir.join("fonts")).unwrap();
         std::fs::create_dir_all(install_dir.join("icons")).unwrap();
         std::fs::create_dir_all(install_dir.join("libs")).unwrap();
+        std::fs::create_dir_all(install_dir.join("website/en")).unwrap();
 
         std::fs::write(install_dir.join("fonts/Libron-Regular.ttf"), b"owned").unwrap();
         std::fs::write(install_dir.join("fonts/custom.ttf"), b"user").unwrap();
         std::fs::write(install_dir.join("icons/home.svg"), b"owned").unwrap();
         std::fs::write(install_dir.join("libs/libfoo.so.1"), b"owned").unwrap();
+        std::fs::write(install_dir.join("website/en/index.html"), b"owned").unwrap();
         std::fs::write(install_dir.join("Settings.toml"), b"user").unwrap();
 
-        clean_bundled_files(&install_dir).await.unwrap();
+        clean_owned_install_dir(&install_dir).await.unwrap();
 
         assert!(!install_dir.join("fonts/Libron-Regular.ttf").exists());
         assert!(install_dir.join("fonts/custom.ttf").exists());
         assert!(!install_dir.join("icons/home.svg").exists());
         assert!(!install_dir.join("libs/libfoo.so.1").exists());
+        assert!(!install_dir.join("website/en/index.html").exists());
         assert!(install_dir.join("Settings.toml").exists());
     }
 
@@ -271,10 +296,10 @@ mod tests {
         .unwrap();
         std::fs::write(install_dir.join("libs/libfoo.so.1"), vec![2u8; 20_000]).unwrap();
 
-        let owned_only = bundled_files_size(&install_dir).await;
+        let owned_only = owned_install_dir_size(&install_dir).await;
         std::fs::write(install_dir.join("fonts/custom.ttf"), vec![3u8; 500_000]).unwrap();
         std::fs::write(install_dir.join("Settings.toml"), vec![4u8; 500_000]).unwrap();
-        let with_user_files = bundled_files_size(&install_dir).await;
+        let with_user_files = owned_install_dir_size(&install_dir).await;
 
         let expected = allocated(&install_dir.join("fonts/Libron-Regular.ttf"))
             + allocated(&install_dir.join("libs"))
@@ -287,6 +312,26 @@ mod tests {
     async fn bundled_files_size_is_zero_for_a_missing_install_dir() {
         let tmp = tempfile::tempdir().unwrap();
 
-        assert_eq!(bundled_files_size(&tmp.path().join("absent")).await, 0);
+        assert_eq!(owned_install_dir_size(&tmp.path().join("absent")).await, 0);
+    }
+
+    #[cfg(feature = "emulator")]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn emulator_install_dir_is_never_cleaned_or_measured() {
+        let tmp = tempfile::tempdir().unwrap();
+        let checkout = tmp.path().join("checkout");
+        std::fs::create_dir_all(checkout.join("website/src")).unwrap();
+        std::fs::create_dir_all(checkout.join("libs")).unwrap();
+        std::fs::create_dir_all(checkout.join("fonts")).unwrap();
+        std::fs::write(checkout.join("website/src/page.tsx"), b"source").unwrap();
+        std::fs::write(checkout.join("libs/libfoo.so.1"), b"source").unwrap();
+        std::fs::write(checkout.join("fonts/Libron-Regular.ttf"), b"source").unwrap();
+
+        clean_bundled_files(&checkout).await.unwrap();
+
+        assert!(checkout.join("website/src/page.tsx").exists());
+        assert!(checkout.join("libs/libfoo.so.1").exists());
+        assert!(checkout.join("fonts/Libron-Regular.ttf").exists());
+        assert_eq!(bundled_files_size(&checkout).await, 0);
     }
 }

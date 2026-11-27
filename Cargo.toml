@@ -49,6 +49,7 @@ octocrab = { version = "0.54.2", default-features = false, features = [
     "jwt-rust-crypto",
 ] }
 oc-rsync-core = { package = "core", git = "https://github.com/oferchen/rsync", tag = "v0.6.4", default-features = false }
+qrcode = { version = "0.14", default-features = false }
 reqwest-middleware = { version = "0.5.2", default-features = false }
 reqwest-retry = { version = "0.9.1", default-features = false }
 reqwest-tracing = { version = "0.7.1", default-features = false }

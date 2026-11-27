@@ -9,6 +9,14 @@ export function guideHref(locale: string) {
 }
 
 export function apiHref(locale: string) {
+  return `${basePath}/${locale}/api-explorer/`;
+}
+
+export function companionSettingsHref(locale: string) {
+  return `${basePath}/${locale}/companion/#settings`;
+}
+
+export function rustApiHref(locale: string) {
   return `${basePath}/${locale}/api/cadmus_core/`;
 }
 

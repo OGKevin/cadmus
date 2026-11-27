@@ -271,6 +271,10 @@ pub fn toggle_main_menu(
                     ),
                 ],
             ),
+            EntryKind::Command(
+                fl!("top-menu-companion").to_string(),
+                EntryId::OpenCompanion,
+            ),
             EntryKind::Separator,
             EntryKind::Command("Take Screenshot".to_string(), EntryId::TakeScreenshot),
             EntryKind::Separator,

@@ -15,6 +15,7 @@ pub mod button;
 pub mod calculator;
 pub mod clock;
 pub mod common;
+pub(crate) mod companion;
 pub mod device_auth;
 pub mod dialog;
 pub mod dictionary;
@@ -836,6 +837,7 @@ pub enum ViewId {
     AddressBarInput,
     Keyboard,
     AboutDialog,
+    Companion,
     ShareDialog,
     DictionaryDownloadConfirm,
     ForceImportConfirm,
@@ -1008,7 +1010,7 @@ pub enum EntryId {
     ToggleFuzzy,
     ToggleInverted,
     ToggleDithered,
-    ToggleCompanion,
+    OpenCompanion,
     SetWifiMode(crate::settings::WifiMode),
     EditWifiIdleTimeout,
     Rotate(i8),

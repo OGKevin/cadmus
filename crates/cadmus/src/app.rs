@@ -175,7 +175,7 @@ async fn dispatch_api_then_device(
     context: &mut AppContext,
     runtime: &mut DeviceRuntime<'_>,
 ) -> cadmus_core::device::EventOutcome {
-    match cadmus_core::api::handle_event(event, hub, bus, context, runtime).await {
+    match cadmus_core::api::handle_event(event, hub, bus, rq, context, runtime).await {
         cadmus_core::device::EventOutcome::Continue => {
             AppDevice::handle_event(event, hub, bus, rq, context, runtime).await
         }

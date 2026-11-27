@@ -72,18 +72,21 @@ pub(super) struct Running {
     pub(super) job: Job<()>,
     pub(super) lease: WifiLease,
     pub(super) mdns: Option<crate::mdns::Registration>,
-    #[cfg(test)]
     pub(super) local_addr: SocketAddr,
     pub(super) locale: cadmus_api_proto::cadmus::api::shared::v1::Locale,
+    pub(super) ip: Option<IpAddr>,
 }
 
-/// Start or stop the public companion listener from the main-menu switch.
+/// Open Companion from the main-menu entry.
+///
+/// Ignored while a start is in flight. Otherwise any running or debug session
+/// is stopped first, so the new session gets a fresh PIN.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-pub(super) async fn toggle(hub: &Hub, context: &mut AppContext) -> EventOutcome {
-    if context.api.is_on() {
-        turn_off(context).await;
+pub(super) async fn open(hub: &Hub, context: &mut AppContext) -> EventOutcome {
+    if context.api.pending_start.is_some() {
         return EventOutcome::Handled;
     }
+    turn_off(context).await;
     if let Err(error) = turn_on(hub, context, BIND, true).await {
         if matches!(error, StartError::WifiOff) {
             notify_not_online(hub);
@@ -180,7 +183,11 @@ pub(super) async fn finish_start(
         Err(error) => {
             context.api.token = None;
             context.api.auth_failures.store(0, Ordering::Relaxed);
+            if matches!(error, StartError::WifiOff) {
+                notify_not_online(hub);
+            }
             tracing::warn!(error = %error, "public api did not start");
+            hub.send((Event::Close(ViewId::Companion)).into()).ok();
             return;
         }
     };
@@ -188,7 +195,39 @@ pub(super) async fn finish_start(
         context.api.token = None;
         context.api.auth_failures.store(0, Ordering::Relaxed);
         tracing::warn!(error = %error, "public api did not start");
+        hub.send((Event::Close(ViewId::Companion)).into()).ok();
     }
+}
+
+/// URL the on-device [`CompanionView`](crate::view::companion::CompanionView) encodes: the companion page the listener serves.
+///
+/// `None` until the listener has bound, because the URL names the bound port.
+/// Uses the locale resolved when the listener started, so the view always
+/// advertises a page the listener serves.
+#[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
+pub(super) fn companion_url(context: &AppContext) -> Option<String> {
+    let running = context.api.public.as_ref()?;
+    let port = running.local_addr.port();
+    let locale = running.locale;
+    Some(crate::view::companion::companion_url(
+        &context.mdns.hostname(),
+        port,
+        locale,
+    ))
+}
+
+/// Number-based companion page URL, shown on the [`CompanionView`](crate::view::companion::CompanionView) beside the name URL.
+///
+/// `None` until the listener has bound and the device has an IP address.
+#[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
+pub(super) fn companion_ip_url(context: &AppContext) -> Option<String> {
+    let running = context.api.public.as_ref()?;
+    let ip = running.ip?;
+    Some(crate::view::companion::companion_ip_url(
+        ip,
+        running.local_addr.port(),
+        running.locale,
+    ))
 }
 
 /// Register mDNS, serve the site, and store the running listener.
@@ -259,9 +298,9 @@ async fn complete_start(
         job,
         lease,
         mdns,
-        #[cfg(test)]
         local_addr,
         locale,
+        ip,
     });
     tracing::info!(
         port = local_addr.port(),
@@ -300,6 +339,10 @@ pub(super) async fn resume(hub: &Hub, context: &mut AppContext) -> EventOutcome 
     if let Err(error) = turn_on(hub, context, BIND, false).await {
         context.api.token = None;
         context.api.auth_failures.store(0, Ordering::Relaxed);
+        if matches!(error, StartError::WifiOff) {
+            notify_not_online(hub);
+        }
+        hub.send(Event::Close(ViewId::Companion).into()).ok();
         tracing::warn!(error = %error, "public api did not resume");
     }
     EventOutcome::Handled

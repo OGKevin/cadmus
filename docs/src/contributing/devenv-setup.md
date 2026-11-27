@@ -185,6 +185,12 @@ incremental compiles, so leaving them on turns every dev build into a cache miss
 build-kobo` also ensures the ARM SQLite artifacts, but running setup up
   front covers both native and device paths.
 - `cadmuscli download-assets` and `cadmuscli download-fonts` must run before `cadmuscli build-kobo`.
+- `cadmuscli docs` must run before `cadmuscli dist` or `cadmuscli kobo deploy`:
+  `dist` copies `website/out` into `dist/website` and refuses to assemble any
+  distribution without it. The shared Rust API docs (`_shared/api`) are stored
+  there as `.gz` files only (about 22 MB instead of 131 MB); the device serves
+  them with `Content-Encoding: gzip`, or inflates them for clients that do not
+  accept gzip. `website/out` itself stays uncompressed for the hosted site.
 - OTA updates delete Cadmus-owned bundled files before reboot, then Kobo
   extracts the new `KoboRoot.tgz` over the install directory.
 - User files outside the generated Cadmus-owned asset list must be preserved.
@@ -343,6 +349,8 @@ crash and report readiness:
 `devenv up` (no argument) starts these alongside the observability stack.
 `devenv up <name>` starts just that process and follows its output; add `-d`
 to run detached.
+
+The website listens on port 3001 because Grafana keeps port 3000.
 
 For more details on telemetry, see [Telemetry](telemetry/index.md).
 

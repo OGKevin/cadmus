@@ -1,0 +1,11 @@
+@import "tailwindcss";
+@import "@cloudflare/kumo/styles/tailwind";
+@import "fumadocs-ui/css/neutral.css";
+@import "fumadocs-ui/css/preset.css";
+@import "fumadocs-openapi/css/preset.css";
+
+@source "../../../node_modules/fumadocs-ui/dist";
+@source "../../../node_modules/fumadocs-openapi/dist";
+@source "../../../components/api-explorer/**/*.{ts,tsx}";
+@source "../../../components/docs-menu/**/*.{ts,tsx}";
+@source "../../../components/language-switcher/**/*.{ts,tsx}";

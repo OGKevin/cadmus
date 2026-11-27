@@ -40,6 +40,7 @@ pub mod cmd;
 pub mod git;
 pub mod manifest;
 pub mod markers;
+pub mod openapi;
 pub mod patches;
 pub mod thirdparty_versions;
 pub mod utils;

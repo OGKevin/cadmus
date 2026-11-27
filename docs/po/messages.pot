@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-11-22T22:26:31+08:00\n"
+"POT-Creation-Date: 2026-11-24T17:06:28+01:00\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -98,175 +98,187 @@ msgstr ""
 msgid "WiFi"
 msgstr ""
 
-#: src/SUMMARY.md:26 src/time-sync.md:1
+#: src/SUMMARY.md:26 src/companion.md:1
+msgid "Companion"
+msgstr ""
+
+#: src/SUMMARY.md:27 src/time-sync.md:1
 msgid "Automatic Time Syncing"
 msgstr ""
 
-#: src/SUMMARY.md:27 src/auto-frontlight.md:1
+#: src/SUMMARY.md:28 src/auto-frontlight.md:1
 msgid "Automatic Frontlight"
 msgstr ""
 
-#: src/SUMMARY.md:28 src/soft-suspend.md:1 src/soft-suspend.md:83
+#: src/SUMMARY.md:29 src/soft-suspend.md:1 src/soft-suspend.md:83
 msgid "Soft Suspend"
 msgstr ""
 
-#: src/SUMMARY.md:29 src/database-backup.md:1
+#: src/SUMMARY.md:30 src/database-backup.md:1
 msgid "Database Backup"
 msgstr ""
 
-#: src/SUMMARY.md:30 src/troubleshooting/index.md:1
+#: src/SUMMARY.md:31 src/troubleshooting/index.md:1
 msgid "Troubleshooting"
 msgstr ""
 
-#: src/SUMMARY.md:31
+#: src/SUMMARY.md:32
 msgid "CHANGELOG"
 msgstr ""
 
-#: src/SUMMARY.md:35
+#: src/SUMMARY.md:36
 msgid "Contributor Guide"
 msgstr ""
 
-#: src/SUMMARY.md:37
+#: src/SUMMARY.md:38
 msgid "Development Environment"
 msgstr ""
 
-#: src/SUMMARY.md:38
+#: src/SUMMARY.md:39
 msgid "Third-party libraries"
 msgstr ""
 
-#: src/SUMMARY.md:39
+#: src/SUMMARY.md:40
 msgid "Patch tiers"
 msgstr ""
 
-#: src/SUMMARY.md:40
+#: src/SUMMARY.md:41
 msgid "MuPDF"
 msgstr ""
 
-#: src/SUMMARY.md:41
+#: src/SUMMARY.md:42
 msgid "HarfBuzz"
 msgstr ""
 
-#: src/SUMMARY.md:42
+#: src/SUMMARY.md:43
 msgid "Gumbo"
 msgstr ""
 
-#: src/SUMMARY.md:43
+#: src/SUMMARY.md:44
 msgid "DjVuLibre"
 msgstr ""
 
-#: src/SUMMARY.md:44
+#: src/SUMMARY.md:45
 msgid "SQLite"
 msgstr ""
 
-#: src/SUMMARY.md:45
+#: src/SUMMARY.md:46
 msgid "SSH"
 msgstr ""
 
-#: src/SUMMARY.md:46
+#: src/SUMMARY.md:47
 msgid "Code Style and Linting"
 msgstr ""
 
-#: src/SUMMARY.md:47
+#: src/SUMMARY.md:48
 msgid "Event System"
 msgstr ""
 
-#: src/SUMMARY.md:48
+#: src/SUMMARY.md:49
 msgid "Input Pipeline"
 msgstr ""
 
-#: src/SUMMARY.md:49
+#: src/SUMMARY.md:50
 msgid "WiFi Leases"
 msgstr ""
 
-#: src/SUMMARY.md:50
-msgid "Device"
-msgstr ""
-
 #: src/SUMMARY.md:51
-msgid "Time and RTC"
+msgid "mDNS"
 msgstr ""
 
 #: src/SUMMARY.md:52
-msgid "Suspend"
+msgid "API"
 msgstr ""
 
 #: src/SUMMARY.md:53
-msgid "Suspend orchestrator"
+msgid "Device"
 msgstr ""
 
 #: src/SUMMARY.md:54
-msgid "Soft suspend"
+msgid "Time and RTC"
 msgstr ""
 
 #: src/SUMMARY.md:55
-msgid "Inhibitor"
+msgid "Suspend"
 msgstr ""
 
 #: src/SUMMARY.md:56
-msgid "Kobo suspend"
+msgid "Suspend orchestrator"
 msgstr ""
 
-#: src/SUMMARY.md:57 src/settings/index.md:1172
-msgid "Telemetry"
+#: src/SUMMARY.md:57
+msgid "Soft suspend"
 msgstr ""
 
 #: src/SUMMARY.md:58
-msgid "Logging"
+msgid "Inhibitor"
 msgstr ""
 
 #: src/SUMMARY.md:59
-msgid "Tracing"
+msgid "Kobo suspend"
 msgstr ""
 
-#: src/SUMMARY.md:60
-msgid "Profiling"
+#: src/SUMMARY.md:60 src/settings/index.md:1172
+msgid "Telemetry"
 msgstr ""
 
 #: src/SUMMARY.md:61
-msgid "Website"
+msgid "Logging"
 msgstr ""
 
 #: src/SUMMARY.md:62
-msgid "User guide"
+msgid "Tracing"
 msgstr ""
 
 #: src/SUMMARY.md:63
-msgid "Translations"
+msgid "Profiling"
 msgstr ""
 
 #: src/SUMMARY.md:64
-msgid "For developers"
+msgid "Website"
 msgstr ""
 
 #: src/SUMMARY.md:65
-msgid "SQLite & SQLx"
+msgid "User guide"
 msgstr ""
 
 #: src/SUMMARY.md:66
-msgid "Library Database"
+msgid "Translations"
 msgstr ""
 
 #: src/SUMMARY.md:67
+msgid "For developers"
+msgstr ""
+
+#: src/SUMMARY.md:68
+msgid "SQLite & SQLx"
+msgstr ""
+
+#: src/SUMMARY.md:69
+msgid "Library Database"
+msgstr ""
+
+#: src/SUMMARY.md:70
 msgid "Runtime Migrations"
 msgstr ""
 
-#: src/SUMMARY.md:71
+#: src/SUMMARY.md:74
 msgid "Investigations"
 msgstr ""
 
-#: src/SUMMARY.md:73
+#: src/SUMMARY.md:76
 msgid "Intro"
 msgstr ""
 
-#: src/SUMMARY.md:74
+#: src/SUMMARY.md:77
 msgid "DHCP IP Address Changes on WiFi Toggle"
 msgstr ""
 
-#: src/SUMMARY.md:75
+#: src/SUMMARY.md:78
 msgid "Reading IP and ESSID via dhcpcd-dbus"
 msgstr ""
 
-#: src/SUMMARY.md:76
+#: src/SUMMARY.md:79
 msgid "Soft suspend via autosleep and wake_lock"
 msgstr ""
 
@@ -3713,6 +3725,68 @@ msgid ""
 "When WiFi is set to **Auto**, Cadmus waits a short time after the last "
 "network use before powering the radio down. Change that delay in the "
 "[settings editor](ui/settings/index.md)."
+msgstr ""
+
+#: src/companion.md:3
+msgid "Companion lets you manage Cadmus from a browser on your phone."
+msgstr ""
+
+#: src/companion.md:5
+msgid ""
+"Open the top menu and tap **Companion**. Cadmus opens the Companion view. It "
+"shows a QR Code, the web address of the Companion page, and a 6-digit code. "
+"Scan the QR Code with your phone to open the page."
+msgstr ""
+
+#: src/companion.md:9
+msgid ""
+"The Companion view shows the web address twice: once by name and once by "
+"number. If the name does not work on your network, type the number address "
+"into your phone's browser instead."
+msgstr ""
+
+#: src/companion.md:13
+msgid "The phone has to join the same Wi-Fi network as the Kobo."
+msgstr ""
+
+#: src/companion.md:15
+msgid ""
+"Companion needs Wi-Fi set to Auto or Always On. With Wi-Fi Off, Cadmus shows "
+"a notification and does not open the Companion view."
+msgstr ""
+
+#: src/companion.md:18
+msgid ""
+"The browser then asks for the 6-digit code shown on the Kobo. Cadmus makes a "
+"new code each time Companion opens. The browser remembers it until the code "
+"is no longer accepted."
+msgstr ""
+
+#: src/companion.md:22
+msgid ""
+"Companion is on only while the Companion view is open. Tap **Stop "
+"Companion** when you are finished. This closes the view and turns Companion "
+"off. Tapping anywhere else on the view does nothing."
+msgstr ""
+
+#: src/companion.md:26
+msgid ""
+"Several wrong codes in a row close the Companion view and turn Companion "
+"off. Open Companion again to get a new code."
+msgstr ""
+
+#: src/companion.md:29
+msgid ""
+"Quitting Cadmus turns Companion off too. Connecting the Kobo to a computer "
+"over USB does the same and closes the view. Open Companion again afterwards "
+"to get a new code."
+msgstr ""
+
+#: src/companion.md:33
+msgid ""
+"When the Kobo goes to sleep, the Companion view stays open. After it wakes, "
+"Companion comes back with the same code. If it cannot reconnect, the view "
+"closes."
 msgstr ""
 
 #: src/time-sync.md:3

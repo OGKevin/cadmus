@@ -132,15 +132,11 @@ jobs:
           rust-cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
           mode: save
 
-      - uses: ./.github/actions/cargo-cache
-        with:
-          cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
-          mode: restore
-
       - name: Build documentation EPUB
         uses: ./.github/actions/build-docs-epub
         with:
           node-version: ${{ env.NODE_VERSION }}
+          rust-cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
 
       - name: Build Kobo artifacts
         uses: ./.github/actions/build-kobo

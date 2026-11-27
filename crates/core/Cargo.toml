@@ -22,7 +22,7 @@ libc = "0.2.180"
 png = "0.18.0"
 rars = { workspace = true }
 regex = "1.12.2"
-serde = { version = "1.0.228", features = ["derive"] }
+serde = { workspace = true }
 serde_json = { workspace = true }
 titlecase = "3.6.0"
 unicode-normalization = "0.1.25"
@@ -59,6 +59,7 @@ rand_core = "0.10.0"
 rand_xoshiro = "0.8.0"
 percent-encoding = "2.3.2"
 rustc-hash = "2"
+qrcode = { workspace = true }
 rust-embed = { version = "8.11", features = ["include-exclude"] }
 i18n-embed = { version = "0.16", features = ["fluent-system", "rust-embed"] }
 i18n-embed-fl = "0.10"
