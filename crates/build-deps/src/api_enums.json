@@ -1,0 +1,244 @@
+{
+  "enums": [
+    {
+      "name": "Extension",
+      "rust_name": "FileExtension",
+      "doc": "A known file extension for documents Cadmus can import and open.\n\nThe serialized string (e.g. `\"epub\"`, `\"cbz\"`) is used as the TOML key in\nrefresh-rate-by-kind maps and as values in allowed/metadata/dithered kind sets.",
+      "derives": [
+        "Debug",
+        "Copy",
+        "Clone",
+        "Eq",
+        "PartialEq",
+        "Ord",
+        "PartialOrd",
+        "Hash",
+        "serde::Serialize",
+        "serde::Deserialize"
+      ],
+      "attrs": ["serde(rename_all = \"lowercase\")"],
+      "all_doc": "Returns all known file extensions.",
+      "variants": [
+        { "rust": "Cbr", "number": 1, "doc": "Comic book RAR archive." },
+        { "rust": "Cbz", "number": 2, "doc": "Comic book ZIP archive." },
+        {
+          "rust": "Djvu",
+          "number": 3,
+          "doc": "DjVu document.",
+          "attrs": ["serde(alias = \"djv\")"]
+        },
+        { "rust": "Epub", "number": 4, "doc": "EPUB ebook." },
+        { "rust": "Fb2", "number": 5, "doc": "FictionBook document." },
+        {
+          "rust": "Html",
+          "number": 6,
+          "doc": "HTML document.",
+          "attrs": ["serde(alias = \"htm\")"]
+        },
+        {
+          "rust": "Jpeg",
+          "number": 7,
+          "doc": "JPEG image using the long extension."
+        },
+        {
+          "rust": "Jpg",
+          "number": 8,
+          "doc": "JPEG image using the short extension."
+        },
+        { "rust": "Mobi", "number": 9, "doc": "Mobipocket ebook." },
+        { "rust": "Oxps", "number": 10, "doc": "OpenXPS document." },
+        { "rust": "Pdf", "number": 11, "doc": "PDF document." },
+        { "rust": "Png", "number": 12, "doc": "PNG image." },
+        { "rust": "Svg", "number": 13, "doc": "SVG image." },
+        { "rust": "Txt", "number": 14, "doc": "Plain text document." },
+        { "rust": "Webp", "number": 15, "doc": "WebP image." },
+        { "rust": "Xps", "number": 16, "doc": "XPS document." }
+      ]
+    },
+    {
+      "name": "CategoryId",
+      "rust_name": "Category",
+      "doc": "Categories of settings available in the settings editor.",
+      "derives": [
+        "Debug",
+        "Clone",
+        "Copy",
+        "PartialEq",
+        "Eq",
+        "PartialOrd",
+        "Ord",
+        "Hash"
+      ],
+      "attrs": [],
+      "variants": [
+        {
+          "rust": "General",
+          "number": 1,
+          "doc": "General device settings (locale, keyboard layout, etc.)"
+        },
+        {
+          "rust": "Power",
+          "number": 2,
+          "doc": "Power and sleep settings (auto-suspend, sleep cover, etc.)"
+        },
+        {
+          "rust": "Reader",
+          "number": 3,
+          "doc": "Reader behavior settings (finished action, etc.)"
+        },
+        {
+          "rust": "Libraries",
+          "number": 4,
+          "doc": "Library management settings"
+        },
+        {
+          "rust": "Intermissions",
+          "number": 5,
+          "doc": "Intermission screen display settings"
+        },
+        { "rust": "Import", "number": 6, "doc": "Import behavior settings" },
+        {
+          "rust": "Telemetry",
+          "number": 7,
+          "doc": "Telemetry and logging settings"
+        },
+        {
+          "rust": "Dictionaries",
+          "number": 8,
+          "doc": "Monolingual dictionary download and management"
+        }
+      ]
+    },
+    {
+      "name": "TextMode",
+      "rust_name": "TextMode",
+      "doc": "How the companion edits a text setting.",
+      "derives": ["Debug", "Clone", "Copy", "PartialEq", "Eq"],
+      "attrs": [],
+      "variants": [
+        {
+          "rust": "Text",
+          "number": 1,
+          "doc": "Any string this setting accepts."
+        },
+        { "rust": "Integer", "number": 2, "doc": "A non-negative integer." },
+        { "rust": "Number", "number": 3, "doc": "A finite number." },
+        {
+          "rust": "Hostname",
+          "number": 4,
+          "doc": "A hostname or an IP address."
+        },
+        {
+          "rust": "Coordinates",
+          "number": 5,
+          "doc": "A latitude and longitude pair."
+        }
+      ]
+    },
+    {
+      "name": "SettingIdentityKind",
+      "rust_name": "SettingIdentity",
+      "doc": "Identifies a specific setting value view for targeted updates.\n\nUsed in [`SettingsEvent::UpdateValue`](crate::view::settings_editor::SettingsEvent)\nso that [`CategoryEditor`](crate::view::settings_editor::CategoryEditor) can tell\nexactly which [`SettingValue`](crate::view::settings_editor::SettingValue) to\nrefresh after a setting changes.",
+      "derives": ["Debug", "Clone", "PartialEq", "Eq"],
+      "attrs": [],
+      "variants": [
+        { "rust": "KeyboardLayout", "number": 1 },
+        { "rust": "Locale", "number": 2 },
+        { "rust": "AutoSuspend", "number": 3 },
+        { "rust": "WifiIdleTimeout", "number": 4 },
+        { "rust": "AutoPowerOff", "number": 5 },
+        { "rust": "SleepCover", "number": 6 },
+        { "rust": "AutoShare", "number": 7 },
+        { "rust": "AutoTime", "number": 8 },
+        { "rust": "NtpServer", "number": 9 },
+        { "rust": "AutoFrontlight", "number": 10 },
+        { "rust": "AutoFrontlightBrightness", "number": 11 },
+        { "rust": "AutoFrontlightManualCoordinates", "number": 12 },
+        { "rust": "ButtonScheme", "number": 13 },
+        { "rust": "LoggingEnabled", "number": 14 },
+        { "rust": "FontFamily", "number": 15 },
+        { "rust": "FinishedAction", "number": 16 },
+        { "rust": "LibraryInfo", "number": 17, "type": "usize" },
+        { "rust": "LibraryName", "number": 18, "type": "usize" },
+        { "rust": "LibraryPath", "number": 19, "type": "usize" },
+        { "rust": "LibraryFinishedAction", "number": 20, "type": "usize" },
+        { "rust": "IntermissionSuspend", "number": 21 },
+        { "rust": "IntermissionPowerOff", "number": 22 },
+        { "rust": "IntermissionShare", "number": 23 },
+        { "rust": "IntermissionFillColor", "number": 24 },
+        { "rust": "SettingsRetention", "number": 25 },
+        { "rust": "DbBackupRetention", "number": 26 },
+        { "rust": "LogLevel", "number": 27 },
+        { "rust": "ImportSyncMetadata", "number": 28 },
+        { "rust": "MetadataKinds", "number": 29 },
+        { "rust": "AllowedKinds", "number": 30 },
+        { "rust": "ForceFullImport", "number": 31 },
+        {
+          "rust": "OtlpEndpoint",
+          "number": 32,
+          "cfg": "feature = \"tracing\""
+        },
+        {
+          "rust": "PyroscopeEndpoint",
+          "number": 33,
+          "cfg": "feature = \"profiling\""
+        },
+        {
+          "rust": "EnableKernLog",
+          "number": 34,
+          "cfg": "all(feature = \"test\", feature = \"kobo\")"
+        },
+        {
+          "rust": "EnableDbusLog",
+          "number": 35,
+          "cfg": "all(feature = \"test\", feature = \"kobo\")"
+        },
+        {
+          "rust": "DictionaryInfo",
+          "number": 36,
+          "type": "String",
+          "doc": "Identity for a monolingual dictionary row, keyed by ISO 639-1 language code."
+        },
+        {
+          "rust": "RefreshRate",
+          "number": 37,
+          "doc": "Summary row in the Reader category showing \"regular / inverted\"."
+        },
+        {
+          "rust": "RefreshRateRegular",
+          "number": 38,
+          "doc": "Global refresh rate (regular, non-inverted page turns)."
+        },
+        {
+          "rust": "RefreshRateInverted",
+          "number": 39,
+          "doc": "Global refresh rate (inverted page turns)."
+        },
+        {
+          "rust": "RefreshRateByKind",
+          "number": 40,
+          "type": "String",
+          "doc": "Per-kind refresh rate row in the Reader category list."
+        },
+        {
+          "rust": "RefreshRateByKindRegular",
+          "number": 41,
+          "type": "String",
+          "doc": "Regular refresh rate inside a per-kind editor."
+        },
+        {
+          "rust": "RefreshRateByKindInverted",
+          "number": 42,
+          "type": "String",
+          "doc": "Inverted refresh rate inside a per-kind editor."
+        },
+        { "rust": "DitheredKinds", "number": 43 },
+        { "rust": "StartupMode", "number": 44 },
+        { "rust": "AutosleepMode", "number": 45 },
+        { "rust": "IndicateAutosleepLed", "number": 46 },
+        { "rust": "AutosleepGrace", "number": 47 },
+        { "rust": "EnableThirdPartyLog", "number": 48 }
+      ]
+    }
+  ]
+}

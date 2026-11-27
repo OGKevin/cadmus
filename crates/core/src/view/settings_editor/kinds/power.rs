@@ -1,18 +1,31 @@
 //! Setting kinds for the Power category.
 
 use super::{
-    InputSettingKind, SettingData, SettingIdentity, SettingKind, SettingsFetchData, ToggleSettings,
-    WidgetKind,
+    InputSettingKind, SettingData, SettingIdentity, SettingKind, SettingsFetchData, TextMode,
+    ToggleSettings, WidgetKind, parse_number,
 };
+use crate::chrono::Duration as ChronoDuration;
 use crate::device::AppContext;
 use crate::device::reschedule_auto_suspend_alarm;
 use crate::device::soft_suspend::SoftSuspendBackend as _;
 use crate::device::soft_suspend::mode::AutosleepMode;
 use crate::fl;
 use crate::i18n::I18nDisplay;
-use crate::settings::Settings;
+use crate::settings::{MAX_TIMEOUT_SECONDS, Settings};
 use crate::view::{Bus, EntryId, EntryKind, Event, ToggleEvent, ViewId};
 use std::time::Duration;
+
+/// Scaled timeout within the range the RTC and wake lock can add to a clock.
+///
+/// `Duration::from_secs_f32` panics outside its range, and the RTC alarm adds
+/// the duration to the current wall clock, so accept at most
+/// [`MAX_TIMEOUT_SECONDS`].
+fn chrono_timeout(seconds: f32) -> Option<ChronoDuration> {
+    if !(0.0..=MAX_TIMEOUT_SECONDS).contains(&seconds) {
+        return None;
+    }
+    ChronoDuration::from_std(Duration::try_from_secs_f32(seconds).ok()?).ok()
+}
 
 /// Auto suspend timeout setting
 pub struct AutoSuspend;
@@ -76,6 +89,10 @@ impl InputSettingKind for AutoSuspend {
         10
     }
 
+    fn text_mode(&self) -> TextMode {
+        TextMode::Number
+    }
+
     fn current_text(&self, settings: &Settings) -> String {
         if settings.auto_suspend == 0.0 {
             "0".to_string()
@@ -84,8 +101,20 @@ impl InputSettingKind for AutoSuspend {
         }
     }
 
+    /// `parse_number` admits values outside the `Duration` and RTC ranges,
+    /// which would panic once saved, so reject them here.
+    fn validate_text(&self, text: &str) -> Result<(), &'static str> {
+        let value = parse_number(text)?;
+        chrono_timeout(value * 60.0)
+            .map(|_| ())
+            .ok_or("value out of range")
+    }
+
     fn apply_text(&self, text: &str, settings: &mut Settings) -> String {
-        if let Ok(value) = text.parse::<f32>() {
+        if let Ok(value) = text.parse::<f32>()
+            && value.is_finite()
+            && chrono_timeout(value * 60.0).is_some()
+        {
             settings.auto_suspend = value;
         }
         if settings.auto_suspend == 0.0 {
@@ -143,6 +172,10 @@ impl InputSettingKind for AutoPowerOff {
         10
     }
 
+    fn text_mode(&self) -> TextMode {
+        TextMode::Number
+    }
+
     fn current_text(&self, settings: &Settings) -> String {
         if settings.auto_power_off == 0.0 {
             "0".to_string()
@@ -151,8 +184,20 @@ impl InputSettingKind for AutoPowerOff {
         }
     }
 
+    /// `parse_number` admits values outside the `Duration` and RTC ranges,
+    /// which would panic once saved, so reject them here.
+    fn validate_text(&self, text: &str) -> Result<(), &'static str> {
+        let value = parse_number(text)?;
+        chrono_timeout(value * 86_400.0)
+            .map(|_| ())
+            .ok_or("value out of range")
+    }
+
     fn apply_text(&self, text: &str, settings: &mut Settings) -> String {
-        if let Ok(value) = text.parse::<f32>() {
+        if let Ok(value) = text.parse::<f32>()
+            && value.is_finite()
+            && chrono_timeout(value * 86_400.0).is_some()
+        {
             settings.auto_power_off = value;
         }
         if settings.auto_power_off == 0.0 {
@@ -261,7 +306,7 @@ impl SettingKind for AutosleepModeSetting {
             context.inhibitor.apply_settings(
                 context.settings.autosleep_mode,
                 context.settings.indicate_autosleep_led,
-                Duration::from_secs_f32(context.settings.autosleep_grace.max(0.0)),
+                context.settings.autosleep_grace_duration(),
             );
             return (Some(mode.to_i18n_string()), true);
         }
@@ -306,7 +351,7 @@ impl SettingKind for IndicateAutosleepLed {
             context.inhibitor.apply_settings(
                 context.settings.autosleep_mode,
                 context.settings.indicate_autosleep_led,
-                Duration::from_secs_f32(context.settings.autosleep_grace.max(0.0)),
+                context.settings.autosleep_grace_duration(),
             );
             return (
                 Some(context.settings.indicate_autosleep_led.to_string()),
@@ -347,7 +392,7 @@ impl SettingKind for AutosleepGrace {
             context.inhibitor.apply_settings(
                 context.settings.autosleep_mode,
                 context.settings.indicate_autosleep_led,
-                Duration::from_secs_f32(context.settings.autosleep_grace.max(0.0)),
+                context.settings.autosleep_grace_duration(),
             );
             return (Some(display), true);
         }
@@ -376,12 +421,31 @@ impl InputSettingKind for AutosleepGrace {
         10
     }
 
+    fn text_mode(&self) -> TextMode {
+        TextMode::Number
+    }
+
     fn current_text(&self, settings: &Settings) -> String {
         format!("{:.1}", settings.autosleep_grace)
     }
 
+    /// `parse_number` admits values above what the wake lock can add to an
+    /// instant, which would panic once saved, so reject them here. Negative
+    /// values clamp to zero.
+    fn validate_text(&self, text: &str) -> Result<(), &'static str> {
+        let value = parse_number(text)?;
+        if value <= MAX_TIMEOUT_SECONDS {
+            Ok(())
+        } else {
+            Err("value out of range")
+        }
+    }
+
     fn apply_text(&self, text: &str, settings: &mut Settings) -> String {
-        if let Ok(value) = text.parse::<f32>() {
+        if let Ok(value) = text.parse::<f32>()
+            && value.is_finite()
+            && value <= MAX_TIMEOUT_SECONDS
+        {
             settings.autosleep_grace = value.max(0.0);
         }
         format!("{:.1}", settings.autosleep_grace)
@@ -935,6 +999,46 @@ mod tests {
 
             assert!(result.0.is_none());
             assert!(!result.1);
+        }
+
+        #[test]
+        fn validate_text_rejects_unrepresentable_durations() {
+            let setting = AutosleepGrace;
+            assert!(setting.validate_text("1e30").is_err());
+            assert!(setting.validate_text("NaN").is_err());
+            assert!(setting.validate_text("2.5").is_ok());
+        }
+
+        #[test]
+        fn apply_text_ignores_unrepresentable_values() {
+            let setting = AutosleepGrace;
+            let mut settings = Settings {
+                autosleep_grace: 30.0,
+                ..Default::default()
+            };
+
+            let display = setting.apply_text("1e30", &mut settings);
+
+            assert_eq!(settings.autosleep_grace, 30.0);
+            assert_eq!(display, "30.0");
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_submit_with_huge_value_keeps_setting() {
+            let setting = AutosleepGrace;
+            let mut context = create_test_context().await;
+            context.settings.autosleep_grace = 30.0;
+            let mut bus: Bus = VecDeque::new();
+
+            let (display, handled) = setting.handle(
+                &Event::Submit(ViewId::AutosleepGraceInput, "1e30".to_string()),
+                &mut context,
+                &mut bus,
+            );
+
+            assert!(handled);
+            assert_eq!(context.settings.autosleep_grace, 30.0);
+            assert_eq!(display.as_deref(), Some("30.0"));
         }
     }
 }

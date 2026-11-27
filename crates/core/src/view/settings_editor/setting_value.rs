@@ -27,6 +27,8 @@ pub enum SettingsEvent {
         /// The new value to display
         value: String,
     },
+    /// The library list changed off-screen: rows and their indices are stale.
+    LibrariesChanged,
 }
 
 /// Represents a single setting value display in the settings UI.

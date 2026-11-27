@@ -188,7 +188,9 @@ impl UnlockInner {
         }
 
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        let due_at = Instant::now() + grace;
+        let due_at = Instant::now().checked_add(grace).unwrap_or_else(|| {
+            Instant::now() + Duration::from_secs(crate::settings::MAX_TIMEOUT_SECONDS as u64)
+        });
         state.due_at = Some(due_at);
         tracing::debug!(
             wake_lock = WAKE_LOCK_NAME,

@@ -32,6 +32,7 @@
 //! [`ensure_submodules`] is the single entry point used to make sure
 //! the working copy is ready before any other function is called.
 
+pub mod api_codegen;
 pub mod build;
 pub mod build_metadata;
 pub mod cargo_features;

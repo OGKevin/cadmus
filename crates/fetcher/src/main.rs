@@ -138,7 +138,11 @@ fn main() -> Result<(), Error> {
         .next()
         .ok_or_else(|| format_err!("missing argument: online status"))
         .and_then(|v| v.parse::<bool>().map_err(Into::into))?;
-    let settings = load_toml::<Settings, _>(SETTINGS_PATH)
+    let settings = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .context("tokio runtime for settings load")?
+        .block_on(load_toml::<Settings, _>(SETTINGS_PATH))
         .with_context(|| format!("can't load settings from {}", SETTINGS_PATH))?;
     let mut session = load_json::<Session, _>(SESSION_PATH).unwrap_or_default();
 

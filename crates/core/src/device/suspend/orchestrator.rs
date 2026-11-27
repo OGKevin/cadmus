@@ -152,8 +152,10 @@ fn leave_deep_idle_if_needed(context: &mut AppContext) {
 /// Converts auto-power-off days from settings to a chrono duration (minimum one second).
 fn auto_power_off_chrono_duration(days: f32) -> ChronoDuration {
     let secs = (days * 86_400.0).max(0.0);
-    let duration = ChronoDuration::from_std(std::time::Duration::from_secs_f32(secs))
-        .unwrap_or_else(|_| ChronoDuration::milliseconds(((secs * 1000.0) as i64).max(1)));
+    let duration = std::time::Duration::try_from_secs_f32(secs)
+        .ok()
+        .and_then(|duration| ChronoDuration::from_std(duration).ok())
+        .unwrap_or_else(|| ChronoDuration::milliseconds(((secs * 1000.0) as i64).max(1)));
     if duration.num_seconds() < 1 {
         ChronoDuration::seconds(1)
     } else {
@@ -561,6 +563,7 @@ async fn prepare_for_sleep(
     if let Some(settings_manager) = runtime.settings_manager {
         settings_manager
             .save(&context.settings)
+            .await
             .map_err(|error| tracing::error!(error = %error, "Can't save settings"))
             .ok();
     }
@@ -1424,6 +1427,9 @@ pub(in crate::device::suspend) fn finish_cycle(
         rq.add(RenderData::expose(rect, UpdateMode::Full));
     } else {
         tracing::warn!("resume called but no intermission view found to remove");
+    }
+    if context.api.is_on() {
+        hub.send(Event::ApiResume.into()).ok();
     }
     hub.send((Event::ClockTick).into()).ok();
     hub.send((Event::BatteryTick).into()).ok();

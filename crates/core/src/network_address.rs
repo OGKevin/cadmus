@@ -80,8 +80,36 @@ impl FromStr for NetworkAddress {
         if trimmed.is_empty() {
             return Err(NetworkAddressParseError);
         }
-        Ok(Self(strip_trailing_ntp_port(trimmed).to_string()))
+        let host = strip_trailing_ntp_port(trimmed);
+        if host.parse::<IpAddr>().is_ok() || is_hostname(host) {
+            return Ok(Self(host.to_string()));
+        }
+        Err(NetworkAddressParseError)
     }
+}
+
+fn is_hostname(host: &str) -> bool {
+    let host = match host.strip_suffix('.') {
+        Some(stripped) => stripped,
+        None => host,
+    };
+    if host.is_empty() || host.len() > 253 || !host.is_ascii() {
+        return false;
+    }
+    host.split('.').all(is_hostname_label)
+}
+
+fn is_hostname_label(label: &str) -> bool {
+    let bytes = label.as_bytes();
+    if bytes.is_empty() || bytes.len() > 63 {
+        return false;
+    }
+    if bytes[0] == b'-' || bytes[bytes.len() - 1] == b'-' {
+        return false;
+    }
+    bytes
+        .iter()
+        .all(|byte| byte.is_ascii_alphanumeric() || *byte == b'-' || *byte == b'_')
 }
 
 impl Serialize for NetworkAddress {
@@ -111,6 +139,12 @@ mod tests {
     fn parses_hostname() {
         let addr: NetworkAddress = "time.cloudflare.com".parse().unwrap();
         assert_eq!(addr.as_str(), "time.cloudflare.com");
+    }
+
+    #[test]
+    fn parses_hostname_with_underscore_label() {
+        let addr: NetworkAddress = "ntp_box.lan".parse().unwrap();
+        assert_eq!(addr.as_str(), "ntp_box.lan");
     }
 
     #[test]
@@ -179,15 +213,36 @@ mod tests {
 
     #[test]
     fn leaves_address_without_ntp_port_unchanged() {
-        let cases = [
-            "time.cloudflare.com",
-            "192.168.0.1",
-            "2001:db8::1",
-            "pool.ntp.org:456",
-        ];
+        let cases = ["time.cloudflare.com", "192.168.0.1", "2001:db8::1"];
         for input in cases {
             let addr: NetworkAddress = input.parse().unwrap();
             assert_eq!(addr.as_str(), input, "input: {input}");
+        }
+    }
+
+    #[test]
+    fn accepts_fqdn_trailing_dot() {
+        let addr: NetworkAddress = "pool.ntp.org.".parse().unwrap();
+        assert_eq!(addr.as_str(), "pool.ntp.org.");
+    }
+
+    #[test]
+    fn rejects_repeated_trailing_dots() {
+        assert!("pool.ntp.org..".parse::<NetworkAddress>().is_err());
+    }
+
+    #[test]
+    fn rejects_garbage() {
+        let cases = [
+            "!!!",
+            "not a host",
+            "time..cloudflare.com",
+            "-bad.example",
+            "bad-.example",
+            "pool.ntp.org:456",
+        ];
+        for input in cases {
+            assert!(input.parse::<NetworkAddress>().is_err(), "input: {input}");
         }
     }
 }

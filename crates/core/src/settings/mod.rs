@@ -413,6 +413,16 @@ impl Intermissions {
     }
 }
 
+fn deserialize_ntp_server<'de, D>(deserializer: D) -> Result<NetworkAddress, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = String::deserialize(deserializer)?;
+    Ok(value
+        .parse()
+        .unwrap_or_else(|_| NetworkAddress::ntp_cloudflare()))
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case")]
 pub struct Settings {
@@ -434,7 +444,10 @@ pub struct Settings {
     /// NTP server used for automatic and manual time sync.
     ///
     /// Port 123 is fixed; only the hostname or IP is stored.
-    #[serde(default = "NetworkAddress::ntp_cloudflare")]
+    #[serde(
+        default = "NetworkAddress::ntp_cloudflare",
+        deserialize_with = "deserialize_ntp_server"
+    )]
     pub ntp_server: NetworkAddress,
     /// Whether frontlight levels should be managed automatically.
     ///
@@ -496,6 +509,13 @@ pub struct Settings {
     pub locale: Option<LanguageIdentifier>,
 }
 
+/// Longest timeout the settings editor accepts: one year in seconds.
+///
+/// RTC scheduling adds a timeout to the current wall clock and the Linux wake
+/// lock adds it to a monotonic instant; both panic near their type limits, so
+/// timeouts stay far below them.
+pub(crate) const MAX_TIMEOUT_SECONDS: f32 = 365.0 * 86_400.0;
+
 impl Settings {
     /// Normalizes unsupported settings values loaded from disk.
     pub fn sanitize(&mut self) -> bool {
@@ -514,6 +534,19 @@ impl Settings {
             return true;
         }
         false
+    }
+
+    /// Soft-suspend grace delay, capped at [`MAX_TIMEOUT_SECONDS`].
+    ///
+    /// A hand-edited `Settings.toml` can hold a value the monotonic wake lock
+    /// cannot add to `Instant::now()`, so clamp it into the accepted range.
+    pub(crate) fn autosleep_grace_duration(&self) -> std::time::Duration {
+        let seconds = if self.autosleep_grace.is_nan() {
+            0.0
+        } else {
+            self.autosleep_grace.clamp(0.0, MAX_TIMEOUT_SECONDS)
+        };
+        std::time::Duration::from_secs_f32(seconds)
     }
 }
 
@@ -1096,6 +1129,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn autosleep_grace_duration_treats_nan_as_zero() {
+        let settings = Settings {
+            autosleep_grace: f32::NAN,
+            ..Settings::default()
+        };
+        assert_eq!(
+            settings.autosleep_grace_duration(),
+            std::time::Duration::ZERO
+        );
+    }
+
+    #[test]
     fn test_ota_settings_serializes_empty() {
         let settings = OtaSettings::default();
         let serialized = toml::to_string(&settings).expect("Failed to serialize");
@@ -1406,6 +1451,30 @@ unknown-format = { regular = 1, inverted = 1 }
         let settings: Settings = toml::from_str("wifi = true\n").expect("settings");
         assert_eq!(settings.wifi, WifiMode::AlwaysOn);
         assert_eq!(settings.wifi_idle_timeout, 5.0);
+    }
+
+    #[test]
+    fn invalid_ntp_server_falls_back_to_cloudflare() {
+        let settings: Settings = toml::from_str("ntp-server = \"!!!\"\n").expect("settings");
+        assert_eq!(settings.ntp_server.as_str(), "time.cloudflare.com");
+    }
+
+    #[test]
+    fn valid_ntp_server_still_loads() {
+        let settings: Settings =
+            toml::from_str("ntp-server = \"pool.ntp.org\"\n").expect("settings");
+        assert_eq!(settings.ntp_server.as_str(), "pool.ntp.org");
+    }
+
+    #[test]
+    fn underscore_ntp_server_round_trips_without_fallback() {
+        let settings: Settings =
+            toml::from_str("ntp-server = \"ntp_box.lan\"\n").expect("settings");
+        assert_eq!(settings.ntp_server.as_str(), "ntp_box.lan");
+
+        let serialized = toml::to_string(&settings).expect("serialize");
+        let reparsed: Settings = toml::from_str(&serialized).expect("settings");
+        assert_eq!(reparsed.ntp_server.as_str(), "ntp_box.lan");
     }
 
     #[test]

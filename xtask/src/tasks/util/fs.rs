@@ -31,6 +31,49 @@ pub fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Copies an exported site into `dst`, skipping `storybook` and symlinks.
+///
+/// The export holds one real copy of each shared tree under `_shared`, so the
+/// device copy needs no further deduplication.
+///
+/// # Errors
+///
+/// Returns an error if a directory cannot be created or a file cannot be copied.
+pub fn copy_site(src: &Path, dst: &Path) -> Result<()> {
+    copy_tree(src, dst, &["storybook"], false)
+}
+
+/// Copies `src` into `dst`, leaving out entries named in `exclude` at every
+/// depth. Symlinks are followed when `follow_symlinks` is set and skipped
+/// otherwise.
+fn copy_tree(src: &Path, dst: &Path, exclude: &[&str], follow_symlinks: bool) -> Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        if exclude.iter().any(|excluded| name == *excluded) {
+            continue;
+        }
+        if !follow_symlinks && entry.file_type()?.is_symlink() {
+            continue;
+        }
+        let src_path = entry.path();
+        let dst_path = dst.join(&name);
+        if src_path.is_dir() {
+            copy_tree(&src_path, &dst_path, exclude, follow_symlinks)?;
+        } else {
+            std::fs::copy(&src_path, &dst_path).with_context(|| {
+                format!(
+                    "failed to copy {} → {}",
+                    src_path.display(),
+                    dst_path.display()
+                )
+            })?;
+        }
+    }
+    Ok(())
+}
+
 /// Creates a `.tar.gz` archive at `dest` from `entries` inside `base_dir`.
 ///
 /// # Errors
@@ -538,6 +581,46 @@ mod tests {
 
         assert_eq!(fs::read(dst.join("a.txt")).unwrap(), b"a");
         assert_eq!(fs::read(dst.join("sub/b.txt")).unwrap(), b"b");
+    }
+
+    #[test]
+    fn copy_site_skips_storybook() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("out");
+        fs::create_dir_all(src.join("_shared/api")).unwrap();
+        fs::write(src.join("_shared/api/index.html"), b"api").unwrap();
+        fs::create_dir_all(src.join("en")).unwrap();
+        fs::write(src.join("en/index.html"), b"en").unwrap();
+        fs::create_dir_all(src.join("storybook")).unwrap();
+        fs::write(src.join("storybook/index.html"), b"sb").unwrap();
+
+        let dst = tmp.path().join("website");
+        copy_site(&src, &dst).unwrap();
+        assert_eq!(
+            fs::read(dst.join("_shared/api/index.html")).unwrap(),
+            b"api"
+        );
+        assert_eq!(fs::read(dst.join("en/index.html")).unwrap(), b"en");
+        assert!(!dst.join("storybook").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn copy_site_skips_symlinks_while_copy_dir_all_follows_them() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("src");
+        fs::create_dir_all(&src).unwrap();
+        fs::write(src.join("target.txt"), b"t").unwrap();
+        std::os::unix::fs::symlink(src.join("target.txt"), src.join("link.txt")).unwrap();
+
+        let site = tmp.path().join("site");
+        copy_site(&src, &site).unwrap();
+        assert!(site.join("target.txt").exists());
+        assert!(!site.join("link.txt").exists());
+
+        let all = tmp.path().join("all");
+        copy_dir_all(&src, &all).unwrap();
+        assert_eq!(fs::read(all.join("link.txt")).unwrap(), b"t");
     }
 
     #[test]

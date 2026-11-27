@@ -391,6 +391,11 @@ impl BuildTimestamp {
                 .and_then(|seconds| DateTime::from_timestamp(seconds, 0)),
         }
     }
+
+    /// Unix epoch seconds when the timestamp parsed. None when BUILD_TIMESTAMP is not a number.
+    pub fn unix_seconds(&self) -> Option<i64> {
+        self.datetime.map(|datetime| datetime.timestamp())
+    }
 }
 
 impl std::fmt::Display for GitVersion {
