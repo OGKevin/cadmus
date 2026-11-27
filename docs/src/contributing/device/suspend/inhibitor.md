@@ -53,7 +53,8 @@ for the lifetime of the work or UI. Dropping it releases the lease.
   <a href="/api/cadmus_core/device/suspend/orchestrator/fn.start_cycle.html">`start_cycle`</a>,
   menu power-off/restart/reboot/quit/switch-install and long-press power-off.
   A live `RtcAlarmFired(AutoPowerOff)` event is ignored while Full is active.
-  Battery-monitor safety power-off is **not** blocked.
+  Battery-monitor safety power-off is **not** blocked. Internal `Event::Exit`
+  events are not user intent and are never refused.
 
 Sleep and Full holders use free-form names (`"main-menu"`, `"ota"`). SoftSuspend
 uses

@@ -294,6 +294,7 @@ impl DeviceLifecycle for Device {
             | Event::UpdateAutoFrontlight => {
                 frontlight::handle_event(event, hub, bus, rq, context, runtime).await
             }
+            Event::Exit(status) => EventOutcome::Exit(status.clone()),
             Event::Gesture(GestureEvent::HoldButtonLong(ButtonCode::Power))
             | Event::Select(EntryId::PowerOff)
             | Event::Select(EntryId::Restart)
@@ -315,6 +316,7 @@ mod suspend_tests;
 #[cfg(all(test, feature = "kobo"))]
 mod tests {
     use super::*;
+    use crate::device::inhibitor::Kind;
     use crate::device::rtc::{AlarmType, shutdown_rtc};
     use crate::device::test_harness::DeviceRuntimeHarness;
     use crate::device::wifi::{Essid, NetworkInfo};
@@ -572,5 +574,81 @@ mod tests {
         );
         assert!(std::path::Path::new("/tmp/restart").exists());
         let _ = std::fs::remove_file("/tmp/restart");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn exit_reboot_ignores_full_lease() {
+        let mut harness = DeviceRuntimeHarness::new().await;
+        let _guard = harness
+            .context
+            .inhibitor
+            .acquire(Kind::Full, "ota")
+            .unwrap();
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            Device::handle_event(
+                &Event::Exit(ExitStatus::Reboot),
+                hub,
+                bus,
+                rq,
+                context,
+                runtime,
+            )
+        });
+        assert_eq!(outcome, EventOutcome::Exit(ExitStatus::Reboot));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn exit_restart_ignores_full_lease() {
+        let mut harness = DeviceRuntimeHarness::new().await;
+        let _guard = harness
+            .context
+            .inhibitor
+            .acquire(Kind::Full, "ota")
+            .unwrap();
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            Device::handle_event(
+                &Event::Exit(ExitStatus::Restart),
+                hub,
+                bus,
+                rq,
+                context,
+                runtime,
+            )
+        });
+        assert_eq!(outcome, EventOutcome::Exit(ExitStatus::Restart));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn exit_reboot_ignores_shared() {
+        let mut harness = DeviceRuntimeHarness::new().await;
+        harness.context.shared = true;
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            Device::handle_event(
+                &Event::Exit(ExitStatus::Reboot),
+                hub,
+                bus,
+                rq,
+                context,
+                runtime,
+            )
+        });
+        assert_eq!(outcome, EventOutcome::Exit(ExitStatus::Reboot));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn exit_restart_ignores_shared() {
+        let mut harness = DeviceRuntimeHarness::new().await;
+        harness.context.shared = true;
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            Device::handle_event(
+                &Event::Exit(ExitStatus::Restart),
+                hub,
+                bus,
+                rq,
+                context,
+                runtime,
+            )
+        });
+        assert_eq!(outcome, EventOutcome::Exit(ExitStatus::Restart));
     }
 }

@@ -12,8 +12,7 @@ use crate::framebuffer::UpdateMode;
 use crate::settings::IntermKind;
 use crate::view::intermission::Intermission;
 use crate::view::{
-    Bus, EntryId, Event, Hub, NotificationEvent, RenderData, RenderQueue, UpdateData, View,
-    wait_for_all,
+    Bus, Event, Hub, NotificationEvent, RenderData, RenderQueue, UpdateData, View, wait_for_all,
 };
 use std::env;
 use std::path::Path;
@@ -95,7 +94,8 @@ async fn prepare_usb_share(
 /// Redirects logging to `/tmp`, exposes onboard storage via the USB manager,
 /// and moves the working directory to `/tmp`.
 ///
-/// On failure, shows a notification and schedules a restart or reboot.
+/// On failure, shows a notification and then schedules [`Event::Exit`] with a
+/// restart or reboot after a short delay.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(hub, tasks, context)))]
 async fn enable_usb_share(
     context: &mut AppContext,
@@ -117,7 +117,7 @@ async fn enable_usb_share(
         .ok();
         schedule_device_task(
             DeviceTaskId::Exit,
-            Event::Select(EntryId::Restart),
+            Event::Exit(ExitStatus::Restart),
             Duration::from_secs(3),
             hub,
             tasks,
@@ -145,7 +145,7 @@ async fn enable_usb_share(
                 .ok();
                 schedule_device_task(
                     DeviceTaskId::Exit,
-                    Event::Select(EntryId::Reboot),
+                    Event::Exit(ExitStatus::Reboot),
                     Duration::from_secs(3),
                     hub,
                     tasks,
@@ -163,7 +163,7 @@ async fn enable_usb_share(
             .ok();
             schedule_device_task(
                 DeviceTaskId::Exit,
-                Event::Select(EntryId::Restart),
+                Event::Exit(ExitStatus::Restart),
                 Duration::from_secs(3),
                 hub,
                 tasks,
@@ -179,10 +179,11 @@ async fn enable_usb_share(
 /// working directory, then returns [`ExitStatus::Reboot`] when `update_bundle`
 /// is present on onboard storage and [`ExitStatus::Restart`] otherwise.
 ///
-/// This sends no [`Event::Select`]. Those exits carry user intent and the
-/// device may refuse them while a USB share session or a Full lease is active;
-/// lifecycle code that must end the process returns [`EventOutcome::Exit`]
-/// with the required [`ExitStatus`] instead.
+/// This sends no [`Event::Select`]: those exits carry user intent and the
+/// device may refuse them while a USB share session or a Full lease is active.
+/// Lifecycle code that must end the process returns [`EventOutcome::Exit`] with
+/// the required [`ExitStatus`] instead, as [`enable_usb_share`] does by
+/// scheduling [`Event::Exit`] when share start fails.
 pub(super) async fn disable_usb_share(
     context: &AppContext,
     startup_cwd: Option<&Path>,
@@ -419,5 +420,43 @@ mod tests {
                 .disable_call_count(),
             1
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn failed_share_start_reboots_even_while_a_full_lease_is_held() {
+        let mut harness = DeviceRuntimeHarness::new().await;
+        let _full = harness
+            .context
+            .inhibitor
+            .acquire(crate::device::inhibitor::Kind::Full, "ota")
+            .expect("full lease");
+        harness
+            .context
+            .device
+            .usb_manager_for_test()
+            .set_fail_enable(true);
+        let hub = harness.hub_tx.clone();
+        let mut tasks = Vec::new();
+
+        enable_usb_share(&mut harness.context, &hub, &mut tasks).await;
+
+        assert!(!harness.context.shared);
+        assert!(tasks.iter().any(|task| task.id == DeviceTaskId::Exit));
+        let immediate = harness.drain_hub();
+        assert!(
+            immediate
+                .iter()
+                .any(|event| matches!(event, Event::Notification(NotificationEvent::Show(_))))
+        );
+        assert!(
+            !immediate
+                .iter()
+                .any(|event| matches!(event, Event::Exit(_)))
+        );
+
+        tokio::time::sleep(Duration::from_millis(3500)).await;
+        let delayed = harness.drain_hub();
+        assert_eq!(delayed.len(), 1);
+        assert!(matches!(delayed[0], Event::Exit(ExitStatus::Reboot)));
     }
 }

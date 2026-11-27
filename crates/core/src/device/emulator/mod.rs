@@ -666,6 +666,25 @@ async fn show_suspend_intermission(
     runtime.view.children_mut().push(Box::new(interm));
 }
 
+/// Maps an exit status to the emulator's outcome.
+///
+/// `Reboot` waits for the device to settle and then quits, matching the
+/// emulator's `Select(EntryId::Reboot)` behaviour. Every other status is
+/// passed through unchanged.
+fn map_exit_status(status: ExitStatus) -> ExitStatus {
+    match status {
+        ExitStatus::Reboot => ExitStatus::Quit,
+        _ => status,
+    }
+}
+
+async fn exit_outcome(status: ExitStatus) -> EventOutcome {
+    if status == ExitStatus::Reboot {
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
+    EventOutcome::Exit(map_exit_status(status))
+}
+
 impl DeviceLifecycle for EmulatorDevice {
     async fn on_shutdown(
         _context: &mut ShutdownContext<'_, AppDevice>,
@@ -752,10 +771,8 @@ impl DeviceLifecycle for EmulatorDevice {
             Event::RtcAlarmFired(crate::AlarmType::Suspend | crate::AlarmType::WakeDebounce) => {
                 EventOutcome::Handled
             }
-            Event::Select(EntryId::Reboot) => {
-                std::thread::sleep(std::time::Duration::from_secs(3));
-                EventOutcome::Exit(crate::device::ExitStatus::Quit)
-            }
+            Event::Exit(status) => exit_outcome(status.clone()).await,
+            Event::Select(EntryId::Reboot) => exit_outcome(ExitStatus::Reboot).await,
             Event::Select(EntryId::SyncTime) => {
                 tracing::info!("Sync Time requested (no-op in emulator)");
                 EventOutcome::Handled
@@ -939,7 +956,7 @@ mod wifi_tests {
 
 #[cfg(all(test, feature = "emulator"))]
 mod lifecycle {
-    use super::{EmulatorDevice, handle_toggle_frontlight};
+    use super::{EmulatorDevice, handle_toggle_frontlight, map_exit_status};
     use crate::context::test_helpers::create_test_context;
     use crate::device::DeviceLifecycle as _;
     use crate::device::test_harness::DeviceRuntimeHarness;
@@ -994,6 +1011,27 @@ mod lifecycle {
             )
         });
         assert_eq!(outcome, EventOutcome::Exit(ExitStatus::PowerOff));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_exit_restart_exits() {
+        let mut harness = DeviceRuntimeHarness::new().await;
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            EmulatorDevice::handle_event(
+                &Event::Exit(ExitStatus::Restart),
+                hub,
+                bus,
+                rq,
+                context,
+                runtime,
+            )
+        });
+        assert_eq!(outcome, EventOutcome::Exit(ExitStatus::Restart));
+    }
+
+    #[test]
+    fn exit_reboot_maps_to_quit() {
+        assert_eq!(map_exit_status(ExitStatus::Reboot), ExitStatus::Quit);
     }
 }
 

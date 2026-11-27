@@ -93,9 +93,9 @@ struct ShutdownState<'a> {
 /// clears the handle before cancellation runs, so the job never receives stop.
 ///
 /// Only shutdown-related events are acted on: [`Event::CheckBattery`], which can
-/// return a low-battery `PowerOff` and records battery state before teardown, and
-/// the direct exit intents (`Select(PowerOff|Restart|Reboot|Quit)` and
-/// [`Event::Quit`]). The exit intents are dispatched through the normal device
+/// return a low-battery `PowerOff` and records battery state before teardown, the
+/// direct exit intents (`Select(PowerOff|Restart|Reboot|Quit)`), and
+/// [`Event::Exit`]. The exit intents are dispatched through the normal device
 /// handler so `user_exit_blocked`, the power-off intermission, and the emulator's
 /// `Reboot` → `Quit` mapping still apply. Everything else is dropped — replaying an
 /// arbitrary queued device event here would run teardown-hostile transitions such
@@ -166,23 +166,25 @@ async fn stop_producers_and_drain(
 ///
 /// [`Event::CheckBattery`] can return a low-battery [`ExitStatus::PowerOff`] and
 /// records the battery level before the device goes down. The direct exit intents
-/// are replayed through the device handler (not short-circuited) so that
-/// `user_exit_blocked`, the power-off intermission, and the emulator's `Reboot` →
-/// `Quit` mapping still run. Any other event can only mutate UI or platform state
-/// that teardown is already dismantling, so it is dropped rather than replayed.
+/// ([`Event::Select`] with an exit [`EntryId`]) and [`Event::Exit`] are replayed
+/// through the device handler (not short-circuited) so that `user_exit_blocked`,
+/// the power-off intermission, and the emulator's `Reboot` → `Quit` mapping still
+/// run. Any other event can only mutate UI or platform state that teardown is
+/// already dismantling, so it is dropped rather than replayed.
 fn is_shutdown_related_event(evt: &Event) -> bool {
-    matches!(evt, Event::CheckBattery) || is_exit_intent(evt)
+    matches!(evt, Event::CheckBattery | Event::Exit(_)) || is_exit_intent(evt)
 }
 
-/// Whether an event asks the process to exit.
+/// Whether an event asks the process to exit on user intent.
 ///
 /// The device can refuse these while the Full inhibit is held, so the caller
-/// has to tell a refused exit from an accepted one.
+/// has to tell a refused exit from an accepted one. [`Event::Exit`] is not a
+/// user intent: Cadmus decided on its own to end the process, so it is never
+/// refused and must not be treated as an exit intent.
 fn is_exit_intent(evt: &Event) -> bool {
     matches!(
         evt,
-        Event::Quit
-            | Event::Select(EntryId::PowerOff)
+        Event::Select(EntryId::PowerOff)
             | Event::Select(EntryId::Restart)
             | Event::Select(EntryId::Reboot)
             | Event::Select(EntryId::Quit)
@@ -1322,6 +1324,13 @@ mod tests {
     }
 
     #[test]
+    fn queued_exit_reboot_outranks_quit_in_the_drain() {
+        assert!(is_shutdown_related_event(&Event::Exit(ExitStatus::Reboot)));
+        let merged = merge_shutdown_exit_status(ExitStatus::Quit, ExitStatus::Reboot);
+        assert!(matches!(merged, ExitStatus::Reboot));
+    }
+
+    #[test]
     fn a_queued_power_off_is_not_downgraded_by_quit() {
         let merged = merge_shutdown_exit_status(ExitStatus::PowerOff, ExitStatus::Quit);
         assert!(matches!(merged, ExitStatus::PowerOff));
@@ -1339,7 +1348,16 @@ mod tests {
         assert!(is_shutdown_related_event(&Event::Select(EntryId::Restart)));
         assert!(is_shutdown_related_event(&Event::Select(EntryId::PowerOff)));
         assert!(is_shutdown_related_event(&Event::Select(EntryId::Quit)));
-        assert!(is_shutdown_related_event(&Event::Quit));
+    }
+
+    #[test]
+    fn exit_events_are_replayed_through_the_handler() {
+        assert!(is_shutdown_related_event(&Event::Exit(ExitStatus::Reboot)));
+        assert!(is_shutdown_related_event(&Event::Exit(ExitStatus::Restart)));
+        assert!(is_shutdown_related_event(&Event::Exit(
+            ExitStatus::PowerOff
+        )));
+        assert!(is_shutdown_related_event(&Event::Exit(ExitStatus::Quit)));
     }
 
     #[test]
@@ -1364,7 +1382,14 @@ mod tests {
         assert!(is_exit_intent(&Event::Select(EntryId::Restart)));
         assert!(is_exit_intent(&Event::Select(EntryId::PowerOff)));
         assert!(is_exit_intent(&Event::Select(EntryId::Reboot)));
-        assert!(is_exit_intent(&Event::Quit));
+    }
+
+    #[test]
+    fn exit_events_are_not_exit_intents() {
+        assert!(!is_exit_intent(&Event::Exit(ExitStatus::Reboot)));
+        assert!(!is_exit_intent(&Event::Exit(ExitStatus::Restart)));
+        assert!(!is_exit_intent(&Event::Exit(ExitStatus::PowerOff)));
+        assert!(!is_exit_intent(&Event::Exit(ExitStatus::Quit)));
     }
 
     #[test]
@@ -1378,6 +1403,17 @@ mod tests {
                 false,
             ),
             (Event::Select(EntryId::Restart), EventOutcome::Handled, true),
+            (
+                Event::Exit(ExitStatus::Reboot),
+                EventOutcome::Handled,
+                false,
+            ),
+            (
+                Event::Exit(ExitStatus::Reboot),
+                EventOutcome::Exit(ExitStatus::Reboot),
+                false,
+            ),
+            (Event::Exit(ExitStatus::Quit), EventOutcome::Handled, false),
         ];
         for (evt, outcome, expected) in cases {
             assert_eq!(exit_was_refused(&evt, &outcome), expected);
