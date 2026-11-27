@@ -678,9 +678,9 @@ fn map_exit_status(status: ExitStatus) -> ExitStatus {
     }
 }
 
-fn exit_outcome(status: ExitStatus) -> EventOutcome {
+async fn exit_outcome(status: ExitStatus) -> EventOutcome {
     if status == ExitStatus::Reboot {
-        std::thread::sleep(std::time::Duration::from_secs(3));
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
     }
     EventOutcome::Exit(map_exit_status(status))
 }
@@ -771,8 +771,8 @@ impl DeviceLifecycle for EmulatorDevice {
             Event::RtcAlarmFired(crate::AlarmType::Suspend | crate::AlarmType::WakeDebounce) => {
                 EventOutcome::Handled
             }
-            Event::Exit(status) => exit_outcome(status.clone()),
-            Event::Select(EntryId::Reboot) => exit_outcome(ExitStatus::Reboot),
+            Event::Exit(status) => exit_outcome(status.clone()).await,
+            Event::Select(EntryId::Reboot) => exit_outcome(ExitStatus::Reboot).await,
             Event::Select(EntryId::SyncTime) => {
                 tracing::info!("Sync Time requested (no-op in emulator)");
                 EventOutcome::Handled
