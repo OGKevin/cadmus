@@ -1,0 +1,47 @@
+{
+  "metadata": {
+    "title": "Camus",
+    "description": "Applicazione di lettura alternativa per dispositivi Lobo"
+  },
+  "heading": {
+    "subtitle": "Applicazione di lettura alternativa per i lettori elettronici Lobo"
+  },
+  "actions": {
+    "viewOnGithub": "Visualizza su GitHub",
+    "latestRelease": "Ultima Versione",
+    "latestReleaseVersion": "Ultima Versione ({version})"
+  },
+  "docs": {
+    "userGuide": {
+      "label": "Guida Utente",
+      "description": "Installazione, configurazione e utilizzo"
+    },
+    "translations": {
+      "label": "Traduzioni",
+      "description": "Aiutaci a tradurre Camus"
+    },
+    "apiReference": {
+      "label": "API di Riferimento",
+      "description": "Create Documentazione Rush"
+    },
+    "storybook": {
+      "label": "Sfoglia Libreria Componenti",
+      "description": "Sfoglia componenti UI"
+    },
+    "planning": {
+      "label": "Pianificazione",
+      "description": "Roadmap, tappe e task in corso"
+    }
+  },
+  "footer": {
+    "poweredBy": "{year} Camus — realizzato con <nextjs>Next.js</nextjs>, <mdbook>mdBook</mdbook>, <Kumo>Kumo</kumo> e <storybook>storybook.</storybook>"
+  },
+  "notFound": {
+    "message": "Pagina non trovata.",
+    "backHome": "Torna alla Home"
+  },
+  "language": {
+    "name": "Inglese",
+    "change": "Cambia lingua"
+  }
+}
