@@ -219,6 +219,9 @@ pub fn toggle_main_menu(
                 EntryId::Launch(AppCmd::Calculator),
             ),
             EntryKind::Command("Sketch".to_string(), EntryId::Launch(AppCmd::Sketch)),
+            // TODO: Let EntryKind::Command accept typed labels instead of converting here.
+            #[cfg(feature = "terminal")]
+            EntryKind::Command(super::terminal::title(), EntryId::Launch(AppCmd::Terminal)),
             EntryKind::Separator,
             EntryKind::Command(
                 "Touch Events".to_string(),
