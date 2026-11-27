@@ -1,9 +1,11 @@
 //! Loopback interface control.
 //!
-//! Kobo boots with `lo` down, and [`mdns_sd`](https://crates.io/crates/mdns-sd)
-//! binds its daemon signal socket to `127.0.0.1`. Discovery therefore fails
-//! with `EADDRNOTAVAIL` until the interface is up. The Kobo lifecycle raises it
-//! in `on_startup` and restores the boot state in `on_shutdown`.
+//! Kobo boots with `lo` down. The private API listens on `127.0.0.1:8474`, and
+//! mDNS advertises Presence and subsystem services on loopback so programs on
+//! the device can find them; both need `lo` up. The Kobo lifecycle raises it in
+//! `on_startup` and restores the boot state in `on_shutdown`. `mdns-sd` 0.22 no
+//! longer binds a daemon signal socket to `127.0.0.1`, so it does not need `lo`
+//! itself.
 
 use tokio::process::Command;
 

@@ -11,6 +11,15 @@
 //! follows those renames so later registrations and `GetStatus` report the
 //! name the LAN actually sees.
 //!
+//! Records are announced on every interface, loopback included, so programs
+//! on the device can browse without Wi-Fi. Each interface answers only with
+//! the addresses valid on it, so answers on the LAN never carry `127.0.0.1`.
+//!
+//! The info-level announcement line comes from
+//! [`mdns_sd::DaemonEvent::Announce`], once per interface and
+//! re-announcement, so it means records actually went out. Accepting a
+//! registration only logs `mdns registered` at debug.
+//!
 //! This module does not take a Wi-Fi lease. Multicast only leaves the radio
 //! when some other holder already brought it up.
 
@@ -31,7 +40,7 @@ const HOSTNAME: &str = "cadmus";
 const SERVICE_NAME_LEN_MAX: u8 = 30;
 #[cfg_attr(not(test), expect(dead_code, reason = "no TCP caller yet"))]
 const SUBSYSTEM_MAX_LEN: usize = SERVICE_NAME_LEN_MAX as usize - CADMUS_PREFIX.len();
-/// Long enough for the daemon thread to notice `Exit`. The signal socket wakes it.
+/// Long enough for the daemon thread to notice `Exit`.
 const SHUTDOWN_WAIT: Duration = Duration::from_millis(500);
 
 /// DNS-SD subsystem label inside `_cadmus-<name>._tcp.local.`.
@@ -192,8 +201,9 @@ pub(crate) struct Service {
     /// Application port. `0` means no listener (presence).
     pub port: u16,
     pub txt: TxtRecords,
-    /// Preferred address. Loopback and unspecified are omitted; `enable_addr_auto`
-    /// then fills addresses from the host.
+    /// Preferred address. Loopback and unspecified are omitted from it;
+    /// address auto still adds every address the host has, including
+    /// `127.0.0.1` on `lo`.
     pub ip: Option<IpAddr>,
 }
 
@@ -246,8 +256,9 @@ impl MdnsSession {
 
     /// Starts the daemon and the presence record if they are not already up.
     ///
-    /// A bind failure on UDP 5353 leaves the session inert. Callers treat that
-    /// as optional: HTTP listeners still work, LAN discovery does not.
+    /// The daemon skips interfaces it cannot bind. Only a failure to start it
+    /// leaves the session inert; callers treat that as optional: HTTP
+    /// listeners still work, LAN discovery does not.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), level = tracing::Level::TRACE))]
     pub fn start(&mut self) {
         if self.daemon.is_some() {
@@ -264,8 +275,8 @@ impl MdnsSession {
             tracing::warn!(error = %error, "mdns service-name limit unchanged");
         }
         match daemon.monitor() {
-            Ok(events) => follow_renames(events, Arc::clone(&self.hostname)),
-            Err(error) => tracing::warn!(error = %error, "mdns name-change monitor unavailable"),
+            Ok(events) => monitor_events(events, Arc::clone(&self.hostname)),
+            Err(error) => tracing::warn!(error = %error, "mdns event monitor unavailable"),
         }
         self.daemon = Some(daemon);
         let hostname = self.hostname();
@@ -277,7 +288,7 @@ impl MdnsSession {
             ip: None,
         });
         if self.presence.is_some() {
-            tracing::info!(hostname = %hostname, "mdns presence announced");
+            tracing::debug!(hostname = %hostname, "mdns presence registered");
         }
     }
 
@@ -302,10 +313,10 @@ impl MdnsSession {
             );
             return None;
         }
-        tracing::info!(
+        tracing::debug!(
             fullname = %fullname,
             port = service.port,
-            "mdns announced"
+            "mdns registered"
         );
         Some(Registration {
             daemon: daemon.clone(),
@@ -371,26 +382,87 @@ impl Drop for MdnsSession {
     }
 }
 
-/// Applies the hostname renames `mdns-sd` makes to resolve conflicts.
+/// What the monitor logs for one daemon event.
+#[derive(Debug, PartialEq, Eq)]
+enum MonitorLog {
+    Announce { fullname: String, interface: String },
+    Renamed { hostname: String },
+    IpAdded(IpAddr),
+    IpRemoved(IpAddr),
+    Error(String),
+}
+
+/// Applies one daemon event and returns the line the monitor logs for it.
+///
+/// Kept free of the daemon and the runtime so the log contract is testable.
+#[cfg_attr(feature = "tracing", tracing::instrument(level = tracing::Level::TRACE))]
+fn handle_daemon_event(event: &mdns_sd::DaemonEvent, hostname: &mut String) -> Option<MonitorLog> {
+    match event {
+        mdns_sd::DaemonEvent::Announce(fullname, payload) => Some(MonitorLog::Announce {
+            fullname: fullname.clone(),
+            interface: announce_interface(payload).to_string(),
+        }),
+        mdns_sd::DaemonEvent::NameChange(change) => {
+            let name = host_record_name(change)?;
+            hostname.clone_from(&name);
+            Some(MonitorLog::Renamed { hostname: name })
+        }
+        mdns_sd::DaemonEvent::IpAdd(ip) => Some(MonitorLog::IpAdded(*ip)),
+        mdns_sd::DaemonEvent::IpDel(ip) => Some(MonitorLog::IpRemoved(*ip)),
+        mdns_sd::DaemonEvent::Error(error) => Some(MonitorLog::Error(error.to_string())),
+        _ => None,
+    }
+}
+
+/// Logs daemon events and applies the hostname renames `mdns-sd` makes.
 ///
 /// The monitor channel is bounded and the daemon drops events when it is
 /// full, so a task drains it continuously instead of on demand. The task
 /// ends when the daemon shuts down and closes the channel.
-fn follow_renames(events: mdns_sd::Receiver<mdns_sd::DaemonEvent>, hostname: Arc<Mutex<String>>) {
+fn monitor_events(events: mdns_sd::Receiver<mdns_sd::DaemonEvent>, hostname: Arc<Mutex<String>>) {
     tokio::spawn(async move {
         while let Ok(event) = events.recv_async().await {
-            let mdns_sd::DaemonEvent::NameChange(change) = event else {
-                continue;
-            };
-            let Some(name) = host_record_name(&change) else {
-                continue;
-            };
-            tracing::info!(hostname = %name, "mdns hostname renamed after a conflict");
-            if let Ok(mut host) = hostname.lock() {
-                *host = name;
+            let mut host = hostname
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            match handle_daemon_event(&event, &mut host) {
+                Some(MonitorLog::Announce {
+                    fullname,
+                    interface,
+                }) => {
+                    tracing::info!(fullname = %fullname, interface = %interface, "mdns announced");
+                }
+                Some(MonitorLog::Renamed { hostname }) => {
+                    tracing::info!(hostname = %hostname, "mdns hostname renamed after a conflict");
+                }
+                Some(MonitorLog::IpAdded(ip)) => {
+                    tracing::debug!(ip = %ip, "mdns interface address added");
+                }
+                Some(MonitorLog::IpRemoved(ip)) => {
+                    tracing::debug!(ip = %ip, "mdns interface address removed");
+                }
+                Some(MonitorLog::Error(error)) => {
+                    tracing::warn!(error = %error, "mdns daemon error");
+                }
+                None => {}
             }
         }
     });
+}
+
+/// Interface name from an [`mdns_sd::DaemonEvent::Announce`] payload.
+///
+/// Re-announcements carry `<host>:<interface>`. The first announcement after a
+/// registration carries the debug list of the addresses that went out, which
+/// names no interface, so it is logged as given.
+#[cfg_attr(feature = "tracing", tracing::instrument(level = tracing::Level::TRACE))]
+fn announce_interface(payload: &str) -> &str {
+    match payload.rsplit_once(':') {
+        Some((host, interface)) if host.ends_with(".local.") || host.ends_with(".local") => {
+            interface
+        }
+        _ => payload,
+    }
 }
 
 /// Host label from a rename `mdns-sd` made after a name conflict.
@@ -588,5 +660,91 @@ mod tests {
         drop(tcp);
         session.shutdown();
         assert!(!session.is_live());
+    }
+
+    #[test]
+    fn daemon_events_produce_the_expected_logs() {
+        let mut hostname = "cadmus".to_string();
+        let announce = |payload: &str| {
+            mdns_sd::DaemonEvent::Announce("_cadmus._udp.local.".to_string(), payload.to_string())
+        };
+        assert_eq!(
+            handle_daemon_event(&announce("cadmus.local.:eth0"), &mut hostname),
+            Some(MonitorLog::Announce {
+                fullname: "_cadmus._udp.local.".to_string(),
+                interface: "eth0".to_string(),
+            })
+        );
+        assert_eq!(
+            handle_daemon_event(&announce("[192.168.1.5, 127.0.0.1]"), &mut hostname),
+            Some(MonitorLog::Announce {
+                fullname: "_cadmus._udp.local.".to_string(),
+                interface: "[192.168.1.5, 127.0.0.1]".to_string(),
+            })
+        );
+        assert_eq!(hostname, "cadmus");
+
+        let rename = |new_name: &str, rr_type| {
+            mdns_sd::DaemonEvent::NameChange(mdns_sd::DnsNameChange {
+                original: "cadmus".to_string(),
+                new_name: new_name.to_string(),
+                rr_type,
+                intf_name: "en0".to_string(),
+            })
+        };
+        assert_eq!(
+            handle_daemon_event(
+                &rename("cadmus-2.local.", mdns_sd::RRType::A),
+                &mut hostname
+            ),
+            Some(MonitorLog::Renamed {
+                hostname: "cadmus-2".to_string(),
+            })
+        );
+        assert_eq!(hostname, "cadmus-2");
+        assert_eq!(
+            handle_daemon_event(
+                &rename("cadmus (2)._cadmus._udp.local.", mdns_sd::RRType::TXT),
+                &mut hostname
+            ),
+            None
+        );
+        assert_eq!(hostname, "cadmus-2");
+
+        let ip: IpAddr = "192.168.1.5".parse().expect("valid test address");
+        assert_eq!(
+            handle_daemon_event(&mdns_sd::DaemonEvent::IpAdd(ip), &mut hostname),
+            Some(MonitorLog::IpAdded(ip))
+        );
+        assert_eq!(
+            handle_daemon_event(&mdns_sd::DaemonEvent::IpDel(ip), &mut hostname),
+            Some(MonitorLog::IpRemoved(ip))
+        );
+        assert_eq!(
+            handle_daemon_event(
+                &mdns_sd::DaemonEvent::Error(mdns_sd::Error::Msg("boom".to_string())),
+                &mut hostname
+            ),
+            Some(MonitorLog::Error("boom".to_string()))
+        );
+    }
+
+    #[test]
+    fn service_info_keeps_address_auto() {
+        let service = |ip| Service {
+            ty: ServiceType::Presence,
+            instance: Instance::Hostname,
+            port: 0,
+            txt: TxtRecords::default(),
+            ip,
+        };
+        let auto = service_info("cadmus", &service(None)).expect("valid presence info");
+        assert!(auto.is_addr_auto());
+        let preferred = service_info(
+            "cadmus",
+            &service(Some("192.168.1.5".parse().expect("valid test address"))),
+        )
+        .expect("valid presence info");
+        assert!(preferred.is_addr_auto());
     }
 }

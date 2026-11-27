@@ -52,6 +52,12 @@ The hostname is `cadmus.local`. `mdns-sd` renames it to `cadmus-2.local` and so
 on when another host already claims it, so two devices on one LAN stay
 distinct.
 
+Cadmus also advertises on loopback so programs on the device can find it. On
+the same host as the emulator, the browse also lists `127.0.0.1`; LAN clients
+never receive that address. The Kobo lifecycle raises `lo` at startup for the
+private API on `127.0.0.1:8474` and these loopback announcements; `mdns-sd`
+0.22 no longer needs `lo` for a signal socket.
+
 ## Troubleshooting
 
 - Put both devices on the same L2 network and allow multicast UDP 5353 through

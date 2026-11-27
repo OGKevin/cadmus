@@ -93,9 +93,10 @@ impl DeviceLifecycle for Device {
 
     /// Initializes cores, inhibitor callbacks, and startup Wi-Fi.
     ///
-    /// The spawned radio reconcile reads the live session mode rather than a
-    /// snapshot captured before spawn, so a mode change queued in between
-    /// cannot power the radio the other way.
+    /// Raises `lo` for the private API on `127.0.0.1:8474` and for loopback
+    /// mDNS announcements. The spawned radio reconcile reads the live session
+    /// mode rather than a snapshot captured before spawn, so a mode change
+    /// queued in between cannot power the radio the other way.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(context, hub, runtime), level = tracing::Level::TRACE
     ))]
     async fn on_startup(

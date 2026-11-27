@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use clap::Args;
-use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
+use mdns_sd::{ResolvedService, ScopedIp, ServiceDaemon, ServiceEvent};
 
 /// DNS-SD type Cadmus announces at boot (no application port).
 const PRESENCE_TYPE: &str = "_cadmus._udp.local.";
@@ -85,7 +85,7 @@ fn apply_event(found: &mut BTreeMap<String, ListedDevice>, event: ServiceEvent) 
     match event {
         ServiceEvent::ServiceResolved(info) => {
             let fullname = info.get_fullname().to_string();
-            found.insert(fullname, ListedDevice::from(&info));
+            found.insert(fullname, ListedDevice::from(info.as_ref()));
         }
         ServiceEvent::ServiceRemoved(_ty, fullname) => {
             found.remove(&fullname);
@@ -94,9 +94,13 @@ fn apply_event(found: &mut BTreeMap<String, ListedDevice>, event: ServiceEvent) 
     }
 }
 
-impl From<&ServiceInfo> for ListedDevice {
-    fn from(info: &ServiceInfo) -> Self {
-        let mut addresses: Vec<IpAddr> = info.get_addresses().iter().copied().collect();
+impl From<&ResolvedService> for ListedDevice {
+    fn from(info: &ResolvedService) -> Self {
+        let mut addresses: Vec<IpAddr> = info
+            .get_addresses()
+            .iter()
+            .map(ScopedIp::to_ip_addr)
+            .collect();
         addresses.sort();
         Self {
             hostname: trim_dot(info.get_hostname()),
@@ -150,6 +154,7 @@ fn format_devices(devices: &[ListedDevice]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mdns_sd::ServiceInfo;
     use std::collections::HashMap;
 
     fn info(instance: &str, host: &str, addr: &str, txt: &[(&str, &str)]) -> ServiceInfo {
@@ -162,7 +167,9 @@ mod tests {
     }
 
     fn resolved(instance: &str, host: &str, addr: &str, txt: &[(&str, &str)]) -> ServiceEvent {
-        ServiceEvent::ServiceResolved(info(instance, host, addr, txt))
+        ServiceEvent::ServiceResolved(Box::new(
+            info(instance, host, addr, txt).as_resolved_service(),
+        ))
     }
 
     #[test]
@@ -283,8 +290,14 @@ mod tests {
         let keep = info("cadmus-a", "cadmus-a.local.", "10.0.0.1", &[]);
         let gone = info("cadmus-z", "cadmus-z.local.", "10.0.0.2", &[]);
         let gone_name = gone.get_fullname().to_string();
-        apply_event(&mut found, ServiceEvent::ServiceResolved(keep));
-        apply_event(&mut found, ServiceEvent::ServiceResolved(gone));
+        apply_event(
+            &mut found,
+            ServiceEvent::ServiceResolved(Box::new(keep.as_resolved_service())),
+        );
+        apply_event(
+            &mut found,
+            ServiceEvent::ServiceResolved(Box::new(gone.as_resolved_service())),
+        );
         apply_event(
             &mut found,
             ServiceEvent::ServiceRemoved(PRESENCE_TYPE.into(), gone_name),

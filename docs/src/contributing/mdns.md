@@ -2,72 +2,37 @@
 
 # mDNS
 
-Cadmus runs one [`mdns-sd`](https://crates.io/crates/mdns-sd) daemon for the
-process. The app calls `context.mdns.start()` after device `on_startup`.
-On exit only `app.rs` calls `context.mdns.shutdown_and_wait()`, before device
-`on_shutdown`, so the goodbye goes out while the interfaces are still up.
-`mdns-sd` owns a dedicated `mDNS_daemon` thread and binds multicast UDP 5353;
-Cadmus does not wrap that thread in a
-<a href="/api/cadmus_core/runtime/struct.Job.html">`Job`</a>.
+Cadmus runs one [`mdns-sd`](https://crates.io/crates/mdns-sd) daemon per
+process, so other devices and programs on the device can find it without
+knowing its IP address. Nothing else should create a daemon: two in one
+process fight over port 5353.
 
-The session lives on
-<a href="/api/cadmus_core/context/struct.Context.html">`AppContext`</a>
-as `mdns`. Starting the daemon is best-effort: if 5353 cannot bind, the session
-stays inert and logs a warning. HTTP listeners still work.
+## What is advertised
 
-## Presence
+- **Presence**: `_cadmus._udp.local.` with no port, and TXT `version`, `kind`
+  and `platform`. The hostname is `cadmus.local`, or `cadmus-2.local` and so on
+  when another host already uses the name.
+- **Subsystem services**: a subsystem registers its own
+  `_cadmus-<name>._tcp.local.` (or `_udp`) through `MdnsSession::register`.
+  The record is withdrawn when the returned `Registration` is dropped.
 
-At start the session announces `_cadmus._udp.local.` on port 0, instance
-`cadmus`. That record has no TCP listener. TXT `version` is the Cadmus git
-version, `kind` is `standard` or `test` (`BuildKind`), and `platform` is `kobo`,
-`emulator`, or `deviceless`. The hostname is `cadmus.local`.
+Everything is also advertised on loopback so programs on the device can find
+it. LAN answers never carry a loopback address.
 
-The hostname is fixed, so it carries no device identity. When another host on
-the LAN already answers to `cadmus.local`, `mdns-sd` resolves the conflict by
-renaming the local host to `cadmus-2.local` (and so on) and reports the change
-on its monitor channel. The `follow_renames` background task drains those
-events and stores the new label; `MdnsSession::hostname` reads it, so
-`GetStatus` and later registrations use the label the LAN actually sees. A
-second device therefore shows up as `cadmus-2` rather than colliding.
-Addresses come from `enable_addr_auto`. Loopback and unspecified addresses are
-omitted, so an emulator Wi-Fi stub that reports `127.0.0.1` does not become the
-advertised address.
+Presence never takes a [Wi-Fi lease](wifi.md): packets only leave while the
+radio is already up.
 
-Presence does **not** take a Wi-Fi lease. Auto mode can still idle the radio.
-Packets only leave when the radio is already up.
+## Good to know
 
-Kobo boots with `lo` down, and `mdns-sd` binds its daemon signal socket to
-`127.0.0.1`. The Kobo lifecycle raises `lo` in `on_startup`, the app starts the
-session after device startup. The app stops the session before device
-`on_shutdown` lowers `lo`. Without `lo` at start, `ServiceDaemon::new` fails with
-`EADDRNOTAVAIL` and the session stays inert.
-
-## Registering a service
-
-Subsystems call `MdnsSession::register` with a `ServiceType`, port, optional
-TXT, and optional IP. `Subsystem::parse` validates the name and rejects
-anything longer than 23 bytes. `mdns-sd` measures `cadmus-<name>` and refuses
-a service name over 30 bytes, the highest limit that crate accepts. The
-session raises the daemon to that ceiling at start; the crate default of 15
-is too small for `companion`. `ServiceType::tcp` announces
-`_cadmus-<name>._tcp.local.`; `udp` follows the same template. The instance
-is the session hostname unless a caller passes an
-explicit `Instance::Label`. The returned `Registration` unregisters on drop.
-Presence stays advertised.
-
-Re-registering the same full name updates the record. Two
-`ServiceDaemon::new()` calls in one process fight over 5353, so nothing else
-should create a daemon.
-
-## Listing devices
-
-`cadmuscli list-devices` browses `_cadmus._udp.local.` from a separate
-process. It waits two seconds by default (`--timeout`) and prints each
-hostname, addresses, TXT `version`, `kind`, and `platform`; `--json` prints the
-same records as objects. A `ServiceRemoved` during that wait drops the device.
-
-## See also
-
-- [WiFi Leases](wifi.md)
+- The `lo` interface is down on a Kobo at boot. The Kobo lifecycle raises it,
+  because the private API listens on `127.0.0.1` and loopback announcements
+  need it.
+- Kernels without `SO_REUSEPORT` (older Kobos) work: the daemon logs the failed
+  attempt at debug and carries on.
+- `mdns announced` (info) is logged only when records actually left an
+  interface. Registration alone logs `mdns registered` at debug. If
+  `mdns announced` is missing from the logs, mDNS is not working.
+- `cadmuscli list-devices` browses Presence from another process. Next to the
+  emulator it also lists `127.0.0.1`.
 
 <!-- i18n:skip-end -->
