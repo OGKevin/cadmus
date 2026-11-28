@@ -282,7 +282,9 @@ impl DeviceLifecycle for Device {
             }
             Event::SetWifiMode(_)
             | Event::Select(EntryId::SetWifiMode(_))
-            | Event::MightDisableWifi => wifi::handle_event(event, hub, context).await,
+            | Event::MightDisableWifi => {
+                wifi::handle_event(event, hub, context, runtime.tasks).await
+            }
             Event::PrepareSuspend
             | Event::Suspend
             | Event::PollDeepIdleWait
@@ -623,6 +625,136 @@ mod tests {
         );
         assert!(!harness.context.online);
         assert!(harness.drain_hub().is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn wifi_off_supersedes_a_running_reconcile() {
+        let mut harness = DeviceRuntimeHarness::new().await;
+        harness.context.settings.wifi = WifiMode::AlwaysOn;
+        harness
+            .context
+            .wifi_session
+            .set_mode(WifiMode::AlwaysOn)
+            .await;
+        harness.context.online = true;
+        harness
+            .context
+            .device
+            .wifi_manager_for_test()
+            .set_network_info(Ok(Some(NetworkInfo {
+                ip: "192.168.1.1".parse().unwrap(),
+                essid: Essid::new("test"),
+            })));
+        let stale_generation = harness.context.wifi_session.next_reconcile_generation();
+        harness.push_task(DeviceTaskId::WifiReconcile);
+        assert!(
+            harness
+                .hub_tx
+                .send(Event::SetWifiMode(WifiMode::Off).into())
+                .is_ok()
+        );
+        assert!(
+            harness
+                .hub_tx
+                .send(Event::WifiReconciled(stale_generation).into())
+                .is_ok()
+        );
+
+        let mut background = Vec::new();
+        for event in harness.drain_hub() {
+            dispatch_like_main_loop(&mut harness, event, &mut background).await;
+        }
+
+        assert!(
+            !harness.context.online,
+            "a reconnect started before Off must not mark the device online"
+        );
+        assert!(
+            !background
+                .iter()
+                .any(|event| matches!(event, Event::Device(DeviceEvent::NetUp))),
+            "the stale reconnect must not reach consumers as NetUp, got {background:?}"
+        );
+        assert!(
+            !harness
+                .drain_hub()
+                .iter()
+                .any(|event| matches!(event, Event::Notification(_))),
+            "the stale reconnect must not show a network-up notification"
+        );
+        assert!(
+            harness
+                .tasks
+                .iter()
+                .all(|task| task.id != DeviceTaskId::WifiReconcile),
+            "Off must drop the in-flight reconcile task"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn wifi_always_on_after_off_starts_a_fresh_reconcile() {
+        let mut harness = DeviceRuntimeHarness::new().await;
+        harness.context.settings.wifi = WifiMode::Off;
+        harness.context.wifi_session.set_mode(WifiMode::Off).await;
+        harness
+            .context
+            .device
+            .wifi_manager_for_test()
+            .set_network_info(Ok(Some(NetworkInfo {
+                ip: "192.168.1.1".parse().unwrap(),
+                essid: Essid::new("test"),
+            })));
+        let off_generation = harness.context.wifi_session.next_reconcile_generation();
+
+        let mut background = Vec::new();
+        dispatch_like_main_loop(
+            &mut harness,
+            Event::SetWifiMode(WifiMode::AlwaysOn),
+            &mut background,
+        )
+        .await;
+
+        assert_eq!(harness.context.settings.wifi, WifiMode::AlwaysOn);
+        assert!(
+            harness
+                .tasks
+                .iter()
+                .any(|task| task.id == DeviceTaskId::WifiReconcile),
+            "AlwaysOn must start a fresh reconcile"
+        );
+        let completion = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if let Some(event) = harness
+                    .drain_hub()
+                    .into_iter()
+                    .find(|event| matches!(event, Event::WifiReconciled(_)))
+                {
+                    break event;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("the fresh reconcile must complete");
+        let generation = match completion {
+            Event::WifiReconciled(generation) => generation,
+            other => panic!("unexpected reconcile result: {other:?}"),
+        };
+        assert!(
+            generation > off_generation,
+            "a fresh reconcile must carry a new generation"
+        );
+        assert!(
+            harness
+                .context
+                .wifi_session
+                .is_current_reconcile_generation(generation),
+            "the new reconcile generation must be current"
+        );
+        assert!(matches!(
+            Device::normalize_main_loop_event(&harness.context, Event::WifiReconciled(generation)),
+            Some(Event::Device(DeviceEvent::NetUp))
+        ));
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
