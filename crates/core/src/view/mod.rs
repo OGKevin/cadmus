@@ -318,6 +318,12 @@ pub fn handle_event<'a>(
     })
 }
 
+/// Drops every update whose rectangle intersects `rect`, keeping the survivors in their original
+/// order.
+fn retain_updates_outside(updating: &mut Vec<UpdateData>, rect: &Rectangle) {
+    updating.retain(|update| !rect.overlaps(&update.rect));
+}
+
 // We render from bottom to top. For a view to render it has to either appear in `ids` or intersect
 // one of the rectangles in `bgs`. When we're about to render a view, if `wait` is true, we'll wait
 // for all the updates in `updating` that intersect with the view.
@@ -345,10 +351,8 @@ pub async fn render(
             let render_rect = view.render_rect(&rect);
 
             if wait {
-                let mut retained = Vec::new();
-                for update in std::mem::take(updating) {
-                    let overlaps = render_rect.overlaps(&update.rect);
-                    if overlaps && !update.has_completed() {
+                for update in updating.iter() {
+                    if render_rect.overlaps(&update.rect) && !update.has_completed() {
                         context
                             .device
                             .framebuffer()
@@ -359,11 +363,8 @@ pub async fn render(
                             })
                             .ok();
                     }
-                    if !overlaps {
-                        retained.push(update);
-                    }
                 }
-                *updating = retained;
+                retain_updates_outside(updating, &render_rect);
             }
 
             view.render(context, rect);
@@ -1236,5 +1237,49 @@ impl IdFeeder {
 
     pub fn next(&self) -> Id {
         self.0.fetch_add(1, Ordering::Relaxed)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::geom::Point;
+
+    fn rect(x: i32, y: i32, width: i32, height: i32) -> Rectangle {
+        Rectangle::new(Point::new(x, y), Point::new(x + width, y + height))
+    }
+
+    fn update(token: u32, rect: Rectangle) -> UpdateData {
+        UpdateData {
+            token,
+            time: Instant::now(),
+            rect,
+        }
+    }
+
+    #[test]
+    fn retain_updates_outside_keeps_non_intersecting_updates_in_order() {
+        let mut updating = vec![
+            update(1, rect(20, 20, 5, 5)),
+            update(2, rect(0, 0, 10, 10)),
+            update(3, rect(30, 30, 5, 5)),
+            update(4, rect(5, 5, 10, 10)),
+            update(5, rect(40, 40, 5, 5)),
+        ];
+
+        retain_updates_outside(&mut updating, &rect(0, 0, 10, 10));
+
+        let tokens: Vec<u32> = updating.iter().map(|update| update.token).collect();
+        assert_eq!(tokens, vec![1, 3, 5]);
+    }
+
+    #[test]
+    fn retain_updates_outside_keeps_everything_when_nothing_intersects() {
+        let mut updating = vec![update(1, rect(20, 20, 5, 5)), update(2, rect(30, 30, 5, 5))];
+
+        retain_updates_outside(&mut updating, &rect(0, 0, 10, 10));
+
+        let tokens: Vec<u32> = updating.iter().map(|update| update.token).collect();
+        assert_eq!(tokens, vec![1, 2]);
     }
 }

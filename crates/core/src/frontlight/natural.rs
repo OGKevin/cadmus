@@ -10,6 +10,7 @@ use std::io::Read;
 use std::io::Write;
 #[cfg(not(test))]
 use std::path::PathBuf;
+use std::sync::Arc;
 
 #[cfg(not(test))]
 const FRONTLIGHT_INTERFACE: &str = "/sys/class/backlight";
@@ -70,9 +71,9 @@ fn frontlight_dirs(model: Model) -> FxHashMap<LightColor, &'static str> {
 pub struct NaturalFrontlight {
     intensity: LightLevel,
     warmth: LightLevel,
-    values: FxHashMap<LightColor, File>,
-    powers: FxHashMap<LightColor, File>,
-    maxima: FxHashMap<LightColor, i16>,
+    values: Arc<FxHashMap<LightColor, File>>,
+    powers: Arc<FxHashMap<LightColor, File>>,
+    maxima: Arc<FxHashMap<LightColor, i16>>,
 }
 
 impl NaturalFrontlight {
@@ -108,17 +109,17 @@ impl NaturalFrontlight {
         Ok(NaturalFrontlight {
             intensity,
             warmth,
-            maxima,
-            values,
-            powers,
+            maxima: Arc::new(maxima),
+            values: Arc::new(values),
+            powers: Arc::new(powers),
         })
     }
 }
 
 fn set(
     maxima: &FxHashMap<LightColor, i16>,
-    values: &mut FxHashMap<LightColor, File>,
-    powers: &mut FxHashMap<LightColor, File>,
+    values: &FxHashMap<LightColor, File>,
+    powers: &FxHashMap<LightColor, File>,
     c: LightColor,
     percent: f32,
 ) -> Result<(), Error> {
@@ -138,8 +139,8 @@ fn set(
 
 fn update_levels(
     maxima: &FxHashMap<LightColor, i16>,
-    values: &mut FxHashMap<LightColor, File>,
-    powers: &mut FxHashMap<LightColor, File>,
+    values: &FxHashMap<LightColor, File>,
+    powers: &FxHashMap<LightColor, File>,
     intensity: LightLevel,
     warmth: LightLevel,
 ) -> Result<(), Error> {
@@ -166,21 +167,11 @@ fn update_levels(
 
 impl NaturalFrontlight {
     async fn update(&mut self, intensity: LightLevel, warmth: LightLevel) -> Result<(), Error> {
-        let values = self
-            .values
-            .iter()
-            .map(|(light, file)| Ok((*light, file.try_clone()?)))
-            .collect::<Result<FxHashMap<LightColor, File>, std::io::Error>>()?;
-        let powers = self
-            .powers
-            .iter()
-            .map(|(light, file)| Ok((*light, file.try_clone()?)))
-            .collect::<Result<FxHashMap<LightColor, File>, std::io::Error>>()?;
-        let maxima = self.maxima.clone();
+        let values = Arc::clone(&self.values);
+        let powers = Arc::clone(&self.powers);
+        let maxima = Arc::clone(&self.maxima);
         crate::runtime::spawn_blocking(move || {
-            let mut values = values;
-            let mut powers = powers;
-            update_levels(&maxima, &mut values, &mut powers, intensity, warmth)
+            update_levels(&maxima, &values, &powers, intensity, warmth)
         })
         .await
         .map_err(Error::new)??;

@@ -4,6 +4,7 @@ use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::Path;
+use std::sync::Arc;
 
 #[cfg(not(test))]
 const FRONTLIGHT_WHITE: &str = "/sys/class/backlight/mxc_msp430.0/brightness";
@@ -29,8 +30,8 @@ const FRONTLIGHT_ORANGE_C: &str = "/dev/null";
 pub struct PremixedFrontlight {
     intensity: LightLevel,
     warmth: LightLevel,
-    white: File,
-    orange: File,
+    white: Arc<File>,
+    orange: Arc<File>,
     mark: u8,
 }
 
@@ -52,8 +53,8 @@ impl PremixedFrontlight {
         Ok(PremixedFrontlight {
             intensity,
             warmth,
-            white,
-            orange,
+            white: Arc::new(white),
+            orange: Arc::new(orange),
             mark,
         })
     }
@@ -62,18 +63,22 @@ impl PremixedFrontlight {
 #[async_trait::async_trait]
 impl Frontlight for PremixedFrontlight {
     async fn set_intensity(&mut self, intensity: LightLevel) -> Result<(), Error> {
-        let mut file = self.white.try_clone()?;
-        crate::runtime::spawn_blocking(move || write!(file, "{}", i16::from(intensity)))
-            .await
-            .map_err(Error::new)??;
+        let file = Arc::clone(&self.white);
+        crate::runtime::spawn_blocking(move || {
+            let mut file = file.as_ref();
+            write!(file, "{}", i16::from(intensity))
+        })
+        .await
+        .map_err(Error::new)??;
         self.intensity = intensity;
         Ok(())
     }
 
     async fn set_warmth(&mut self, warmth: LightLevel) -> Result<(), Error> {
         let mark = self.mark;
-        let mut file = self.orange.try_clone()?;
+        let file = Arc::clone(&self.orange);
         crate::runtime::spawn_blocking(move || {
+            let mut file = file.as_ref();
             if mark != 8 {
                 write!(file, "{}", warmth.as_10_base_inverted())
             } else {

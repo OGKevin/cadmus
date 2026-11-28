@@ -12,6 +12,7 @@ use std::os::unix::io::AsRawFd;
 use std::path::Path;
 use std::ptr;
 use std::slice;
+use std::sync::Arc;
 use tracing::{error, info};
 
 impl Into<MxcfbRect> for Rectangle {
@@ -30,7 +31,7 @@ type GetPixelRgb = fn(&KoboFramebuffer1, u32, u32) -> [u8; 3];
 type AsRgb = fn(&KoboFramebuffer1) -> Vec<u8>;
 
 pub struct KoboFramebuffer1 {
-    file: File,
+    file: Arc<File>,
     frame: *mut libc::c_void,
     frame_size: libc::size_t,
     token: u32,
@@ -102,7 +103,7 @@ impl KoboFramebuffer1 {
                 };
             let red_index = if var_info.red.offset > 0 { 2 } else { 0 };
             Ok(KoboFramebuffer1 {
-                file,
+                file: Arc::new(file),
                 frame,
                 frame_size,
                 token: 1,
@@ -334,9 +335,9 @@ impl Framebuffer for KoboFramebuffer1 {
         }
     }
 
-    /// Waits for a specific update to complete on an owned driver handle.
+    /// Waits for a specific update to complete on a shared driver handle.
     async fn wait(&self, token: u32) -> Result<i32, Error> {
-        let file = self.file.try_clone()?;
+        let file = Arc::clone(&self.file);
         let mark = self.mark;
         crate::runtime::spawn_blocking(move || {
             let result = if mark >= 7 {
