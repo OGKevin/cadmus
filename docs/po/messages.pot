@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-11-22T22:26:31+08:00\n"
+"POT-Creation-Date: 2026-11-28T11:46:01+01:00\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -106,7 +106,7 @@ msgstr ""
 msgid "Automatic Frontlight"
 msgstr ""
 
-#: src/SUMMARY.md:28 src/soft-suspend.md:1 src/soft-suspend.md:83
+#: src/SUMMARY.md:28 src/soft-suspend.md:1 src/soft-suspend.md:84
 msgid "Soft Suspend"
 msgstr ""
 
@@ -163,110 +163,126 @@ msgid "SSH"
 msgstr ""
 
 #: src/SUMMARY.md:46
-msgid "Code Style and Linting"
+msgid "Benchmarks"
 msgstr ""
 
 #: src/SUMMARY.md:47
-msgid "Event System"
+msgid "Code Style and Linting"
 msgstr ""
 
 #: src/SUMMARY.md:48
-msgid "Input Pipeline"
+msgid "Event System"
 msgstr ""
 
 #: src/SUMMARY.md:49
-msgid "WiFi Leases"
+msgid "Input Pipeline"
 msgstr ""
 
 #: src/SUMMARY.md:50
-msgid "Device"
+msgid "WiFi Leases"
 msgstr ""
 
 #: src/SUMMARY.md:51
-msgid "Time and RTC"
+msgid "Device"
 msgstr ""
 
 #: src/SUMMARY.md:52
-msgid "Suspend"
+msgid "Time and RTC"
 msgstr ""
 
 #: src/SUMMARY.md:53
-msgid "Suspend orchestrator"
+msgid "Suspend"
 msgstr ""
 
 #: src/SUMMARY.md:54
-msgid "Soft suspend"
+msgid "Suspend orchestrator"
 msgstr ""
 
 #: src/SUMMARY.md:55
-msgid "Inhibitor"
+msgid "Soft suspend"
 msgstr ""
 
 #: src/SUMMARY.md:56
+msgid "Inhibitor"
+msgstr ""
+
+#: src/SUMMARY.md:57
 msgid "Kobo suspend"
 msgstr ""
 
-#: src/SUMMARY.md:57 src/settings/index.md:1172
+#: src/SUMMARY.md:58 src/settings/index.md:1172
 msgid "Telemetry"
 msgstr ""
 
-#: src/SUMMARY.md:58
+#: src/SUMMARY.md:59
 msgid "Logging"
 msgstr ""
 
-#: src/SUMMARY.md:59
+#: src/SUMMARY.md:60
 msgid "Tracing"
 msgstr ""
 
-#: src/SUMMARY.md:60
+#: src/SUMMARY.md:61
 msgid "Profiling"
 msgstr ""
 
-#: src/SUMMARY.md:61
+#: src/SUMMARY.md:62
 msgid "Website"
 msgstr ""
 
-#: src/SUMMARY.md:62
+#: src/SUMMARY.md:63
 msgid "User guide"
 msgstr ""
 
-#: src/SUMMARY.md:63
+#: src/SUMMARY.md:64
 msgid "Translations"
 msgstr ""
 
-#: src/SUMMARY.md:64
+#: src/SUMMARY.md:65
 msgid "For developers"
 msgstr ""
 
-#: src/SUMMARY.md:65
+#: src/SUMMARY.md:66
 msgid "SQLite & SQLx"
 msgstr ""
 
-#: src/SUMMARY.md:66
+#: src/SUMMARY.md:67
 msgid "Library Database"
 msgstr ""
 
-#: src/SUMMARY.md:67
+#: src/SUMMARY.md:68
 msgid "Runtime Migrations"
 msgstr ""
 
-#: src/SUMMARY.md:71
-msgid "Investigations"
+#: src/SUMMARY.md:70
+msgid "Architecture Decisions"
+msgstr ""
+
+#: src/SUMMARY.md:72
+msgid "Index"
 msgstr ""
 
 #: src/SUMMARY.md:73
+msgid "0001: Async device I/O with serial event handling"
+msgstr ""
+
+#: src/SUMMARY.md:77
+msgid "Investigations"
+msgstr ""
+
+#: src/SUMMARY.md:79
 msgid "Intro"
 msgstr ""
 
-#: src/SUMMARY.md:74
+#: src/SUMMARY.md:80
 msgid "DHCP IP Address Changes on WiFi Toggle"
 msgstr ""
 
-#: src/SUMMARY.md:75
+#: src/SUMMARY.md:81
 msgid "Reading IP and ESSID via dhcpcd-dbus"
 msgstr ""
 
-#: src/SUMMARY.md:76
+#: src/SUMMARY.md:82
 msgid "Soft suspend via autosleep and wake_lock"
 msgstr ""
 
@@ -3986,7 +4002,7 @@ msgstr ""
 msgid "Meaning"
 msgstr ""
 
-#: src/soft-suspend.md:32 src/soft-suspend.md:86
+#: src/soft-suspend.md:32 src/soft-suspend.md:87
 msgid "Off"
 msgstr ""
 
@@ -4012,33 +4028,35 @@ msgstr ""
 
 #: src/soft-suspend.md:36
 msgid ""
-"Only sleep targets your device supports appear in the list. You can also set "
-"this in your settings file:"
+"Only sleep targets your device supports appear in the list. If Cadmus cannot "
+"switch to the mode you choose, it shows a message and the setting stays on "
+"the mode the device is actually using. You can also set this in your "
+"settings file:"
 msgstr ""
 
-#: src/soft-suspend.md:47
+#: src/soft-suspend.md:48
 msgid "Status LED indicator"
 msgstr ""
 
-#: src/soft-suspend.md:49
+#: src/soft-suspend.md:50
 msgid ""
 "When soft suspend is available, under **Settings → Power** turn on **Use LED "
 "to Indicate Soft Suspend** if you want the status LED on while soft suspend "
 "is armed and the device is awake. The LED turns off when the device sleeps."
 msgstr ""
 
-#: src/soft-suspend.md:53
+#: src/soft-suspend.md:54
 msgid ""
 "During **critical work** (for example a wireless update), the status LED may "
 "**pulse** instead (long on, brief off). While it pulses, Cadmus blocks "
 "sleep, power-off, and reboot until that work finishes or is cancelled."
 msgstr ""
 
-#: src/soft-suspend.md:65
+#: src/soft-suspend.md:66
 msgid "Release grace"
 msgstr ""
 
-#: src/soft-suspend.md:67
+#: src/soft-suspend.md:68
 msgid ""
 "When soft suspend is available, **Soft Suspend Release Grace** under "
 "**Settings → Power** is how many seconds Cadmus keeps the wake lock after "
@@ -4047,69 +4065,69 @@ msgid ""
 "The default is five seconds."
 msgstr ""
 
-#: src/soft-suspend.md:81
+#: src/soft-suspend.md:82
 msgid "Soft suspend vs Auto Suspend"
 msgstr ""
 
-#: src/soft-suspend.md:83
+#: src/soft-suspend.md:84
 msgid "Feature"
 msgstr ""
 
-#: src/soft-suspend.md:83
+#: src/soft-suspend.md:84
 msgid "Auto Suspend"
 msgstr ""
 
-#: src/soft-suspend.md:85
+#: src/soft-suspend.md:86
 msgid "Purpose"
 msgstr ""
 
-#: src/soft-suspend.md:85
+#: src/soft-suspend.md:86
 msgid "Opportunistic battery saving"
 msgstr ""
 
-#: src/soft-suspend.md:85
+#: src/soft-suspend.md:86
 msgid "Timed sleep after inactivity"
 msgstr ""
 
-#: src/soft-suspend.md:86
+#: src/soft-suspend.md:87
 msgid "Default"
 msgstr ""
 
-#: src/soft-suspend.md:86
+#: src/soft-suspend.md:87
 msgid "On by default (30 minutes)"
 msgstr ""
 
-#: src/soft-suspend.md:87
+#: src/soft-suspend.md:88
 msgid "Settings tab"
 msgstr ""
 
-#: src/soft-suspend.md:87
+#: src/soft-suspend.md:88
 msgid "Power → Soft Suspend"
 msgstr ""
 
-#: src/soft-suspend.md:87
+#: src/soft-suspend.md:88
 msgid "Power → Auto Suspend"
 msgstr ""
 
-#: src/soft-suspend.md:88
+#: src/soft-suspend.md:89
 msgid "User action"
 msgstr ""
 
-#: src/soft-suspend.md:88
+#: src/soft-suspend.md:89
 msgid "Opt-in"
 msgstr ""
 
-#: src/soft-suspend.md:88
+#: src/soft-suspend.md:89
 msgid "Happens after idle timeout"
 msgstr ""
 
-#: src/soft-suspend.md:90
+#: src/soft-suspend.md:91
 msgid ""
 "You can use both together. Soft suspend naps between events; after the idle "
 "timeout, Auto Suspend still puts the device into a deeper sleep."
 msgstr ""
 
-#: src/soft-suspend.md:93
+#: src/soft-suspend.md:94
 msgid ""
 "If the kernel refuses that deep sleep, Cadmus falls back to the normal "
 "suspend cycle instead of repeatedly asking the kernel to autosleep."
