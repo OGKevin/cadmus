@@ -215,7 +215,6 @@ async fn schedule_alarms_calendar_when_intermission_calendar() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn handle_post_wake_auto_power_off_exit() {
     let mut harness = DeviceRuntimeHarness::new().await;
-    let before = Local::now();
     {
         lock_alarms(&mut harness)
             .await
@@ -228,9 +227,8 @@ async fn handle_post_wake_auto_power_off_exit() {
             rtc.simulate_alarm_fired();
         }
     }
-    let after = before + ChronoDuration::minutes(5) + ChronoDuration::seconds(1);
     let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
-        handle_post_wake(before, after, hub, bus, rq, context, runtime)
+        handle_post_wake(hub, bus, rq, context, runtime)
     });
     assert_eq!(outcome, EventOutcome::Exit(ExitStatus::PowerOff));
 }
@@ -874,7 +872,6 @@ async fn finish_cycle_clears_auto_power_off_before_post_wake_can_see_it() {
     crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
         start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
     });
-    let before = Local::now() - ChronoDuration::minutes(10);
     {
         lock_alarms(&mut harness)
             .await
@@ -893,9 +890,8 @@ async fn finish_cycle_clears_auto_power_off_before_post_wake_can_see_it() {
             .await
             .has_alarm(AlarmType::AutoPowerOff)
     );
-    let after = Local::now();
     let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
-        handle_post_wake(before, after, hub, bus, rq, context, runtime)
+        handle_post_wake(hub, bus, rq, context, runtime)
     });
     assert_eq!(
         outcome,
@@ -1036,22 +1032,32 @@ mod irq_deltas {
     #[derive(Debug, Default)]
     struct WakeFields {
         message: String,
-        pre_hardware_alarm: String,
-        post_hardware_alarm: String,
+        kernel_alarm_before: String,
+        kernel_alarm_after: String,
+        rearm_step: String,
         pre_cadmus_alarm_type: serde_json::Value,
         pre_cadmus_alarm: serde_json::Value,
         unmanaged_alarm_candidate: bool,
         irq_delta_status: String,
         irq_deltas_json: String,
         irq_delta_reasons_json: String,
+        wake: String,
+        cause: String,
+        alarm_type: serde_json::Value,
+        remaining_secs: serde_json::Value,
+        rtc_name: String,
+        requested: String,
+        wake_time: String,
+        difference_secs: serde_json::Value,
     }
 
     impl WakeFields {
         fn assign(&mut self, name: &str, value: String) {
             match name {
                 "message" => self.message = value,
-                "pre_hardware_alarm" => self.pre_hardware_alarm = value,
-                "post_hardware_alarm" => self.post_hardware_alarm = value,
+                "kernel_alarm_before" => self.kernel_alarm_before = value,
+                "kernel_alarm_after" => self.kernel_alarm_after = value,
+                "rearm_step" => self.rearm_step = value,
                 "pre_cadmus_alarm_type" => {
                     self.pre_cadmus_alarm_type = serde_json::Value::String(value);
                 }
@@ -1059,6 +1065,14 @@ mod irq_deltas {
                 "irq_delta_status" => self.irq_delta_status = value,
                 "irq_deltas_json" => self.irq_deltas_json = value,
                 "irq_delta_reasons_json" => self.irq_delta_reasons_json = value,
+                "wake" => self.wake = value,
+                "cause" => self.cause = value,
+                "alarm_type" => self.alarm_type = serde_json::Value::String(value),
+                "remaining_secs" => self.remaining_secs = serde_json::Value::String(value),
+                "rtc_name" => self.rtc_name = value,
+                "requested" => self.requested = value,
+                "wake_time" => self.wake_time = value,
+                "difference_secs" => self.difference_secs = serde_json::Value::String(value),
                 _ => {}
             }
         }
@@ -1125,23 +1139,28 @@ mod irq_deltas {
     fn wake_events_from_logs(logs: &LogBuffer) -> (Vec<WakeEvent>, String) {
         let records = std::mem::take(&mut *logs.0.lock().unwrap());
         let raw = format!("{records:?}");
-        let events = records
-            .into_iter()
-            .filter(|event| event.fields.message == "Primary deep-idle wake")
-            .collect();
-        (events, raw)
+        (records, raw)
+    }
+
+    fn events_named<'a>(events: &'a [WakeEvent], message: &str) -> Vec<&'a WakeFields> {
+        events
+            .iter()
+            .filter(|event| event.fields.message == message)
+            .map(|event| &event.fields)
+            .collect()
     }
 
     #[tokio::test]
     async fn deep_idle_wake_logs_changed_parent_and_child_counters() {
         let (events, raw) =
             wake_with_snapshots(vec![Some(BEFORE.to_owned()), Some(AFTER.to_owned())]).await;
-        assert_eq!(events.len(), 1, "unexpected wake events:\n{raw}");
-        let fields = &events[0].fields;
+        let primary = events_named(&events, "Primary deep-idle wake");
+        assert_eq!(primary.len(), 1, "unexpected wake events:\n{raw}");
+        let fields = primary[0];
         assert_eq!(fields.irq_delta_status, "complete");
         assert_eq!(fields.irq_delta_reasons_json, "[]");
-        assert_eq!(fields.pre_hardware_alarm, "unavailable");
-        assert_eq!(fields.post_hardware_alarm, "unavailable");
+        assert_eq!(fields.kernel_alarm_before, "unavailable");
+        assert_eq!(fields.kernel_alarm_after, "unavailable");
         assert_eq!(fields.pre_cadmus_alarm_type, "Some(AutoPowerOff)");
         assert!(
             fields
@@ -1167,8 +1186,9 @@ mod irq_deltas {
             Some(AFTER_PARTIAL.to_owned()),
         ])
         .await;
-        assert_eq!(events.len(), 1, "unexpected wake events:\n{raw}");
-        let fields = &events[0].fields;
+        let primary = events_named(&events, "Primary deep-idle wake");
+        assert_eq!(primary.len(), 1, "unexpected wake events:\n{raw}");
+        let fields = primary[0];
         assert_eq!(fields.irq_delta_status, "partial");
         assert_eq!(
             fields.irq_delta_reasons_json,
@@ -1187,19 +1207,21 @@ mod irq_deltas {
     #[tokio::test]
     async fn deep_idle_wake_keeps_handling_when_baseline_unavailable() {
         let (events, raw) = wake_with_snapshots(vec![None, Some(AFTER.to_owned())]).await;
-        assert_eq!(events.len(), 1, "unexpected wake events:\n{raw}");
-        assert_eq!(events[0].fields.irq_delta_status, "unavailable");
-        assert_eq!(events[0].fields.irq_deltas_json, "[]");
-        assert_eq!(events[0].fields.irq_delta_reasons_json, "[]");
+        let primary = events_named(&events, "Primary deep-idle wake");
+        assert_eq!(primary.len(), 1, "unexpected wake events:\n{raw}");
+        assert_eq!(primary[0].irq_delta_status, "unavailable");
+        assert_eq!(primary[0].irq_deltas_json, "[]");
+        assert_eq!(primary[0].irq_delta_reasons_json, "[]");
     }
 
     #[tokio::test]
     async fn deep_idle_wake_reports_unavailable_when_post_wake_snapshot_missing() {
         let (events, raw) = wake_with_snapshots(vec![Some(BEFORE.to_owned()), None]).await;
-        assert_eq!(events.len(), 1, "unexpected wake events:\n{raw}");
-        assert_eq!(events[0].fields.irq_delta_status, "unavailable");
-        assert_eq!(events[0].fields.irq_deltas_json, "[]");
-        assert_eq!(events[0].fields.irq_delta_reasons_json, "[]");
+        let primary = events_named(&events, "Primary deep-idle wake");
+        assert_eq!(primary.len(), 1, "unexpected wake events:\n{raw}");
+        assert_eq!(primary[0].irq_delta_status, "unavailable");
+        assert_eq!(primary[0].irq_deltas_json, "[]");
+        assert_eq!(primary[0].irq_delta_reasons_json, "[]");
     }
 
     #[tokio::test]
@@ -1237,16 +1259,186 @@ mod irq_deltas {
             );
         })
         .await;
-        assert_eq!(event.len(), 1, "unexpected wake events:\n{raw}");
-        assert_eq!(event[0].fields.irq_delta_status, "complete");
-        assert_eq!(event[0].fields.irq_delta_reasons_json, "[]");
-        let deltas: serde_json::Value =
-            serde_json::from_str(&event[0].fields.irq_deltas_json).unwrap();
+        let primary = events_named(&event, "Primary deep-idle wake");
+        assert_eq!(primary.len(), 1, "unexpected wake events:\n{raw}");
+        assert_eq!(primary[0].irq_delta_status, "complete");
+        assert_eq!(primary[0].irq_delta_reasons_json, "[]");
+        let deltas: serde_json::Value = serde_json::from_str(&primary[0].irq_deltas_json).unwrap();
         assert_eq!(
             deltas,
             serde_json::json!([]),
             "the re-entered wait must compare against its fresh baseline"
         );
+    }
+
+    /// Snapshot after an RTC-only wake: the RTC alarm counter moved, the power
+    /// key did not.
+    const AFTER_RTC_ONLY: &str = "           CPU0       CPU1
+ 90:        11          0      MTK   90 Level      bd71828_irq
+195:         2          8      bd71828   195 Edge      bd71828_pwrkey
+213:         5          4      bd71828   213 Edge      rtc-alarm
+";
+
+    fn fixed_base() -> chrono::DateTime<chrono::Utc> {
+        Utc.with_ymd_and_hms(2026, 3, 1, 6, 0, 0).unwrap()
+    }
+
+    async fn enter_deep_idle(harness: &mut DeviceRuntimeHarness) {
+        crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+        });
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
+        });
+        assert_eq!(outcome, EventOutcome::Handled);
+    }
+
+    async fn pump_wake(harness: &mut DeviceRuntimeHarness) -> EventOutcome {
+        crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            handle_event(&Event::PollDeepIdleWait, hub, bus, rq, context, runtime)
+        })
+    }
+
+    #[tokio::test]
+    async fn power_key_wake_is_user_wake() {
+        let (events, raw) =
+            wake_with_snapshots(vec![Some(BEFORE.to_owned()), Some(AFTER.to_owned())]).await;
+        let classified = events_named(&events, "Wake classified");
+        assert_eq!(classified.len(), 1, "unexpected wake events:\n{raw}");
+        assert_eq!(classified[0].wake, "user");
+        assert_eq!(classified[0].cause, "power button");
+    }
+
+    #[tokio::test]
+    async fn due_alarm_wake_is_unattended_wake() {
+        let logs = LogBuffer::default();
+        let (events, raw) = capture_wake_events(&logs, async {
+            let mut harness = DeviceRuntimeHarness::new().await;
+            let (_dir, _paths) = install_armed_soft_suspend(&mut harness).await;
+            harness.context.settings.auto_power_off = 0.0;
+            let base = fixed_base();
+            let rtc = harness.context.device.rtc().unwrap();
+            rtc.set_current_time(base);
+            lock_alarms(&mut harness)
+                .await
+                .schedule_in(AlarmType::AutoPowerOff, ChronoDuration::minutes(30))
+                .await
+                .unwrap();
+            harness
+                .context
+                .deep_idle_interrupts_inject
+                .extend([Some(BEFORE.to_owned()), Some(AFTER_RTC_ONLY.to_owned())]);
+            enter_deep_idle(&mut harness).await;
+            rtc.set_current_time(base + ChronoDuration::minutes(31));
+            rtc.simulate_alarm_fired();
+            assert_eq!(pump_wake(&mut harness).await, EventOutcome::Handled);
+        })
+        .await;
+        let classified = events_named(&events, "Wake classified");
+        assert_eq!(classified.len(), 1, "unexpected wake events:\n{raw}");
+        assert_eq!(classified[0].wake, "unattended");
+        assert_eq!(classified[0].cause, "alarm");
+        assert_eq!(classified[0].alarm_type, "AutoPowerOff");
+    }
+
+    #[tokio::test]
+    async fn rearm_step_wake_is_unattended_wake() {
+        let logs = LogBuffer::default();
+        let (events, raw) = capture_wake_events(&logs, async {
+            let mut harness = DeviceRuntimeHarness::new().await;
+            let (_dir, _paths) = install_armed_soft_suspend(&mut harness).await;
+            harness.context.settings.auto_power_off = 0.0;
+            let base = fixed_base();
+            let rtc = harness.context.device.rtc().unwrap();
+            rtc.set_current_time(base);
+            rtc.set_time_of_day_alarms(true);
+            rtc.set_alarm_limit(Some(ChronoDuration::hours(23)));
+            lock_alarms(&mut harness)
+                .await
+                .schedule_in(AlarmType::AutoPowerOff, ChronoDuration::hours(36))
+                .await
+                .unwrap();
+            harness
+                .context
+                .deep_idle_interrupts_inject
+                .extend([Some(BEFORE.to_owned()), Some(AFTER_RTC_ONLY.to_owned())]);
+            enter_deep_idle(&mut harness).await;
+            rtc.set_current_time(base + ChronoDuration::hours(23) + ChronoDuration::seconds(1));
+            rtc.simulate_alarm_fired();
+            assert_eq!(pump_wake(&mut harness).await, EventOutcome::Handled);
+
+            let alarms = lock_alarms(&mut harness).await;
+            assert!(
+                alarms.is_alarm_scheduled(AlarmType::WakeDebounce).await,
+                "an Unattended wake must return to sleep via WakeDebounce"
+            );
+            assert_eq!(
+                alarms.time_until_alarm(AlarmType::AutoPowerOff).await,
+                Some(46_799),
+                "the alarm must be re-armed for its requested time"
+            );
+            assert_eq!(alarms.rearm_step(), None);
+        })
+        .await;
+        let classified = events_named(&events, "Wake classified");
+        assert_eq!(classified.len(), 1, "unexpected wake events:\n{raw}");
+        assert_eq!(classified[0].wake, "unattended");
+        assert_eq!(classified[0].cause, "alarm re-arm");
+        assert_eq!(classified[0].remaining_secs, "Some(46799)");
+    }
+
+    #[tokio::test]
+    async fn early_rtc_fire_warns_and_keeps_the_alarm() {
+        let logs = LogBuffer::default();
+        let (events, raw) = capture_wake_events(&logs, async {
+            let mut harness = DeviceRuntimeHarness::new().await;
+            let (_dir, _paths) = install_armed_soft_suspend(&mut harness).await;
+            harness.context.settings.auto_power_off = 0.0;
+            let base = fixed_base();
+            let rtc = harness.context.device.rtc().unwrap();
+            rtc.set_current_time(base);
+            rtc.set_time_of_day_alarms(true);
+            rtc.set_name("bd70528-rtc");
+            lock_alarms(&mut harness)
+                .await
+                .schedule_in(AlarmType::AutoPowerOff, ChronoDuration::hours(36))
+                .await
+                .unwrap();
+            harness
+                .context
+                .deep_idle_interrupts_inject
+                .extend([Some(BEFORE.to_owned()), Some(AFTER_RTC_ONLY.to_owned())]);
+            enter_deep_idle(&mut harness).await;
+            rtc.set_current_time(base + ChronoDuration::hours(12) + ChronoDuration::seconds(1));
+            rtc.simulate_alarm_fired();
+            assert_eq!(pump_wake(&mut harness).await, EventOutcome::Handled);
+
+            let alarms = lock_alarms(&mut harness).await;
+            assert!(
+                alarms.is_alarm_scheduled(AlarmType::AutoPowerOff).await,
+                "a fired-early alarm must stay scheduled"
+            );
+            assert_eq!(alarms.rearm_step(), None);
+        })
+        .await;
+        let classified = events_named(&events, "Wake classified");
+        assert_eq!(classified.len(), 1, "unexpected wake events:\n{raw}");
+        assert_eq!(classified[0].wake, "unattended");
+        assert_eq!(classified[0].cause, "rtc interrupt");
+
+        let warnings = events_named(&events, "RTC fired early");
+        assert_eq!(warnings.len(), 1, "unexpected wake events:\n{raw}");
+        let warning = warnings[0];
+        assert_eq!(warning.rtc_name, "bd70528-rtc");
+        assert_eq!(
+            warning.requested,
+            (fixed_base() + ChronoDuration::hours(36)).to_string()
+        );
+        assert_eq!(
+            warning.wake_time,
+            (fixed_base() + ChronoDuration::hours(12) + ChronoDuration::seconds(1)).to_string()
+        );
+        assert_eq!(warning.difference_secs, "86399");
     }
 }
 
@@ -1440,7 +1632,6 @@ async fn soft_deep_idle_calendar_wake_keeps_suspend_intermission() {
     );
     assert!(locate::<Intermission>(harness.view.as_ref()).is_some());
 
-    let before = Local::now() - ChronoDuration::minutes(10);
     {
         lock_alarms(&mut harness)
             .await
@@ -1451,9 +1642,8 @@ async fn soft_deep_idle_calendar_wake_keeps_suspend_intermission() {
             rtc.simulate_alarm_fired();
         }
     }
-    let after = Local::now();
     let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
-        handle_post_wake(before, after, hub, bus, rq, context, runtime)
+        handle_post_wake(hub, bus, rq, context, runtime)
     });
     assert_eq!(outcome, EventOutcome::Handled);
     assert!(
@@ -3398,22 +3588,12 @@ async fn immediate_wake_after_unlock_classifies_as_wake() {
         handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
     });
     assert!(wake_unlock_written(&paths).await);
-    let unlock_mtime = tokio::fs::metadata(&paths.wake_unlock)
-        .await
-        .expect("wake_unlock metadata")
-        .modified()
-        .expect("wake_unlock mtime");
     let wait = harness
         .context
         .suspend
         .as_ref()
         .and_then(|cycle| cycle.deep_idle_wait().cloned())
         .expect("deep-idle wait armed");
-    assert!(
-        wait.sleep_started_at() + chrono::Duration::milliseconds(150)
-            <= chrono::DateTime::<chrono::Local>::from(unlock_mtime),
-        "sleep anchor must be captured before wake_unlock is written"
-    );
     let (writer_instant, writer_boot) = (*writer_clocks.lock().expect("writer clocks lock"))
         .expect("wake_unlock writer must have observed the physical write");
     assert!(

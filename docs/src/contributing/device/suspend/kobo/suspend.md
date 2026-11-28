@@ -25,7 +25,10 @@ restoration even if the event caller stops waiting, so a Full request that
 arrives after the last check aborts the cycle only after that cleanup. Resume
 clears `state-extended=0` and re-initialises the touch controller on the models
 that need it; AutoPowerOff and Calendar RTCs are then checked, and WakeDebounce
-may re-enter sleep with the same cycle until User activity cancels it.
+may re-enter sleep with the same cycle until User activity cancels it. Every
+wake is classified as a User or Unattended wake with its cause, and an RTC that
+fires before its alarm is due is reported and re-armed — see
+[Wake-source telemetry](../orchestrator.md#wake-source-telemetry).
 
 ## Soft-suspend deep idle (autosleep armed)
 

@@ -18,7 +18,8 @@ use super::helpers::is_suspend_active;
 use super::wake::{self, PollResult};
 use super::{PREPARE_SUSPEND_WAIT_DELAY, SUSPEND_WAIT_DELAY};
 use crate::AlarmType;
-use crate::ClockInstant;
+#[cfg(target_os = "linux")]
+use crate::chrono::{DateTime, Utc};
 use crate::chrono::{Duration as ChronoDuration, Local, Timelike};
 use crate::device::DeviceHardware as _;
 use crate::device::inhibitor::{
@@ -706,7 +707,7 @@ async fn enter_sleep(
             finish_blocked_cycle(context, runtime.tasks, runtime.view.as_mut(), hub, bus, rq).await;
             EventOutcome::Handled
         }
-        ClassicSuspendOutcome::Slept { before, after } => {
+        ClassicSuspendOutcome::Slept => {
             if abort_cycle_for_full_inhibit(
                 context,
                 runtime.tasks,
@@ -723,7 +724,7 @@ async fn enter_sleep(
             if let Some(cycle) = context.suspend.as_mut() {
                 cycle.phase = SuspendPhase::PostWakeDebounce;
             }
-            handle_post_wake(before, after, hub, bus, rq, context, runtime).await
+            handle_post_wake(hub, bus, rq, context, runtime).await
         }
     }
 }
@@ -802,17 +803,18 @@ async fn read_wake_alarm(context: &AppContext) -> HardwareWakeAlarm {
 /// The manager lock covers only the schedule read; the hardware slot is read
 /// through [`read_wake_alarm`].
 async fn capture_pre_sleep_alarms(context: &AppContext) -> PreSleepAlarms {
-    let cadmus = match context.alarm_manager.as_ref().cloned() {
+    let (cadmus, rearm_step) = match context.alarm_manager.as_ref().cloned() {
         Some(alarms) => crate::device::rtc::alarm_transaction(&alarms, async move |manager| {
-            manager.next_scheduled_alarm().await
+            (manager.next_scheduled_alarm().await, manager.rearm_step())
         })
         .await
-        .flatten(),
-        None => None,
+        .unwrap_or((None, None)),
+        None => (None, None),
     };
     PreSleepAlarms {
         hardware: read_wake_alarm(context).await,
         cadmus,
+        rearm_step,
     }
 }
 
@@ -835,13 +837,158 @@ async fn read_interrupt_snapshot(context: &mut AppContext) -> Option<Arc<Interru
     InterruptSnapshot::parse(&raw).map(Arc::new)
 }
 
-/// Emits the kernel wake source, alarm comparison, and IRQ counter delta for
-/// one primary wake.
+/// Slack allowed between a programmed alarm instant and the recorded wake.
+///
+/// RTC registers and the kernel's alarm slot both resolve to whole seconds, and
+/// the deep-idle wait polls every [`DEEP_IDLE_POLL_INTERVAL`].
+#[cfg(target_os = "linux")]
+const WAKE_INSTANT_TOLERANCE_SECS: i64 = 5;
+
+/// What the pre-sleep alarm state and the interrupt sample say about a wake.
+#[cfg(target_os = "linux")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WakeClassification {
+    /// The power key raised the wake.
+    UserPowerButton,
+    /// The sleep cover was opened before the wake was classified.
+    UserSleepCover,
+    /// A logical alarm was due when the device woke.
+    AlarmDue(AlarmType),
+    /// The programmed hardware time was a planned re-arm step.
+    AlarmRearm,
+    /// The RTC raised an interrupt with no alarm due and no re-arm step.
+    RtcFiredEarly { requested: DateTime<Utc> },
+    /// Nothing identified the cause.
+    Unknown,
+}
+
+/// Classifies a wake from the pre-sleep capture and the interrupt sample.
+///
+/// The order matches causality: a held power key or an opened cover is input the
+/// user gave, a due alarm or a reached re-arm step is an alarm Cadmus planned,
+/// and only an RTC interrupt without either is evidence the chip fired early.
+#[cfg(target_os = "linux")]
+fn classify_wake(
+    pre_sleep: PreSleepAlarms,
+    wake_time: DateTime<Utc>,
+    power_key_irq_moved: bool,
+    cover_opened: bool,
+    rtc_irq_moved: bool,
+) -> WakeClassification {
+    if power_key_irq_moved {
+        return WakeClassification::UserPowerButton;
+    }
+    if cover_opened {
+        return WakeClassification::UserSleepCover;
+    }
+
+    let due_by = wake_time + ChronoDuration::seconds(WAKE_INSTANT_TOLERANCE_SECS);
+    if let Some((alarm_type, requested)) = pre_sleep.cadmus
+        && due_by >= requested
+    {
+        return WakeClassification::AlarmDue(alarm_type);
+    }
+    if pre_sleep.rearm_step.is_some_and(|step| due_by >= step) {
+        return WakeClassification::AlarmRearm;
+    }
+    if rtc_irq_moved && let Some(requested) = requested_alarm_time(pre_sleep) {
+        return WakeClassification::RtcFiredEarly { requested };
+    }
+
+    WakeClassification::Unknown
+}
+
+/// Returns the instant the earliest logical alarm was requested for.
+///
+/// Falls back to the programmed hardware time when the logical schedule was
+/// empty, which is all an RTC-only wake can report.
+#[cfg(target_os = "linux")]
+fn requested_alarm_time(pre_sleep: PreSleepAlarms) -> Option<DateTime<Utc>> {
+    pre_sleep
+        .cadmus
+        .map(|(_, wake_time)| wake_time)
+        .or(match pre_sleep.hardware {
+            HardwareWakeAlarm::Armed(wake_time) => Some(wake_time),
+            HardwareWakeAlarm::Disabled | HardwareWakeAlarm::Unavailable => None,
+        })
+}
+
+/// Whether an interrupt action name belongs to the power key.
+///
+/// Kobo devices report the PMIC power key as `bd71828_pwrkey`; the fragment
+/// also matches a generic `power`/`power-key` action.
+#[cfg(target_os = "linux")]
+fn is_power_key_irq(name: &str) -> bool {
+    let name = name.to_ascii_lowercase();
+    name.contains("pwrkey") || name.contains("power")
+}
+
+/// Whether an interrupt action name belongs to the RTC.
+#[cfg(target_os = "linux")]
+fn is_rtc_irq(name: &str) -> bool {
+    name.to_ascii_lowercase().contains("rtc")
+}
+
+/// Emits the one classification line for a wake, plus the early-fire warning.
+#[cfg(target_os = "linux")]
+fn log_wake_classification(
+    classification: WakeClassification,
+    pre_sleep: PreSleepAlarms,
+    wake_time: DateTime<Utc>,
+    rtc_name: Option<&str>,
+) {
+    match classification {
+        WakeClassification::UserPowerButton => {
+            tracing::info!(wake = "user", cause = "power button", "Wake classified");
+        }
+        WakeClassification::UserSleepCover => {
+            tracing::info!(wake = "user", cause = "sleep cover", "Wake classified");
+        }
+        WakeClassification::AlarmDue(alarm_type) => {
+            tracing::info!(
+                wake = "unattended",
+                cause = "alarm",
+                alarm_type = ?alarm_type,
+                "Wake classified"
+            );
+        }
+        WakeClassification::AlarmRearm => {
+            let remaining_secs = pre_sleep
+                .cadmus
+                .map(|(_, requested)| requested.signed_duration_since(wake_time).num_seconds());
+            tracing::info!(
+                wake = "unattended",
+                cause = "alarm re-arm",
+                remaining_secs = ?remaining_secs,
+                "Wake classified"
+            );
+        }
+        WakeClassification::RtcFiredEarly { requested } => {
+            tracing::info!(
+                wake = "unattended",
+                cause = "rtc interrupt",
+                "Wake classified"
+            );
+            tracing::warn!(
+                rtc_name = rtc_name.unwrap_or("unknown"),
+                requested = %requested,
+                wake_time = %wake_time,
+                difference_secs = requested.signed_duration_since(wake_time).num_seconds(),
+                "RTC fired early"
+            );
+        }
+        WakeClassification::Unknown => {
+            tracing::info!(wake = "unattended", cause = "unknown", "Wake classified");
+        }
+    }
+}
+
+/// Emits the kernel wake source, alarm comparison, IRQ counter delta, and wake
+/// classification for one primary wake.
 ///
 /// Samples `/proc/interrupts` once, before the other post-wake node reads, so
 /// the delta excludes those telemetry reads. That sample supplies both the
-/// existing `wake_irq_name` and the comparison against the baseline stored on
-/// [`DeepIdleWaitState`].
+/// `wake_irq_name` and the moved counters the classification reads.
 ///
 /// A PMIC parent IRQ does not identify its RTC child, and the kernel reports no
 /// writer for the hardware alarm, so neither field alone names a cause. Only
@@ -853,20 +1000,39 @@ async fn log_wake_source(context: &mut AppContext, state: &DeepIdleWaitState) {
 
         let interrupts = read_interrupts(context).await;
         let pre_sleep_alarms = state.pre_sleep_alarms();
-        let post_hardware_alarm = read_wake_alarm(context).await;
+        let kernel_alarm_after = read_wake_alarm(context).await;
         let wake_irq = wake_telemetry::read_wakeup_irq().await;
         let wake_irq_name = wake_irq.and_then(|irq| {
             interrupts
                 .as_deref()
                 .and_then(|raw| wake_telemetry::parse_irq_name(raw, irq))
         });
-        let (irq_delta_status, irq_deltas_json, irq_delta_reasons_json) =
-            interrupt_delta_json(state.interrupt_baseline(), interrupts.as_deref());
+        let after_snapshot = interrupts.as_deref().and_then(InterruptSnapshot::parse);
+        let comparison = state
+            .interrupt_baseline()
+            .map(|baseline| baseline.compare(after_snapshot.as_ref()));
+        let (irq_delta_status, irq_deltas_json, irq_delta_reasons_json) = match &comparison {
+            Some(comparison) => comparison.json(),
+            None => wake_telemetry::InterruptDeltas::unavailable().json(),
+        };
+        let moved_names: Vec<&str> = comparison
+            .as_ref()
+            .map(|comparison| comparison.moved_names().collect())
+            .unwrap_or_default();
+        let rtc = context.device.rtc().ok();
+        let rtc_name = rtc.as_ref().and_then(|rtc| rtc.name());
+        let wake_time = match &rtc {
+            Some(rtc) => rtc.read_time().await.ok(),
+            None => None,
+        }
+        .unwrap_or_else(|| Local::now().to_utc());
+
         tracing::info!(
-            pre_hardware_alarm = %pre_sleep_alarms.hardware,
+            kernel_alarm_before = %pre_sleep_alarms.hardware,
             pre_cadmus_alarm_type = ?pre_sleep_alarms.cadmus.map(|(alarm_type, _)| alarm_type),
             pre_cadmus_alarm = ?pre_sleep_alarms.cadmus.map(|(_, wake_time)| wake_time),
-            post_hardware_alarm = %post_hardware_alarm,
+            rearm_step = ?pre_sleep_alarms.rearm_step,
+            kernel_alarm_after = %kernel_alarm_after,
             wake_irq = ?wake_irq,
             wake_irq_name = ?wake_irq_name,
             unmanaged_alarm_candidate = pre_sleep_alarms.unmanaged_alarm_candidate(),
@@ -874,6 +1040,22 @@ async fn log_wake_source(context: &mut AppContext, state: &DeepIdleWaitState) {
             irq_deltas_json,
             irq_delta_reasons_json,
             "Primary deep-idle wake"
+        );
+
+        let power_key_irq_moved = moved_names.iter().any(|name| is_power_key_irq(name));
+        let rtc_irq_moved = moved_names.iter().any(|name| is_rtc_irq(name));
+        let cover_opened = state.covered_before_sleep() && !context.covered;
+        log_wake_classification(
+            classify_wake(
+                pre_sleep_alarms,
+                wake_time,
+                power_key_irq_moved,
+                cover_opened,
+                rtc_irq_moved,
+            ),
+            pre_sleep_alarms,
+            wake_time,
+            rtc_name.as_deref(),
         );
     }
     #[cfg(not(target_os = "linux"))]
@@ -933,10 +1115,9 @@ async fn start_deep_idle_wait(
     }
     #[cfg(target_os = "linux")]
     let interrupt_baseline = read_interrupt_snapshot(context).await;
-    let before = Local::now();
     let wait = DeepIdleWaitState::capture(
-        before,
         pre_sleep_alarms,
+        context.covered,
         #[cfg(target_os = "linux")]
         interrupt_baseline,
     );
@@ -1031,16 +1212,7 @@ async fn poll_deep_idle_wait(
             log_wake_source(context, &state).await;
             leave_deep_idle(context).await;
             schedule_wake_debounce_alarm(context).await;
-            handle_post_wake(
-                state.sleep_started_at(),
-                after,
-                hub,
-                bus,
-                rq,
-                context,
-                runtime,
-            )
-            .await
+            handle_post_wake(hub, bus, rq, context, runtime).await
         }
         PollResult::TimedOut => {
             let after = Local::now();
@@ -1250,10 +1422,7 @@ fn log_soft_suspend_holders(context: &AppContext, at: &str) {
 }
 
 enum ClassicSuspendOutcome {
-    Slept {
-        before: chrono::DateTime<Local>,
-        after: chrono::DateTime<Local>,
-    },
+    Slept,
     BlockedByFull,
     /// No kernel sleep happened; retry without running wake classification.
     NotSlept,
@@ -1344,7 +1513,6 @@ async fn run_classic_commit<P: PowerManager + 'static>(
     plugged: bool,
     shared: bool,
 ) {
-    let before = Local::now();
     let outcome = async {
         if let Err(error) = power.prepare_suspend().await {
             tracing::error!(error = %error, "Failed to prepare classic suspend");
@@ -1416,7 +1584,7 @@ async fn run_classic_commit<P: PowerManager + 'static>(
                 if suspend_failed {
                     ClassicSuspendOutcome::NotSlept
                 } else {
-                    ClassicSuspendOutcome::Slept { before, after }
+                    ClassicSuspendOutcome::Slept
                 }
             }
         }
@@ -1494,10 +1662,8 @@ pub async fn drain_committed_suspend(context: &AppContext, tasks: &mut Vec<Devic
     }
 }
 
-/// Checks RTC alarms that fired during classic sleep; may chain debounce, calendar, or power-off.
+/// Checks RTC alarms that fired during sleep; may chain debounce, calendar, or power-off.
 async fn handle_post_wake(
-    before: chrono::DateTime<Local>,
-    after: chrono::DateTime<Local>,
     hub: &Hub,
     bus: &mut crate::view::Bus,
     rq: &mut RenderQueue,
@@ -1507,13 +1673,7 @@ async fn handle_post_wake(
     if let Some(alarm_manager) = context.alarm_manager.as_ref().cloned() {
         let fired_alarms =
             crate::device::rtc::alarm_transaction(&alarm_manager, async move |mut manager| {
-                match manager
-                    .check_fired_alarms(
-                        ClockInstant::Civil(before.to_utc()),
-                        ClockInstant::Civil(after.to_utc()),
-                    )
-                    .await
-                {
+                match manager.check_fired_alarms().await {
                     Ok(fired) => {
                         tracing::info!(alarms = ?fired, "Checked fired alarms after wake");
                         fired

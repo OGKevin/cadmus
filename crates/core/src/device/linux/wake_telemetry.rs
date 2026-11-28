@@ -158,6 +158,14 @@ impl InterruptDeltas {
         }
     }
 
+    /// Returns the device names whose interrupt counters moved.
+    ///
+    /// Rows without an action name are skipped because they cannot identify a
+    /// cause.
+    pub(crate) fn moved_names(&self) -> impl Iterator<Item = &str> {
+        self.deltas.iter().filter_map(|delta| delta.name.as_deref())
+    }
+
     /// Serializes the delta and reason lists as JSON strings for the wake log.
     ///
     /// Stable `tracing` fields accept primitives, strings, `Display`, and
@@ -167,7 +175,7 @@ impl InterruptDeltas {
     /// the logging stack stable and lets log consumers decode either list with
     /// `fromjson`; the status is returned separately so it can be filtered
     /// without decoding.
-    pub(crate) fn json(self) -> (&'static str, String, String) {
+    pub(crate) fn json(&self) -> (&'static str, String, String) {
         let serialized = serde_json::to_string(&self.deltas).and_then(|deltas| {
             serde_json::to_string(&self.reasons).map(|reasons| (deltas, reasons))
         });
