@@ -511,6 +511,95 @@ async fn handle_rtc_auto_suspend_blocked_when_shared_reschedules() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn auto_suspend_fired_during_deep_idle_is_ignored() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    let (_dir, _paths) = install_armed_soft_suspend(&mut harness).await;
+    harness.context.settings.auto_suspend = 30.0;
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+    });
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
+    });
+    assert!(
+        harness
+            .context
+            .suspend
+            .as_ref()
+            .and_then(|cycle| cycle.deep_idle_wait())
+            .is_some(),
+        "precondition: the cycle must be asleep"
+    );
+
+    let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(
+            &Event::RtcAlarmFired(AlarmType::AutoSuspend),
+            hub,
+            bus,
+            rq,
+            context,
+            runtime,
+        )
+    });
+    assert_eq!(outcome, EventOutcome::Handled);
+    assert!(
+        !lock_alarms(&mut harness)
+            .await
+            .is_alarm_scheduled(AlarmType::AutoSuspend)
+            .await,
+        "Auto Suspend must not re-arm itself while the device is asleep"
+    );
+    assert!(
+        harness.context.suspend.is_some(),
+        "the sleep cycle must survive the ignored deadline"
+    );
+    assert!(!has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn deep_idle_user_wake_restarts_auto_suspend_full_delay() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    let (_dir, _paths) = install_armed_soft_suspend(&mut harness).await;
+    harness.context.settings.auto_suspend = 30.0;
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+    });
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
+    });
+    assert!(
+        harness
+            .context
+            .suspend
+            .as_ref()
+            .and_then(|cycle| cycle.deep_idle_wait())
+            .is_some(),
+        "precondition: the cycle must be asleep"
+    );
+    assert!(
+        !lock_alarms(&mut harness)
+            .await
+            .is_alarm_scheduled(AlarmType::AutoSuspend)
+            .await,
+        "precondition: the deadline is cancelled while the cycle runs"
+    );
+
+    crate::poll_parts!(harness, |hub, _bus, rq, context, runtime| async {
+        cancel_suspend_if_pending(context, runtime.tasks, runtime.view.as_mut(), hub, rq).await;
+    });
+    assert!(harness.context.suspend.is_none());
+    let until = lock_alarms(&mut harness)
+        .await
+        .time_until_alarm(AlarmType::AutoSuspend)
+        .await
+        .unwrap();
+    assert!(
+        (until - 30 * 60).abs() <= 2,
+        "a User wake must restart the Auto Suspend delay one full delay later, got {until}s"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn reschedule_auto_suspend_zero_cancels() {
     let mut harness = DeviceRuntimeHarness::new().await;
     harness.context.settings.auto_suspend = 30.0;

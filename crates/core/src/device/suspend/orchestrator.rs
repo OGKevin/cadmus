@@ -390,7 +390,24 @@ async fn handle_rtc_alarm_fired(
     }
 }
 
+/// Log-friendly name of a cycle phase.
+///
+/// The `Debug` form of [`SuspendPhase::InSleep`] embeds the deep-idle anchors
+/// and pre-sleep alarms, which would bury the phase in a one-line warning.
+fn phase_label(phase: &SuspendPhase) -> &'static str {
+    match phase {
+        SuspendPhase::Preparing => "preparing",
+        SuspendPhase::ArmingSleep => "arming_sleep",
+        SuspendPhase::InSleep { .. } => "in_sleep",
+        SuspendPhase::PostWakeDebounce => "post_wake_debounce",
+    }
+}
+
 /// Auto Suspend idle deadline fired; starts a cycle unless USB-shared or already suspending.
+///
+/// A deadline that comes due during a sleep cycle is ignored instead of
+/// re-armed: re-arming it would keep the device in a wake/sleep loop while
+/// nobody uses it. [`finish_cycle`] restarts the delay once the cycle ends.
 async fn handle_auto_suspend_fired(
     hub: &Hub,
     bus: &mut crate::view::Bus,
@@ -402,8 +419,17 @@ async fn handle_auto_suspend_fired(
         return EventOutcome::Handled;
     }
 
-    if context.shared || is_suspend_active(context, runtime.tasks).await {
+    if context.shared {
         reschedule_auto_suspend_alarm(context).await;
+        return EventOutcome::Handled;
+    }
+
+    if is_suspend_active(context, runtime.tasks).await {
+        tracing::warn!(
+            phase = context.suspend.as_ref().map(|cycle| phase_label(&cycle.phase)),
+            alarm_at = %Local::now(),
+            "Auto Suspend came due during a sleep cycle; ignoring"
+        );
         return EventOutcome::Handled;
     }
 
