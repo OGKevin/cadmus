@@ -25,10 +25,13 @@ ioctl_write_ptr!(rtc_set_time, b'p', 0x0a, RtcTime);
 /// Sysfs view of the single hardware wake-alarm slot.
 const WAKEALARM_PATH: &str = "/sys/class/rtc/rtc0/wakealarm";
 
+/// Sysfs node naming the RTC chip behind `/dev/rtc0`.
+const RTC_NAME_PATH: &str = "/sys/class/rtc/rtc0/name";
+
 /// Hardware RTC accessed through the Linux kernel RTC character device.
 ///
 /// Opens a device path such as `/dev/rtc0` or `/dev/rtc` and drives it with
-/// `RTC_RD_TIME`, `RTC_SET_TIME`, `RTC_ALM_READ`, `RTC_ALM_SET`, and
+/// `RTC_RD_TIME`, `RTC_SET_TIME`, `RTC_WKALM_RD`, `RTC_WKALM_SET`, and
 /// `RTC_AIE_OFF` ioctls (wrapped by the `rtc_*` helpers above). Concurrent
 /// callers are serialized through an internal mutex guarding the open file
 /// descriptor. Alarm IRQ waits use a separate `dup` of that fd so a blocking
@@ -53,6 +56,10 @@ pub struct LinuxRtc {
     released: Arc<AtomicBool>,
     /// Cached RTC↔civil relationship and last `set_time` step.
     clock: Arc<Mutex<LinuxRtcClock>>,
+    /// Platform name read from [`RTC_NAME_PATH`] when the device was opened.
+    name: Option<Arc<str>>,
+    /// Longest wake alarm span the named chip can hold, when the chip is known.
+    alarm_limit: Option<ChronoDuration>,
 }
 
 /// Cached conversion state between the hardware RTC and the civil system clock.
@@ -109,6 +116,8 @@ impl LinuxRtc {
         })
         .await??;
         let wait_file = unsafe { File::from_raw_fd(wait_fd) };
+        let name = read_rtc_name().await;
+        let alarm_limit = name.as_deref().and_then(alarm_limit_for);
         let rtc = LinuxRtc {
             file: Arc::new(Mutex::new(Some(file))),
             wait_file: Arc::new(Mutex::new(Some(wait_file))),
@@ -117,7 +126,10 @@ impl LinuxRtc {
                 drift: ChronoDuration::zero(),
                 pending_step: None,
             })),
+            name,
+            alarm_limit,
         };
+        log_alarm_capability(&rtc);
         rtc.refresh_drift_from_hardware().await?;
         Ok(rtc)
     }
@@ -199,7 +211,7 @@ impl LinuxRtc {
 }
 
 impl Rtc for LinuxRtc {
-    /// Issues `RTC_ALM_READ` on the open device file.
+    /// Issues `RTC_WKALM_RD` on the open device file.
     async fn alarm(&self) -> Result<RtcWkalrm, Error> {
         let this = self.clone();
         crate::runtime::spawn_blocking(move || {
@@ -218,7 +230,7 @@ impl Rtc for LinuxRtc {
     /// Reads the RTC's `wakealarm` sysfs node.
     ///
     /// The node reports an epoch while an alarm is enabled and is empty while
-    /// none is, which is what the diagnostic comparison needs; `RTC_ALM_READ`
+    /// none is, which is what the diagnostic comparison needs; `RTC_WKALM_RD`
     /// keeps the stale programmed time after the alarm is disabled.
     async fn wake_alarm(&self) -> HardwareWakeAlarm {
         match tokio::fs::read_to_string(WAKEALARM_PATH).await {
@@ -234,7 +246,15 @@ impl Rtc for LinuxRtc {
         }
     }
 
-    /// Issues `RTC_ALM_SET` with the alarm enabled and `pending` cleared.
+    fn name(&self) -> Option<Arc<str>> {
+        self.name.clone()
+    }
+
+    fn alarm_limit(&self) -> Option<ChronoDuration> {
+        self.alarm_limit
+    }
+
+    /// Issues `RTC_WKALM_SET` with the alarm enabled and `pending` cleared.
     async fn set_alarm(&self, wake_time: DateTime<Utc>) -> Result<i32, Error> {
         let this = self.clone();
         crate::runtime::spawn_blocking(move || {
@@ -331,6 +351,71 @@ impl Rtc for LinuxRtc {
     }
 }
 
+/// Reads the RTC chip name from [`RTC_NAME_PATH`].
+async fn read_rtc_name() -> Option<Arc<str>> {
+    match tokio::fs::read_to_string(RTC_NAME_PATH).await {
+        Ok(raw) => parse_rtc_name(&raw).map(Arc::from),
+        Err(error) => {
+            tracing::debug!(
+                error = %error,
+                path = RTC_NAME_PATH,
+                "RTC name node unavailable"
+            );
+            None
+        }
+    }
+}
+
+/// Returns the first word of the sysfs RTC name.
+///
+/// The node repeats the chip name before the device instance, e.g.
+/// `bd70528-rtc bd70528-rtc.5.auto`.
+fn parse_rtc_name(raw: &str) -> Option<&str> {
+    raw.split_whitespace().next()
+}
+
+/// Returns the longest wake alarm each known RTC chip can hold.
+///
+/// | RTC name      | Limit    | Source                                                              |
+/// | ------------- | -------- | ------------------------------------------------------------------- |
+/// | `bd70528-rtc` | 23 h     | [`rtc-bd70528.c`], [`BD70528_MASK_ALM_EN`], [cadmus#1253]           |
+/// | `pmic_rtc`    | 65 000 s | KOReader's [`dodgy_rtc`] workaround ([koreader#8039]); untested here |
+/// | anything else | none     | relies on the early-fire warning to surface the real limit          |
+///
+/// The BD71828 driver enables comparison only for second, minute and hour
+/// (`BD70528_MASK_ALM_EN`), so an alarm further ahead fires at the next matching
+/// time of day. 23 h leaves an hour of margin under that window for write
+/// latency and clock steps.
+///
+/// [`rtc-bd70528.c`]: https://github.com/torvalds/linux/blob/f93eb7cfc4bfa5d46340f360873726e3e77f2365/drivers/rtc/rtc-bd70528.c#L129
+/// [`BD70528_MASK_ALM_EN`]: https://github.com/torvalds/linux/blob/f93eb7cfc4bfa5d46340f360873726e3e77f2365/include/linux/mfd/rohm-shared.h#L19
+/// [`dodgy_rtc`]: https://github.com/koreader/koreader/blob/master/frontend/device/kobo/device.lua
+/// [koreader#8039]: https://github.com/koreader/koreader/issues/8039
+/// [cadmus#1253]: https://github.com/OGKevin/cadmus/issues/1253
+fn alarm_limit_for(name: &str) -> Option<ChronoDuration> {
+    match name {
+        "bd70528-rtc" => Some(ChronoDuration::hours(23)),
+        "pmic_rtc" => Some(ChronoDuration::seconds(65_000)),
+        _ => None,
+    }
+}
+
+/// Logs the RTC name and the alarm limit in force for it.
+fn log_alarm_capability(rtc: &LinuxRtc) {
+    match (rtc.name(), rtc.alarm_limit()) {
+        (Some(name), Some(limit)) => {
+            let limit = limit.to_std().unwrap_or_default();
+            tracing::info!(
+                rtc_name = %name,
+                alarm_limit = %humantime::format_duration(limit),
+                "RTC alarm limit"
+            );
+        }
+        (Some(name), None) => tracing::info!(rtc_name = %name, "RTC has no known alarm limit"),
+        (None, _) => tracing::info!("RTC name unavailable; no alarm limit"),
+    }
+}
+
 /// Parses `/sys/class/rtc/rtc0/wakealarm` content.
 ///
 /// Empty content means no alarm is armed; unparseable content means the node is
@@ -355,6 +440,33 @@ mod tests {
     use super::*;
     use chrono::TimeZone as _;
     use tempfile::NamedTempFile;
+
+    #[test]
+    fn rtc_name_uses_first_word() {
+        assert_eq!(
+            parse_rtc_name("bd70528-rtc bd70528-rtc.5.auto\n"),
+            Some("bd70528-rtc")
+        );
+        assert_eq!(parse_rtc_name("  pmic_rtc\n"), Some("pmic_rtc"));
+        assert_eq!(parse_rtc_name("\n"), None);
+    }
+
+    #[test]
+    fn alarm_limit_known_rtc_names() {
+        assert_eq!(
+            alarm_limit_for("bd70528-rtc"),
+            Some(ChronoDuration::hours(23))
+        );
+        assert_eq!(
+            alarm_limit_for("pmic_rtc"),
+            Some(ChronoDuration::seconds(65_000))
+        );
+    }
+
+    #[test]
+    fn alarm_limit_unknown_rtc_name() {
+        assert_eq!(alarm_limit_for("rk808-rtc"), None);
+    }
 
     #[test]
     fn wakealarm_parses_epoch_seconds() {

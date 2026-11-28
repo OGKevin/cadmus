@@ -86,7 +86,6 @@ pub(in crate::device::suspend) fn clock_boottime() -> Option<Duration> {
 mod tests {
     use super::*;
     use crate::device::rtc::PreSleepAlarms;
-    use chrono::Local;
     use std::time::Instant;
 
     #[test]
@@ -94,8 +93,8 @@ mod tests {
         #[cfg(target_os = "linux")]
         let interrupt_baseline = None;
         let state = DeepIdleWaitState::capture(
-            Local::now(),
             PreSleepAlarms::default(),
+            false,
             #[cfg(target_os = "linux")]
             interrupt_baseline,
         );
@@ -104,19 +103,17 @@ mod tests {
 
     #[test]
     fn production_boot_ahead_of_mono_is_wake() {
-        let sleep_started_at = Local::now();
         let boot_now = clock_boottime().unwrap_or(Duration::from_secs(10));
         let synthetic = DeepIdleWaitState::synthetic(
             Some(boot_now.saturating_sub(Duration::from_secs(5))),
             Instant::now(),
-            sleep_started_at,
         );
         assert_eq!(production_resolve(&synthetic), PollResult::Woke);
     }
 
     #[test]
     fn missing_boot_anchor_does_not_false_wake() {
-        let synthetic = DeepIdleWaitState::synthetic(None, Instant::now(), Local::now());
+        let synthetic = DeepIdleWaitState::synthetic(None, Instant::now());
         assert_eq!(production_resolve(&synthetic), PollResult::StillWaiting);
     }
 }

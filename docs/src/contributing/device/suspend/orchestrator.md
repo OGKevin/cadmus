@@ -82,10 +82,12 @@ autosleep refusals carry no errno.
 
 ## Wake-source telemetry
 
-On Linux, the DeepIdle wait snapshots the pre-sleep hardware and earliest
-logical alarm and the IRQ counters, and each detected wake emits one
-`Primary deep-idle wake` record from
-<a href="/api/cadmus_core/device/suspend/orchestrator/fn.log_wake_source.html">`log_wake_source`</a>.
+On Linux each detected deep-idle wake is logged by
+<a href="/api/cadmus_core/device/suspend/orchestrator/fn.log_wake_source.html">`log_wake_source`</a>:
+one `Primary deep-idle wake` record, then one `Wake classified` line naming a
+User or Unattended wake and its cause. An RTC that fires with no alarm due logs
+`RTC fired early`; see [Time and RTC](../time.md#alarm-limits) for why.
+
 What the fields cannot say matters more than what they contain:
 
 - `wake_irq` is read inside the wake path because the kernel clears it on the

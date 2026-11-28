@@ -170,6 +170,23 @@ A split pair (system jumped, RTC did not) means
 and other RTC alarms stay on the old hardware timeline while the UI clock
 already moved.
 
+## Alarm limits
+
+Some RTCs compare only the time of day, so an alarm further ahead than a day
+fires at the next matching `hour:minute:second`. When the RTC is opened,
+Cadmus reads the first word of `/sys/class/rtc/rtc0/name` and caps the
+hardware slot for the chips it knows:
+
+| RTC name      | Limit    | Evidence                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bd70528-rtc` | 23 h     | [`rtc-bd70528.c`](https://github.com/torvalds/linux/blob/f93eb7cfc4bfa5d46340f360873726e3e77f2365/drivers/rtc/rtc-bd70528.c#L129) enables the alarm with [`BD70528_MASK_ALM_EN = 0x7`](https://github.com/torvalds/linux/blob/f93eb7cfc4bfa5d46340f360873726e3e77f2365/include/linux/mfd/rohm-shared.h#L19), so only second, minute and hour are compared; [cadmus#1253](https://github.com/OGKevin/cadmus/issues/1253) |
+| `pmic_rtc`    | 65 000 s | KOReader [`dodgy_rtc`](https://github.com/koreader/koreader/blob/master/frontend/device/kobo/device.lua), [koreader#8039](https://github.com/koreader/koreader/issues/8039); untested on hardware                                                                                                                                                                                                                       |
+
+An unknown name gets no limit and the alarm is programmed for its requested
+instant. The start line logs the name and limit (`RTC alarm limit` at `INFO`),
+or `RTC has no known alarm limit`; an unreadable name logs
+`RTC name unavailable; no alarm limit`.
+
 ## See also
 
 - User guide: [Automatic Time Syncing](../../time-sync.md)

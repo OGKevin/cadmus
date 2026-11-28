@@ -2,6 +2,7 @@
 
 use anyhow::Error;
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
+use std::sync::Arc;
 use std::time::Duration;
 
 use super::RtcWkalrm;
@@ -16,7 +17,9 @@ use super::wake_alarm::HardwareWakeAlarm;
 /// # Consumers
 ///
 /// [`super::AlarmManager`] multiplexes logical alarms onto one wake alarm,
-/// waits for alarm IRQs, and claims which logical alarms fired.
+/// waits for alarm IRQs, and claims which logical alarms fired. It also keeps
+/// the programmed alarm no further ahead than [`Rtc::alarm_limit`] so an alarm
+/// beyond the hardware's range still wakes the device on time.
 /// [`crate::time_manager::TimeManager`] writes NTP-synced time back to the RTC
 /// after a successful sync so the battery-backed clock matches the system clock.
 ///
@@ -45,6 +48,25 @@ pub trait Rtc: Send + Sync {
     /// which reports [`HardwareWakeAlarm::Unavailable`].
     fn wake_alarm(&self) -> impl Future<Output = HardwareWakeAlarm> + Send {
         async { HardwareWakeAlarm::Unavailable }
+    }
+
+    /// Returns the platform name of this RTC, when the implementation knows one.
+    ///
+    /// The name identifies the chip in field logs, including the startup line
+    /// that records its alarm limit and the warning for an RTC that fires before
+    /// its alarm is due.
+    fn name(&self) -> Option<Arc<str>> {
+        None
+    }
+
+    /// Returns the longest span ahead this RTC's wake alarm can hold.
+    ///
+    /// Some chips compare only the time of day, so an alarm further ahead than
+    /// the limit fires early. [`super::AlarmManager`] programs the hardware no
+    /// further ahead than the limit and re-arms when the step is reached. The
+    /// default reports no limit, which programs the requested instant directly.
+    fn alarm_limit(&self) -> Option<ChronoDuration> {
+        None
     }
 
     /// Schedules a single-shot wake alarm at `wake_time`.
@@ -142,6 +164,14 @@ impl<T: Rtc + ?Sized> Rtc for std::sync::Arc<T> {
 
     fn wake_alarm(&self) -> impl Future<Output = HardwareWakeAlarm> + Send {
         (**self).wake_alarm()
+    }
+
+    fn name(&self) -> Option<Arc<str>> {
+        (**self).name()
+    }
+
+    fn alarm_limit(&self) -> Option<ChronoDuration> {
+        (**self).alarm_limit()
     }
 
     fn set_alarm(

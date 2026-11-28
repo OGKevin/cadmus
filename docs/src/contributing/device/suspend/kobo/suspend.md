@@ -25,7 +25,10 @@ restoration even if the event caller stops waiting, so a Full request that
 arrives after the last check aborts the cycle only after that cleanup. Resume
 clears `state-extended=0` and re-initialises the touch controller on the models
 that need it; AutoPowerOff and Calendar RTCs are then checked, and WakeDebounce
-may re-enter sleep with the same cycle until User activity cancels it.
+may re-enter sleep with the same cycle until User activity cancels it. Every
+wake is classified as a User or Unattended wake with its cause, and an RTC that
+fires before its alarm is due is reported and re-armed — see
+[Wake-source telemetry](../orchestrator.md#wake-source-telemetry).
 
 ## Soft-suspend deep idle (autosleep armed)
 
@@ -47,6 +50,16 @@ If the `deep-idle` lease cannot be acquired, `start_cycle` changes the cycle to
 
 Opportunistic naps between events still use Soft suspend leases; DeepIdle is
 the **explicit** path after Auto Suspend fires.
+
+## User activity
+
+The decoder in <a href="/api/cadmus_core/input/index.html">`input`</a> decides
+what counts as User activity before the lifecycle sees it: a finger down or
+move, a decoded button press, opening the sleep cover, and a gyroscope rotation
+to another orientation while the device is awake. An empty touchscreen frame
+reports nothing (the controller sends one per resume), and neither does
+plugging in a cable. A host plug still cancels a pending suspend and may start
+USB sharing; it is just not User activity.
 
 ## `state-extended`
 

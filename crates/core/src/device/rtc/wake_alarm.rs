@@ -46,22 +46,33 @@ pub(crate) struct PreSleepAlarms {
     pub(crate) hardware: HardwareWakeAlarm,
     /// Earliest logical alarm held by [`AlarmManager`].
     pub(crate) cadmus: Option<(AlarmType, DateTime<Utc>)>,
+    /// Hardware time programmed as a re-arm step, when the earliest logical
+    /// alarm is further ahead than the RTC's alarm limit.
+    pub(crate) rearm_step: Option<DateTime<Utc>>,
 }
 
 #[cfg(any(feature = "kobo", docsrs, test))]
 impl PreSleepAlarms {
-    /// Whether the hardware slot disagrees with Cadmus's earliest logical alarm.
+    /// Whether the hardware slot disagrees with what Cadmus programmed.
     ///
     /// The slot and the RTC driver both resolve to whole seconds, so the
     /// comparison truncates. An [`HardwareWakeAlarm::Unavailable`] slot never
-    /// reports a mismatch because nothing was read to compare against.
+    /// reports a mismatch because nothing was read to compare against. A
+    /// programmed re-arm step is expected to sit before the logical alarm, so
+    /// only a slot that matches neither is a candidate for a writer Cadmus does
+    /// not know.
     pub(crate) fn unmanaged_alarm_candidate(&self) -> bool {
-        match (self.hardware, self.cadmus) {
+        let programmed = match (self.rearm_step, self.cadmus) {
+            (Some(step), _) => Some(step),
+            (None, Some((_, wake_time))) => Some(wake_time),
+            (None, None) => None,
+        };
+        match (self.hardware, programmed) {
             (HardwareWakeAlarm::Unavailable, _) => false,
             (HardwareWakeAlarm::Disabled, None) => false,
             (HardwareWakeAlarm::Disabled, Some(_)) | (HardwareWakeAlarm::Armed(_), None) => true,
-            (HardwareWakeAlarm::Armed(hardware), Some((_, cadmus))) => {
-                hardware.timestamp() != cadmus.timestamp()
+            (HardwareWakeAlarm::Armed(hardware), Some(programmed)) => {
+                hardware.timestamp() != programmed.timestamp()
             }
         }
     }
@@ -75,6 +86,10 @@ mod tests {
         HardwareWakeAlarm::Armed(DateTime::from_timestamp(epoch, 0).unwrap())
     }
 
+    fn at(epoch: i64) -> DateTime<Utc> {
+        DateTime::from_timestamp(epoch, 0).unwrap()
+    }
+
     #[test]
     fn matching_alarm_is_not_a_candidate() {
         let pre = PreSleepAlarms {
@@ -83,18 +98,37 @@ mod tests {
                 AlarmType::CalendarUpdate,
                 DateTime::from_timestamp(1_700_000_000, 250_000_000).unwrap(),
             )),
+            ..Default::default()
         };
         assert!(!pre.unmanaged_alarm_candidate());
     }
 
     #[test]
-    fn differing_alarm_is_a_candidate() {
+    fn later_hardware_alarm_is_a_candidate() {
+        let pre = PreSleepAlarms {
+            hardware: armed(1_700_000_060),
+            cadmus: Some((AlarmType::CalendarUpdate, at(1_700_000_000))),
+            ..Default::default()
+        };
+        assert!(pre.unmanaged_alarm_candidate());
+    }
+
+    #[test]
+    fn expected_rearm_step_is_not_a_candidate() {
         let pre = PreSleepAlarms {
             hardware: armed(1_700_000_000),
-            cadmus: Some((
-                AlarmType::CalendarUpdate,
-                DateTime::from_timestamp(1_700_000_060, 0).unwrap(),
-            )),
+            cadmus: Some((AlarmType::AutoPowerOff, at(1_700_086_400))),
+            rearm_step: Some(at(1_700_000_000)),
+        };
+        assert!(!pre.unmanaged_alarm_candidate());
+    }
+
+    #[test]
+    fn unexpected_earlier_hardware_alarm_is_a_candidate() {
+        let pre = PreSleepAlarms {
+            hardware: armed(1_700_000_000),
+            cadmus: Some((AlarmType::AutoPowerOff, at(1_700_086_400))),
+            ..Default::default()
         };
         assert!(pre.unmanaged_alarm_candidate());
     }
@@ -104,6 +138,7 @@ mod tests {
         let pre = PreSleepAlarms {
             hardware: armed(1_700_000_000),
             cadmus: None,
+            ..Default::default()
         };
         assert!(pre.unmanaged_alarm_candidate());
     }
@@ -112,10 +147,8 @@ mod tests {
     fn disabled_hardware_with_cadmus_alarm_is_a_candidate() {
         let pre = PreSleepAlarms {
             hardware: HardwareWakeAlarm::Disabled,
-            cadmus: Some((
-                AlarmType::AutoPowerOff,
-                DateTime::from_timestamp(1_700_000_000, 0).unwrap(),
-            )),
+            cadmus: Some((AlarmType::AutoPowerOff, at(1_700_000_000))),
+            ..Default::default()
         };
         assert!(pre.unmanaged_alarm_candidate());
     }
@@ -125,6 +158,7 @@ mod tests {
         let pre = PreSleepAlarms {
             hardware: HardwareWakeAlarm::Disabled,
             cadmus: None,
+            ..Default::default()
         };
         assert!(!pre.unmanaged_alarm_candidate());
     }
@@ -133,10 +167,8 @@ mod tests {
     fn unavailable_hardware_is_never_a_candidate() {
         let pre = PreSleepAlarms {
             hardware: HardwareWakeAlarm::Unavailable,
-            cadmus: Some((
-                AlarmType::CalendarUpdate,
-                DateTime::from_timestamp(1_700_000_060, 0).unwrap(),
-            )),
+            cadmus: Some((AlarmType::CalendarUpdate, at(1_700_000_060))),
+            ..Default::default()
         };
         assert!(!pre.unmanaged_alarm_candidate());
     }

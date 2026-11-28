@@ -12,7 +12,6 @@ use crate::device::inhibitor::soft_suspend::SuppressionEpoch;
 use crate::device::linux::wake_telemetry::InterruptSnapshot;
 use crate::device::rtc::PreSleepAlarms;
 use crate::device::soft_suspend::mode::AutosleepMode;
-use chrono::{DateTime, Local};
 #[cfg(target_os = "linux")]
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -56,8 +55,10 @@ pub(in crate::device::suspend) struct DeepIdleWaitState {
     boot_anchor: Option<Duration>,
     /// Monotonic clock sample captured when the deep-idle wait begins.
     mono_anchor: Instant,
-    /// Wall-clock time when sleep began; used for post-wake RTC alarm claims.
-    sleep_started_at: DateTime<Local>,
+    /// Whether the sleep cover was closed when the wait began.
+    ///
+    /// A wake with this set and the cover open was caused by opening the cover.
+    covered_before_sleep: bool,
     /// Alarm state captured immediately before deep-idle entry.
     pre_sleep_alarms: PreSleepAlarms,
     #[cfg(target_os = "linux")]
@@ -67,14 +68,14 @@ pub(in crate::device::suspend) struct DeepIdleWaitState {
 impl DeepIdleWaitState {
     /// Samples boottime and monotonic clocks at deep-idle wait start.
     pub(in crate::device::suspend) fn capture(
-        sleep_started_at: DateTime<Local>,
         pre_sleep_alarms: PreSleepAlarms,
+        covered: bool,
         #[cfg(target_os = "linux")] interrupt_baseline: Option<Arc<InterruptSnapshot>>,
     ) -> Self {
         Self {
             boot_anchor: super::wake::clock_boottime(),
             mono_anchor: Instant::now(),
-            sleep_started_at,
+            covered_before_sleep: covered,
             pre_sleep_alarms,
             #[cfg(target_os = "linux")]
             interrupt_baseline,
@@ -89,12 +90,12 @@ impl DeepIdleWaitState {
         self.mono_anchor
     }
 
-    pub(in crate::device::suspend) fn sleep_started_at(&self) -> DateTime<Local> {
-        self.sleep_started_at
-    }
-
     pub(in crate::device::suspend) fn pre_sleep_alarms(&self) -> PreSleepAlarms {
         self.pre_sleep_alarms
+    }
+
+    pub(in crate::device::suspend) fn covered_before_sleep(&self) -> bool {
+        self.covered_before_sleep
     }
 
     #[cfg(target_os = "linux")]
@@ -106,12 +107,11 @@ impl DeepIdleWaitState {
     pub(in crate::device::suspend) fn synthetic(
         boot_anchor: Option<Duration>,
         mono_anchor: Instant,
-        sleep_started_at: DateTime<Local>,
     ) -> Self {
         Self {
             boot_anchor,
             mono_anchor,
-            sleep_started_at,
+            covered_before_sleep: false,
             pre_sleep_alarms: PreSleepAlarms::default(),
             #[cfg(target_os = "linux")]
             interrupt_baseline: None,

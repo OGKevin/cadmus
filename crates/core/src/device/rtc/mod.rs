@@ -125,13 +125,6 @@ impl RtcWkalrm {
     pub fn enabled(&self) -> bool {
         self.enabled == 1
     }
-
-    /// Returns the year field from the alarm's stored time.
-    ///
-    /// This is the full calendar year (e.g., 2024), not the offset from 1900.
-    pub fn year(&self) -> i32 {
-        self.time.year()
-    }
 }
 
 /// Identifies a logical alarm managed by [`AlarmManager`].
@@ -248,7 +241,10 @@ pub struct ScheduledAlarm {
     /// after an RTC clock step (`In` / `At(Rtc)` shift by the step, `At(Civil)`
     /// reconverts through refreshed drift).
     pub when: AlarmWhen,
-    /// Resolved wake instant on the RTC timeline (what hardware is programmed with).
+    /// Resolved wake instant on the RTC timeline.
+    ///
+    /// This is the alarm's own instant; the hardware may hold an earlier
+    /// re-arm step when the RTC's alarm limit is shorter than the wait.
     pub wake_time: DateTime<Utc>,
 }
 
@@ -256,7 +252,8 @@ pub struct ScheduledAlarm {
 ///
 /// The hardware RTC supports only one wake alarm at a time. `AlarmManager`
 /// maintains a map of logical alarms keyed by [`AlarmType`] and always
-/// programs the hardware with the earliest upcoming wake time. An owned IRQ
+/// programs the hardware with the earliest upcoming wake time, no further
+/// ahead than the RTC's [`Rtc::alarm_limit`]. An owned IRQ
 /// listener thread waits on [`Rtc::wait_for_alarm_irq`], claims due alarms via
 /// [`AlarmManager::claim_due_alarms`], and delivers them through the callback
 /// passed to [`AlarmManager::start_irq_listener`]. After resume,
@@ -265,6 +262,12 @@ pub struct ScheduledAlarm {
 pub struct AlarmManager<R: Rtc> {
     rtc: Arc<R>,
     scheduled_alarms: BTreeMap<AlarmType, ScheduledAlarm>,
+    /// Hardware wake time when the programmed alarm is a re-arm step.
+    ///
+    /// Set while the earliest logical alarm is further ahead than
+    /// [`Rtc::alarm_limit`], in which case the slot holds `now + limit` instead
+    /// of the alarm's own wake time. Cleared once the alarm fits.
+    rearm_step: Option<DateTime<Utc>>,
     irq_thread: Option<tokio::task::JoinHandle<()>>,
     stop: Arc<AtomicBool>,
 }
@@ -302,6 +305,7 @@ impl<R: Rtc> AlarmManager<R> {
         AlarmManager {
             rtc,
             scheduled_alarms: BTreeMap::new(),
+            rearm_step: None,
             irq_thread: None,
             stop: Arc::new(AtomicBool::new(false)),
         }
@@ -355,6 +359,7 @@ impl<R: Rtc> AlarmManager<R> {
         let cleared: Vec<AlarmType> = self.scheduled_alarms.keys().copied().collect();
         self.scheduled_alarms.clear();
         self.rtc.disable_alarm().await?;
+        self.rearm_step = None;
         if cleared.is_empty() {
             tracing::debug!("Cleared RTC alarms on shutdown (none scheduled)");
         } else {
@@ -383,9 +388,10 @@ impl<R: Rtc> AlarmManager<R> {
 
     /// Returns the earliest logical alarm that is still ahead, if any.
     ///
-    /// Matches what [`AlarmManager::update_hardware_alarm_at`] programs into the
-    /// single slot: a past-due alarm stays in the schedule but is not written to
-    /// hardware, so including it would read as a mismatch against the slot.
+    /// A past-due alarm stays in the schedule but is not written to hardware, so
+    /// it is skipped. With an RTC that reports an [`Rtc::alarm_limit`], the
+    /// hardware slot may instead hold an earlier re-arm step (see
+    /// [`AlarmManager::rearm_step`]).
     #[cfg(any(feature = "kobo", docsrs, test))]
     pub(crate) async fn next_scheduled_alarm(&self) -> Option<(AlarmType, DateTime<Utc>)> {
         let now = self.authority_now().await;
@@ -440,35 +446,15 @@ impl<R: Rtc> AlarmManager<R> {
 
     /// Determines which logical alarms fired during the last sleep cycle.
     ///
-    /// `before` and `after` are tagged with [`ClockInstant`] so both ends are
-    /// normalized to the RTC timeline before comparing sleep length to the
-    /// expected wake. Prefer the same variant for both ends of one call.
-    pub async fn check_fired_alarms(
-        &mut self,
-        before: ClockInstant,
-        after: ClockInstant,
-    ) -> Result<Vec<AlarmType>, Error> {
+    /// The kernel disables the wake alarm when it delivers an RTC interrupt, so
+    /// a disabled slot means the hardware fired. An RTC that raises an interrupt
+    /// without the kernel delivering it (its alarm was set beyond the chip's
+    /// range) is reported and re-armed by the wake classifier; it must not claim
+    /// its logical alarms here.
+    pub async fn check_fired_alarms(&mut self) -> Result<Vec<AlarmType>, Error> {
         let now = self.authority_now().await;
-        let before_rtc = self.resolve_instant(before)?;
-        let after_rtc = self.resolve_instant(after)?;
-        if let Some((_, earliest_alarm)) = self
-            .scheduled_alarms
-            .iter()
-            .min_by_key(|(_, alarm)| &alarm.wake_time)
-        {
-            let expected_duration = earliest_alarm.wake_time.signed_duration_since(before_rtc);
-
-            let rwa = self.rtc.alarm().await?;
-            let hardware_alarm_fired = !rwa.enabled()
-                || (rwa.year() <= 1970
-                    && ((after_rtc - before_rtc) - expected_duration)
-                        .num_seconds()
-                        .abs()
-                        < 3);
-
-            if hardware_alarm_fired {
-                return self.claim_due_alarms_at(now).await;
-            }
+        if !self.rtc.alarm().await?.enabled() {
+            return self.claim_due_alarms_at(now).await;
         }
 
         self.update_hardware_alarm_at(now).await?;
@@ -561,19 +547,43 @@ impl<R: Rtc> AlarmManager<R> {
         Ok(())
     }
 
-    async fn update_hardware_alarm_at(&self, now: DateTime<Utc>) -> Result<(), Error> {
-        if let Some((_, earliest_alarm)) = self
+    async fn update_hardware_alarm_at(&mut self, now: DateTime<Utc>) -> Result<(), Error> {
+        if let Some((alarm_type, wake_time)) = self
             .scheduled_alarms
-            .iter()
-            .filter(|(_, alarm)| alarm.wake_time > now)
-            .min_by_key(|(_, alarm)| &alarm.wake_time)
+            .values()
+            .filter(|alarm| alarm.wake_time > now)
+            .min_by_key(|alarm| alarm.wake_time)
+            .map(|alarm| (alarm.alarm_type, alarm.wake_time))
         {
-            self.rtc.set_alarm(earliest_alarm.wake_time).await?;
+            let step = match self.rtc.alarm_limit() {
+                Some(limit) => wake_time.min(now + limit),
+                None => wake_time,
+            };
+            self.rtc.set_alarm(step).await?;
+            self.rearm_step = (step < wake_time).then_some(step);
+            if let Some(rearm_step) = self.rearm_step() {
+                tracing::info!(
+                    alarm_type = ?alarm_type,
+                    requested = %wake_time,
+                    programmed = %rearm_step,
+                    "RTC alarm limited to its hardware range"
+                );
+            }
         } else {
             self.rtc.disable_alarm().await?;
+            self.rearm_step = None;
         }
 
         Ok(())
+    }
+
+    /// Returns the hardware wake time when the programmed alarm is a re-arm step.
+    ///
+    /// `None` when the slot is disabled or holds the earliest logical alarm's
+    /// own wake time. The wake classifier reports a wake that reaches this time
+    /// as an Unattended alarm re-arm instead of an early fire.
+    pub(crate) fn rearm_step(&self) -> Option<DateTime<Utc>> {
+        self.rearm_step
     }
 }
 
@@ -912,58 +922,22 @@ mod tests {
             .await
             .unwrap();
         rtc.simulate_alarm_fired();
-        let after = before + Duration::minutes(5) + Duration::seconds(1);
-        rtc.set_current_time(after);
-        let fired = manager
-            .check_fired_alarms(ClockInstant::Rtc(before), ClockInstant::Rtc(after))
-            .await
-            .unwrap();
-        assert!(fired.contains(&AlarmType::AutoPowerOff));
-    }
-
-    #[tokio::test]
-    async fn check_fired_alarms_civil_window_under_rtc_lag() {
-        let (rtc, mut manager) = test_alarm_manager();
-        let civil_before = Utc::now();
-        rtc.set_time(civil_before - Duration::hours(1))
-            .await
-            .unwrap();
-        let _ = rtc.take_pending_step().unwrap();
-
-        manager
-            .schedule_in(AlarmType::AutoPowerOff, Duration::minutes(5))
-            .await
-            .unwrap();
-        rtc.simulate_alarm_fired();
-
-        let civil_after = civil_before + Duration::minutes(5) + Duration::seconds(1);
-        rtc.set_current_time(rtc.to_rtc(civil_after).unwrap());
-
-        let fired = manager
-            .check_fired_alarms(
-                ClockInstant::Civil(civil_before),
-                ClockInstant::Civil(civil_after),
-            )
-            .await
-            .unwrap();
+        rtc.set_current_time(before + Duration::minutes(5) + Duration::seconds(1));
+        let fired = manager.check_fired_alarms().await.unwrap();
         assert!(fired.contains(&AlarmType::AutoPowerOff));
     }
 
     #[tokio::test]
     async fn check_fired_alarms_not_fired() {
         let (rtc, mut manager) = test_alarm_manager();
-        let before = rtc.read_time().await.unwrap();
         manager
             .schedule_in(AlarmType::AutoPowerOff, Duration::hours(1))
             .await
             .unwrap();
-        let after = before + Duration::minutes(1);
-        let fired = manager
-            .check_fired_alarms(ClockInstant::Rtc(before), ClockInstant::Rtc(after))
-            .await
-            .unwrap();
+        let fired = manager.check_fired_alarms().await.unwrap();
         assert!(fired.is_empty());
-        assert!(!rtc.alarm_enabled() || manager.has_alarm(AlarmType::AutoPowerOff));
+        assert!(rtc.alarm_enabled());
+        assert!(manager.has_alarm(AlarmType::AutoPowerOff));
     }
 
     #[tokio::test]
@@ -1275,5 +1249,100 @@ mod tests {
         let (_rtc, mut manager) = test_alarm_manager();
         manager.stop_irq_listener();
         manager.stop_irq_listener();
+    }
+
+    fn fixed_base() -> DateTime<Utc> {
+        Utc.with_ymd_and_hms(2026, 3, 1, 6, 0, 0).unwrap()
+    }
+
+    #[tokio::test]
+    async fn unlimited_time_of_day_rtc_fires_a_long_alarm_a_day_early() {
+        let (rtc, mut manager) = test_alarm_manager();
+        let base = fixed_base();
+        rtc.set_current_time(base);
+        rtc.set_time_of_day_alarms(true);
+
+        manager
+            .schedule_in(AlarmType::AutoPowerOff, Duration::hours(36))
+            .await
+            .unwrap();
+
+        assert_eq!(rtc.scheduled_wake_time(), Some(base + Duration::hours(36)));
+        assert_eq!(rtc.hardware_fire_time(), Some(base + Duration::hours(12)));
+        assert_eq!(manager.rearm_step(), None);
+
+        let early_wake = base + Duration::hours(12) + Duration::seconds(1);
+        rtc.set_current_time(early_wake);
+        rtc.simulate_alarm_fired();
+        let fired = manager.check_fired_alarms().await.unwrap();
+        assert!(fired.is_empty());
+    }
+
+    #[tokio::test]
+    async fn long_alarm_rearms_once_then_fires_on_time() {
+        let (rtc, mut manager) = test_alarm_manager();
+        let base = fixed_base();
+        rtc.set_current_time(base);
+        rtc.set_time_of_day_alarms(true);
+        rtc.set_alarm_limit(Some(Duration::hours(23)));
+
+        manager
+            .schedule_in(AlarmType::AutoPowerOff, Duration::hours(36))
+            .await
+            .unwrap();
+        let step = base + Duration::hours(23);
+        assert_eq!(rtc.scheduled_wake_time(), Some(step));
+        assert_eq!(rtc.hardware_fire_time(), Some(step));
+        assert_eq!(manager.rearm_step(), Some(step));
+
+        let step_wake = step + Duration::seconds(1);
+        rtc.set_current_time(step_wake);
+        rtc.simulate_alarm_fired();
+        let fired = manager.check_fired_alarms().await.unwrap();
+        assert!(fired.is_empty());
+        assert_eq!(rtc.scheduled_wake_time(), Some(base + Duration::hours(36)));
+        assert_eq!(rtc.hardware_fire_time(), Some(base + Duration::hours(36)));
+        assert_eq!(manager.rearm_step(), None);
+
+        let due = base + Duration::hours(36) + Duration::seconds(1);
+        rtc.set_current_time(due);
+        rtc.simulate_alarm_fired();
+        let fired = manager.check_fired_alarms().await.unwrap();
+        assert_eq!(fired, vec![AlarmType::AutoPowerOff]);
+        assert!(!rtc.alarm_enabled());
+    }
+
+    #[tokio::test]
+    async fn alarm_within_limit_gets_no_rearm_step() {
+        let (rtc, mut manager) = test_alarm_manager();
+        let base = fixed_base();
+        rtc.set_current_time(base);
+        rtc.set_time_of_day_alarms(true);
+        rtc.set_alarm_limit(Some(Duration::hours(23)));
+
+        manager
+            .schedule_in(AlarmType::AutoPowerOff, Duration::hours(13))
+            .await
+            .unwrap();
+
+        assert_eq!(rtc.scheduled_wake_time(), Some(base + Duration::hours(13)));
+        assert_eq!(rtc.hardware_fire_time(), Some(base + Duration::hours(13)));
+        assert_eq!(manager.rearm_step(), None);
+    }
+
+    #[tokio::test]
+    async fn rtc_without_limit_programs_requested_time() {
+        let (rtc, mut manager) = test_alarm_manager();
+        let base = fixed_base();
+        rtc.set_current_time(base);
+
+        manager
+            .schedule_in(AlarmType::AutoPowerOff, Duration::hours(36))
+            .await
+            .unwrap();
+
+        assert_eq!(rtc.scheduled_wake_time(), Some(base + Duration::hours(36)));
+        assert_eq!(rtc.hardware_fire_time(), Some(base + Duration::hours(36)));
+        assert_eq!(manager.rearm_step(), None);
     }
 }
