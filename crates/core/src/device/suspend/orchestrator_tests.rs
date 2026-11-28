@@ -12,7 +12,28 @@ use crate::device::test_harness::DeviceRuntimeHarness;
 use crate::frontlight::{Frontlight, LightLevel};
 use crate::settings::IntermissionDisplay;
 use chrono::TimeZone;
+use std::path::Path;
 use std::time::Duration;
+
+async fn wake_node(path: &Path) -> String {
+    tokio::fs::read_to_string(path)
+        .await
+        .expect("read wake node")
+        .trim()
+        .to_owned()
+}
+
+async fn wake_lock_held(
+    paths: &crate::device::linux::soft_suspend::paths::SoftSuspendPaths,
+) -> bool {
+    wake_node(&paths.wake_lock).await == crate::device::linux::soft_suspend::WAKE_LOCK_NAME
+}
+
+async fn wake_unlock_written(
+    paths: &crate::device::linux::soft_suspend::paths::SoftSuspendPaths,
+) -> bool {
+    wake_node(&paths.wake_unlock).await == crate::device::linux::soft_suspend::WAKE_LOCK_NAME
+}
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn prepare_for_sleep_schedules_suspend_rtc() {
@@ -109,15 +130,72 @@ async fn handle_post_wake_auto_power_off_exit() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn perform_suspend_resume_schedules_wake_debounce() {
     let mut harness = DeviceRuntimeHarness::new().await;
-    let (_before, _after) = crate::poll_parts!(harness, |hub, _bus, _rq, context, runtime| {
+    let outcome = crate::poll_parts!(harness, |hub, _bus, _rq, context, runtime| {
         perform_suspend_resume(hub, context, runtime)
     });
+    assert!(matches!(outcome, ClassicSuspendOutcome::Slept { .. }));
     assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::WakeDebounce));
     let power = harness.context.device.power_manager_for_test();
     assert!(power.was_suspend_called());
     assert!(power.was_resume_called());
     assert_eq!(power.suspend_call_count(), 1);
     assert_eq!(power.resume_call_count(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn classic_suspend_unlocks_and_restores_thumbnail_wake_lock() {
+    use crate::device::soft_suspend::SoftSuspendBackend as _;
+
+    let mut harness = DeviceRuntimeHarness::new().await;
+    let (_dir, paths) = install_armed_soft_suspend(&mut harness);
+    harness.context.inhibitor.set_mode(AutosleepMode::Off);
+    let _thumbnail = harness
+        .context
+        .inhibitor
+        .acquire(Kind::SoftSuspend, SoftSuspendName::Thumbnail)
+        .unwrap();
+    harness
+        .context
+        .device
+        .power_manager_for_test()
+        .set_wake_lock_probe(paths.wake_unlock.clone());
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+    });
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
+    });
+    assert!(wake_lock_held(&paths).await);
+    tokio::fs::write(&paths.wake_lock, "")
+        .await
+        .expect("clear lock");
+    tokio::fs::write(&paths.wake_unlock, "")
+        .await
+        .expect("clear unlock");
+
+    let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(
+            &Event::RtcAlarmFired(AlarmType::Suspend),
+            hub,
+            bus,
+            rq,
+            context,
+            runtime,
+        )
+    });
+
+    assert_eq!(outcome, EventOutcome::Handled);
+    let power = harness.context.device.power_manager_for_test();
+    assert_eq!(power.suspend_call_count(), 1);
+    assert_eq!(
+        power.wake_lock_at_suspend().as_deref(),
+        Some(crate::device::linux::soft_suspend::WAKE_LOCK_NAME),
+        "cadmus must be written to wake_unlock before the blocking state=mem write"
+    );
+    assert!(
+        wake_lock_held(&paths).await,
+        "resume must restore cadmus while the thumbnail lease remains"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -2079,7 +2157,7 @@ fn holds_sleep_inhibit(harness: &DeviceRuntimeHarness) -> bool {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn start_cycle_drops_sleep_inhibit_wake_lock() {
+async fn start_cycle_keeps_sleep_inhibit_until_kernel_sleep() {
     let mut harness = DeviceRuntimeHarness::new().await;
     let _sleep = harness
         .context
@@ -2092,8 +2170,8 @@ async fn start_cycle_drops_sleep_inhibit_wake_lock() {
     });
     assert!(harness.context.inhibitor.sleep_active());
     assert!(
-        !holds_sleep_inhibit(&harness),
-        "explicit suspend must drop nested sleep-inhibit wake lock"
+        holds_sleep_inhibit(&harness),
+        "preparation and intermission must keep the Sleep wake lease"
     );
     assert!(has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
 }
@@ -2116,8 +2194,8 @@ async fn start_cycle_keeps_other_soft_suspend_holders() {
     });
     assert!(harness.context.inhibitor.sleep_active());
     assert!(
-        !holds_sleep_inhibit(&harness),
-        "explicit suspend drops only nested sleep-inhibit"
+        holds_sleep_inhibit(&harness),
+        "the kernel-sleep boundary, not start_cycle, releases the shared lock"
     );
     assert!(
         harness
@@ -2126,12 +2204,12 @@ async fn start_cycle_keeps_other_soft_suspend_holders() {
             .holders()
             .iter()
             .any(|name| name.as_str() == SoftSuspendName::Wifi.as_str()),
-        "other SoftSuspend holders stay held while sleep-inhibit is paused"
+        "other SoftSuspend holders stay tracked across the cycle"
     );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn finish_cycle_restores_sleep_inhibit_wake_lock() {
+async fn finish_cycle_keeps_sleep_inhibit_while_sleep_held() {
     let mut harness = DeviceRuntimeHarness::new().await;
     let _sleep = harness
         .context
@@ -2141,7 +2219,6 @@ async fn finish_cycle_restores_sleep_inhibit_wake_lock() {
     crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
         start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
     });
-    assert!(!holds_sleep_inhibit(&harness));
     harness.with_parts(|hub, _bus, rq, context, runtime| {
         finish_cycle(context, runtime.tasks, runtime.view.as_mut(), hub, rq);
     });
@@ -2150,9 +2227,72 @@ async fn finish_cycle_restores_sleep_inhibit_wake_lock() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn explicit_deep_idle_unlocks_for_thumbnail_and_relocks_on_wake() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    let (_dir, paths) = install_armed_soft_suspend(&mut harness);
+    let _thumbnail = harness
+        .context
+        .inhibitor
+        .acquire(Kind::SoftSuspend, SoftSuspendName::Thumbnail)
+        .unwrap();
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+    });
+    assert!(wake_lock_held(&paths).await);
+
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
+    });
+
+    assert!(harness.context.inhibitor.has_holders());
+    assert!(
+        wake_unlock_written(&paths).await,
+        "kernel sleep must release cadmus even with a live thumbnail lease"
+    );
+    tokio::fs::write(&paths.wake_lock, "")
+        .await
+        .expect("clear lock");
+
+    pump_deep_idle_wake(&mut harness).await;
+    assert!(
+        wake_lock_held(&paths).await,
+        "wake must restore cadmus while the thumbnail lease remains"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn auto_deep_idle_proceeds_with_only_thumbnail_held() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    let (_dir, paths) = install_armed_soft_suspend(&mut harness);
+    let _thumbnail = harness
+        .context
+        .inhibitor
+        .acquire(Kind::SoftSuspend, SoftSuspendName::Thumbnail)
+        .unwrap();
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        start_cycle_from_auto(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+    });
+    assert_eq!(intermission_count(harness.view.as_ref()), 1);
+
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
+    });
+
+    assert!(
+        harness
+            .context
+            .suspend
+            .as_ref()
+            .and_then(|cycle| cycle.deep_idle_wait())
+            .is_some()
+    );
+    assert!(wake_unlock_written(&paths).await);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn deep_idle_wake_restores_sleep_inhibit_if_sleep_held() {
     let mut harness = DeviceRuntimeHarness::new().await;
-    let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
+    let (_dir, paths) = install_armed_soft_suspend(&mut harness);
     let _sleep = harness
         .context
         .inhibitor
@@ -2166,15 +2306,192 @@ async fn deep_idle_wake_restores_sleep_inhibit_if_sleep_held() {
     });
     assert!(harness.context.inhibitor.sleep_active());
     assert!(
-        !holds_sleep_inhibit(&harness),
-        "kernel sleep must drop nested sleep-inhibit"
+        holds_sleep_inhibit(&harness),
+        "the Sleep lease stays tracked while its kernel lock is suppressed"
     );
+    assert!(wake_unlock_written(&paths).await);
+    tokio::fs::write(&paths.wake_lock, "")
+        .await
+        .expect("clear lock");
+
     pump_deep_idle_wake(&mut harness).await;
     assert!(harness.context.inhibitor.sleep_active());
     assert!(
         holds_sleep_inhibit(&harness),
-        "resume must re-hold nested sleep-inhibit while Sleep holders remain"
+        "resume must retain the nested sleep-inhibit lease while Sleep holders remain"
     );
+    assert!(
+        wake_lock_held(&paths).await,
+        "resume must re-acquire cadmus for the remaining Sleep holder"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cancel_deep_idle_restores_thumbnail_wake_lock() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    let (_dir, paths) = install_armed_soft_suspend(&mut harness);
+    let _thumbnail = harness
+        .context
+        .inhibitor
+        .acquire(Kind::SoftSuspend, SoftSuspendName::Thumbnail)
+        .unwrap();
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+    });
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
+    });
+    assert!(wake_unlock_written(&paths).await);
+    tokio::fs::write(&paths.wake_lock, "")
+        .await
+        .expect("clear lock");
+
+    harness.with_parts(|hub, _bus, rq, context, runtime| {
+        cancel_suspend_if_pending(context, runtime.tasks, runtime.view.as_mut(), hub, rq);
+    });
+
+    assert!(harness.context.suspend.is_none());
+    assert!(
+        wake_lock_held(&paths).await,
+        "cancelling during the wait must restore cadmus for the live thumbnail lease"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn full_acquired_before_deep_idle_sleep_finishes_cycle() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    let (_dir, paths) = install_armed_soft_suspend(&mut harness);
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+    });
+    let _full = harness
+        .context
+        .inhibitor
+        .acquire(Kind::Full, "ota")
+        .unwrap();
+    tokio::fs::write(&paths.wake_unlock, "")
+        .await
+        .expect("clear unlock");
+
+    let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
+    });
+
+    assert_eq!(outcome, EventOutcome::Handled);
+    assert!(harness.context.suspend.is_none());
+    assert_eq!(
+        harness.context.deferred_suspend,
+        Some(DeferredSuspend::Explicit)
+    );
+    assert!(
+        !wake_unlock_written(&paths).await,
+        "pause must not suppress the lock while Full is active"
+    );
+    assert!(wake_lock_held(&paths).await);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn full_acquired_before_classic_suspend_finishes_cycle() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    let (_dir, paths) = install_armed_soft_suspend(&mut harness);
+    harness.context.inhibitor.set_mode(AutosleepMode::Off);
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+    });
+    let _full = harness
+        .context
+        .inhibitor
+        .acquire(Kind::Full, "ota")
+        .unwrap();
+    tokio::fs::write(&paths.wake_unlock, "")
+        .await
+        .expect("clear unlock");
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
+    });
+
+    let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(
+            &Event::RtcAlarmFired(AlarmType::Suspend),
+            hub,
+            bus,
+            rq,
+            context,
+            runtime,
+        )
+    });
+
+    assert_eq!(outcome, EventOutcome::Handled);
+    assert!(harness.context.suspend.is_none());
+    assert_eq!(
+        harness.context.deferred_suspend,
+        Some(DeferredSuspend::Explicit)
+    );
+    assert!(
+        !wake_unlock_written(&paths).await,
+        "pause must not suppress the lock while Full is active"
+    );
+    assert!(wake_lock_held(&paths).await);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn full_acquired_during_deep_idle_aborts_kernel_sleep() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    let (_dir, paths) = install_armed_soft_suspend(&mut harness);
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+    });
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
+    });
+    assert!(wake_unlock_written(&paths).await);
+    tokio::fs::write(&paths.wake_lock, "")
+        .await
+        .expect("clear lock");
+
+    let _full = harness
+        .context
+        .inhibitor
+        .acquire(Kind::Full, "ota")
+        .unwrap();
+    assert!(
+        wake_lock_held(&paths).await,
+        "Full acquisition must restore cadmus before the next poll"
+    );
+    harness
+        .context
+        .deep_idle_poll_inject
+        .push_back(PollResult::StillWaiting);
+    let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::PollDeepIdleWait, hub, bus, rq, context, runtime)
+    });
+
+    assert_eq!(outcome, EventOutcome::Handled);
+    assert!(harness.context.suspend.is_none());
+    assert_eq!(
+        harness.context.deferred_suspend,
+        Some(DeferredSuspend::Explicit)
+    );
+    assert!(
+        wake_lock_held(&paths).await,
+        "Full must restore cadmus instead of sleeping over OTA"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn start_cycle_from_auto_with_sleep_does_not_show_intermission() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    let _sleep = harness
+        .context
+        .inhibitor
+        .acquire(Kind::Sleep, "main-menu")
+        .unwrap();
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        start_cycle_from_auto(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+    });
+    assert!(harness.context.deferred_suspend.is_some());
+    assert_eq!(intermission_count(harness.view.as_ref()), 0);
+    assert!(!has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

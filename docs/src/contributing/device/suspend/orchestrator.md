@@ -55,14 +55,19 @@ flowchart TD
 <a href="/api/cadmus_core/device/rtc/enum.AlarmType.html#variant.Suspend">`AlarmType::Suspend`</a>
 mean **enter sleep now** (after prepare), not “start a new cycle”.
 
-Full inhibit defers `start_cycle` as Explicit origin. Sleep defers the Auto
+Full inhibit defers `start_cycle` as Explicit origin. If a worker acquires Full
+during preparation or the deep-idle wait, the orchestrator aborts the cycle
+before kernel sleep and queues the same Explicit intent. Sleep defers the Auto
 path only. `InhibitCleared(Kind::Full)` flushes Auto through
 `start_cycle_from_auto` and Explicit through `start_cycle`. A start while a
 suspend cycle is in flight is ignored. The last Sleep release flushes a
 deferred Auto through `start_cycle_from_auto`, which re-defers while a Full or
-Sleep lease is held, and leaves a deferred Explicit for the Full release.
-Explicit Sleep cycles
-pause the nested `"sleep-inhibit"` wake lock; kernel wake re-takes it if Sleep is still held — [Inhibitor § Deferred explicit suspend](inhibitor.md#deferred-explicit-suspend).
+Sleep lease is held, and leaves a deferred Explicit for the Full release. All
+SoftSuspend holders, including the nested `"sleep-inhibit"` lease, remain
+tracked while the shared `cadmus` wake lock is suppressed for the kernel-sleep
+window; wake restores it when any holder remains. Suppression is refused while
+a Full holder is live. If Full arrives during the window, its nested wake lease
+immediately restores `cadmus` and the cycle aborts before sleep — [Inhibitor § Deferred explicit suspend](inhibitor.md#deferred-explicit-suspend).
 
 ## Kind and phase
 

@@ -47,9 +47,13 @@ flowchart LR
 - **Soft suspend** controls **opportunistic** naps while the app is interactive.
   A SoftSuspend lease keeps the wake lock held. After the last lease is
   released, the configured grace expires before the wake lock is unlocked.
+- An explicit suspend cycle suppresses that shared wake lock for its kernel-sleep
+  window, even when SoftSuspend holders are still alive. The leases remain
+  tracked, and wake restores the lock if any holder remains.
 - On Kobo, **DeepIdle** temporarily forces autosleep to `mem`, arms
-  `state-extended`, drops its cycle lease, and polls for wake. **Classic** calls
-  blocking `KoboPowerManager::suspend`.
+  `state-extended`, releases the shared wake lock, drops its cycle lease, and
+  polls for wake. **Classic** releases the shared lock and calls blocking
+  `KoboPowerManager::suspend`.
 
 The **emulator** only shows the suspend intermission. It does not prepare
 hardware, enter kernel sleep, or drive this orchestrator.
@@ -61,11 +65,11 @@ Code that needs inhibitor behaviour acquires a guard through
 — see [Inhibitor](inhibitor.md) for API detail, LED patterns, deferred suspend,
 and OTA.
 
-| Goal                                                                   | Acquire             | Effect                                                                                                                                                                                                                                                                 |
-| ---------------------------------------------------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Keep device awake for **opportunistic** autosleep between events       | `Kind::SoftSuspend` | Holds kernel `cadmus` wake lock (Linux). **Does not** block explicit suspend.                                                                                                                                                                                          |
-| Defer Auto Suspend and opportunistic autosleep without blocking exits  | `Kind::Sleep`       | Auto path (`start_cycle_from_auto`) defers; nested `"sleep-inhibit"` wake lock (paused during explicit cycle). Pause drops only that nested lease — other SoftSuspend holders (`wifi`, `input`, …) stay held. cadmus-test top menu. Explicit `start_cycle` still runs. |
-| Block **explicit** suspend and user exits on Kobo during critical work | `Kind::Full`        | Defers `start_cycle`; ignores gated user exits. Registers a nested `"full-inhibit"` lease on the SoftSuspend backend.                                                                                                                                                  |
+| Goal                                                                   | Acquire                                                                                                | Effect                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Keep device awake for **opportunistic** autosleep between events       | <a href="/api/cadmus_core/device/inhibitor/enum.Kind.html#variant.SoftSuspend">`Kind::SoftSuspend`</a> | Holds kernel `cadmus` wake lock (Linux). **Does not** block explicit suspend. The shared lock is suppressed during the explicit kernel-sleep window and restored on wake while holders remain.                                                                                                                                                                                                                                                     |
+| Defer Auto Suspend and opportunistic autosleep without blocking exits  | <a href="/api/cadmus_core/device/inhibitor/enum.Kind.html#variant.Sleep">`Kind::Sleep`</a>             | Auto path (<a href="/api/cadmus_core/device/suspend/orchestrator/fn.start_cycle_from_auto.html">`start_cycle_from_auto`</a>) defers; nested `"sleep-inhibit"` lease remains tracked through an explicit cycle. The shared `cadmus` lock is suppressed with all other holders at the kernel-sleep boundary. cadmus-test top menu. Explicit <a href="/api/cadmus_core/device/suspend/orchestrator/fn.start_cycle.html">`start_cycle`</a> still runs. |
+| Block **explicit** suspend and user exits on Kobo during critical work | <a href="/api/cadmus_core/device/inhibitor/enum.Kind.html#variant.Full">`Kind::Full`</a>               | Defers <a href="/api/cadmus_core/device/suspend/orchestrator/fn.start_cycle.html">`start_cycle`</a>; aborts an already-started cycle if Full arrives from a worker; ignores gated user exits. Registers a nested `"full-inhibit"` lease on the SoftSuspend backend.                                                                                                                                                                                |
 
 ```rust
 // Background work — block opportunistic nap only
