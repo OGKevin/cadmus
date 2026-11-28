@@ -133,6 +133,7 @@ impl SettingKind for LogLevel {
 /// Third-party (dependency) logging toggle setting
 pub struct EnableThirdPartyLog;
 
+#[async_trait::async_trait(?Send)]
 impl SettingKind for EnableThirdPartyLog {
     fn identity(&self) -> SettingIdentity {
         SettingIdentity::EnableThirdPartyLog
@@ -155,7 +156,7 @@ impl SettingKind for EnableThirdPartyLog {
         }
     }
 
-    fn handle(
+    async fn handle(
         &self,
         evt: &Event,
         context: &mut AppContext,
@@ -488,11 +489,11 @@ mod tests {
             let mut bus: Bus = VecDeque::new();
             let event = Event::Toggle(ToggleEvent::Setting(ToggleSettings::EnableThirdPartyLog));
 
-            let result = setting.handle(&event, &mut context, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus).await;
             assert_eq!(result.0.as_deref(), Some("true"));
             assert!(context.settings.logging.enable_third_party_log);
 
-            let result = setting.handle(&event, &mut context, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus).await;
             assert_eq!(result.0.as_deref(), Some("false"));
             assert!(!context.settings.logging.enable_third_party_log);
         }
@@ -505,7 +506,7 @@ mod tests {
             let mut bus: Bus = VecDeque::new();
             let event = Event::Toggle(ToggleEvent::Setting(ToggleSettings::LoggingEnabled));
 
-            let result = setting.handle(&event, &mut context, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus).await;
 
             assert!(result.0.is_none());
             assert!(!context.settings.logging.enable_third_party_log);

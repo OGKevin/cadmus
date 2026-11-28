@@ -666,7 +666,12 @@ async fn start_cycle_ignored_after_prepare_keeps_suspend_alarm() {
         handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
     });
     assert!(harness.tasks.is_empty());
-    assert!(lock_alarms(&mut harness).await.is_alarm_scheduled(AlarmType::Suspend).await);
+    assert!(
+        lock_alarms(&mut harness)
+            .await
+            .is_alarm_scheduled(AlarmType::Suspend)
+            .await
+    );
     if let Some(cycle) = harness.context.suspend.as_mut() {
         cycle.deep_idle_restore = Some(AutosleepMode::Off);
     }
@@ -680,7 +685,10 @@ async fn start_cycle_ignored_after_prepare_keeps_suspend_alarm() {
         "no second PrepareSuspend may be scheduled"
     );
     assert!(
-        lock_alarms(&mut harness).await.is_alarm_scheduled(AlarmType::Suspend).await,
+        lock_alarms(&mut harness)
+            .await
+            .is_alarm_scheduled(AlarmType::Suspend)
+            .await,
         "the in-flight cycle's Suspend alarm must stay armed"
     );
     let cycle = harness
@@ -2505,7 +2513,10 @@ async fn inhibit_cleared_sleep_after_touch_starts_no_cycle() {
     assert!(harness.context.suspend.is_none());
     assert!(!has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
     assert!(
-        lock_alarms(&mut harness).await.is_alarm_scheduled(AlarmType::AutoSuspend).await,
+        lock_alarms(&mut harness)
+            .await
+            .is_alarm_scheduled(AlarmType::AutoSuspend)
+            .await,
         "the touch restarts the idle delay"
     );
 }
@@ -2656,7 +2667,12 @@ async fn inhibit_cleared_sleep_during_cycle_starts_no_second_cycle() {
         harness.context.suspend.is_some(),
         "the explicit start must leave a cycle in flight"
     );
-    assert!(lock_alarms(&mut harness).await.is_alarm_scheduled(AlarmType::Suspend).await);
+    assert!(
+        lock_alarms(&mut harness)
+            .await
+            .is_alarm_scheduled(AlarmType::Suspend)
+            .await
+    );
 
     drop(sleep);
     crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
@@ -2680,11 +2696,17 @@ async fn inhibit_cleared_sleep_during_cycle_starts_no_second_cycle() {
         "no second PrepareSuspend may be scheduled"
     );
     assert!(
-        lock_alarms(&mut harness).await.is_alarm_scheduled(AlarmType::Suspend).await,
+        lock_alarms(&mut harness)
+            .await
+            .is_alarm_scheduled(AlarmType::Suspend)
+            .await,
         "the in-flight cycle's Suspend alarm must stay armed"
     );
     assert!(
-        !lock_alarms(&mut harness).await.is_alarm_scheduled(AlarmType::AutoSuspend).await,
+        !lock_alarms(&mut harness)
+            .await
+            .is_alarm_scheduled(AlarmType::AutoSuspend)
+            .await,
         "no AutoSuspend alarm may wake the device during the cycle"
     );
 }
@@ -3111,7 +3133,15 @@ async fn transient_full_before_first_poll_restarts_explicit_suspend() {
         .unwrap();
     drop(full);
     crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
-        handle_inhibit_cleared(Kind::Full, context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+        handle_inhibit_cleared(
+            Kind::Full,
+            context,
+            runtime.view.as_mut(),
+            hub,
+            bus,
+            rq,
+            runtime.tasks,
+        )
     });
     assert!(harness.context.deferred_suspend.is_none());
 
@@ -3579,7 +3609,15 @@ async fn full_abort_keeps_auto_origin_deferred_while_sleep_held() {
         .unwrap();
     drop(full);
     crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
-        handle_inhibit_cleared(Kind::Full, context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+        handle_inhibit_cleared(
+            Kind::Full,
+            context,
+            runtime.view.as_mut(),
+            hub,
+            bus,
+            rq,
+            runtime.tasks,
+        )
     });
     assert_eq!(
         harness.context.deferred_suspend,
@@ -3626,7 +3664,15 @@ async fn newer_explicit_request_wins_after_auto_full_abort() {
     );
     drop(full);
     crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
-        handle_inhibit_cleared(Kind::Full, context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+        handle_inhibit_cleared(
+            Kind::Full,
+            context,
+            runtime.view.as_mut(),
+            hub,
+            bus,
+            rq,
+            runtime.tasks,
+        )
     });
     assert!(
         harness.context.suspend.is_some(),

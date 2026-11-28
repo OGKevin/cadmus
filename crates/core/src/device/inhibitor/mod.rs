@@ -134,7 +134,7 @@ impl Inhibitor {
     /// Builds a Linux SoftSuspend kind when sysfs is available, otherwise an
     /// inert NoOp that never touches `/sys/power`.
     ///
-    /// `status_led` is the arbiter created from this device's [`DeviceLeds`].
+    /// `status_led` is the arbiter created from this device's [`DeviceLeds`](crate::device::leds::DeviceLeds).
     /// It is handed to autosleep and Full-inhibit. The inhibitor does not keep
     /// its own copy.
     #[cfg(any(target_os = "linux", docsrs))]
@@ -399,12 +399,13 @@ mod tests {
 
     struct UnreadableBattery;
 
+    #[async_trait::async_trait]
     impl Battery for UnreadableBattery {
-        fn capacity(&self) -> Result<Vec<f32>, anyhow::Error> {
+        async fn capacity(&self) -> Result<Vec<f32>, anyhow::Error> {
             Err(anyhow::anyhow!("capacity unreadable"))
         }
 
-        fn status(&self) -> Result<Vec<crate::device::battery::Status>, anyhow::Error> {
+        async fn status(&self) -> Result<Vec<crate::device::battery::Status>, anyhow::Error> {
             Err(anyhow::anyhow!("status unreadable"))
         }
     }
@@ -532,7 +533,7 @@ mod tests {
             StatusLed::new(Arc::new(NoopLeds)),
             Arc::new(UnreadableBattery),
         );
-        let result = inhibitor.acquire(Kind::Sleep, "main-menu");
+        let result = inhibitor.acquire(Kind::Sleep, "main-menu").await;
         assert!(matches!(result, Err(InhibitorError::BatteryTooLow)));
         assert!(!inhibitor.sleep_active());
         assert!(inhibitor.holders().is_empty());
@@ -583,7 +584,7 @@ mod tests {
         inhibitor.set_sleep_release_notifier(Arc::new(move || {
             fired_cb.fetch_add(1, Ordering::SeqCst);
         }));
-        let guard = inhibitor.acquire(Kind::Sleep, "main-menu").unwrap();
+        let guard = inhibitor.acquire(Kind::Sleep, "main-menu").await.unwrap();
         assert_eq!(fired.load(Ordering::SeqCst), 0);
         drop(guard);
         assert_eq!(fired.load(Ordering::SeqCst), 1);
@@ -597,8 +598,8 @@ mod tests {
         inhibitor.set_sleep_release_notifier(Arc::new(move || {
             fired_cb.fetch_add(1, Ordering::SeqCst);
         }));
-        let first = inhibitor.acquire(Kind::Sleep, "main-menu").unwrap();
-        let last = inhibitor.acquire(Kind::Sleep, "companion").unwrap();
+        let first = inhibitor.acquire(Kind::Sleep, "main-menu").await.unwrap();
+        let last = inhibitor.acquire(Kind::Sleep, "companion").await.unwrap();
         drop(first);
         assert_eq!(fired.load(Ordering::SeqCst), 0);
         drop(last);
@@ -618,7 +619,7 @@ mod tests {
         inhibitor.set_sleep_release_notifier(Arc::new(move || {
             fired_cb.fetch_add(1, Ordering::SeqCst);
         }));
-        drop(inhibitor.acquire(Kind::Sleep, "main-menu").unwrap());
+        drop(inhibitor.acquire(Kind::Sleep, "main-menu").await.unwrap());
         assert_eq!(previous.load(Ordering::SeqCst), 0);
         assert_eq!(fired.load(Ordering::SeqCst), 1);
     }

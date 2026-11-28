@@ -138,7 +138,7 @@ pub enum DeviceTaskId {
     PollDeepIdleWait,
     /// Owned Classic commit through kernel sleep and peripheral cleanup.
     ClassicSuspend,
-    /// Kobo Wi-Fi idle-disable poller ([`kobo::lifecycle::wifi::spawn_wifi_idle_poller`]).
+    /// Kobo Wi-Fi idle-disable poller (`kobo::lifecycle::wifi::spawn_wifi_idle_poller`).
     WifiIdlePoller,
     /// Owned radio reconciliation from startup or resume.
     WifiReconcile,

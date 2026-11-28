@@ -6,7 +6,9 @@
 //!
 //! # Behaviour
 //!
-//! - **First lease (0 → 1 holders):** write `cadmus` to `wake_lock`.
+//! - **First lease (0 → 1 holders):** registration only cancels a pending
+//!   unlock. The confirming `confirm_leases` call writes `cadmus`, or a Full
+//!   lease's resume does it deliberately.
 //! - **Nested leases:** holder count increases; the wake lock stays taken.
 //! - **Last lease dropped (1 → 0):** unlock immediately or after release grace.
 //! - **Re-acquire during grace:** cancel the pending unlock and keep the lock.

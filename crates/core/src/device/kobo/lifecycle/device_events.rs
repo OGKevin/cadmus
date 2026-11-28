@@ -647,6 +647,7 @@ mod tests {
             .context
             .inhibitor
             .acquire(Kind::Full, "ota")
+            .await
             .unwrap();
         let outcome = crate::poll_parts!(harness, |hub, _bus, rq, context, runtime| {
             handle_unplug(hub, rq, context, runtime)

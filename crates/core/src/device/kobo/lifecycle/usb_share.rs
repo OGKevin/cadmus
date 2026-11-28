@@ -430,6 +430,7 @@ mod tests {
             .context
             .inhibitor
             .acquire(crate::device::inhibitor::Kind::Full, "ota")
+            .await
             .expect("full lease");
         harness
             .context

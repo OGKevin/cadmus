@@ -330,7 +330,7 @@ fn handle_clear_deferred_suspend(context: &mut AppContext) -> EventOutcome {
 /// [`Kind::Sleep`] flushes only a Deferred Auto Suspend; a deferred Explicit
 /// suspend stays queued for the Full release. The intent is taken before the
 /// start call: a start ignored because a cycle is already in flight drops it,
-/// and that cycle's end ([`finish_cycle`] / [`cancel_prepare`]) re-arms the
+/// and that cycle's end ([`finish_cycle`]) re-arms the
 /// timer; a start deferred by a held Full or Sleep lease queues it again.
 async fn handle_inhibit_cleared(
     kind: Kind,
@@ -607,7 +607,8 @@ async fn prepare_for_sleep(
 /// This is **not** how callers start suspend — use [`start_cycle`] first.
 /// Handles [`Event::Suspend`] and [`AlarmType::Suspend`]:
 /// - DeepIdle → start non-blocking wait ([`SuspendPhase::InSleep`])
-/// - Classic → blocking `power.suspend` / `resume`, then post-wake debounce
+/// - Classic → commit task runs `prepare_suspend`, then `power.suspend` /
+///   `resume` under the Full gate, then post-wake debounce
 /// - Already `InSleep` / `PostWakeDebounce` → ignore
 /// - No cycle + soft armed → refuse classic (do not invent a cycle)
 async fn enter_sleep(
@@ -1655,8 +1656,9 @@ pub(crate) async fn start_cycle(
 ///
 /// Returns whether a cycle was aborted and preserves its intent through cleanup.
 /// If Full was already cleared, the intent is flushed immediately; otherwise it
-/// waits for `FullInhibitCleared`. An Explicit origin wins over Auto. A worker
-/// can acquire Full after a cycle starts, so sleep must not cross a live holder.
+/// waits for `Event::InhibitCleared(Kind::Full)`. An Explicit origin wins over
+/// Auto. A worker can acquire Full after a cycle starts, so sleep must not cross
+/// a live holder.
 async fn abort_cycle_for_full_inhibit(
     context: &mut AppContext,
     tasks: &mut Vec<DeviceTask>,
@@ -1676,9 +1678,9 @@ async fn abort_cycle_for_full_inhibit(
 /// Ends a cycle whose sleep window was blocked by Full inhibit.
 ///
 /// Origin and any newer queued request are preserved through cleanup. If Full
-/// is still held, the intent waits for `FullInhibitCleared`; if it is already
-/// gone, the intent is flushed here because that notification may already
-/// have been handled. Explicit origin wins over Auto.
+/// is still held, the intent waits for `Event::InhibitCleared(Kind::Full)`; if
+/// it is already gone, the intent is flushed here because that notification may
+/// already have been handled. Explicit origin wins over Auto.
 async fn finish_blocked_cycle(
     context: &mut AppContext,
     tasks: &mut Vec<DeviceTask>,
@@ -1701,7 +1703,7 @@ async fn finish_blocked_cycle(
     };
     queue_deferred_suspend(context, origin);
     if !context.inhibitor.full_active() {
-        handle_full_inhibit_cleared(context, view, hub, bus, rq, tasks).await;
+        handle_inhibit_cleared(Kind::Full, context, view, hub, bus, rq, tasks).await;
     }
 }
 

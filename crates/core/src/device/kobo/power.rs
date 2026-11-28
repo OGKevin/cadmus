@@ -28,7 +28,8 @@ const NEOCMD_PATH: &str = "/sys/devices/virtual/input/input1/neocmd";
 ///
 /// let model = Model::detect();
 /// if let Ok(power) = model.power_manager() {
-///     power.suspend().ok();
+///     power.prepare_suspend().await.ok();
+///     power.suspend().await.ok();
 /// }
 /// ```
 pub struct KoboPowerManager {

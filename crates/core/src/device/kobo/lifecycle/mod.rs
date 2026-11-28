@@ -783,6 +783,7 @@ mod tests {
             .context
             .inhibitor
             .acquire(Kind::Full, "ota")
+            .await
             .unwrap();
         let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
             Device::handle_event(
@@ -804,6 +805,7 @@ mod tests {
             .context
             .inhibitor
             .acquire(Kind::Full, "ota")
+            .await
             .unwrap();
         let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
             Device::handle_event(

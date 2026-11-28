@@ -37,7 +37,7 @@
 //! | `enter_sleep` | Actually sleep (classic `power.suspend` or deep-idle wait) |
 //! | `finish_cycle` | Tear down cycle → interactive |
 //!
-//! [`Event::Suspend`] / Suspend RTC mean **enter sleep now** (after prepare),
+//! [`Event::Suspend`](crate::view::Event::Suspend) / Suspend RTC mean **enter sleep now** (after prepare),
 //! not “start a new cycle”. Those handlers live in [`orchestrator`] and are
 //! reached via [`handle_event`].
 //!
