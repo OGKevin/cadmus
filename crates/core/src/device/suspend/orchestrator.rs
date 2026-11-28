@@ -1283,11 +1283,31 @@ async fn disarm_classic_hardware<P: PowerManager>(power: &P) {
     }
 }
 
+/// Ends a Classic commit whose `mem` write must not cross a Full request.
+///
+/// The paused wake lock is restored before the caller drops its gate: the
+/// waiting request resumes its own lock only after it registers, and that waits
+/// for this commit's gate.
+async fn back_off_for_full_inhibit<P: PowerManager>(
+    power: &P,
+    inhibitor: &crate::device::inhibitor::Inhibitor,
+) {
+    if matches!(
+        inhibitor.resume_soft_suspend_wake_lock().await,
+        WakeLockResumeOutcome::RestoreFailed | WakeLockResumeOutcome::WorkerFailed
+    ) {
+        tracing::error!("Classic wake-lock restoration failed while backing off for Full");
+    }
+    disarm_classic_hardware(power).await;
+}
+
 /// Owns one Classic commit through preparation, kernel write, and cleanup.
 ///
-/// Cancellation is cooperative only before the gate token is acquired. Once
-/// committed, dropping the `DeviceTask` or its waiter cannot select against
-/// the write, wake-lock restoration, or peripheral cleanup.
+/// Cancellation is cooperative only before the gate token is acquired, and a
+/// Full request that appears while the wake lock is being paused stops the
+/// commit the same way. Once the kernel write starts, dropping the
+/// `DeviceTask` or its waiter cannot select against the write, wake-lock
+/// restoration, or peripheral cleanup.
 async fn run_classic_commit<P: PowerManager + 'static>(
     cancel: tokio_util::sync::CancellationToken,
     commit: std::sync::Arc<ClassicCommit>,
@@ -1330,6 +1350,10 @@ async fn run_classic_commit<P: PowerManager + 'static>(
                 ClassicSuspendOutcome::NotSlept
             }
             WakeLockPauseOutcome::Paused(_) => {
+                if inhibitor.full_active() {
+                    back_off_for_full_inhibit(power.as_ref(), inhibitor.as_ref()).await;
+                    return ClassicSuspendOutcome::BlockedByFull;
+                }
                 let suspend_result = power.suspend().await;
                 let suspend_failed = suspend_result.is_err();
                 if let Err(error) = suspend_result {

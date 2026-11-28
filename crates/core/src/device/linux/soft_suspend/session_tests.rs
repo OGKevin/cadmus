@@ -716,6 +716,52 @@ mod session {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn full_lease_during_suppression_ends_window_and_blocks_cycle() {
+        let (_dir, paths) = temp_paths();
+        let inhibitor = Inhibitor::with_paths(
+            paths.clone(),
+            None,
+            std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
+        );
+        let _thumbnail = inhibitor
+            .acquire(Kind::SoftSuspend, SoftSuspendName::Thumbnail)
+            .await
+            .unwrap();
+        let crate::device::inhibitor::WakeLockPauseOutcome::Paused(epoch) =
+            inhibitor.pause_soft_suspend_wake_lock().await
+        else {
+            panic!("the sleep window must suppress the kernel lock");
+        };
+        assert!(inhibitor.wake_lock_epoch_is_current(epoch));
+
+        let full = inhibitor.acquire(Kind::Full, "ota").await.unwrap();
+
+        assert!(
+            !inhibitor.wake_lock_epoch_is_current(epoch),
+            "a Full lease ends the window, so a poll reports the cycle blocked"
+        );
+        assert_eq!(
+            tokio::fs::read_to_string(&paths.wake_lock)
+                .await
+                .expect("read")
+                .trim(),
+            WAKE_LOCK_NAME,
+            "cadmus returns while the Full lease is held"
+        );
+
+        drop(full);
+        let replayed = inhibitor.pause_soft_suspend_wake_lock().await;
+
+        assert!(
+            matches!(
+                replayed,
+                crate::device::inhibitor::WakeLockPauseOutcome::Paused(next) if next != epoch
+            ),
+            "the replayed cycle opens its own suppression window"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn full_acquisition_fails_when_kernel_lock_cannot_be_written() {
         let (_dir, paths) = temp_paths();
         let inhibitor = inhibitor_with_writer_result(&paths, |path, _value| {

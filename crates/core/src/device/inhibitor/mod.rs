@@ -208,7 +208,8 @@ impl Inhibitor {
         self.sleep.set_on_last_release(notify);
     }
 
-    /// Returns whether any [`Kind::Full`] holder is active.
+    /// Returns whether a [`Kind::Full`] holder is active or a Full request is
+    /// waiting to be granted.
     ///
     /// Kobo uses this to defer [`start_cycle`](crate::device::suspend::start_cycle)
     /// and to ignore user exits (menu power-off / restart / quit, long-press

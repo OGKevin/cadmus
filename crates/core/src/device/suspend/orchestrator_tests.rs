@@ -3059,6 +3059,59 @@ async fn full_acquired_during_deep_idle_aborts_kernel_sleep() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn full_held_across_deep_idle_poll_replays_explicit_suspend_after_release() {
+    let mut harness = DeviceRuntimeHarness::new().await;
+    let (_dir, _paths) = install_armed_soft_suspend(&mut harness).await;
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+    });
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
+    });
+    let full = harness
+        .context
+        .inhibitor
+        .acquire(Kind::Full, "ota")
+        .await
+        .unwrap();
+    harness
+        .context
+        .deep_idle_poll_inject
+        .push_back(PollResult::StillWaiting);
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::PollDeepIdleWait, hub, bus, rq, context, runtime)
+    });
+    assert_eq!(
+        harness.context.deferred_suspend,
+        Some(DeferredSuspend::Explicit)
+    );
+    assert!(
+        !has_task(&harness.tasks, DeviceTaskId::PrepareSuspend),
+        "the deferred Explicit suspend waits for the Full release"
+    );
+
+    drop(full);
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_inhibit_cleared(
+            Kind::Full,
+            context,
+            runtime.view.as_mut(),
+            hub,
+            bus,
+            rq,
+            runtime.tasks,
+        )
+    });
+
+    assert!(harness.context.deferred_suspend.is_none());
+    assert!(
+        harness.context.suspend.is_some(),
+        "the Full release runs the deferred Explicit suspend"
+    );
+    assert!(has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn start_cycle_from_auto_with_sleep_does_not_show_intermission() {
     let mut harness = DeviceRuntimeHarness::new().await;
     let _sleep = harness
@@ -3318,6 +3371,154 @@ async fn full_during_classic_prepare_blocks_mem_write() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn full_request_during_classic_pause_backs_off_mem_write() {
+    use crate::device::battery::FakeBattery;
+    use crate::device::inhibitor::Inhibitor;
+    use crate::device::linux::soft_suspend::paths::{SoftSuspendPaths, write_sysfs_blocking};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
+
+    let mut harness = DeviceRuntimeHarness::new().await;
+    let (_dir, paths) = SoftSuspendPaths::test_fixture();
+    let (started_tx, started_rx) = std::sync::mpsc::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel();
+    let release_rx = Mutex::new(release_rx);
+    let paused = AtomicBool::new(false);
+    let hook: crate::device::linux::soft_suspend::wake::WakeWriteHook =
+        Arc::new(move |path: &Path, value: &str| {
+            if path.ends_with("wake_unlock") && !paused.swap(true, Ordering::SeqCst) {
+                started_tx.send(()).expect("signal pause start");
+                release_rx
+                    .lock()
+                    .unwrap()
+                    .recv()
+                    .expect("wait for pause release");
+            }
+            write_sysfs_blocking(path, value)
+        });
+    let inhibitor = Inhibitor::with_paths_and_writer(
+        paths.clone(),
+        None,
+        Arc::new(FakeBattery::new()),
+        Some(hook),
+    );
+    harness
+        .context
+        .wifi_session
+        .set_inhibitor(Arc::clone(&inhibitor))
+        .await;
+    harness.context.inhibitor = Arc::clone(&inhibitor);
+    let power = harness.context.device.power_manager_for_test().clone();
+    let _thumbnail = inhibitor
+        .acquire(Kind::SoftSuspend, SoftSuspendName::Thumbnail)
+        .await
+        .unwrap();
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+    });
+
+    let event = async {
+        let mut runtime = crate::device::DeviceRuntime {
+            view: &mut harness.view,
+            history: &mut harness.history,
+            tasks: &mut harness.tasks,
+            updating: &mut harness.updating,
+            settings_manager: None,
+            startup_cwd: None,
+            background_tasks: None,
+        };
+        handle_event(
+            &Event::Suspend,
+            &harness.hub_tx,
+            &mut harness.bus,
+            &mut harness.rq,
+            &mut harness.context,
+            &mut runtime,
+        )
+        .await
+    };
+    let started = crate::runtime::spawn_blocking(move || started_rx.recv());
+    let event = Box::pin(event);
+    let event = match futures_util::future::select(event, started).await {
+        futures_util::future::Either::Left((outcome, _)) => {
+            panic!("suspend finished before the wake lock was paused: {outcome:?}")
+        }
+        futures_util::future::Either::Right((started, event)) => {
+            started.expect("pause worker join").expect("pause started");
+            event
+        }
+    };
+
+    let full_inhibitor = Arc::clone(&inhibitor);
+    let full =
+        crate::runtime::spawn(async move { full_inhibitor.acquire(Kind::Full, "ota").await });
+    let mut requested = false;
+    for _ in 0..200 {
+        if inhibitor.full_active() {
+            requested = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    release_tx.send(()).expect("release pause");
+    assert!(
+        requested,
+        "the Full request must wait on the gate the commit holds"
+    );
+
+    let outcome = tokio::time::timeout(Duration::from_secs(5), event)
+        .await
+        .expect("suspend must finish once the pause returns");
+    let full = tokio::time::timeout(Duration::from_secs(5), full)
+        .await
+        .expect("Full acquisition must complete after the commit backs off")
+        .expect("full worker join")
+        .unwrap();
+
+    assert_eq!(outcome, EventOutcome::Handled);
+    assert_eq!(
+        power.suspend_call_count(),
+        0,
+        "a Full request waiting on the gate must stop the mem write"
+    );
+    assert!(!power.was_resume_called());
+    assert_eq!(power.arm_deep_idle_call_count(), 1);
+    assert_eq!(
+        power.disarm_deep_idle_call_count(),
+        2,
+        "the back-off disarms once and blocked-cycle teardown disarms once"
+    );
+    assert!(harness.context.suspend.is_none());
+    assert_eq!(
+        harness.context.deferred_suspend,
+        Some(DeferredSuspend::Explicit)
+    );
+    assert!(!has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
+    assert!(
+        wake_lock_held(&paths).await,
+        "cadmus stays held for the Full lease after the back-off"
+    );
+
+    drop(full);
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_inhibit_cleared(
+            Kind::Full,
+            context,
+            runtime.view.as_mut(),
+            hub,
+            bus,
+            rq,
+            runtime.tasks,
+        )
+    });
+    assert!(harness.context.deferred_suspend.is_none());
+    assert!(
+        has_task(&harness.tasks, DeviceTaskId::PrepareSuspend),
+        "the deferred Explicit suspend runs after the release"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn dropped_waiter_drains_committed_classic_sleep_before_full() {
     let mut harness = DeviceRuntimeHarness::new().await;
     let power = harness.context.device.power_manager_for_test().clone();
@@ -3365,8 +3566,7 @@ async fn dropped_waiter_drains_committed_classic_sleep_before_full() {
     };
     drop(event);
 
-    let inhibitor = Arc::clone(&harness.context.inhibitor);
-    let full_inhibitor = Arc::clone(&inhibitor);
+    let full_inhibitor = Arc::clone(&harness.context.inhibitor);
     let full =
         crate::runtime::spawn(async move { full_inhibitor.acquire(Kind::Full, "ota").await });
 
@@ -3392,7 +3592,7 @@ async fn dropped_waiter_drains_committed_classic_sleep_before_full() {
         "cleanup must not run peripheral resume ahead of the in-flight commit"
     );
     assert!(
-        !inhibitor.full_active(),
+        !full.is_finished(),
         "Full must wait for the active Classic commit gate"
     );
     assert_eq!(
@@ -3420,7 +3620,7 @@ async fn dropped_waiter_drains_committed_classic_sleep_before_full() {
         "resume has not yet reached its peripheral disarm"
     );
     assert!(
-        !inhibitor.full_active(),
+        !full.is_finished(),
         "Full must wait until Classic resume releases the commit gate"
     );
 

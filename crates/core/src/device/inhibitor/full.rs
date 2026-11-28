@@ -44,7 +44,7 @@ use super::InhibitorError;
 use super::soft_suspend::SoftSuspendKind;
 use crate::device::leds::{LedPattern, LedPriority, StatusLed, StatusLedGuard};
 use crate::lease::{Lease, LeaseName, LeaseObserver, LeaseTracker, WeakLeaseTracker};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 use tokio::sync::Notify;
@@ -170,11 +170,45 @@ impl LeaseObserver for FullInhibitObserver {
     }
 }
 
-/// Shared ownership flag and waiter notification for Classic/Full arbitration.
+/// Shared ownership flag, request counter, and waiter notification for
+/// Classic/Full arbitration.
 #[derive(Default)]
 struct ClassicSuspendGate {
     locked: AtomicBool,
+    /// Full requests that have not registered yet: they wait on this gate or
+    /// are inside their own registration.
+    pending: AtomicUsize,
     released: Notify,
+}
+
+impl ClassicSuspendGate {
+    /// Counts one Full request until its register finishes or it is abandoned.
+    fn begin_request(&self) -> PendingFullRequest<'_> {
+        self.pending.fetch_add(1, Ordering::AcqRel);
+        PendingFullRequest {
+            pending: &self.pending,
+        }
+    }
+
+    /// Whether a Full request is waiting to be granted.
+    #[cfg(any(test, feature = "kobo", docsrs))]
+    fn has_pending(&self) -> bool {
+        self.pending.load(Ordering::Acquire) != 0
+    }
+}
+
+/// Lowers the pending Full count when its request registers or gives up.
+///
+/// A drop guard covers cancellation: a waiter dropped while the gate is held
+/// must not keep the device awake as if it held a Full lease.
+struct PendingFullRequest<'a> {
+    pending: &'a AtomicUsize,
+}
+
+impl Drop for PendingFullRequest<'_> {
+    fn drop(&mut self) {
+        self.pending.fetch_sub(1, Ordering::AcqRel);
+    }
 }
 
 /// Owned RAII token serializing Classic kernel sleep with Full acquisition.
@@ -269,11 +303,17 @@ impl FullInhibitState {
 
     /// Adds a named Full holder. Nested wake lock / LED start on 0→1 only.
     ///
+    /// The request counts as held from before it waits on the gate until the
+    /// lease is registered, so a Classic commit that rechecks
+    /// [`Self::full_active`] backs off instead of sleeping over it.
+    ///
     /// Fails when the nested kernel wake lock cannot be confirmed, so critical
     /// work never runs believing it has Full protection.
     pub(super) async fn acquire(&self, name: LeaseName) -> Result<Lease, InhibitorError> {
+        let pending = self.gate.begin_request();
         let _gate = self.lock_suspend_gate().await;
         let lease = self.tracker.acquire(name);
+        drop(pending);
         #[cfg(any(test, feature = "kobo", docsrs))]
         {
             match self.resources.soft_suspend.resume_wake_lock().await {
@@ -293,10 +333,13 @@ impl FullInhibitState {
         Ok(lease)
     }
 
-    /// Whether any named Full holder is still alive.
+    /// Whether a named Full holder is alive or a Full request is pending.
+    ///
+    /// A waiting request counts as held: the gate only delays its
+    /// registration, and no suspend path may sleep over that work.
     #[cfg(any(test, feature = "kobo", docsrs))]
     pub(super) fn full_active(&self) -> bool {
-        !self.tracker.is_empty()
+        !self.tracker.is_empty() || self.gate.has_pending()
     }
 }
 
@@ -305,7 +348,9 @@ mod tests {
     use super::*;
     use crate::device::inhibitor::soft_suspend::NoOpSoftSuspendKind;
     use crate::device::leds::NoopLeds;
+    use std::pin::Pin;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::task::{Context, Poll, Waker};
 
     #[tokio::test]
     async fn stale_last_release_preserves_the_next_full_generation() {
@@ -331,5 +376,75 @@ mod tests {
 
         drop(current);
         assert_eq!(releases.load(Ordering::SeqCst), 1);
+    }
+
+    fn new_state() -> FullInhibitState {
+        FullInhibitState::new(
+            NoOpSoftSuspendKind::new(),
+            StatusLed::new(Arc::new(NoopLeds)),
+        )
+    }
+
+    /// Polls `future` once, so a test can inspect a request stuck on the gate.
+    fn poll_once<F: Future>(future: Pin<&mut F>) -> Poll<F::Output> {
+        let mut cx = Context::from_waker(Waker::noop());
+        future.poll(&mut cx)
+    }
+
+    #[tokio::test]
+    async fn waiting_full_request_counts_as_held() {
+        let state = new_state();
+        let gate = state.lock_suspend_gate().await;
+
+        let mut acquire = Box::pin(state.acquire(LeaseName::new("ota")));
+        assert!(
+            poll_once(acquire.as_mut()).is_pending(),
+            "the request must wait for the gate"
+        );
+
+        assert!(state.tracker.is_empty(), "no lease is registered yet");
+        assert!(
+            state.full_active(),
+            "a request waiting for the gate counts as held"
+        );
+
+        drop(gate);
+        let lease = acquire.await.unwrap();
+        assert!(state.full_active());
+        drop(lease);
+        assert!(!state.full_active());
+    }
+
+    #[tokio::test]
+    async fn registered_full_holder_counts_as_held() {
+        let state = new_state();
+        let lease = state.acquire(LeaseName::new("ota")).await.unwrap();
+
+        assert!(state.full_active());
+
+        drop(lease);
+        assert!(!state.full_active());
+    }
+
+    #[tokio::test]
+    async fn dropped_full_request_stops_counting_as_held() {
+        let state = new_state();
+        let gate = state.lock_suspend_gate().await;
+
+        let mut acquire = Box::pin(state.acquire(LeaseName::new("ota")));
+        assert!(poll_once(acquire.as_mut()).is_pending());
+        assert!(state.full_active());
+
+        drop(acquire);
+        assert!(
+            !state.full_active(),
+            "an abandoned request must not keep the device awake"
+        );
+
+        drop(gate);
+        let lease = state.acquire(LeaseName::new("late")).await.unwrap();
+        assert!(state.full_active());
+        drop(lease);
+        assert!(!state.full_active());
     }
 }
