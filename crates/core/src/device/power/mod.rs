@@ -6,7 +6,7 @@ mod manager;
 pub use error::PowerError;
 pub use manager::PowerManager;
 
-#[cfg(all(target_os = "linux", feature = "kobo"))]
+#[cfg(all(target_os = "linux", any(feature = "kobo", docsrs)))]
 pub(crate) async fn discover_cores(
     cpu_dir: &std::path::Path,
 ) -> Result<Vec<(std::path::PathBuf, String)>, std::io::Error> {

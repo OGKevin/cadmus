@@ -279,7 +279,7 @@ impl Menu {
                 tracing::error!(
                     error = %error,
                     sleep_lease = "main-menu",
-                    "failed to acquire sleep lease for top menu"
+                    "failed to acquire sleep inhibition lease for top menu"
                 );
             }
         }

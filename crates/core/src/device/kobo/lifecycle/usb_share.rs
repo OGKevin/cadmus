@@ -181,7 +181,7 @@ async fn enable_usb_share(
 /// is present on onboard storage and [`ExitStatus::Restart`] otherwise.
 ///
 /// This sends no [`Event::Select`]: those exits carry user intent and the
-/// device may refuse them while a USB share session or a Full lease is active.
+/// device may refuse them while a USB share session or a Full inhibition lease is active.
 /// Lifecycle code that must end the process returns [`EventOutcome::Exit`] with
 /// the required [`ExitStatus`] instead, as [`enable_usb_share`] does by
 /// scheduling [`Event::Exit`] when share start fails.
@@ -431,7 +431,7 @@ mod tests {
             .inhibitor
             .acquire(crate::device::inhibitor::Kind::Full, "ota")
             .await
-            .expect("full lease");
+            .expect("full inhibition lease");
         harness
             .context
             .device

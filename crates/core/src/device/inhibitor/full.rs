@@ -200,7 +200,7 @@ impl ClassicSuspendGate {
 /// Lowers the pending Full count when its request registers or gives up.
 ///
 /// A drop guard covers cancellation: a waiter dropped while the gate is held
-/// must not keep the device awake as if it held a Full lease.
+/// must not keep the device awake as if it held a Full inhibition lease.
 struct PendingFullRequest<'a> {
     pending: &'a AtomicUsize,
 }
@@ -234,7 +234,7 @@ impl Drop for ClassicSuspendGateToken {
 /// [`InhibitorGuard`](super::InhibitorGuard). Dropping the last lease runs
 /// [`FullInhibitResources::on_last_full_holder`].
 pub(super) struct FullInhibitState {
-    /// Named Full leases and their first-acquire/last-release callbacks.
+    /// Named Full inhibition leases and their first-acquire/last-release callbacks.
     tracker: LeaseTracker,
     /// Classic-sleep ownership and notification that wakes Full waiters.
     gate: Arc<ClassicSuspendGate>,

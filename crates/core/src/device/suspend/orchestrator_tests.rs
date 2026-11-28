@@ -2601,7 +2601,7 @@ async fn inhibit_cleared_sleep_with_full_held_redefers_then_full_flushes() {
     assert_eq!(
         harness.context.deferred_suspend,
         Some(DeferredSuspend::Auto),
-        "the Full lease holds the Deferred Auto Suspend"
+        "the Full inhibition lease holds the Deferred Auto Suspend"
     );
     assert!(!has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
     drop(full);
@@ -2921,7 +2921,7 @@ async fn deep_idle_wake_restores_sleep_inhibit_if_sleep_held() {
     assert!(harness.context.inhibitor.sleep_active());
     assert!(
         holds_sleep_inhibit(&harness),
-        "the Sleep lease stays tracked while its kernel lock is suppressed"
+        "the Sleep inhibition lease stays tracked while its kernel lock is suppressed"
     );
     assert!(wake_unlock_written(&paths).await);
     tokio::fs::write(&paths.wake_lock, "")
@@ -3537,7 +3537,7 @@ async fn full_request_during_classic_pause_backs_off_mem_write() {
     assert!(!has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
     assert!(
         wake_lock_held(&paths).await,
-        "cadmus stays held for the Full lease after the back-off"
+        "cadmus stays held for the Full inhibition lease after the back-off"
     );
 
     drop(full);

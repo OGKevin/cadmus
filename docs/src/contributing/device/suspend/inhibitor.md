@@ -57,19 +57,19 @@ During an Explicit suspend sleep window,
 releases the shared lock immediately, bypassing autosleep grace, while keeping
 every lease tracked.
 <a href="/api/cadmus_core/device/inhibitor/struct.Inhibitor.html#method.resume_soft_suspend_wake_lock">`resume`</a>
-re-locks only if a holder remains. Suppression is refused while a Full lease is
+re-locks only if a holder remains. Suppression is refused while a Full inhibition lease is
 live, and a Full acquire during the window re-locks `cadmus` at once;
 registering the nested lease alone only cancels a pending unlock.
 
 ## Deferred Explicit suspend
 
-While any Full lease is held,
+While any Full inhibition lease is held,
 <a href="/api/cadmus_core/device/suspend/orchestrator/fn.start_cycle.html">`start_cycle`</a>
 records a Deferred Explicit suspend and returns without a cycle.
 <a href="/api/cadmus_core/device/suspend/orchestrator/fn.start_cycle_from_auto.html">`start_cycle_from_auto`</a>
-also defers while a Sleep lease is held.
+also defers while a Sleep inhibition lease is held.
 
-A Full lease acquired after a cycle starts aborts it before kernel sleep during
+A Full inhibition lease acquired after a cycle starts aborts it before kernel sleep during
 preparation or a DeepIdle wait. The Classic case is different: the owned commit
 holds a Full suspend gate from its final recheck through `mem`, wake, peripheral
 cleanup, and wake-lock restoration, and a Full acquire takes the same gate. A
@@ -83,9 +83,9 @@ Deferred Explicit suspend. If Full is already cleared the intent is flushed
 immediately; otherwise it waits for
 <a href="/api/cadmus_core/view/enum.Event.html#variant.InhibitCleared">`Event::InhibitCleared(Kind::Full)`</a>.
 That release flushes a Deferred Auto Suspend through `start_cycle_from_auto`
-and a Deferred Explicit suspend through `start_cycle`, even if a Sleep lease is
+and a Deferred Explicit suspend through `start_cycle`, even if a Sleep inhibition lease is
 still held. The last Sleep release flushes only a Deferred Auto Suspend; it
-re-defers while a Full or another Sleep lease is held, and leaves a Deferred
+re-defers while a Full or another Sleep inhibition lease is held, and leaves a Deferred
 Explicit suspend queued for the Full release. A release during a running cycle
 starts nothing.
 
@@ -113,7 +113,7 @@ reboot.
 multiplexes one hardware LED, and the higher
 <a href="/api/cadmus_core/device/leds/enum.LedPriority.html">`LedPriority`</a>
 wins. Full pulses at `LedPriority::FullInhibit`; the soft-suspend indicator is
-solid at the lower `LedPriority::SoftIndicate`. A Sleep lease does not drive the
+solid at the lower `LedPriority::SoftIndicate`. A Sleep inhibition lease does not drive the
 LED.
 
 User-facing explanation: [Soft Suspend § Status LED](../../../soft-suspend.md#status-led-indicator).

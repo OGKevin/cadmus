@@ -72,7 +72,7 @@
 //! [`crate::device::inhibitor::Kind::Sleep`] defers only the Auto Suspend path
 //! ([`start_cycle_from_auto`](orchestrator::start_cycle_from_auto)). Explicit
 //! `start_cycle` still runs. The last Sleep release flushes a deferred Auto
-//! through that path, which re-defers while a Full or Sleep lease is held; a
+//! through that path, which re-defers while a Full or Sleep inhibition lease is held; a
 //! deferred Explicit waits for the Full release.
 //!
 //! [`crate::device::reschedule_auto_suspend_alarm`] also clears deferred

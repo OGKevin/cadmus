@@ -53,7 +53,7 @@ boottime and monotonic anchors are captured after arming and `sync()`
 immediately before the pause, because they drive wake detection, while only the
 wall-clock `sleep_started_at` is used for post-wake RTC alarm claims. The
 suppression epoch ensures a pause ticket from an earlier leg is never current,
-so a Full lease that arrives and leaves between pause and the next poll still
+so a Full inhibition lease that arrives and leaves between pause and the next poll still
 aborts the cycle instead of producing a timeout or a synthetic wake.
 
 Event dispatch stays serial: a cover-open queued during Classic preparation

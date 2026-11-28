@@ -72,7 +72,7 @@ pub(super) fn spawn_wifi_idle_poller(
 #[cfg_attr(
     feature = "tracing",
     tracing::instrument(
-        skip(event, hub, context),
+        skip(event, hub, context, tasks),
         fields(event = ?event),
         ret(level = tracing::Level::TRACE),
         level = tracing::Level::TRACE,
@@ -108,7 +108,7 @@ fn supersede_wifi_reconcile(session: &WifiSession, tasks: &mut Vec<DeviceTask>) 
 #[cfg_attr(
     feature = "tracing",
     tracing::instrument(
-        skip(hub, context),
+        skip(hub, context, tasks),
         fields(mode = %mode, previous = tracing::field::Empty),
         ret(level = tracing::Level::TRACE),
         level = tracing::Level::TRACE,
@@ -175,7 +175,7 @@ async fn handle_set_wifi_mode(
 #[cfg_attr(
     feature = "tracing",
     tracing::instrument(
-        skip(context),
+        skip(context, tasks),
         fields(
             mode = tracing::field::Empty,
             holders = tracing::field::Empty,

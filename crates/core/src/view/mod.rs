@@ -670,7 +670,7 @@ pub enum Event {
     ///
     /// This is **not** user intent. Lifecycles turn it into
     /// [`EventOutcome::Exit`](crate::device::EventOutcome::Exit) without
-    /// consulting the user-exit checks, so a Full lease or a USB share session
+    /// consulting the user-exit checks, so a Full inhibition lease or a USB share session
     /// cannot refuse it. Use [`Event::Select`] with an exit [`EntryId`] for user
     /// intent (menu entries, Unix signals, emulator window close), which stays
     /// refusable. Senders of internal exits should send this event.

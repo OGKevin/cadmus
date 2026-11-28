@@ -331,7 +331,7 @@ fn handle_clear_deferred_suspend(context: &mut AppContext) -> EventOutcome {
 /// suspend stays queued for the Full release. The intent is taken before the
 /// start call: a start ignored because a cycle is already in flight drops it,
 /// and that cycle's end ([`finish_cycle`]) re-arms the
-/// timer; a start deferred by a held Full or Sleep lease queues it again.
+/// timer; a start deferred by a held Full or Sleep inhibition lease queues it again.
 async fn handle_inhibit_cleared(
     kind: Kind,
     context: &mut AppContext,
@@ -633,10 +633,12 @@ async fn enter_sleep(
 
     if context.inhibitor.full_active() {
         if context.suspend.is_some() {
-            tracing::warn!("Full inhibit acquired during suspend cycle; aborting kernel sleep");
+            tracing::warn!(
+                "Full inhibition lease acquired during suspend cycle; aborting kernel sleep"
+            );
             finish_blocked_cycle(context, runtime.tasks, runtime.view.as_mut(), hub, bus, rq).await;
         } else {
-            tracing::warn!("refusing suspend entry while Full inhibit active");
+            tracing::warn!("refusing suspend entry while a Full inhibition lease is active");
         }
         return EventOutcome::Handled;
     }
@@ -1525,7 +1527,7 @@ async fn handle_post_wake(
 /// power button, and menu Suspend use that path. Queues
 /// [`DeferredSuspend::Auto`] so [`handle_inhibit_cleared`] rechecks the
 /// remaining gates instead of flushing through `start_cycle`. The last Sleep
-/// lease release also flushes through this function, so a Full lease or
+/// lease release also flushes through this function, so a Full inhibition lease or
 /// another Sleep holder still re-defers the intent; the next gesture's
 /// [`crate::device::reschedule_auto_suspend_alarm`] clears it.
 pub(crate) async fn start_cycle_from_auto(
@@ -1579,7 +1581,7 @@ async fn start_cycle_with_origin(
     }
     if full {
         queue_deferred_suspend(context, DeferredSuspend::Explicit);
-        tracing::debug!("deferring suspend while Full inhibit active");
+        tracing::debug!("deferring suspend while a Full inhibition lease is active");
         return;
     }
 
@@ -1694,7 +1696,7 @@ async fn abort_cycle_for_full_inhibit(
     if !context.inhibitor.full_active() || context.suspend.is_none() {
         return false;
     }
-    tracing::warn!("Full inhibit acquired during suspend cycle; aborting kernel sleep");
+    tracing::warn!("Full inhibition lease acquired during suspend cycle; aborting kernel sleep");
     finish_blocked_cycle(context, tasks, view, hub, bus, rq).await;
     true
 }

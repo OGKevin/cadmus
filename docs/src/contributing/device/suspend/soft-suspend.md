@@ -61,7 +61,7 @@ On Linux the live kind:
   holder accounting continues, and resume re-locks only when holders remain.
   The window is a `Suppression` epoch; only the live window's ticket is
   current, so a stale pause from an earlier leg can never match. Suppression is
-  refused while a Full lease is live; acquiring Full during the window re-locks
+  refused while a Full inhibition lease is live; acquiring Full during the window re-locks
   `cadmus` at once.
 - Optionally drives `soft-indicate` on the shared
   <a href="/api/cadmus_core/device/leds/struct.StatusLed.html">`StatusLed`</a>

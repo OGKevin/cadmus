@@ -31,7 +31,7 @@
 //! the `sleep` implementation module. On Kobo the last drop of either kind
 //! posts [`Event::InhibitCleared`](crate::view::Event::InhibitCleared) naming
 //! the kind, so the suspend orchestrator can flush a deferred suspend on the
-//! main loop. The last Sleep lease release flushes a Deferred Auto Suspend; it
+//! main loop. The last Sleep inhibition lease release flushes a Deferred Auto Suspend; it
 //! leaves a deferred Explicit suspend for the Full release.
 //!
 //! ```ignore

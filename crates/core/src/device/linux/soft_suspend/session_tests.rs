@@ -779,7 +779,7 @@ mod session {
 
         assert!(
             !inhibitor.wake_lock_epoch_is_current(epoch),
-            "a Full lease ends the window, so a poll reports the cycle blocked"
+            "a Full inhibition lease ends the window, so a poll reports the cycle blocked"
         );
         assert_eq!(
             tokio::fs::read_to_string(&paths.wake_lock)
@@ -787,7 +787,7 @@ mod session {
                 .expect("read")
                 .trim(),
             WAKE_LOCK_NAME,
-            "cadmus returns while the Full lease is held"
+            "cadmus returns while the Full inhibition lease is held"
         );
 
         drop(full);
