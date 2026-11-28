@@ -13,7 +13,6 @@ mod session {
     use crate::device::leds::{DeviceLeds, LedsError};
     use crate::device::soft_suspend::SoftSuspendBackend as _;
     use crate::device::soft_suspend::mode::AutosleepMode;
-    use std::fs;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
     use std::time::Duration;
@@ -72,10 +71,15 @@ mod session {
         )
     }
 
-    fn make_unwritable(path: &std::path::Path) {
-        let mut perms = fs::metadata(path).expect("metadata").permissions();
+    async fn make_unwritable(path: &std::path::Path) {
+        let mut perms = tokio::fs::metadata(path)
+            .await
+            .expect("metadata")
+            .permissions();
         perms.set_readonly(true);
-        fs::set_permissions(path, perms).expect("chmod");
+        tokio::fs::set_permissions(path, perms)
+            .await
+            .expect("chmod");
     }
 
     async fn wait_for<F: Fn() -> bool>(predicate: F) {
@@ -104,7 +108,10 @@ mod session {
             .unwrap();
 
         assert_eq!(
-            fs::read_to_string(&paths.wake_lock).expect("read").trim(),
+            tokio::fs::read_to_string(&paths.wake_lock)
+                .await
+                .expect("read")
+                .trim(),
             WAKE_LOCK_NAME
         );
         drop(lease);
@@ -123,7 +130,10 @@ mod session {
         inhibitor.set_mode(AutosleepMode::Freeze).await.ok();
 
         assert_eq!(
-            fs::read_to_string(&paths.autosleep).expect("read").trim(),
+            tokio::fs::read_to_string(&paths.autosleep)
+                .await
+                .expect("read")
+                .trim(),
             "freeze"
         );
         assert_eq!(inhibitor.mode(), AutosleepMode::Freeze);
@@ -143,13 +153,16 @@ mod session {
             .expect("initial freeze write succeeds");
         assert_eq!(inhibitor.mode(), AutosleepMode::Freeze);
 
-        make_unwritable(&paths.autosleep);
+        make_unwritable(&paths.autosleep).await;
         let result = inhibitor.set_mode(AutosleepMode::Mem).await;
 
         assert!(result.is_err());
         assert_eq!(inhibitor.mode(), AutosleepMode::Freeze);
         assert_eq!(
-            fs::read_to_string(&paths.autosleep).expect("read").trim(),
+            tokio::fs::read_to_string(&paths.autosleep)
+                .await
+                .expect("read")
+                .trim(),
             "freeze"
         );
     }
@@ -166,14 +179,20 @@ mod session {
             .set_mode(AutosleepMode::Freeze)
             .await
             .expect("initial freeze write succeeds");
-        fs::remove_file(&paths.autosleep).expect("remove autosleep node");
+        tokio::fs::remove_file(&paths.autosleep)
+            .await
+            .expect("remove autosleep node");
 
         let result = inhibitor.set_mode(AutosleepMode::Mem).await;
 
         let error = result.expect_err("missing node must be an error");
         assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
         assert_eq!(inhibitor.mode(), AutosleepMode::Freeze);
-        assert!(!paths.autosleep.exists());
+        assert!(
+            !tokio::fs::try_exists(&paths.autosleep)
+                .await
+                .expect("stat autosleep node")
+        );
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -186,18 +205,23 @@ mod session {
         );
         inhibitor.set_mode(AutosleepMode::Mem).await.ok();
         inhibitor.set_autosleep_grace(Duration::from_secs(60));
-        make_unwritable(&paths.wake_lock);
+        make_unwritable(&paths.wake_lock).await;
 
         let lease = inhibitor
             .acquire(Kind::SoftSuspend, SoftSuspendName::MainLoop)
             .await
             .unwrap();
         assert_eq!(
-            fs::read_to_string(&paths.wake_lock).expect("read").trim(),
+            tokio::fs::read_to_string(&paths.wake_lock)
+                .await
+                .expect("read")
+                .trim(),
             ""
         );
         drop(lease);
-        fs::write(&paths.wake_unlock, "").expect("clear unlock");
+        tokio::fs::write(&paths.wake_unlock, "")
+            .await
+            .expect("clear unlock");
 
         inhibitor.set_autosleep_grace(Duration::from_millis(30));
         tokio::time::sleep(Duration::from_millis(80)).await;
@@ -217,22 +241,37 @@ mod session {
             wake_lock: dir.path().join("wake_lock"),
             wake_unlock: dir.path().join("wake_unlock"),
         };
-        fs::write(&paths.state, "mem\n").expect("state");
-        fs::write(&paths.autosleep, "off\n").expect("autosleep");
-        fs::write(&paths.wake_lock, "").expect("wake_lock");
-        fs::write(&paths.wake_unlock, "").expect("wake_unlock");
+        tokio::fs::write(&paths.state, "mem\n")
+            .await
+            .expect("state");
+        tokio::fs::write(&paths.autosleep, "mem\n")
+            .await
+            .expect("autosleep");
+        tokio::fs::write(&paths.wake_lock, "")
+            .await
+            .expect("wake_lock");
+        tokio::fs::write(&paths.wake_unlock, "")
+            .await
+            .expect("wake_unlock");
         let inhibitor = Inhibitor::with_paths(
             paths.clone(),
             None,
             std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
         );
 
-        inhibitor.set_mode(AutosleepMode::Freeze).await.ok();
+        inhibitor
+            .set_mode(AutosleepMode::Freeze)
+            .await
+            .expect("an unsupported mode falls back instead of failing");
 
         assert_eq!(inhibitor.mode(), AutosleepMode::Off);
         assert_eq!(
-            fs::read_to_string(&paths.autosleep).expect("read").trim(),
-            "off"
+            tokio::fs::read_to_string(&paths.autosleep)
+                .await
+                .expect("read")
+                .trim(),
+            "off",
+            "the fallback must replace the requested unsupported mode on the node"
         );
     }
 
@@ -421,7 +460,9 @@ mod session {
         inhibitor.set_autosleep_grace(Duration::from_millis(40));
 
         for _ in 0..2 {
-            fs::write(&paths.wake_unlock, "").expect("clear unlock");
+            tokio::fs::write(&paths.wake_unlock, "")
+                .await
+                .expect("clear unlock");
             let lease = inhibitor
                 .acquire(Kind::SoftSuspend, SoftSuspendName::MainLoop)
                 .await
@@ -779,19 +820,32 @@ mod session {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn pause_returns_blocked_after_transient_full_interruption() {
         let (_dir, paths) = temp_paths();
-        let (started_tx, started_rx) = std::sync::mpsc::channel();
-        let (release_tx, release_rx) = std::sync::mpsc::channel();
-        let release_rx = std::sync::Arc::new(std::sync::Mutex::new(release_rx));
-        let barrier_used = Arc::new(AtomicBool::new(false));
+        let (unlock_started_tx, unlock_started_rx) = std::sync::mpsc::channel();
+        let (unlock_release_tx, unlock_release_rx) = std::sync::mpsc::channel();
+        let (lock_started_tx, lock_started_rx) = std::sync::mpsc::channel();
+        let (lock_release_tx, lock_release_rx) = std::sync::mpsc::channel();
+        let unlock_release_rx = std::sync::Arc::new(std::sync::Mutex::new(unlock_release_rx));
+        let lock_release_rx = std::sync::Arc::new(std::sync::Mutex::new(lock_release_rx));
+        let hook_stage = Arc::new(AtomicU32::new(0));
         let inhibitor = inhibitor_with_writer_result(&paths, move |path, value| {
-            if path.ends_with("wake_unlock") && !barrier_used.swap(true, Ordering::SeqCst) {
-                started_tx.send(()).expect("signal unlock start");
-                release_rx
+            if path.ends_with("wake_unlock") && hook_stage.load(Ordering::SeqCst) == 0 {
+                hook_stage.store(1, Ordering::SeqCst);
+                unlock_started_tx.send(()).expect("signal unlock start");
+                unlock_release_rx
                     .lock()
                     .unwrap()
                     .recv()
                     .expect("wait for unlock release");
                 Ok(SysfsWrite::Written)
+            } else if path.ends_with("wake_lock") && hook_stage.load(Ordering::SeqCst) == 1 {
+                hook_stage.store(2, Ordering::SeqCst);
+                lock_started_tx.send(()).expect("signal lock start");
+                lock_release_rx
+                    .lock()
+                    .unwrap()
+                    .recv()
+                    .expect("wait for lock release");
+                write_sysfs_blocking(path, value)
             } else {
                 write_sysfs_blocking(path, value)
             }
@@ -801,11 +855,12 @@ mod session {
             .await
             .unwrap();
         let pausing = Arc::clone(&inhibitor);
-        let pause = tokio::spawn(async move { pausing.pause_soft_suspend_wake_lock().await });
+        let pause =
+            crate::runtime::spawn(async move { pausing.pause_soft_suspend_wake_lock().await });
 
         tokio::time::timeout(
             Duration::from_secs(5),
-            crate::runtime::spawn_blocking(move || started_rx.recv()),
+            crate::runtime::spawn_blocking(move || unlock_started_rx.recv()),
         )
         .await
         .expect("unlock barrier start")
@@ -815,10 +870,26 @@ mod session {
         let full_backend = Arc::clone(&inhibitor);
         let full =
             crate::runtime::spawn(async move { full_backend.acquire(Kind::Full, "ota").await });
-        wait_for(|| inhibitor.full_active()).await;
-        release_tx.send(()).expect("release unlock barrier");
-        let full = full.await.expect("full worker join").unwrap();
-        drop(full);
+        wait_for(|| inhibitor.len() == 2).await;
+
+        unlock_release_tx.send(()).expect("release unlock barrier");
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            crate::runtime::spawn_blocking(move || lock_started_rx.recv()),
+        )
+        .await
+        .expect("lock barrier start")
+        .expect("lock worker join")
+        .expect("lock started");
+
+        full.abort();
+        wait_for(|| inhibitor.len() == 1).await;
+        assert!(
+            !inhibitor.full_active(),
+            "the Full interruption must be over before the pause outcome is fixed"
+        );
+
+        lock_release_tx.send(()).expect("release lock barrier");
 
         assert_eq!(
             pause.await.expect("pause join"),
@@ -854,7 +925,9 @@ mod session {
             inhibitor.pause_soft_suspend_wake_lock().await,
             crate::device::inhibitor::WakeLockPauseOutcome::Paused(_)
         ));
-        fs::write(&paths.wake_lock, "").expect("clear lock");
+        tokio::fs::write(&paths.wake_lock, "")
+            .await
+            .expect("clear lock");
         fail.store(1, Ordering::SeqCst);
 
         assert_eq!(
@@ -862,7 +935,8 @@ mod session {
             crate::device::inhibitor::WakeLockResumeOutcome::RestoreFailed
         );
         let deadline = std::time::Instant::now() + Duration::from_secs(5);
-        while fs::read_to_string(&paths.wake_lock)
+        while tokio::fs::read_to_string(&paths.wake_lock)
+            .await
             .expect("read wake lock")
             .trim()
             != WAKE_LOCK_NAME
@@ -894,7 +968,9 @@ mod session {
             .await
             .unwrap();
         let _ = inhibitor.pause_soft_suspend_wake_lock().await;
-        fs::write(&paths.wake_lock, "").expect("clear lock");
+        tokio::fs::write(&paths.wake_lock, "")
+            .await
+            .expect("clear lock");
         fail.store(1, Ordering::SeqCst);
 
         assert_eq!(
@@ -916,7 +992,10 @@ mod session {
             "exhausted retry budget must stop consuming attempts"
         );
         assert_eq!(
-            fs::read_to_string(&paths.wake_lock).expect("read").trim(),
+            tokio::fs::read_to_string(&paths.wake_lock)
+                .await
+                .expect("read")
+                .trim(),
             "",
             "failed restore must not claim a written lock"
         );
@@ -927,7 +1006,10 @@ mod session {
             crate::device::inhibitor::WakeLockResumeOutcome::Restored
         );
         assert_eq!(
-            fs::read_to_string(&paths.wake_lock).expect("read").trim(),
+            tokio::fs::read_to_string(&paths.wake_lock)
+                .await
+                .expect("read")
+                .trim(),
             WAKE_LOCK_NAME
         );
     }
@@ -953,7 +1035,9 @@ mod session {
             }
         });
         let lease = inhibitor.acquire(Kind::SoftSuspend, "first").await.unwrap();
-        fs::write(&paths.wake_lock, "").expect("clear lock");
+        tokio::fs::write(&paths.wake_lock, "")
+            .await
+            .expect("clear lock");
         let drop_lease = crate::runtime::spawn_blocking(move || drop(lease));
         tokio::time::timeout(
             Duration::from_secs(5),
@@ -974,7 +1058,10 @@ mod session {
         let _next = next.await.expect("acquire worker join").unwrap();
         drop_lease.await.expect("drop worker join");
         assert_eq!(
-            fs::read_to_string(&paths.wake_lock).expect("read").trim(),
+            tokio::fs::read_to_string(&paths.wake_lock)
+                .await
+                .expect("read")
+                .trim(),
             WAKE_LOCK_NAME,
             "acquisition must end with confirmed wake-lock protection"
         );
@@ -1007,7 +1094,9 @@ mod session {
             inhibitor.pause_soft_suspend_wake_lock().await,
             crate::device::inhibitor::WakeLockPauseOutcome::Paused(_)
         ));
-        fs::write(&paths.wake_lock, "").expect("clear lock");
+        tokio::fs::write(&paths.wake_lock, "")
+            .await
+            .expect("clear lock");
         fail.store(1, Ordering::SeqCst);
 
         assert_eq!(
@@ -1018,7 +1107,8 @@ mod session {
 
         let deadline = std::time::Instant::now() + Duration::from_secs(5);
         while attempts.load(Ordering::SeqCst) < 3
-            || fs::read_to_string(&paths.wake_lock)
+            || tokio::fs::read_to_string(&paths.wake_lock)
+                .await
                 .expect("read wake lock")
                 .trim()
                 != WAKE_LOCK_NAME
@@ -1061,8 +1151,12 @@ mod session {
             inhibitor.pause_soft_suspend_wake_lock().await,
             crate::device::inhibitor::WakeLockPauseOutcome::Paused(_)
         ));
-        fs::write(&paths.wake_lock, "").expect("clear lock");
-        fs::write(&paths.wake_unlock, "").expect("clear unlocked state");
+        tokio::fs::write(&paths.wake_lock, "")
+            .await
+            .expect("clear lock");
+        tokio::fs::write(&paths.wake_unlock, "")
+            .await
+            .expect("clear unlocked state");
         armed.store(true, Ordering::SeqCst);
 
         let resuming = Arc::clone(&inhibitor);
@@ -1089,7 +1183,10 @@ mod session {
             crate::device::inhibitor::WakeLockResumeOutcome::Restored
         );
         assert_eq!(
-            fs::read_to_string(&paths.wake_lock).expect("read").trim(),
+            tokio::fs::read_to_string(&paths.wake_lock)
+                .await
+                .expect("read")
+                .trim(),
             WAKE_LOCK_NAME
         );
         assert_eq!(
@@ -1134,8 +1231,12 @@ mod session {
             inhibitor.pause_soft_suspend_wake_lock().await,
             crate::device::inhibitor::WakeLockPauseOutcome::Paused(_)
         ));
-        fs::write(&paths.wake_lock, "").expect("clear lock");
-        fs::write(&paths.wake_unlock, "").expect("clear unlocked state");
+        tokio::fs::write(&paths.wake_lock, "")
+            .await
+            .expect("clear lock");
+        tokio::fs::write(&paths.wake_unlock, "")
+            .await
+            .expect("clear unlocked state");
         armed.store(true, Ordering::SeqCst);
 
         let resuming = Arc::clone(&inhibitor);

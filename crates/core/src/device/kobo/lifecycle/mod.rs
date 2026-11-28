@@ -353,7 +353,18 @@ mod tests {
             Device::on_startup(context, hub, runtime)
         })
         .unwrap();
-        wait_for_wifi_thread();
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while !harness
+            .tasks
+            .iter()
+            .any(|task| task.id == DeviceTaskId::WifiReconcile && task.job.is_finished())
+        {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "startup radio reconcile never completed"
+            );
+            tokio::task::yield_now().await;
+        }
         assert!(!harness.context.online);
         assert_eq!(
             harness
@@ -365,10 +376,8 @@ mod tests {
         );
         let events = harness.drain_hub();
         assert!(
-            !events
-                .iter()
-                .any(|e| matches!(e, Event::Device(DeviceEvent::NetUp))),
-            "Auto startup must not emit NetUp, got {events:?}"
+            !events.iter().any(|e| matches!(e, Event::WifiReconciled(_))),
+            "Auto startup must not emit a Wi-Fi association completion, got {events:?}"
         );
     }
 
@@ -470,17 +479,22 @@ mod tests {
         }
         assert_eq!(manager.enabled(), Some(false));
 
+        let mut background = Vec::new();
+        dispatch_like_main_loop(&mut harness, stale_completion, &mut background).await;
         assert!(
-            Device::normalize_main_loop_event(&harness.context, stale_completion).is_none(),
-            "stale completion must be dropped before any consumer sees it"
-        );
-        assert!(
-            harness.drain_hub().is_empty(),
-            "stale completion must not forward NetUp"
+            background.is_empty(),
+            "stale completion must reach no consumer, got {background:?}"
         );
         assert!(
             !harness.context.online,
-            "stale NetUp never reaches consumers"
+            "stale completion must not mark the device online"
+        );
+        assert!(
+            !harness
+                .drain_hub()
+                .iter()
+                .any(|event| matches!(event, Event::Device(DeviceEvent::NetUp))),
+            "stale completion must not queue a NetUp"
         );
 
         crate::device::spawn_wifi_reconcile(&hub, &session, true, &mut tasks);

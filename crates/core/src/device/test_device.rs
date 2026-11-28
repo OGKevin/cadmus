@@ -90,7 +90,7 @@ impl TestWifiManager {
 
     /// Returns a notification of the next disable and the sender that releases
     /// its transition to the disabled state.
-    #[cfg(all(test, target_os = "linux"))]
+    #[cfg(all(test, feature = "kobo", target_os = "linux"))]
     pub(crate) fn set_on_disable(
         &self,
     ) -> (
