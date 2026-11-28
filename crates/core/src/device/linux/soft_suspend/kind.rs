@@ -8,7 +8,9 @@
 use super::autosleep::AutosleepPolicy;
 use super::paths::SoftSuspendPaths;
 use super::wake::WakeLock;
-use crate::device::inhibitor::soft_suspend::{SoftSuspendKind, WakeLockPauseOutcome};
+use crate::device::inhibitor::soft_suspend::{
+    SoftSuspendKind, SuppressionEpoch, WakeLockPauseOutcome, WakeLockResumeOutcome,
+};
 use crate::device::leds::StatusLed;
 use crate::device::soft_suspend::SoftSuspendBackend;
 use crate::device::soft_suspend::mode::AutosleepMode;
@@ -62,6 +64,11 @@ impl LinuxSoftSuspendKind {
         Self::new(paths, status_led)
     }
 
+    #[cfg(all(test, target_os = "linux"))]
+    pub(crate) fn set_write_hook(&self, hook: super::wake::WakeWriteHook) {
+        self.wake.set_write_hook(hook);
+    }
+
     fn new(paths: SoftSuspendPaths, status_led: Arc<StatusLed>) -> Arc<Self> {
         let wake = WakeLock::new(paths.clone());
         Arc::new(Self {
@@ -71,6 +78,7 @@ impl LinuxSoftSuspendKind {
     }
 }
 
+#[async_trait::async_trait]
 impl SoftSuspendBackend for LinuxSoftSuspendKind {
     fn is_supported(&self) -> bool {
         true
@@ -96,8 +104,8 @@ impl SoftSuspendBackend for LinuxSoftSuspendKind {
         self.autosleep.sanitize_mode(mode)
     }
 
-    fn set_mode(&self, mode: AutosleepMode) {
-        self.autosleep.set_mode(mode);
+    async fn set_mode(&self, mode: AutosleepMode) -> Result<(), std::io::Error> {
+        self.autosleep.set_mode(mode).await
     }
 
     fn set_indicate_autosleep_led(&self, enabled: bool) {
@@ -117,20 +125,33 @@ impl SoftSuspendBackend for LinuxSoftSuspendKind {
     }
 }
 
+#[async_trait::async_trait]
 impl SoftSuspendKind for LinuxSoftSuspendKind {
-    fn acquire_lease(&self, name: LeaseName) -> Lease {
-        self.wake.acquire(name)
+    fn register_lease(&self, name: LeaseName) -> Lease {
+        self.wake.register(name)
+    }
+
+    async fn confirm_leases(&self) -> Result<(), crate::device::inhibitor::InhibitorError> {
+        self.wake.confirm_leases().await
     }
 
     fn set_full_tracker(&self, tracker: WeakLeaseTracker) {
         self.wake.set_full_tracker(tracker);
     }
 
-    fn pause_wake_lock(&self) -> WakeLockPauseOutcome {
-        self.wake.pause()
+    async fn pause_wake_lock(&self) -> WakeLockPauseOutcome {
+        self.wake.pause().await
     }
 
-    fn resume_wake_lock(&self) {
-        self.wake.resume();
+    async fn resume_wake_lock(&self) -> WakeLockResumeOutcome {
+        self.wake.resume().await
+    }
+
+    async fn shutdown(&self) -> Result<(), crate::device::inhibitor::InhibitorError> {
+        self.wake.shutdown().await
+    }
+
+    fn wake_lock_epoch_is_current(&self, epoch: SuppressionEpoch) -> bool {
+        self.wake.wake_lock_epoch_is_current(epoch)
     }
 }

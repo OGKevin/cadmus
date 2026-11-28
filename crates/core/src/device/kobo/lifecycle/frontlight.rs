@@ -19,7 +19,7 @@ pub(super) async fn handle_event(
 ) -> EventOutcome {
     match event {
         Event::ToggleFrontlight => {
-            handle_toggle_frontlight(context);
+            handle_toggle_frontlight(context).await;
             EventOutcome::Continue
         }
         Event::SetFrontlightLevels(levels) => {
@@ -27,15 +27,15 @@ pub(super) async fn handle_event(
             EventOutcome::Handled
         }
         Event::UpdateAutoFrontlight => {
-            handle_update_auto_frontlight(context);
+            handle_update_auto_frontlight(context).await;
             EventOutcome::Handled
         }
         _ => EventOutcome::Unhandled,
     }
 }
 
-fn handle_toggle_frontlight(context: &mut AppContext) {
-    context.set_frontlight(!context.settings.frontlight);
+async fn handle_toggle_frontlight(context: &mut AppContext) {
+    context.set_frontlight(!context.settings.frontlight).await;
 }
 
 async fn handle_set_frontlight_levels(
@@ -54,16 +54,22 @@ async fn handle_set_frontlight_levels(
         .device
         .frontlight_mut()
         .set_intensity(levels.intensity)
+        .await
     {
         tracing::error!(error = %error, "failed to set frontlight intensity");
     }
-    if let Err(error) = context.device.frontlight_mut().set_warmth(levels.warmth) {
+    if let Err(error) = context
+        .device
+        .frontlight_mut()
+        .set_warmth(levels.warmth)
+        .await
+    {
         tracing::error!(error = %error, "failed to set frontlight warmth");
     }
     context.settings.frontlight_levels = *levels;
 }
 
-fn handle_update_auto_frontlight(context: &mut AppContext) {
+async fn handle_update_auto_frontlight(context: &mut AppContext) {
     if !(context.settings.auto_frontlight && context.settings.frontlight) {
         return;
     }
@@ -88,10 +94,16 @@ fn handle_update_auto_frontlight(context: &mut AppContext) {
         .device
         .frontlight_mut()
         .set_intensity(levels.intensity)
+        .await
     {
         tracing::error!(error = %error, "failed to set auto frontlight intensity");
     }
-    if let Err(error) = context.device.frontlight_mut().set_warmth(levels.warmth) {
+    if let Err(error) = context
+        .device
+        .frontlight_mut()
+        .set_warmth(levels.warmth)
+        .await
+    {
         tracing::error!(error = %error, "failed to set auto frontlight warmth");
     }
     context.settings.frontlight_levels = levels;

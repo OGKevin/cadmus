@@ -67,6 +67,11 @@
   - [Library Database](contributing/library-database.md)
   - [Runtime Migrations](contributing/runtime-migrations.md)
 
+# Architecture Decisions
+
+- [Index](contributing/adr/index.md)
+- [0001: Async device I/O with serial event handling](contributing/adr/0001-async-device-io-serial-event-handling.md)
+
 ---
 
 # Investigations

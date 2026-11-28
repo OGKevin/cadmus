@@ -20,7 +20,7 @@ use crate::device::battery::{Battery, Status};
 use anyhow::Error;
 #[cfg(not(test))]
 use anyhow::format_err;
-use std::fs;
+use async_trait::async_trait;
 use std::path::{Path, PathBuf};
 
 #[cfg(not(test))]
@@ -111,57 +111,62 @@ impl KoboBattery {
     }
 }
 
-fn read_sysfs(path: &Path) -> Result<String, Error> {
-    Ok(fs::read_to_string(path)?)
+async fn read_sysfs(path: &Path) -> Result<String, Error> {
+    Ok(tokio::fs::read_to_string(path).await?)
 }
 
 impl KoboBattery {
-    fn is_power_cover_connected(&self) -> Result<bool, Error> {
+    async fn is_power_cover_connected(&self) -> Result<bool, Error> {
         let Some(power_cover) = self.power_cover.as_ref() else {
             return Ok(false);
         };
-        let buf = read_sysfs(&power_cover.connected)?;
+        let buf = read_sysfs(&power_cover.connected).await?;
         Ok(buf.trim_end().parse::<u8>().is_ok_and(|v| v == 1))
     }
 }
 
+#[async_trait]
 impl Battery for KoboBattery {
-    fn capacity(&self) -> Result<Vec<f32>, Error> {
-        let buf = read_sysfs(&self.capacity)?;
+    async fn capacity(&self) -> Result<Vec<f32>, Error> {
+        let buf = read_sysfs(&self.capacity).await?;
         let capacity = buf.trim_end().parse::<f32>().unwrap_or(0.0);
-        if matches!(self.is_power_cover_connected(), Ok(true)) {
-            let aux = self
-                .power_cover
-                .as_ref()
-                .and_then(|power_cover| read_sysfs(&power_cover.capacity).ok())
-                .map(|buf| buf.trim_end().parse::<f32>().unwrap_or(0.0))
-                .unwrap_or(0.0);
+        if matches!(self.is_power_cover_connected().await, Ok(true)) {
+            let aux = match self.power_cover.as_ref() {
+                Some(power_cover) => read_sysfs(&power_cover.capacity)
+                    .await
+                    .ok()
+                    .map(|buf| buf.trim_end().parse::<f32>().unwrap_or(0.0))
+                    .unwrap_or(0.0),
+                None => 0.0,
+            };
             Ok(vec![capacity, aux])
         } else {
             Ok(vec![capacity])
         }
     }
 
-    fn status(&self) -> Result<Vec<Status>, Error> {
-        let buf = read_sysfs(&self.status)?;
+    async fn status(&self) -> Result<Vec<Status>, Error> {
+        let buf = read_sysfs(&self.status).await?;
         let status = match buf.trim_end() {
             "Discharging" => Status::Discharging,
             "Charging" => Status::Charging,
             "Not charging" | "Full" => Status::Charged,
             _ => Status::Unknown,
         };
-        if matches!(self.is_power_cover_connected(), Ok(true)) {
-            let aux_status = self
-                .power_cover
-                .as_ref()
-                .and_then(|power_cover| read_sysfs(&power_cover.status).ok())
-                .map(|buf| match buf.trim_end().parse::<i8>() {
-                    Ok(0) => Status::Discharging,
-                    Ok(2) => Status::Charging,
-                    Ok(3) => Status::Charged,
-                    _ => Status::Unknown,
-                })
-                .unwrap_or(Status::Unknown);
+        if matches!(self.is_power_cover_connected().await, Ok(true)) {
+            let aux_status = match self.power_cover.as_ref() {
+                Some(power_cover) => read_sysfs(&power_cover.status)
+                    .await
+                    .ok()
+                    .map(|buf| match buf.trim_end().parse::<i8>() {
+                        Ok(0) => Status::Discharging,
+                        Ok(2) => Status::Charging,
+                        Ok(3) => Status::Charged,
+                        _ => Status::Unknown,
+                    })
+                    .unwrap_or(Status::Unknown),
+                None => Status::Unknown,
+            };
             Ok(vec![status, aux_status])
         } else {
             Ok(vec![status])

@@ -123,6 +123,19 @@ pub(crate) struct SysfsWriteError {
     source: std::io::Error,
 }
 
+impl SysfsWriteError {
+    /// Missing live sysfs node: an error, not a successful no-op.
+    pub(crate) fn missing(path: &Path) -> Self {
+        Self {
+            path: path.to_path_buf(),
+            source: std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("sysfs node {} is missing", path.display()),
+            ),
+        }
+    }
+}
+
 /// Reads `/sys/power/state` and returns supported soft-suspend modes (`Off` always included).
 pub fn discover_available_modes(state_path: &Path) -> Vec<AutosleepMode> {
     let mut modes = vec![AutosleepMode::Off];
@@ -139,11 +152,52 @@ pub fn discover_available_modes(state_path: &Path) -> Vec<AutosleepMode> {
     modes
 }
 
-/// Writes `value` to a soft-suspend sysfs node.
+/// Writes `value` to an already-existing soft-suspend sysfs node without
+/// blocking the async runtime.
+///
+/// Opens without `create(true)`: a missing live node reports
+/// [`SysfsWrite::Missing`] rather than creating a regular file under `/sys`.
+/// Tokio can buffer file-write errors until a flush, so success is delayed
+/// until the kernel write completes rather than being lost on drop.
+pub(crate) async fn write_sysfs(path: &Path, value: &str) -> Result<SysfsWrite, SysfsWriteError> {
+    use tokio::io::AsyncWriteExt as _;
+
+    let mut file = match tokio::fs::OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .open(path)
+        .await
+    {
+        Ok(file) => file,
+        Err(source) if source.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(SysfsWrite::Missing);
+        }
+        Err(source) => {
+            return Err(SysfsWriteError {
+                path: path.to_path_buf(),
+                source,
+            });
+        }
+    };
+    async {
+        file.write_all(value.as_bytes()).await?;
+        file.flush().await.map(|()| SysfsWrite::Written)
+    }
+    .await
+    .map_err(|source| SysfsWriteError {
+        path: path.to_path_buf(),
+        source,
+    })
+}
+
+/// Writes `value` to a soft-suspend sysfs node from a blocking worker.
 ///
 /// Does not log — callers choose how to handle [`SysfsWrite::Missing`] vs
 /// [`SysfsWriteError`].
-pub(crate) fn write_sysfs(path: &Path, value: &str) -> Result<SysfsWrite, SysfsWriteError> {
+pub(crate) fn write_sysfs_blocking(
+    path: &Path,
+    value: &str,
+) -> Result<SysfsWrite, SysfsWriteError> {
     if !path.exists() {
         return Ok(SysfsWrite::Missing);
     }
@@ -186,7 +240,7 @@ mod tests {
     #[test]
     fn write_sysfs_missing_path_is_noop() {
         assert_eq!(
-            write_sysfs(Path::new("/nonexistent/sys/power/autosleep"), "mem").unwrap(),
+            write_sysfs_blocking(Path::new("/nonexistent/sys/power/autosleep"), "mem").unwrap(),
             SysfsWrite::Missing
         );
     }
@@ -196,8 +250,17 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("autosleep");
         fs::create_dir(&path).expect("dir instead of file");
-        let error = write_sysfs(&path, "mem").unwrap_err();
+        let error = write_sysfs_blocking(&path, "mem").unwrap_err();
         assert_eq!(error.path, path);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn write_sysfs_async_reports_device_write_errors() {
+        let error = write_sysfs(Path::new("/dev/full"), "mem")
+            .await
+            .expect_err("device write failures must be reported");
+        assert_eq!(error.path, Path::new("/dev/full"));
     }
 
     #[test]
@@ -205,7 +268,10 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("autosleep");
         fs::write(&path, "off\n").expect("create");
-        assert_eq!(write_sysfs(&path, "mem").unwrap(), SysfsWrite::Written);
+        assert_eq!(
+            write_sysfs_blocking(&path, "mem").unwrap(),
+            SysfsWrite::Written
+        );
         assert_eq!(fs::read_to_string(&path).expect("read").trim(), "mem");
     }
 

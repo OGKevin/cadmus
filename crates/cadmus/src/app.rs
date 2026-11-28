@@ -121,6 +121,10 @@ async fn stop_producers_and_drain(
         background_tasks,
     } = state;
 
+    #[cfg(feature = "kobo")]
+    cadmus_core::device::suspend::drain_committed_suspend(context, tasks).await;
+    #[cfg(feature = "kobo")]
+    context.wifi_session.next_reconcile_generation();
     tasks.clear();
     for item in history.iter() {
         cadmus_core::view::cancel_view_jobs(item.view.as_ref());
@@ -285,7 +289,7 @@ fn sync_view_after_rotation(
         )
     )
 )]
-fn apply_rotation(
+async fn apply_rotation(
     rotation: i8,
     view: &mut Box<dyn View>,
     updating: &mut Vec<UpdateData>,
@@ -295,7 +299,7 @@ fn apply_rotation(
 ) -> bool {
     let prev_dims = context.display.dims;
     let prev_rotation = context.display.rotation;
-    wait_for_all(updating, context);
+    wait_for_all(updating, context).await;
     match context.set_rotation(rotation) {
         Ok(dims) => {
             context
@@ -341,10 +345,14 @@ fn apply_rotation(
         )
     )
 )]
-fn set_rotation(rotation: i8, updating: &mut Vec<UpdateData>, context: &mut AppContext) -> bool {
+async fn set_rotation(
+    rotation: i8,
+    updating: &mut Vec<UpdateData>,
+    context: &mut AppContext,
+) -> bool {
     let prev_rotation = context.display.rotation;
     let prev_dims = context.display.dims;
-    wait_for_all(updating, context);
+    wait_for_all(updating, context).await;
     match context.set_rotation(rotation) {
         Ok(dims) => {
             context
@@ -400,7 +408,7 @@ async fn open_document(
         if let Some(n) = reader_info.rotation.map(|n| context.device.to_native(n))
             && context.device.orientation(n) != context.device.orientation(rotation)
         {
-            set_rotation(n, updating, context);
+            set_rotation(n, updating, context).await;
         }
         context
             .device
@@ -432,7 +440,7 @@ async fn open_document(
         true
     } else {
         if context.display.rotation != rotation {
-            apply_rotation(rotation, view, updating, tx, rq, context);
+            apply_rotation(rotation, view, updating, tx, rq, context).await;
         }
         context.device.framebuffer_mut().set_dithered(dithered);
         warn!(
@@ -497,7 +505,7 @@ pub async fn run() -> Result<(), Error> {
         .expect("failed to initialize device");
 
     let manager = SettingsManager::new(device.data_dir(), get_current_version());
-    let mut settings = manager.load();
+    let mut settings = manager.load().await;
 
     cadmus_core::crypto::init_crypto_provider();
 
@@ -564,7 +572,7 @@ pub async fn run() -> Result<(), Error> {
         return Err(e);
     }
 
-    if let Err(e) = manager.save(&settings) {
+    if let Err(e) = manager.save(&settings).await {
         error!(error = %e, "failed to save settings after migrations");
         return Err(e);
     }
@@ -679,7 +687,7 @@ pub async fn run() -> Result<(), Error> {
         let message = tokio::select! {
             message = rx.recv() => message,
             _ = input_tick.tick() => {
-                context.device.input_mut().pump();
+                context.device.input_mut().pump().await;
                 continue;
             }
         };
@@ -687,6 +695,10 @@ pub async fn run() -> Result<(), Error> {
             break;
         };
         let (evt, _input_wake) = message.into_parts();
+        #[cfg(feature = "kobo")]
+        let Some(evt) = AppDevice::normalize_main_loop_event(&context, evt) else {
+            continue;
+        };
         let skip_main_loop_lease =
             AppDevice::should_skip_main_loop_soft_suspend_lease(&context, &evt);
         let _soft_suspend = if skip_main_loop_lease {
@@ -699,6 +711,7 @@ pub async fn run() -> Result<(), Error> {
             match context
                 .inhibitor
                 .acquire(Kind::SoftSuspend, SoftSuspendName::MainLoop)
+                .await
             {
                 Ok(_lease) => {
                     tracing::trace!(
@@ -769,7 +782,7 @@ pub async fn run() -> Result<(), Error> {
 
         match device_outcome {
             cadmus_core::device::EventOutcome::Handled => {
-                process_render_queue(view.as_mut(), &mut rq, &mut context, &mut updating);
+                process_render_queue(view.as_mut(), &mut rq, &mut context, &mut updating).await;
                 drain_bus(&mut bus, &tx);
                 continue;
             }
@@ -971,14 +984,17 @@ pub async fn run() -> Result<(), Error> {
                     AppCmd::Dictionary {
                         ref query,
                         ref language,
-                    } => Box::new(DictionaryApp::new(
-                        context.device.framebuffer().rect(),
-                        query,
-                        language,
-                        &tx,
-                        &mut rq,
-                        &mut context,
-                    )),
+                    } => Box::new(
+                        DictionaryApp::new(
+                            context.device.framebuffer().rect(),
+                            query,
+                            language,
+                            &tx,
+                            &mut rq,
+                            &mut context,
+                        )
+                        .await,
+                    ),
                     AppCmd::TouchEvents => Box::new(TouchEvents::new(
                         context.device.framebuffer().rect(),
                         &mut rq,
@@ -1035,7 +1051,8 @@ pub async fn run() -> Result<(), Error> {
                             &tx,
                             &mut rq,
                             &mut context,
-                        );
+                        )
+                        .await;
                     }
                     view.handle_event(&Event::Reseed, &tx, &mut bus, &mut rq, &mut context)
                         .await;
@@ -1070,7 +1087,7 @@ pub async fn run() -> Result<(), Error> {
             }
             Event::Show(ViewId::Frontlight) => {
                 if !context.settings.frontlight {
-                    context.set_frontlight(true);
+                    context.set_frontlight(true).await;
                     view.handle_event(
                         &Event::ToggleFrontlight,
                         &tx,
@@ -1127,13 +1144,13 @@ pub async fn run() -> Result<(), Error> {
                     && n != context.display.rotation
                     && view.might_rotate()
                 {
-                    apply_rotation(n, &mut view, &mut updating, &tx, &mut rq, &mut context);
+                    apply_rotation(n, &mut view, &mut updating, &tx, &mut rq, &mut context).await;
                 }
             }
             Event::Select(EntryId::Rotate(n))
                 if n != context.display.rotation && view.might_rotate() =>
             {
-                apply_rotation(n, &mut view, &mut updating, &tx, &mut rq, &mut context);
+                apply_rotation(n, &mut view, &mut updating, &tx, &mut rq, &mut context).await;
             }
             Event::Select(EntryId::Rotate(n)) => {
                 tracing::debug!(
@@ -1244,7 +1261,7 @@ pub async fn run() -> Result<(), Error> {
             }
         }
 
-        process_render_queue(view.as_ref(), &mut rq, &mut context, &mut updating);
+        process_render_queue(view.as_ref(), &mut rq, &mut context, &mut updating).await;
         drain_bus(&mut bus, &tx);
     }
 
@@ -1254,6 +1271,7 @@ pub async fn run() -> Result<(), Error> {
     let _shutdown_wake = match context
         .inhibitor
         .acquire(Kind::SoftSuspend, SoftSuspendName::Shutdown)
+        .await
     {
         Ok(guard) => Some(guard),
         Err(error) => {
@@ -1298,10 +1316,12 @@ pub async fn run() -> Result<(), Error> {
         tracing::error!(error = %e, "Failed to run on_shutdown");
     }
 
-    if save_settings {
-        if let Err(e) = manager.save(&context.settings) {
-            tracing::error!(error = ?e, "failed to save settings");
-        }
+    if save_settings && let Err(e) = manager.save(&context.settings).await {
+        tracing::error!(error = ?e, "failed to save settings");
+    }
+
+    if let Err(error) = context.inhibitor.shutdown().await {
+        tracing::error!(error = %error, "Failed to release wake lock on shutdown");
     }
 
     #[cfg(feature = "profiling")]

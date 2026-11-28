@@ -33,8 +33,9 @@ Power** and set it to one of:
 | Freeze | Lighter sleep (when your device supports it)       |
 | Memory | Deeper sleep to RAM (when your device supports it) |
 
-Only sleep targets your device supports appear in the list. You can also set
-this in your settings file:
+Only sleep targets your device supports appear in the list. If Cadmus cannot
+switch to the mode you choose, it shows a message and the setting stays on the
+mode the device is actually using. You can also set this in your settings file:
 
 <!-- i18n:skip-start -->
 

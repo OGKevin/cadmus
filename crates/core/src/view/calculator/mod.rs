@@ -147,7 +147,8 @@ impl Calculator {
             TopBarVariant::Back,
             "Calculator".to_string(),
             context,
-        );
+        )
+        .await;
         children.push(Box::new(top_bar) as Box<dyn View>);
 
         let separator = Filler::new(
@@ -641,9 +642,9 @@ impl Calculator {
         }
     }
 
-    fn reseed(&mut self, rq: &mut RenderQueue, context: &mut AppContext) {
+    async fn reseed(&mut self, rq: &mut RenderQueue, context: &mut AppContext) {
         if let Some(top_bar) = self.child_mut(0).downcast_mut::<TopBar>() {
-            top_bar.reseed(rq, context);
+            top_bar.reseed(rq, context).await;
         }
 
         rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
@@ -734,11 +735,11 @@ impl View for Calculator {
                 true
             }
             Event::ToggleNear(ViewId::MainMenu, rect) => {
-                toggle_main_menu(self, rect, None, rq, context);
+                toggle_main_menu(self, rect, None, rq, context).await;
                 true
             }
             Event::ToggleNear(ViewId::BatteryMenu, rect) => {
-                toggle_battery_menu(self, rect, None, rq, context);
+                toggle_battery_menu(self, rect, None, rq, context).await;
                 true
             }
             Event::ToggleNear(ViewId::ClockMenu, rect) => {
@@ -759,7 +760,7 @@ impl View for Calculator {
                 true
             }
             Event::Reseed => {
-                self.reseed(rq, context);
+                self.reseed(rq, context).await;
                 true
             }
             _ => false,

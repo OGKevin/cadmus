@@ -15,6 +15,11 @@ use std::time::Duration;
 /// Live Linux backends report [`Self::is_supported`] as `true` and write sysfs;
 /// noop backends accept calls without effect. Settings UI and the suspend
 /// orchestrator use this contract via [`Inhibitor`](crate::device::inhibitor::Inhibitor).
+///
+/// Mode writes are async because live backends perform sysfs I/O. The trait is
+/// object-safe through `async_trait`, so [`Inhibitor`](crate::device::inhibitor::Inhibitor)
+/// can hold its kind behind `Arc`.
+#[async_trait::async_trait]
 pub trait SoftSuspendBackend: Send + Sync {
     /// Returns whether this backend can arm kernel autosleep.
     fn is_supported(&self) -> bool;
@@ -50,8 +55,11 @@ pub trait SoftSuspendBackend: Send + Sync {
     /// Sanitizes `mode` against discovery.
     fn sanitize_mode(&self, mode: AutosleepMode) -> AutosleepMode;
 
-    /// Sets autosleep mode.
-    fn set_mode(&self, mode: AutosleepMode);
+    /// Sets autosleep mode, writing `/sys/power/autosleep` on live backends.
+    ///
+    /// A failed write is an error: the cached mode stays unchanged instead of
+    /// claiming a mode the kernel never applied. NoOp backends return `Ok(())`.
+    async fn set_mode(&self, mode: AutosleepMode) -> Result<(), std::io::Error>;
 
     /// Enables or disables the status LED while soft suspend is armed.
     fn set_indicate_autosleep_led(&self, enabled: bool);
@@ -60,14 +68,16 @@ pub trait SoftSuspendBackend: Send + Sync {
     fn set_autosleep_grace(&self, grace: Duration);
 
     /// Applies mode, LED policy, and release grace from settings.
-    fn apply_settings(
+    ///
+    /// Returns the mode write result so callers see a live-backend failure.
+    async fn apply_settings(
         &self,
         mode: AutosleepMode,
         indicate_autosleep_led: bool,
         autosleep_grace: Duration,
-    ) {
+    ) -> Result<(), std::io::Error> {
         self.set_autosleep_grace(autosleep_grace);
         self.set_indicate_autosleep_led(indicate_autosleep_led);
-        self.set_mode(mode);
+        self.set_mode(mode).await
     }
 }

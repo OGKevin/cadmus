@@ -7,16 +7,10 @@ use crate::device::test_harness::DeviceRuntimeHarness;
 use crate::view::intermission::Intermission;
 use crate::view::{Event, View};
 
-pub(crate) fn lock_alarms(
+pub(crate) async fn lock_alarms(
     harness: &mut DeviceRuntimeHarness,
-) -> std::sync::MutexGuard<'_, AlarmManager<crate::device::rtc::TestRtc>> {
-    harness
-        .context
-        .alarm_manager
-        .as_ref()
-        .unwrap()
-        .lock()
-        .unwrap()
+) -> tokio::sync::MutexGuard<'_, AlarmManager<crate::device::rtc::TestRtc>> {
+    harness.context.alarm_manager.as_ref().unwrap().lock().await
 }
 
 pub(crate) fn intermission_count(view: &dyn View) -> usize {
@@ -26,7 +20,7 @@ pub(crate) fn intermission_count(view: &dyn View) -> usize {
         .count()
 }
 
-pub(crate) fn install_armed_soft_suspend(
+pub(crate) async fn install_armed_soft_suspend(
     harness: &mut DeviceRuntimeHarness,
 ) -> (
     tempfile::TempDir,
@@ -44,11 +38,15 @@ pub(crate) fn install_armed_soft_suspend(
         None,
         std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
     );
-    inhibitor.set_mode(AutosleepMode::Freeze);
+    inhibitor
+        .set_mode(AutosleepMode::Freeze)
+        .await
+        .expect("arm freeze autosleep");
     harness
         .context
         .wifi_session
-        .set_inhibitor(Arc::clone(&inhibitor));
+        .set_inhibitor(Arc::clone(&inhibitor))
+        .await;
     harness.context.inhibitor = inhibitor;
     (dir, paths)
 }

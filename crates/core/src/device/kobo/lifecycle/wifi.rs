@@ -1,8 +1,7 @@
 //! WiFi mode and idle-disable event handling.
 
 use crate::device::wifi::session::WifiSession;
-use crate::device::{AppContext, EventOutcome};
-use crate::input::DeviceEvent;
+use crate::device::{AppContext, DeviceTask, DeviceTaskId, EventOutcome};
 use crate::settings::{WIFI_IDLE_TIMEOUT_MIN_MINUTES, WifiMode};
 use crate::view::{EntryId, Event, Hub};
 use std::sync::Arc;
@@ -73,31 +72,54 @@ pub(super) fn spawn_wifi_idle_poller(
 #[cfg_attr(
     feature = "tracing",
     tracing::instrument(
-        skip(event, hub, context),
+        skip(event, hub, context, tasks),
         fields(event = ?event),
         ret(level = tracing::Level::TRACE),
         level = tracing::Level::TRACE,
     )
 )]
-pub(super) fn handle_event(event: &Event, hub: &Hub, context: &mut AppContext) -> EventOutcome {
+pub(super) async fn handle_event(
+    event: &Event,
+    hub: &Hub,
+    context: &mut AppContext,
+    tasks: &mut Vec<DeviceTask>,
+) -> EventOutcome {
     match event {
-        Event::SetWifiMode(mode) => handle_set_wifi_mode(*mode, hub, context),
-        Event::Select(EntryId::SetWifiMode(mode)) => handle_set_wifi_mode(*mode, hub, context),
-        Event::MightDisableWifi => handle_might_disable_wifi(context),
+        Event::SetWifiMode(mode) => handle_set_wifi_mode(*mode, hub, context, tasks).await,
+        Event::Select(EntryId::SetWifiMode(mode)) => {
+            handle_set_wifi_mode(*mode, hub, context, tasks).await
+        }
+        Event::MightDisableWifi => handle_might_disable_wifi(context, tasks),
         _ => EventOutcome::Unhandled,
     }
+}
+
+/// Invalidates an in-flight reconcile and drops its owned task.
+///
+/// A completion from the invalidated job may already be queued; advancing the
+/// generation makes the main loop discard it at its FIFO slot even then. The
+/// task is dropped as well so a transition that has not started yet stops
+/// instead of fighting the mode that has just been applied.
+fn supersede_wifi_reconcile(session: &WifiSession, tasks: &mut Vec<DeviceTask>) {
+    session.next_reconcile_generation();
+    tasks.retain(|task| task.id != DeviceTaskId::WifiReconcile);
 }
 
 #[cfg_attr(
     feature = "tracing",
     tracing::instrument(
-        skip(hub, context),
+        skip(hub, context, tasks),
         fields(mode = %mode, previous = tracing::field::Empty),
         ret(level = tracing::Level::TRACE),
         level = tracing::Level::TRACE,
     )
 )]
-fn handle_set_wifi_mode(mode: WifiMode, hub: &Hub, context: &mut AppContext) -> EventOutcome {
+async fn handle_set_wifi_mode(
+    mode: WifiMode,
+    hub: &Hub,
+    context: &mut AppContext,
+    tasks: &mut Vec<DeviceTask>,
+) -> EventOutcome {
     if context.settings.wifi == mode {
         tracing::trace!(mode = %mode, "wifi mode unchanged");
         return EventOutcome::Handled;
@@ -109,25 +131,14 @@ fn handle_set_wifi_mode(mode: WifiMode, hub: &Hub, context: &mut AppContext) -> 
     tracing::info!(previous = %previous, mode = %mode, "setting wifi mode");
 
     context.settings.wifi = mode;
-    context.wifi_session.set_mode(mode);
+    context.wifi_session.set_mode(mode).await;
 
     match mode {
         WifiMode::AlwaysOn => {
-            let session = context.wifi_session.clone();
-            let hub = hub.clone();
-            crate::runtime::current_handle().spawn(async move {
-                match session.apply_radio().await {
-                    Ok(true) => {
-                        hub.send((Event::Device(DeviceEvent::NetUp)).into()).ok();
-                    }
-                    Ok(false) => {}
-                    Err(error) => {
-                        tracing::error!(error = %error, "Failed to enable WiFi");
-                    }
-                }
-            });
+            crate::device::spawn_wifi_reconcile(hub, &context.wifi_session, true, tasks);
         }
         WifiMode::Off => {
+            supersede_wifi_reconcile(&context.wifi_session, tasks);
             let session = context.wifi_session.clone();
             crate::runtime::current_handle().spawn(async move {
                 if let Err(error) = session.apply_radio().await {
@@ -138,6 +149,7 @@ fn handle_set_wifi_mode(mode: WifiMode, hub: &Hub, context: &mut AppContext) -> 
         }
         WifiMode::Auto => {
             if !context.wifi_session.has_holders() {
+                supersede_wifi_reconcile(&context.wifi_session, tasks);
                 let session = context.wifi_session.clone();
                 crate::runtime::current_handle().spawn(async move {
                     if let Err(error) = session.apply_radio().await {
@@ -163,7 +175,7 @@ fn handle_set_wifi_mode(mode: WifiMode, hub: &Hub, context: &mut AppContext) -> 
 #[cfg_attr(
     feature = "tracing",
     tracing::instrument(
-        skip(context),
+        skip(context, tasks),
         fields(
             mode = tracing::field::Empty,
             holders = tracing::field::Empty,
@@ -174,7 +186,10 @@ fn handle_set_wifi_mode(mode: WifiMode, hub: &Hub, context: &mut AppContext) -> 
         level = tracing::Level::TRACE,
     )
 )]
-fn handle_might_disable_wifi(context: &mut AppContext) -> EventOutcome {
+fn handle_might_disable_wifi(
+    context: &mut AppContext,
+    tasks: &mut Vec<DeviceTask>,
+) -> EventOutcome {
     let mode = context.settings.wifi;
     #[cfg(feature = "tracing")]
     {
@@ -226,6 +241,7 @@ fn handle_might_disable_wifi(context: &mut AppContext) -> EventOutcome {
         "Disabling WiFi after idle timeout"
     );
 
+    supersede_wifi_reconcile(&context.wifi_session, tasks);
     context.wifi_session.mark_offline_pending();
     context.wifi_session.set_desired_radio_on(false);
     context.online = false;
@@ -254,12 +270,18 @@ mod tests {
     async fn handle_set_wifi_mode_noop_on_duplicate() {
         let mut harness = DeviceRuntimeHarness::new().await;
         harness.context.settings.wifi = WifiMode::AlwaysOn;
-        harness.context.wifi_session.set_mode(WifiMode::AlwaysOn);
+        harness
+            .context
+            .wifi_session
+            .set_mode(WifiMode::AlwaysOn)
+            .await;
         let outcome = handle_event(
             &Event::SetWifiMode(WifiMode::AlwaysOn),
             &harness.hub_tx,
             &mut harness.context,
-        );
+            &mut harness.tasks,
+        )
+        .await;
         assert_eq!(outcome, EventOutcome::Handled);
         wait_for_wifi_thread();
         assert_eq!(
@@ -280,7 +302,9 @@ mod tests {
             &Event::SetWifiMode(WifiMode::AlwaysOn),
             &harness.hub_tx,
             &mut harness.context,
-        );
+            &mut harness.tasks,
+        )
+        .await;
         assert_eq!(outcome, EventOutcome::Handled);
         assert_eq!(harness.context.settings.wifi, WifiMode::AlwaysOn);
         wait_for_wifi_thread();
@@ -298,7 +322,9 @@ mod tests {
             &Event::SetWifiMode(WifiMode::Off),
             &harness.hub_tx,
             &mut harness.context,
-        );
+            &mut harness.tasks,
+        )
+        .await;
         assert_eq!(outcome, EventOutcome::Handled);
         assert_eq!(harness.context.settings.wifi, WifiMode::Off);
         assert!(!harness.context.online);
@@ -326,15 +352,27 @@ mod tests {
             &Event::SetWifiMode(WifiMode::AlwaysOn),
             &harness.hub_tx,
             &mut harness.context,
-        );
+            &mut harness.tasks,
+        )
+        .await;
         assert_eq!(outcome, EventOutcome::Handled);
         wait_for_wifi_thread();
         let events = harness.drain_hub();
+        let reconciled = events
+            .iter()
+            .find(|event| matches!(event, Event::WifiReconciled(_)))
+            .cloned()
+            .unwrap_or_else(|| panic!("expected a tagged association completion, got {events:?}"));
+        let net_up =
+            crate::device::kobo::Device::normalize_main_loop_event(&harness.context, reconciled)
+                .expect("the reconcile generation must be current");
+        assert!(matches!(net_up, Event::Device(DeviceEvent::NetUp)));
         assert!(
-            events
+            harness
+                .tasks
                 .iter()
-                .any(|e| matches!(e, Event::Device(DeviceEvent::NetUp))),
-            "expected NetUp when already associated, got {events:?}"
+                .any(|task| task.id == DeviceTaskId::WifiReconcile),
+            "AlwaysOn must own a radio reconcile task"
         );
     }
 
@@ -364,7 +402,7 @@ mod tests {
         let mut harness = DeviceRuntimeHarness::new().await;
         harness.context.settings.wifi = WifiMode::Auto;
         harness.context.settings.wifi_idle_timeout = 0.0;
-        harness.context.wifi_session.set_mode(WifiMode::Auto);
+        harness.context.wifi_session.set_mode(WifiMode::Auto).await;
         harness.context.online = true;
         harness.context.wifi_session.notify_online();
         let _job = spawn_wifi_idle_poller(&harness.hub_tx, 0.0, &harness.context.wifi_session)
@@ -394,7 +432,9 @@ mod tests {
             &Event::MightDisableWifi,
             &harness.hub_tx,
             &mut harness.context,
-        );
+            &mut harness.tasks,
+        )
+        .await;
         assert_eq!(outcome, EventOutcome::Handled);
         wait_for_wifi_thread();
         assert!(
@@ -408,20 +448,39 @@ mod tests {
         let mut harness = DeviceRuntimeHarness::new().await;
         harness.context.settings.wifi = WifiMode::Auto;
         harness.context.settings.wifi_idle_timeout = 0.0;
-        harness.context.wifi_session.set_mode(WifiMode::Auto);
+        harness.context.wifi_session.set_mode(WifiMode::Auto).await;
         harness.context.online = true;
         harness.context.wifi_session.notify_online();
         let lease = harness.context.wifi_session.acquire("t").await.unwrap();
         drop(lease);
         assert!(harness.context.wifi_session.idle_since().is_some());
+        let stale_generation = harness.context.wifi_session.next_reconcile_generation();
+        harness.push_task(DeviceTaskId::WifiReconcile);
 
         let outcome = handle_event(
             &Event::MightDisableWifi,
             &harness.hub_tx,
             &mut harness.context,
-        );
+            &mut harness.tasks,
+        )
+        .await;
         assert_eq!(outcome, EventOutcome::Handled);
         wait_for_wifi_thread();
         assert!(!harness.context.online);
+        assert!(
+            harness
+                .tasks
+                .iter()
+                .all(|task| task.id != DeviceTaskId::WifiReconcile),
+            "idle switch-off must drop the in-flight reconcile task"
+        );
+        assert!(
+            crate::device::kobo::Device::normalize_main_loop_event(
+                &harness.context,
+                Event::WifiReconciled(stale_generation)
+            )
+            .is_none(),
+            "a reconnect started before idle switch-off must not reach consumers"
+        );
     }
 }

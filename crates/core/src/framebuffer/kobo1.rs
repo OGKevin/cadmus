@@ -12,6 +12,7 @@ use std::os::unix::io::AsRawFd;
 use std::path::Path;
 use std::ptr;
 use std::slice;
+use std::sync::Arc;
 use tracing::{error, info};
 
 impl Into<MxcfbRect> for Rectangle {
@@ -30,7 +31,7 @@ type GetPixelRgb = fn(&KoboFramebuffer1, u32, u32) -> [u8; 3];
 type AsRgb = fn(&KoboFramebuffer1) -> Vec<u8>;
 
 pub struct KoboFramebuffer1 {
-    file: File,
+    file: Arc<File>,
     frame: *mut libc::c_void,
     frame_size: libc::size_t,
     token: u32,
@@ -102,7 +103,7 @@ impl KoboFramebuffer1 {
                 };
             let red_index = if var_info.red.offset > 0 { 2 } else { 0 };
             Ok(KoboFramebuffer1 {
-                file,
+                file: Arc::new(file),
                 frame,
                 frame_size,
                 token: 1,
@@ -137,6 +138,7 @@ impl KoboFramebuffer1 {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl Framebuffer for KoboFramebuffer1 {
     fn set_pixel(&mut self, x: u32, y: u32, color: Color) {
         let c = (self.transform)(x, y, color);
@@ -333,18 +335,24 @@ impl Framebuffer for KoboFramebuffer1 {
         }
     }
 
-    // Wait for a specific update to complete.
-    fn wait(&self, token: u32) -> Result<i32, Error> {
-        let result = if self.mark >= 7 {
-            let mut marker_data = MxcfbUpdateMarkerData {
-                update_marker: token,
-                collision_test: 0,
+    /// Waits for a specific update to complete on a shared driver handle.
+    async fn wait(&self, token: u32) -> Result<i32, Error> {
+        let file = Arc::clone(&self.file);
+        let mark = self.mark;
+        crate::runtime::spawn_blocking(move || {
+            let result = if mark >= 7 {
+                let mut marker_data = MxcfbUpdateMarkerData {
+                    update_marker: token,
+                    collision_test: 0,
+                };
+                unsafe { wait_for_update_v2(file.as_raw_fd(), &mut marker_data) }
+            } else {
+                unsafe { wait_for_update_v1(file.as_raw_fd(), &token) }
             };
-            unsafe { wait_for_update_v2(self.file.as_raw_fd(), &mut marker_data) }
-        } else {
-            unsafe { wait_for_update_v1(self.file.as_raw_fd(), &token) }
-        };
-        result.context("can't wait for framebuffer update")
+            result.context("can't wait for framebuffer update")
+        })
+        .await
+        .map_err(Error::new)?
     }
 
     fn save(&self, path: &str) -> Result<(), Error> {

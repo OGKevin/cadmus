@@ -27,6 +27,7 @@ pub struct DictionaryInfo {
     pub is_installing: bool,
 }
 
+#[async_trait::async_trait(?Send)]
 impl SettingKind for DictionaryInfo {
     fn identity(&self) -> SettingIdentity {
         SettingIdentity::DictionaryInfo(self.lang.clone())
@@ -36,7 +37,7 @@ impl SettingKind for DictionaryInfo {
         self.label.clone()
     }
 
-    fn handle(
+    async fn handle(
         &self,
         evt: &Event,
         _context: &mut AppContext,
@@ -269,7 +270,7 @@ mod tests {
             let mut bus: Bus = VecDeque::new();
             let event = Event::Select(EntryId::DownloadDictionary("en".to_string()));
 
-            let (display, consumed) = info.handle(&event, &mut context, &mut bus);
+            let (display, consumed) = info.handle(&event, &mut context, &mut bus).await;
 
             assert!(display.is_some());
             assert!(!consumed);
@@ -289,7 +290,7 @@ mod tests {
             let mut bus: Bus = VecDeque::new();
             let event = Event::Select(EntryId::RequestDictionaryDownload("en".to_string()));
 
-            let (display, consumed) = info.handle(&event, &mut context, &mut bus);
+            let (display, consumed) = info.handle(&event, &mut context, &mut bus).await;
 
             assert!(display.is_none());
             assert!(!consumed);
@@ -309,7 +310,7 @@ mod tests {
             let mut bus: Bus = VecDeque::new();
             let event = Event::Select(EntryId::DownloadDictionary("fr".to_string()));
 
-            let (display, _) = info.handle(&event, &mut context, &mut bus);
+            let (display, _) = info.handle(&event, &mut context, &mut bus).await;
 
             assert!(display.is_none());
         }
@@ -327,7 +328,9 @@ mod tests {
             context.settings = make_settings();
             let mut bus: Bus = VecDeque::new();
 
-            let (display, _) = info.handle(&Event::Select(EntryId::About), &mut context, &mut bus);
+            let (display, _) = info
+                .handle(&Event::Select(EntryId::About), &mut context, &mut bus)
+                .await;
 
             assert!(display.is_none());
         }

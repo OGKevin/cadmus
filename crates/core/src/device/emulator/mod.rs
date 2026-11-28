@@ -135,7 +135,11 @@ impl InputSource for EmulatorInputSource {
     /// queue may only be pumped there (`EventPump` is `!Send` for that
     /// reason), so the pump created in [`Self::start`] is stored on `self`
     /// and polled here instead of on a spawned thread.
-    fn pump(&mut self) {
+    ///
+    /// Async because the Spread/Pinch shortcuts hand off through
+    /// [`send_input_hub_message`](crate::view::hub_message::send_input_hub_message),
+    /// which awaits the SoftSuspend wake-lock confirmation.
+    async fn pump(&mut self) {
         let (Some(hub), Some(inhibitor), Some(sender)) = (
             self.hub.clone(),
             self.inhibitor.clone(),
@@ -148,11 +152,8 @@ impl InputSource for EmulatorInputSource {
         };
         while let Some(sdl_evt) = event_pump.poll_event() {
             #[cfg(feature = "tracing")]
-            let span = tracing::trace_span!("sdl-event-loop", event = ?sdl_evt);
-            #[cfg(feature = "tracing")]
-            let _enter = span.enter();
-            #[cfg(feature = "tracing")]
-            tracing::trace!(event = ?sdl_evt, "handling event");
+            tracing::trace_span!("sdl-event-loop", event = ?sdl_evt)
+                .in_scope(|| tracing::trace!(event = ?sdl_evt, "handling event"));
 
             match sdl_evt {
                 SdlEvent::Quit { .. }
@@ -227,7 +228,8 @@ impl InputSource for EmulatorInputSource {
                                         factor: 2.0,
                                         axis: Axis::Diagonal,
                                     }),
-                                );
+                                )
+                                .await;
                             } else {
                                 crate::view::hub_message::send_input_hub_message(
                                     &hub,
@@ -237,7 +239,8 @@ impl InputSource for EmulatorInputSource {
                                         factor: 0.5,
                                         axis: Axis::Diagonal,
                                     }),
-                                );
+                                )
+                                .await;
                             }
                         }
                         _ => (),
@@ -297,11 +300,14 @@ impl InputSource for EmulatorInputSource {
                 let mut gesture_rx = gesture_rx;
                 while !cancel.is_cancelled() {
                     match gesture_rx.recv().await {
-                        Some(event) => crate::view::hub_message::send_input_hub_message(
-                            &hub_clone,
-                            &gesture_inhibitor,
-                            event,
-                        ),
+                        Some(event) => {
+                            crate::view::hub_message::send_input_hub_message(
+                                &hub_clone,
+                                &gesture_inhibitor,
+                                event,
+                            )
+                            .await;
+                        }
                         None => break,
                     }
                 }
@@ -351,6 +357,7 @@ pub struct FBCanvas(pub WindowCanvas);
 
 unsafe impl Send for FBCanvas {}
 
+#[async_trait::async_trait(?Send)]
 impl Framebuffer for FBCanvas {
     fn set_pixel(&mut self, x: u32, y: u32, color: Color) {
         let [red, green, blue] = color.rgb();
@@ -414,7 +421,7 @@ impl Framebuffer for FBCanvas {
         Ok(crate::chrono::Local::now().timestamp_subsec_millis())
     }
 
-    fn wait(&self, _tok: u32) -> Result<i32, Error> {
+    async fn wait(&self, _tok: u32) -> Result<i32, Error> {
         Ok(1)
     }
 
@@ -600,7 +607,7 @@ impl DeviceInput for EmulatorDevice {
     }
 }
 
-fn handle_set_wifi_mode(
+async fn handle_set_wifi_mode(
     mode: crate::settings::WifiMode,
     context: &mut AppContext,
     hub: &Hub,
@@ -610,7 +617,7 @@ fn handle_set_wifi_mode(
     }
 
     context.settings.wifi = mode;
-    context.wifi_session.set_mode(mode);
+    context.wifi_session.set_mode(mode).await;
 
     match mode {
         crate::settings::WifiMode::AlwaysOn => {
@@ -637,8 +644,8 @@ fn handle_net_up(context: &mut AppContext) -> EventOutcome {
     EventOutcome::Continue
 }
 
-fn handle_toggle_frontlight(context: &mut AppContext) {
-    context.set_frontlight(!context.settings.frontlight);
+async fn handle_toggle_frontlight(context: &mut AppContext) {
+    context.set_frontlight(!context.settings.frontlight).await;
 }
 
 async fn show_suspend_intermission(
@@ -700,20 +707,28 @@ impl DeviceLifecycle for EmulatorDevice {
         _runtime: &mut DeviceRuntime<'_>,
     ) -> Result<(), anyhow::Error> {
         if let Some(alarm_manager) = context.alarm_manager.clone() {
-            reschedule_auto_suspend_alarm(context);
+            reschedule_auto_suspend_alarm(context).await;
             let hub = hub.clone();
             let inhibitor = context.inhibitor.clone();
             crate::device::rtc::AlarmManager::start_irq_listener(
                 &alarm_manager,
                 move |alarm_type| {
-                    hub.send(crate::view::HubMessage::try_with_soft_suspend(
-                        &inhibitor,
-                        SoftSuspendName::Rtc,
-                        Event::RtcAlarmFired(alarm_type),
-                    ))
-                    .ok();
+                    let hub = hub.clone();
+                    let inhibitor = inhibitor.clone();
+                    async move {
+                        hub.send(
+                            crate::view::HubMessage::try_with_soft_suspend(
+                                &inhibitor,
+                                SoftSuspendName::Rtc,
+                                Event::RtcAlarmFired(alarm_type),
+                            )
+                            .await,
+                        )
+                        .ok();
+                    }
                 },
-            );
+            )
+            .await;
         }
         Ok(())
     }
@@ -727,8 +742,10 @@ impl DeviceLifecycle for EmulatorDevice {
         runtime: &mut DeviceRuntime<'_>,
     ) -> EventOutcome {
         match event {
-            Event::SetWifiMode(mode) => handle_set_wifi_mode(*mode, context, hub),
-            Event::Select(EntryId::SetWifiMode(mode)) => handle_set_wifi_mode(*mode, context, hub),
+            Event::SetWifiMode(mode) => handle_set_wifi_mode(*mode, context, hub).await,
+            Event::Select(EntryId::SetWifiMode(mode)) => {
+                handle_set_wifi_mode(*mode, context, hub).await
+            }
             Event::MightDisableWifi => EventOutcome::Handled,
             Event::Device(DeviceEvent::NetUp) => handle_net_up(context),
             Event::Device(DeviceEvent::RotateScreen(_)) => EventOutcome::Handled,
@@ -755,7 +772,7 @@ impl DeviceLifecycle for EmulatorDevice {
                 EventOutcome::Handled
             }
             Event::ToggleFrontlight => {
-                handle_toggle_frontlight(context);
+                handle_toggle_frontlight(context).await;
                 EventOutcome::Continue
             }
             Event::Select(EntryId::Restart) => EventOutcome::Exit(ExitStatus::Restart),
@@ -911,7 +928,7 @@ mod wifi_tests {
         assert_eq!(context.settings.wifi, WifiMode::Off);
         assert!(!context.online);
 
-        let outcome = handle_set_wifi_mode(WifiMode::AlwaysOn, &mut context, &hub);
+        let outcome = handle_set_wifi_mode(WifiMode::AlwaysOn, &mut context, &hub).await;
         assert_eq!(outcome, EventOutcome::Handled);
         assert_eq!(context.settings.wifi, WifiMode::AlwaysOn);
         assert!(!context.online);
@@ -924,7 +941,7 @@ mod wifi_tests {
         context.settings.wifi = WifiMode::AlwaysOn;
         context.online = true;
 
-        let outcome = handle_set_wifi_mode(WifiMode::Off, &mut context, &hub);
+        let outcome = handle_set_wifi_mode(WifiMode::Off, &mut context, &hub).await;
         assert_eq!(outcome, EventOutcome::Handled);
         assert_eq!(context.settings.wifi, WifiMode::Off);
         assert!(!context.online);
@@ -947,7 +964,7 @@ mod wifi_tests {
         let (hub, _rx) = crate::view::hub_channel();
         assert_eq!(context.settings.wifi, WifiMode::Off);
 
-        let outcome = handle_set_wifi_mode(WifiMode::AlwaysOn, &mut context, &hub);
+        let outcome = handle_set_wifi_mode(WifiMode::AlwaysOn, &mut context, &hub).await;
         assert_eq!(outcome, EventOutcome::Handled);
         assert_eq!(context.settings.wifi, WifiMode::AlwaysOn);
         assert!(!context.online);
@@ -967,7 +984,7 @@ mod lifecycle {
     async fn handle_toggle_frontlight_updates_settings() {
         let mut context = create_test_context().await;
         context.settings.frontlight = false;
-        handle_toggle_frontlight(&mut context);
+        handle_toggle_frontlight(&mut context).await;
         assert!(context.settings.frontlight);
     }
 

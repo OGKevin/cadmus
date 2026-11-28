@@ -5,7 +5,9 @@
 //! once in [`super::orchestrator::start_cycle`] and must not be re-selected by
 //! mid-cycle `is_armed()` probes.
 
+use super::orchestrator::{ClassicCommit, DeferredSuspend};
 use crate::device::inhibitor::InhibitorGuard;
+use crate::device::inhibitor::soft_suspend::SuppressionEpoch;
 #[cfg(target_os = "linux")]
 use crate::device::linux::wake_telemetry::InterruptSnapshot;
 use crate::device::rtc::PreSleepAlarms;
@@ -120,11 +122,23 @@ impl DeepIdleWaitState {
 /// Single source of truth for an in-progress explicit suspend.
 pub(crate) struct SuspendCycle {
     pub(in crate::device::suspend) kind: SuspendKind,
+    /// Whether this cycle came from Auto Suspend or an explicit request.
+    /// Kept so a Full abort can resume the same intent instead of inventing an
+    /// explicit one.
+    pub(in crate::device::suspend) origin: DeferredSuspend,
     pub(in crate::device::suspend) phase: SuspendPhase,
     /// DeepIdle lease while preparing / before wait; `None` during `InSleep`.
     pub(in crate::device::suspend) cycle_lease: Option<InhibitorGuard>,
     /// Autosleep mode to restore after a DeepIdle Mem force.
     pub(in crate::device::suspend) deep_idle_restore: Option<AutosleepMode>,
+    /// Epoch of the wake-lock suppression owned by the current sleep leg.
+    /// The first exit (wake, timeout, cancel, or failure) consumes it and
+    /// restores the lock, so a later cycle finish does not restore twice.
+    /// Poll also uses it to detect a transient Full interruption.
+    pub(in crate::device::suspend) wake_lock_epoch: Option<SuppressionEpoch>,
+    /// Shared completion for the owned Classic commit, when one is in flight.
+    /// Cleanup drains this before touching peripherals or disarming hardware.
+    pub(in crate::device::suspend) classic_commit: Option<std::sync::Arc<ClassicCommit>>,
     /// Consecutive deep-idle wait timeouts in this cycle; caps autosleep
     /// retries before the Classic fallback.
     pub(in crate::device::suspend) consecutive_deep_idle_timeouts: u32,
@@ -132,12 +146,15 @@ pub(crate) struct SuspendCycle {
 
 impl SuspendCycle {
     /// New cycle in [`SuspendPhase::Preparing`] with no lease yet.
-    pub(in crate::device::suspend) fn new(kind: SuspendKind) -> Self {
+    pub(in crate::device::suspend) fn new(kind: SuspendKind, origin: DeferredSuspend) -> Self {
         Self {
             kind,
+            origin,
             phase: SuspendPhase::Preparing,
             cycle_lease: None,
             deep_idle_restore: None,
+            wake_lock_epoch: None,
+            classic_commit: None,
             consecutive_deep_idle_timeouts: 0,
         }
     }

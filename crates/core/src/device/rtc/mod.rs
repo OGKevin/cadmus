@@ -31,9 +31,8 @@ use anyhow::Error;
 use chrono::{DateTime, Datelike, Duration, TimeZone, Timelike, Utc};
 use std::collections::BTreeMap;
 use std::mem;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
-use std::thread;
 use std::time::Duration as StdDuration;
 
 #[repr(C)]
@@ -270,6 +269,34 @@ pub struct AlarmManager<R: Rtc> {
     stop: Arc<AtomicBool>,
 }
 
+/// Runs one complete async alarm transaction while holding the manager lock.
+///
+/// The separate runtime task protects a submitted transaction from cancellation
+/// of its caller. Dropping the outer future abandons only the wait for its result,
+/// not the callback's logical alarm changes or hardware reprogramming. Awaiting
+/// `operation` directly would cancel those changes with the caller's future.
+/// A worker join failure returns `None` for callers that tolerate unavailable RTC I/O.
+pub(crate) async fn alarm_transaction<
+    R: Rtc + Send + Sync + 'static,
+    O: Send + 'static,
+    F: FnOnce(tokio::sync::OwnedMutexGuard<AlarmManager<R>>) -> Fut + Send + 'static,
+    Fut: Future<Output = O> + Send + 'static,
+>(
+    manager: &Arc<tokio::sync::Mutex<AlarmManager<R>>>,
+    operation: F,
+) -> Option<O> {
+    let manager = Arc::clone(manager);
+    crate::runtime::spawn(async move {
+        let guard = manager.lock_owned().await;
+        operation(guard).await
+    })
+    .await
+    .map_err(|error| {
+        tracing::error!(error = %error, "RTC transaction worker failed");
+    })
+    .ok()
+}
+
 impl<R: Rtc> AlarmManager<R> {
     pub fn new(rtc: Arc<R>) -> Self {
         AlarmManager {
@@ -284,25 +311,29 @@ impl<R: Rtc> AlarmManager<R> {
     ///
     /// Relative alarms use RTC time as their base. If the RTC cannot be read,
     /// the operation uses system time consistently as its fallback.
-    pub fn schedule(&mut self, alarm_type: AlarmType, when: AlarmWhen) -> Result<(), Error> {
-        let now = self.authority_now();
+    pub async fn schedule(&mut self, alarm_type: AlarmType, when: AlarmWhen) -> Result<(), Error> {
+        let now = self.authority_now().await;
         self.schedule_at(alarm_type, when, now)?;
-        self.update_hardware_alarm_at(now)
+        self.update_hardware_alarm_at(now).await
     }
 
     /// Schedules a logical alarm to fire after `duration` on the RTC timeline.
-    pub fn schedule_in(&mut self, alarm_type: AlarmType, duration: Duration) -> Result<(), Error> {
-        self.schedule(alarm_type, AlarmWhen::In(duration))
+    pub async fn schedule_in(
+        &mut self,
+        alarm_type: AlarmType,
+        duration: Duration,
+    ) -> Result<(), Error> {
+        self.schedule(alarm_type, AlarmWhen::In(duration)).await
     }
 
     /// Cancel a previously scheduled logical alarm.
     ///
     /// If no alarm of that type is scheduled this is a no-op. The hardware
     /// RTC is updated to reflect the new earliest remaining wake time.
-    pub fn cancel_alarm(&mut self, alarm_type: AlarmType) -> Result<(), Error> {
-        let now = self.authority_now();
+    pub async fn cancel_alarm(&mut self, alarm_type: AlarmType) -> Result<(), Error> {
+        let now = self.authority_now().await;
         self.scheduled_alarms.remove(&alarm_type);
-        self.update_hardware_alarm_at(now)
+        self.update_hardware_alarm_at(now).await
     }
 
     /// Stops the IRQ listener thread and joins it. Idempotent and safe if never started.
@@ -320,10 +351,10 @@ impl<R: Rtc> AlarmManager<R> {
     }
 
     /// Clears every logical alarm and disables the hardware wake alarm.
-    pub fn clear_all_alarms(&mut self) -> Result<(), Error> {
+    pub async fn clear_all_alarms(&mut self) -> Result<(), Error> {
         let cleared: Vec<AlarmType> = self.scheduled_alarms.keys().copied().collect();
         self.scheduled_alarms.clear();
-        self.rtc.disable_alarm()?;
+        self.rtc.disable_alarm().await?;
         if cleared.is_empty() {
             tracing::debug!("Cleared RTC alarms on shutdown (none scheduled)");
         } else {
@@ -337,8 +368,8 @@ impl<R: Rtc> AlarmManager<R> {
     }
 
     /// Returns `true` if an alarm of `alarm_type` is scheduled for a future time.
-    pub fn is_alarm_scheduled(&self, alarm_type: AlarmType) -> bool {
-        let now = self.authority_now();
+    pub async fn is_alarm_scheduled(&self, alarm_type: AlarmType) -> bool {
+        let now = self.authority_now().await;
         self.scheduled_alarms
             .get(&alarm_type)
             .map(|alarm| alarm.wake_time > now)
@@ -356,8 +387,8 @@ impl<R: Rtc> AlarmManager<R> {
     /// single slot: a past-due alarm stays in the schedule but is not written to
     /// hardware, so including it would read as a mismatch against the slot.
     #[cfg(any(feature = "kobo", docsrs, test))]
-    pub(crate) fn next_scheduled_alarm(&self) -> Option<(AlarmType, DateTime<Utc>)> {
-        let now = self.authority_now();
+    pub(crate) async fn next_scheduled_alarm(&self) -> Option<(AlarmType, DateTime<Utc>)> {
+        let now = self.authority_now().await;
         self.scheduled_alarms
             .values()
             .filter(|alarm| alarm.wake_time > now)
@@ -369,13 +400,13 @@ impl<R: Rtc> AlarmManager<R> {
     ///
     /// Accepts either an [`AlarmWhen`] or a relative [`Duration`]. A stale
     /// alarm is handled according to `past_due_action`.
-    pub fn ensure_scheduled<W: Into<AlarmWhen>>(
+    pub async fn ensure_scheduled<W: Into<AlarmWhen>>(
         &mut self,
         alarm_type: AlarmType,
         when: W,
         past_due_action: PastDueAction,
     ) -> Result<EnsureAlarmOutcome, Error> {
-        let now = self.authority_now();
+        let now = self.authority_now().await;
         let when = when.into();
         let outcome = match self.scheduled_alarms.get(&alarm_type) {
             None => {
@@ -394,14 +425,14 @@ impl<R: Rtc> AlarmManager<R> {
                 }
             }
         };
-        self.update_hardware_alarm_at(now)?;
+        self.update_hardware_alarm_at(now).await?;
         Ok(outcome)
     }
 
     /// Returns the number of seconds until `alarm_type` fires, or `None` if
     /// it is not scheduled.
-    pub fn time_until_alarm(&self, alarm_type: AlarmType) -> Option<i64> {
-        let now = self.authority_now();
+    pub async fn time_until_alarm(&self, alarm_type: AlarmType) -> Option<i64> {
+        let now = self.authority_now().await;
         self.scheduled_alarms
             .get(&alarm_type)
             .map(|alarm| alarm.wake_time.signed_duration_since(now).num_seconds())
@@ -412,12 +443,12 @@ impl<R: Rtc> AlarmManager<R> {
     /// `before` and `after` are tagged with [`ClockInstant`] so both ends are
     /// normalized to the RTC timeline before comparing sleep length to the
     /// expected wake. Prefer the same variant for both ends of one call.
-    pub fn check_fired_alarms(
+    pub async fn check_fired_alarms(
         &mut self,
         before: ClockInstant,
         after: ClockInstant,
     ) -> Result<Vec<AlarmType>, Error> {
-        let now = self.authority_now();
+        let now = self.authority_now().await;
         let before_rtc = self.resolve_instant(before)?;
         let after_rtc = self.resolve_instant(after)?;
         if let Some((_, earliest_alarm)) = self
@@ -427,7 +458,7 @@ impl<R: Rtc> AlarmManager<R> {
         {
             let expected_duration = earliest_alarm.wake_time.signed_duration_since(before_rtc);
 
-            let rwa = self.rtc.alarm()?;
+            let rwa = self.rtc.alarm().await?;
             let hardware_alarm_fired = !rwa.enabled()
                 || (rwa.year() <= 1970
                     && ((after_rtc - before_rtc) - expected_duration)
@@ -436,11 +467,11 @@ impl<R: Rtc> AlarmManager<R> {
                         < 3);
 
             if hardware_alarm_fired {
-                return self.claim_due_alarms_at(now);
+                return self.claim_due_alarms_at(now).await;
             }
         }
 
-        self.update_hardware_alarm_at(now)?;
+        self.update_hardware_alarm_at(now).await?;
         Ok(Vec::new())
     }
 
@@ -448,12 +479,12 @@ impl<R: Rtc> AlarmManager<R> {
     ///
     /// Falls back to system time for the entire claim operation when RTC time
     /// cannot be read.
-    pub fn claim_due_alarms(&mut self) -> Result<Vec<AlarmType>, Error> {
-        let now = self.authority_now();
-        self.claim_due_alarms_at(now)
+    pub async fn claim_due_alarms(&mut self) -> Result<Vec<AlarmType>, Error> {
+        let now = self.authority_now().await;
+        self.claim_due_alarms_at(now).await
     }
 
-    fn claim_due_alarms_at(&mut self, at: DateTime<Utc>) -> Result<Vec<AlarmType>, Error> {
+    async fn claim_due_alarms_at(&mut self, at: DateTime<Utc>) -> Result<Vec<AlarmType>, Error> {
         let mut fired_types = Vec::new();
         let to_remove: Vec<AlarmType> = self
             .scheduled_alarms
@@ -467,7 +498,7 @@ impl<R: Rtc> AlarmManager<R> {
             fired_types.push(alarm_type);
         }
 
-        self.update_hardware_alarm_at(at)?;
+        self.update_hardware_alarm_at(at).await?;
         Ok(fired_types)
     }
 
@@ -475,7 +506,7 @@ impl<R: Rtc> AlarmManager<R> {
     ///
     /// Relative and RTC-absolute intents retain their remaining RTC duration.
     /// Civil intents are converted again using the RTC's refreshed drift.
-    pub fn sync(&mut self) -> Result<(), Error> {
+    pub async fn sync(&mut self) -> Result<(), Error> {
         if let Some(step) = self.rtc.take_pending_step()? {
             for alarm in self.scheduled_alarms.values_mut() {
                 alarm.wake_time = match alarm.when {
@@ -486,12 +517,12 @@ impl<R: Rtc> AlarmManager<R> {
                 };
             }
         }
-        let now = self.authority_now();
-        self.update_hardware_alarm_at(now)
+        let now = self.authority_now().await;
+        self.update_hardware_alarm_at(now).await
     }
 
-    fn authority_now(&self) -> DateTime<Utc> {
-        self.rtc.read_time().unwrap_or_else(|error| {
+    async fn authority_now(&self) -> DateTime<Utc> {
+        self.rtc.read_time().await.unwrap_or_else(|error| {
             tracing::warn!(error = %error, "RTC read failed; using system clock");
             Utc::now()
         })
@@ -530,16 +561,16 @@ impl<R: Rtc> AlarmManager<R> {
         Ok(())
     }
 
-    fn update_hardware_alarm_at(&self, now: DateTime<Utc>) -> Result<(), Error> {
+    async fn update_hardware_alarm_at(&self, now: DateTime<Utc>) -> Result<(), Error> {
         if let Some((_, earliest_alarm)) = self
             .scheduled_alarms
             .iter()
             .filter(|(_, alarm)| alarm.wake_time > now)
             .min_by_key(|(_, alarm)| &alarm.wake_time)
         {
-            self.rtc.set_alarm(earliest_alarm.wake_time)?;
+            self.rtc.set_alarm(earliest_alarm.wake_time).await?;
         } else {
-            self.rtc.disable_alarm()?;
+            self.rtc.disable_alarm().await?;
         }
 
         Ok(())
@@ -550,34 +581,32 @@ impl<R: Rtc> AlarmManager<R> {
 ///
 /// App clock synchronization paths, including NTP, should use this helper so
 /// relative and civil alarm intents remain coherent across an RTC clock step.
-pub fn set_time<R: Rtc>(
+pub async fn set_time<R: Rtc>(
     rtc: &R,
     alarms: &mut AlarmManager<R>,
     time: DateTime<Utc>,
 ) -> Result<(), Error> {
-    rtc.set_time(time)?;
-    alarms.sync()
+    rtc.set_time(time).await?;
+    alarms.sync().await
 }
 
 /// Stops the IRQ listener and clears all logical and hardware RTC alarms.
-async fn shutdown_alarm_manager<R: Rtc>(alarm_manager: &Option<Arc<Mutex<AlarmManager<R>>>>) {
+async fn shutdown_alarm_manager<R: Rtc>(
+    alarm_manager: &Option<Arc<tokio::sync::Mutex<AlarmManager<R>>>>,
+) {
     let Some(alarm_manager) = alarm_manager else {
         return;
     };
     let join_handle = {
-        let mut manager = alarm_manager
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut manager = alarm_manager.lock().await;
         manager.stop_irq_listener();
         manager.irq_thread.take()
     };
     if let Some(handle) = join_handle {
         let _ = handle.await;
     }
-    let mut manager = alarm_manager
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    if let Err(error) = manager.clear_all_alarms() {
+    let mut manager = alarm_manager.lock().await;
+    if let Err(error) = manager.clear_all_alarms().await {
         tracing::error!(error = %error, "Failed to clear RTC alarms on shutdown");
     }
 }
@@ -608,11 +637,12 @@ impl<R: Rtc + 'static> AlarmManager<R> {
     ///
     /// `send` delivers each fired logical alarm to the hub. The join handle is
     /// stored on this manager and joined on drop after the stop flag is set.
-    pub fn start_irq_listener(
-        manager: &Arc<Mutex<Self>>,
-        send: impl Fn(AlarmType) + Send + 'static,
-    ) {
-        let guard = manager.lock().unwrap_or_else(|e| e.into_inner());
+    pub async fn start_irq_listener<F, Fut>(manager: &Arc<tokio::sync::Mutex<Self>>, send: F)
+    where
+        F: Fn(AlarmType) -> Fut + Send + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        let guard = manager.lock().await;
         if guard.irq_thread.is_some() {
             return;
         }
@@ -622,40 +652,52 @@ impl<R: Rtc + 'static> AlarmManager<R> {
         drop(guard);
 
         let manager_weak = Arc::downgrade(manager);
-        let handle = crate::runtime::spawn_blocking(move || {
+        let handle = crate::runtime::spawn(async move {
             while !stop.load(Ordering::Relaxed) {
-                match rtc.wait_for_alarm_irq(Some(StdDuration::from_secs(1))) {
-                    Ok(Some(_)) => {
+                let irq = {
+                    let rtc = Arc::clone(&rtc);
+                    crate::runtime::spawn_blocking(move || {
+                        rtc.wait_for_alarm_irq(Some(StdDuration::from_secs(1)))
+                    })
+                    .await
+                };
+                match irq {
+                    Ok(Ok(Some(_))) => {
                         let Some(manager) = manager_weak.upgrade() else {
                             break;
                         };
-                        let due = match manager.lock() {
-                            Ok(mut locked) => locked.claim_due_alarms(),
-                            Err(poisoned) => poisoned.into_inner().claim_due_alarms(),
-                        };
+                        let due = alarm_transaction(&manager, async move |mut manager| {
+                            manager.claim_due_alarms().await
+                        })
+                        .await;
                         match due {
-                            Ok(alarm_types) => {
+                            Some(Ok(alarm_types)) => {
                                 for alarm_type in alarm_types {
-                                    send(alarm_type);
+                                    send(alarm_type).await;
                                 }
                             }
-                            Err(error) => {
+                            Some(Err(error)) => {
                                 tracing::error!(error = %error, "claim_due_alarms failed");
                             }
+                            None => {}
                         }
                     }
-                    Ok(None) => {
+                    Ok(Ok(None)) => {
                         tracing::trace!("RTC alarm wait returned with no IRQ data");
                     }
-                    Err(error) => {
+                    Ok(Err(error)) => {
                         tracing::error!(error = %error, "wait_for_alarm_irq failed");
-                        thread::sleep(StdDuration::from_secs(1));
+                        tokio::time::sleep(StdDuration::from_secs(1)).await;
+                    }
+                    Err(error) => {
+                        tracing::error!(error = %error, "RTC IRQ wait worker failed");
+                        tokio::time::sleep(StdDuration::from_secs(1)).await;
                     }
                 }
             }
         });
 
-        manager.lock().unwrap_or_else(|e| e.into_inner()).irq_thread = Some(handle);
+        manager.lock().await.irq_thread = Some(handle);
     }
 }
 
@@ -675,14 +717,15 @@ mod tests {
         (rtc, manager)
     }
 
-    #[test]
-    fn relative_schedule_uses_rtc_now() {
+    #[tokio::test]
+    async fn relative_schedule_uses_rtc_now() {
         let (rtc, mut manager) = test_alarm_manager();
         let rtc_now = Utc::now() - Duration::hours(4);
         rtc.set_current_time(rtc_now);
 
         manager
             .schedule_in(AlarmType::AutoSuspend, Duration::minutes(10))
+            .await
             .unwrap();
 
         let wake_time = manager
@@ -694,32 +737,34 @@ mod tests {
         assert_eq!(rtc.scheduled_wake_time(), Some(wake_time));
     }
 
-    #[test]
-    fn rtc_lag_does_not_disable_future_hardware_alarm() {
+    #[tokio::test]
+    async fn rtc_lag_does_not_disable_future_hardware_alarm() {
         let (rtc, mut manager) = test_alarm_manager();
         rtc.set_current_time(Utc::now() - Duration::hours(1));
 
         manager
             .schedule_in(AlarmType::AutoSuspend, Duration::minutes(10))
+            .await
             .unwrap();
-        let claimed = manager.claim_due_alarms().unwrap();
+        let claimed = manager.claim_due_alarms().await.unwrap();
 
         assert!(claimed.is_empty());
         assert!(manager.has_alarm(AlarmType::AutoSuspend));
         assert!(rtc.alarm_enabled());
     }
 
-    #[test]
-    fn helper_preserves_relative_remaining_time() {
+    #[tokio::test]
+    async fn helper_preserves_relative_remaining_time() {
         let (rtc, mut manager) = test_alarm_manager();
         let old_time = Utc::now() - Duration::hours(2);
         rtc.set_current_time(old_time);
         manager
             .schedule_in(AlarmType::AutoPowerOff, Duration::minutes(20))
+            .await
             .unwrap();
 
         let new_time = old_time + Duration::hours(1);
-        set_time(&rtc, &mut manager, new_time).unwrap();
+        set_time(&rtc, &mut manager, new_time).await.unwrap();
 
         let wake_time = manager
             .scheduled_alarms
@@ -733,11 +778,11 @@ mod tests {
         assert_eq!(rtc.scheduled_wake_time(), Some(wake_time));
     }
 
-    #[test]
-    fn civil_alarm_rebases_with_updated_drift() {
+    #[tokio::test]
+    async fn civil_alarm_rebases_with_updated_drift() {
         let (rtc, mut manager) = test_alarm_manager();
         let rtc_now = Utc::now() - Duration::hours(3);
-        rtc.set_time(rtc_now).unwrap();
+        rtc.set_time(rtc_now).await.unwrap();
         rtc.take_pending_step().unwrap();
         let civil = Utc::now() + Duration::hours(2);
 
@@ -746,6 +791,7 @@ mod tests {
                 AlarmType::CalendarUpdate,
                 AlarmWhen::At(ClockInstant::Civil(civil)),
             )
+            .await
             .unwrap();
         let initial_wake = manager
             .scheduled_alarms
@@ -753,7 +799,9 @@ mod tests {
             .unwrap()
             .wake_time;
 
-        set_time(&rtc, &mut manager, rtc_now + Duration::hours(1)).unwrap();
+        set_time(&rtc, &mut manager, rtc_now + Duration::hours(1))
+            .await
+            .unwrap();
 
         let wake_time = manager
             .scheduled_alarms
@@ -765,19 +813,19 @@ mod tests {
         assert_eq!(rtc.to_civil(wake_time).unwrap(), civil);
     }
 
-    #[test]
-    fn read_time_does_not_refresh_drift() {
+    #[tokio::test]
+    async fn read_time_does_not_refresh_drift() {
         let rtc = TestRtc::new();
         let drift = rtc.drift().unwrap();
         rtc.set_current_time(Utc::now() + Duration::days(1));
 
-        rtc.read_time().unwrap();
+        rtc.read_time().await.unwrap();
 
         assert_eq!(rtc.drift().unwrap(), drift);
     }
 
-    #[test]
-    fn ensure_scheduled_fresh() {
+    #[tokio::test]
+    async fn ensure_scheduled_fresh() {
         let (_rtc, mut manager) = test_alarm_manager();
         let outcome = manager
             .ensure_scheduled(
@@ -785,13 +833,14 @@ mod tests {
                 Duration::hours(1),
                 PastDueAction::Cancel,
             )
+            .await
             .unwrap();
         assert_eq!(outcome, EnsureAlarmOutcome::Scheduled);
         assert!(manager.has_alarm(AlarmType::AutoPowerOff));
     }
 
-    #[test]
-    fn ensure_scheduled_already_scheduled() {
+    #[tokio::test]
+    async fn ensure_scheduled_already_scheduled() {
         let (_rtc, mut manager) = test_alarm_manager();
         manager
             .ensure_scheduled(
@@ -799,6 +848,7 @@ mod tests {
                 Duration::hours(1),
                 PastDueAction::Cancel,
             )
+            .await
             .unwrap();
         let outcome = manager
             .ensure_scheduled(
@@ -806,17 +856,19 @@ mod tests {
                 Duration::hours(1),
                 PastDueAction::Cancel,
             )
+            .await
             .unwrap();
         assert_eq!(outcome, EnsureAlarmOutcome::AlreadyScheduled);
     }
 
-    #[test]
-    fn ensure_scheduled_past_due_reschedule() {
+    #[tokio::test]
+    async fn ensure_scheduled_past_due_reschedule() {
         let (rtc, mut manager) = test_alarm_manager();
         let past = Utc::now() - Duration::hours(2);
         rtc.set_current_time(past + Duration::minutes(30));
         manager
             .schedule_in(AlarmType::CalendarUpdate, Duration::minutes(-90))
+            .await
             .unwrap();
         rtc.set_current_time(Utc::now());
         let outcome = manager
@@ -825,16 +877,18 @@ mod tests {
                 Duration::minutes(5),
                 PastDueAction::Reschedule,
             )
+            .await
             .unwrap();
         assert_eq!(outcome, EnsureAlarmOutcome::Scheduled);
-        assert!(manager.is_alarm_scheduled(AlarmType::CalendarUpdate));
+        assert!(manager.is_alarm_scheduled(AlarmType::CalendarUpdate).await);
     }
 
-    #[test]
-    fn ensure_scheduled_past_due_cancel() {
+    #[tokio::test]
+    async fn ensure_scheduled_past_due_cancel() {
         let (rtc, mut manager) = test_alarm_manager();
         manager
             .schedule_in(AlarmType::AutoPowerOff, Duration::seconds(-10))
+            .await
             .unwrap();
         rtc.set_current_time(Utc::now());
         let outcome = manager
@@ -843,36 +897,42 @@ mod tests {
                 Duration::hours(1),
                 PastDueAction::Cancel,
             )
+            .await
             .unwrap();
         assert_eq!(outcome, EnsureAlarmOutcome::PastDue);
         assert!(!manager.has_alarm(AlarmType::AutoPowerOff));
     }
 
-    #[test]
-    fn check_fired_alarms_detects_fired() {
+    #[tokio::test]
+    async fn check_fired_alarms_detects_fired() {
         let (rtc, mut manager) = test_alarm_manager();
-        let before = rtc.read_time().unwrap();
+        let before = rtc.read_time().await.unwrap();
         manager
             .schedule_in(AlarmType::AutoPowerOff, Duration::minutes(5))
+            .await
             .unwrap();
         rtc.simulate_alarm_fired();
         let after = before + Duration::minutes(5) + Duration::seconds(1);
         rtc.set_current_time(after);
         let fired = manager
             .check_fired_alarms(ClockInstant::Rtc(before), ClockInstant::Rtc(after))
+            .await
             .unwrap();
         assert!(fired.contains(&AlarmType::AutoPowerOff));
     }
 
-    #[test]
-    fn check_fired_alarms_civil_window_under_rtc_lag() {
+    #[tokio::test]
+    async fn check_fired_alarms_civil_window_under_rtc_lag() {
         let (rtc, mut manager) = test_alarm_manager();
         let civil_before = Utc::now();
-        rtc.set_time(civil_before - Duration::hours(1)).unwrap();
+        rtc.set_time(civil_before - Duration::hours(1))
+            .await
+            .unwrap();
         let _ = rtc.take_pending_step().unwrap();
 
         manager
             .schedule_in(AlarmType::AutoPowerOff, Duration::minutes(5))
+            .await
             .unwrap();
         rtc.simulate_alarm_fired();
 
@@ -884,100 +944,112 @@ mod tests {
                 ClockInstant::Civil(civil_before),
                 ClockInstant::Civil(civil_after),
             )
+            .await
             .unwrap();
         assert!(fired.contains(&AlarmType::AutoPowerOff));
     }
 
-    #[test]
-    fn check_fired_alarms_not_fired() {
+    #[tokio::test]
+    async fn check_fired_alarms_not_fired() {
         let (rtc, mut manager) = test_alarm_manager();
-        let before = rtc.read_time().unwrap();
+        let before = rtc.read_time().await.unwrap();
         manager
             .schedule_in(AlarmType::AutoPowerOff, Duration::hours(1))
+            .await
             .unwrap();
         let after = before + Duration::minutes(1);
         let fired = manager
             .check_fired_alarms(ClockInstant::Rtc(before), ClockInstant::Rtc(after))
+            .await
             .unwrap();
         assert!(fired.is_empty());
         assert!(!rtc.alarm_enabled() || manager.has_alarm(AlarmType::AutoPowerOff));
     }
 
-    #[test]
-    fn multiplexing_earliest_alarm_wins() {
+    #[tokio::test]
+    async fn multiplexing_earliest_alarm_wins() {
         let (rtc, mut manager) = test_alarm_manager();
         manager
             .schedule_in(AlarmType::AutoPowerOff, Duration::hours(2))
+            .await
             .unwrap();
         manager
             .schedule_in(AlarmType::CalendarUpdate, Duration::minutes(30))
+            .await
             .unwrap();
         let wake = rtc.scheduled_wake_time().unwrap();
         let expected = Utc::now() + Duration::minutes(30);
         assert!((wake - expected).num_seconds().abs() < 2);
     }
 
-    #[test]
-    fn next_scheduled_alarm_is_none_when_empty() {
+    #[tokio::test]
+    async fn next_scheduled_alarm_is_none_when_empty() {
         let (_rtc, manager) = test_alarm_manager();
-        assert_eq!(manager.next_scheduled_alarm(), None);
+        assert_eq!(manager.next_scheduled_alarm().await, None);
     }
 
-    #[test]
-    fn next_scheduled_alarm_returns_earliest_and_matches_hardware() {
+    #[tokio::test]
+    async fn next_scheduled_alarm_returns_earliest_and_matches_hardware() {
         let (rtc, mut manager) = test_alarm_manager();
         manager
             .schedule_in(AlarmType::AutoPowerOff, Duration::hours(2))
+            .await
             .unwrap();
         manager
             .schedule_in(AlarmType::CalendarUpdate, Duration::minutes(30))
+            .await
             .unwrap();
-        let (alarm_type, wake) = manager.next_scheduled_alarm().unwrap();
+        let (alarm_type, wake) = manager.next_scheduled_alarm().await.unwrap();
         assert_eq!(alarm_type, AlarmType::CalendarUpdate);
         assert_eq!(Some(wake), rtc.scheduled_wake_time());
     }
 
-    #[test]
-    fn next_scheduled_alarm_skips_past_due_and_matches_hardware() {
+    #[tokio::test]
+    async fn next_scheduled_alarm_skips_past_due_and_matches_hardware() {
         let (rtc, mut manager) = test_alarm_manager();
         manager
             .schedule_in(AlarmType::AutoPowerOff, Duration::seconds(-10))
+            .await
             .unwrap();
         manager
             .schedule_in(AlarmType::CalendarUpdate, Duration::minutes(30))
+            .await
             .unwrap();
-        let (alarm_type, wake) = manager.next_scheduled_alarm().unwrap();
+        let (alarm_type, wake) = manager.next_scheduled_alarm().await.unwrap();
         assert_eq!(alarm_type, AlarmType::CalendarUpdate);
         assert_eq!(Some(wake), rtc.scheduled_wake_time());
     }
 
-    #[test]
-    fn next_scheduled_alarm_is_none_when_only_past_due_remains() {
+    #[tokio::test]
+    async fn next_scheduled_alarm_is_none_when_only_past_due_remains() {
         let (rtc, mut manager) = test_alarm_manager();
         manager
             .schedule_in(AlarmType::AutoPowerOff, Duration::seconds(-10))
+            .await
             .unwrap();
-        assert_eq!(manager.next_scheduled_alarm(), None);
+        assert_eq!(manager.next_scheduled_alarm().await, None);
         assert!(!rtc.alarm_enabled());
     }
 
-    #[test]
-    fn auto_suspend_can_be_earliest_alarm() {
+    #[tokio::test]
+    async fn auto_suspend_can_be_earliest_alarm() {
         let (rtc, mut manager) = test_alarm_manager();
         manager
             .schedule_in(AlarmType::AutoPowerOff, Duration::hours(2))
+            .await
             .unwrap();
         manager
             .schedule_in(AlarmType::AutoSuspend, Duration::minutes(10))
+            .await
             .unwrap();
         let wake = rtc.scheduled_wake_time().unwrap();
         let expected = Utc::now() + Duration::minutes(10);
         assert!((wake - expected).num_seconds().abs() < 2);
-        assert!(manager.is_alarm_scheduled(AlarmType::AutoSuspend));
+        assert!(manager.is_alarm_scheduled(AlarmType::AutoSuspend).await);
     }
 
-    #[test]
-    fn auto_suspend_not_in_cancel_after_resume_list() {
+    #[tokio::test]
+    async fn auto_suspend_not_in_cancel_after_resume_list() {
         assert!(
             !AlarmType::alarms_to_cancel_after_resume()
                 .into_iter()
@@ -985,8 +1057,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn suspend_alarm_not_in_cancel_after_resume_list() {
+    #[tokio::test]
+    async fn suspend_alarm_not_in_cancel_after_resume_list() {
         assert!(
             !AlarmType::alarms_to_cancel_after_resume()
                 .into_iter()
@@ -994,8 +1066,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn wake_debounce_not_in_cancel_after_resume_list() {
+    #[tokio::test]
+    async fn wake_debounce_not_in_cancel_after_resume_list() {
         assert!(
             !AlarmType::alarms_to_cancel_after_resume()
                 .into_iter()
@@ -1003,28 +1075,30 @@ mod tests {
         );
     }
 
-    #[test]
-    fn claim_due_alarms_returns_past_due_once() {
+    #[tokio::test]
+    async fn claim_due_alarms_returns_past_due_once() {
         let (_rtc, mut manager) = test_alarm_manager();
         manager
             .schedule_in(AlarmType::AutoSuspend, Duration::seconds(-10))
+            .await
             .unwrap();
-        let first = manager.claim_due_alarms().unwrap();
+        let first = manager.claim_due_alarms().await.unwrap();
         assert_eq!(first, vec![AlarmType::AutoSuspend]);
-        let second = manager.claim_due_alarms().unwrap();
+        let second = manager.claim_due_alarms().await.unwrap();
         assert!(second.is_empty());
         assert!(!manager.has_alarm(AlarmType::AutoSuspend));
     }
 
-    #[test]
-    fn claim_due_alarms_ignores_near_future_wake() {
+    #[tokio::test]
+    async fn claim_due_alarms_ignores_near_future_wake() {
         let (_rtc, mut manager) = test_alarm_manager();
         manager
             .schedule_in(AlarmType::AutoSuspend, Duration::seconds(2))
+            .await
             .unwrap();
-        let claimed = manager.claim_due_alarms().unwrap();
+        let claimed = manager.claim_due_alarms().await.unwrap();
         assert!(claimed.is_empty());
-        assert!(manager.is_alarm_scheduled(AlarmType::AutoSuspend));
+        assert!(manager.is_alarm_scheduled(AlarmType::AutoSuspend).await);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -1032,86 +1106,95 @@ mod tests {
         use std::sync::{Arc, Mutex};
 
         let (rtc, manager) = test_alarm_manager();
-        let manager = Arc::new(Mutex::new(manager));
+        let manager = Arc::new(tokio::sync::Mutex::new(manager));
         {
-            let mut locked = manager.lock().unwrap();
+            let mut locked = manager.lock().await;
             locked
                 .schedule_in(AlarmType::AutoSuspend, Duration::seconds(-10))
+                .await
                 .unwrap();
         }
 
         let claimed = Arc::new(Mutex::new(Vec::new()));
         let claimed_for_send = Arc::clone(&claimed);
         AlarmManager::start_irq_listener(&manager, move |alarm_type| {
-            claimed_for_send.lock().unwrap().push(alarm_type);
-        });
+            let claimed_for_send = Arc::clone(&claimed_for_send);
+            async move {
+                claimed_for_send.lock().unwrap().push(alarm_type);
+            }
+        })
+        .await;
 
-        std::thread::sleep(StdDuration::from_millis(50));
+        tokio::time::sleep(StdDuration::from_millis(50)).await;
         rtc.simulate_alarm_fired();
 
         let deadline = std::time::Instant::now() + StdDuration::from_secs(3);
         while claimed.lock().unwrap().is_empty() && std::time::Instant::now() < deadline {
-            std::thread::sleep(StdDuration::from_millis(50));
+            tokio::time::sleep(StdDuration::from_millis(50)).await;
         }
 
         assert_eq!(*claimed.lock().unwrap(), vec![AlarmType::AutoSuspend]);
-        assert!(!manager.lock().unwrap().has_alarm(AlarmType::AutoSuspend));
-        manager.lock().unwrap().stop_irq_listener();
+        assert!(!manager.lock().await.has_alarm(AlarmType::AutoSuspend));
+        manager.lock().await.stop_irq_listener();
     }
 
-    #[test]
-    fn wait_for_alarm_irq_wakes_on_simulate() {
+    #[tokio::test]
+    async fn wait_for_alarm_irq_wakes_on_simulate() {
         let (rtc, _manager) = test_alarm_manager();
         let rtc_waiter = rtc.clone();
-        let handle = std::thread::spawn(move || {
+        let handle = crate::runtime::spawn_blocking(move || {
             rtc_waiter
                 .wait_for_alarm_irq(Some(StdDuration::from_secs(2)))
                 .unwrap()
         });
-        std::thread::sleep(StdDuration::from_millis(50));
+        tokio::time::sleep(StdDuration::from_millis(50)).await;
         rtc.simulate_alarm_fired();
-        let data = handle.join().unwrap();
+        let data = handle.await.unwrap();
         assert_eq!(data, Some(0x20));
     }
 
-    #[test]
-    fn clear_all_alarms_empties_schedule_and_disables_hardware() {
+    #[tokio::test]
+    async fn clear_all_alarms_empties_schedule_and_disables_hardware() {
         let (rtc, mut manager) = test_alarm_manager();
         manager
             .schedule_in(AlarmType::WakeDebounce, Duration::minutes(1))
+            .await
             .unwrap();
         manager
             .schedule_in(AlarmType::AutoPowerOff, Duration::hours(1))
+            .await
             .unwrap();
         assert!(rtc.alarm_enabled());
 
-        manager.clear_all_alarms().unwrap();
+        manager.clear_all_alarms().await.unwrap();
 
         assert!(manager.scheduled_alarms.is_empty());
         assert!(!rtc.alarm_enabled());
     }
 
-    #[test]
-    fn clear_all_alarms_is_idempotent_when_empty() {
+    #[tokio::test]
+    async fn clear_all_alarms_is_idempotent_when_empty() {
         let (rtc, mut manager) = test_alarm_manager();
-        manager.clear_all_alarms().unwrap();
-        manager.clear_all_alarms().unwrap();
+        manager.clear_all_alarms().await.unwrap();
+        manager.clear_all_alarms().await.unwrap();
         assert!(manager.scheduled_alarms.is_empty());
         assert!(!rtc.alarm_enabled());
     }
 
-    #[test]
-    fn clear_all_alarms_clears_logical_schedule_when_disable_fails() {
+    #[tokio::test]
+    async fn clear_all_alarms_clears_logical_schedule_when_disable_fails() {
         let (rtc, mut manager) = test_alarm_manager();
         manager
             .schedule_in(AlarmType::WakeDebounce, Duration::minutes(1))
+            .await
             .unwrap();
         manager
             .schedule_in(AlarmType::AutoPowerOff, Duration::hours(1))
+            .await
             .unwrap();
         rtc.set_fail_disable(true);
 
-        assert!(manager.clear_all_alarms().is_err());
+        assert!(manager.clear_all_alarms().await.is_err());
 
         assert!(manager.scheduled_alarms.is_empty());
         assert!(!manager.has_alarm(AlarmType::WakeDebounce));
@@ -1130,21 +1213,61 @@ mod tests {
         let context = create_test_context().await;
         let rtc = context.device.rtc().unwrap();
         {
-            let mut manager = context.alarm_manager.as_ref().unwrap().lock().unwrap();
+            let mut manager = context.alarm_manager.as_ref().unwrap().lock().await;
             manager
                 .schedule_in(AlarmType::WakeDebounce, Duration::minutes(1))
+                .await
                 .unwrap();
         }
         rtc.set_fail_disable(true);
 
         shutdown_rtc(&context).await;
 
-        let manager = context.alarm_manager.as_ref().unwrap().lock().unwrap();
+        let manager = context.alarm_manager.as_ref().unwrap().lock().await;
         assert!(!manager.has_alarm(AlarmType::WakeDebounce));
         assert!(
             rtc.alarm_enabled(),
             "hardware alarm should stay armed when disable_alarm fails"
         );
+    }
+
+    /// A submitted transaction finishes even when its caller drops the join handle.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn alarm_transaction_completes_after_caller_drop() {
+        let (_rtc, manager) = test_alarm_manager();
+        let manager = std::sync::Arc::new(tokio::sync::Mutex::new(manager));
+        manager
+            .lock()
+            .await
+            .schedule_in(AlarmType::Suspend, Duration::minutes(1))
+            .await
+            .unwrap();
+
+        let started = std::sync::Arc::new(tokio::sync::Notify::new());
+        let finish = std::sync::Arc::new(tokio::sync::Notify::new());
+        let (done_tx, done_rx) = tokio::sync::oneshot::channel();
+        let started_in_task = std::sync::Arc::clone(&started);
+        let finish_in_task = std::sync::Arc::clone(&finish);
+        let mut transaction = Box::pin(alarm_transaction(&manager, async move |manager| {
+            started_in_task.notify_one();
+            finish_in_task.notified().await;
+            let _ = done_tx.send(manager.has_alarm(AlarmType::Suspend));
+        }));
+
+        tokio::select! {
+            _ = started.notified() => {},
+            _ = &mut transaction => {
+                panic!("transaction finished before caller dropped it");
+            }
+        }
+        drop(transaction);
+        finish.notify_one();
+
+        let result = tokio::time::timeout(StdDuration::from_secs(1), done_rx)
+            .await
+            .expect("callback did not finish")
+            .expect("callback did not send its result");
+        assert!(result);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

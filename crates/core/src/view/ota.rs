@@ -822,26 +822,30 @@ fn run_ota_download(ctx: OtaDownloadContext) -> crate::runtime::Job {
                 }
             });
 
-            let _full_hold =
-                match crate::runtime::spawn_blocking(move || inhibitor.acquire(Kind::Full, "ota"))
-                    .await
-                {
-                    Ok(Ok(guard)) => guard,
-                    Ok(Err(InhibitorError::BatteryTooLow)) => {
-                        hub2.send(
-                            (Event::Notification(NotificationEvent::Show(fl!(
-                                "ota-battery-too-low"
-                            ))))
+            let _full_hold = match inhibitor.acquire(Kind::Full, "ota").await {
+                Ok(guard) => guard,
+                Err(InhibitorError::BatteryTooLow) => {
+                    hub2.send(
+                        (Event::Notification(NotificationEvent::Show(fl!("ota-battery-too-low"))))
                             .into(),
-                        )
-                        .ok();
-                        return false;
-                    }
-                    Err(error) => {
-                        error!(error = %error, "OTA inhibit task failed");
-                        return false;
-                    }
-                };
+                    )
+                    .ok();
+                    return false;
+                }
+                Err(error @ InhibitorError::WakeLockWriteFailed) => {
+                    error!(error = %error, "OTA could not acquire kernel wake-lock protection");
+                    hub2.send(
+                        (Event::Notification(NotificationEvent::Show(fl!("ota-download-failed"))))
+                            .into(),
+                    )
+                    .ok();
+                    return false;
+                }
+                Err(InhibitorError::WorkerFailed) => {
+                    error!("OTA inhibitor acquisition worker failed");
+                    return false;
+                }
+            };
 
             let _wifi = match tokio::select! {
                 biased;
@@ -1966,26 +1970,67 @@ mod tests {
         assert!(matches!(message.event, Event::Exit(ExitStatus::Reboot)));
     }
 
-    /// A committed install asks for reboot once its producers have stopped.
+    /// An install that is still finishing when shutdown starts is joined, and
+    /// the reboot it queues survives the drain.
     ///
-    /// This is the shape the main loop now relies on: stop the job, then drain
-    /// what it queued. Asserting only that a request was enqueued is what let
-    /// the reboot be dropped on the floor previously.
-    ///
-    /// The producer posts only after shutdown cancels it, standing in for an
-    /// install still committing when shutdown starts. Without that gate the
-    /// premature drain races a runtime worker for the reboot request.
+    /// The overlay owns the download job, so shutdown reaches it through
+    /// [`View::stop_jobs`] and [`View::take_background_jobs`]. Cancellation
+    /// loses once the deploy has committed, so the job runs on while the main
+    /// loop is already breaking and only the post-join drain can turn its
+    /// [`Event::Exit`] into the reboot.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn a_committed_install_queues_its_reboot_for_the_shutdown_drain() {
+    async fn a_committed_install_still_running_at_shutdown_is_joined_then_rebooted() {
         use std::time::Duration;
 
         let (hub, mut rx) = crate::view::hub_channel();
-        let job = crate::runtime::Job::spawn(move |token| async move {
-            token.cancelled().await;
-            request_ota_reboot(hub).await;
-        });
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+        let mut view = ota_view_with_jobs(None, None);
+        let cancelled = Arc::clone(&view.cancelled);
+        let job_flag = Arc::clone(&cancelled);
+        view.download_job = Some(crate::runtime::Job::with_token(
+            cancelled.cancellation_token(),
+            move |_| async move {
+                assert!(
+                    job_flag.try_commit(),
+                    "the deploy must commit before shutdown"
+                );
+                started_tx.send(()).expect("signal deploy commit");
+                release_rx
+                    .await
+                    .expect("wait for the committed deploy to finish");
+                request_ota_reboot(hub).await;
+            },
+        ));
 
-        // Draining before the producer finishes is the old bug: the hub looks empty.
+        tokio::time::timeout(Duration::from_secs(5), started_rx)
+            .await
+            .expect("download job must reach its commit point")
+            .expect("deploy commit signal");
+
+        crate::view::cancel_view_jobs(&view);
+        assert!(
+            !cancelled.is_cancelled(),
+            "shutdown must not cancel a committed install"
+        );
+        let mut jobs = Vec::new();
+        crate::view::take_view_jobs(&mut view, &mut jobs);
+        assert_eq!(
+            jobs.len(),
+            1,
+            "the overlay's download job must reach the shutdown drain"
+        );
+
+        let mut drain = Box::pin(crate::runtime::finish_within_deadline(
+            jobs,
+            crate::runtime::SHUTDOWN_DEADLINE,
+        ));
+        assert!(
+            tokio::time::timeout(Duration::from_millis(300), drain.as_mut())
+                .await
+                .is_err(),
+            "drain returned while the committed install was still finishing"
+        );
         let premature: Vec<Event> = std::iter::from_fn(|| rx.try_recv().ok())
             .map(|message| message.event)
             .collect();
@@ -1996,7 +2041,14 @@ mod tests {
             "reboot must not be visible before the download job is joined"
         );
 
-        crate::runtime::finish_within_deadline(vec![job], Duration::from_secs(5)).await;
+        release_tx.send(()).expect("release the committed deploy");
+        let exceeded = tokio::time::timeout(Duration::from_secs(5), drain)
+            .await
+            .expect("drain must finish within the deadline");
+        assert!(
+            !exceeded,
+            "the committed install must finish within the shutdown deadline"
+        );
 
         let drained: Vec<Event> = std::iter::from_fn(|| rx.try_recv().ok())
             .map(|message| message.event)
@@ -2005,7 +2057,7 @@ mod tests {
             drained
                 .iter()
                 .any(|event| matches!(event, Event::Exit(ExitStatus::Reboot))),
-            "a committed install must leave a reboot request for the drain"
+            "the drain must replay the reboot the committed install queued"
         );
     }
 

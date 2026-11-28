@@ -10,9 +10,9 @@ use crate::device::AppContext;
 #[cfg(any(feature = "kobo", docsrs))]
 use crate::device::suspend::clear_deferred_suspend;
 
-/// Converts Auto Suspend minutes to a chrono duration of at least one second.
-fn auto_suspend_chrono_duration(minutes: f32) -> ChronoDuration {
-    let secs = (minutes * 60.0).max(0.0);
+/// Converts a second count to a chrono duration of at least one second.
+pub(crate) fn secs_to_chrono_duration(secs: f32) -> ChronoDuration {
+    let secs = secs.max(0.0);
     let duration = ChronoDuration::from_std(std::time::Duration::from_secs_f32(secs))
         .unwrap_or_else(|_| ChronoDuration::milliseconds(((secs * 1000.0) as i64).max(1)));
     if duration.num_seconds() < 1 {
@@ -30,24 +30,28 @@ fn auto_suspend_chrono_duration(minutes: f32) -> ChronoDuration {
 ///
 /// On Kobo this also clears a queued deferred explicit suspend without
 /// starting a cycle — user activity means that deferred sleep is stale.
-pub(crate) fn reschedule_auto_suspend_alarm(context: &mut AppContext) {
+pub(crate) async fn reschedule_auto_suspend_alarm(context: &mut AppContext) {
     #[cfg(any(feature = "kobo", docsrs))]
     clear_deferred_suspend(context, "auto_suspend_reschedule");
-    let Some(alarm_manager) = context.alarm_manager.as_ref() else {
+    let Some(alarm_manager) = context.alarm_manager.as_ref().cloned() else {
         return;
     };
-    let mut alarm_manager = alarm_manager.lock().unwrap_or_else(|e| e.into_inner());
-
     let minutes = context.settings.auto_suspend;
-    if minutes <= 0.0 {
-        if let Err(error) = alarm_manager.cancel_alarm(AlarmType::AutoSuspend) {
-            tracing::error!(error = %error, "failed to cancel AutoSuspend alarm");
+    crate::device::rtc::alarm_transaction(&alarm_manager, async move |mut alarm_manager| {
+        if minutes <= 0.0 {
+            if let Err(error) = alarm_manager.cancel_alarm(AlarmType::AutoSuspend).await {
+                tracing::error!(error = %error, "failed to cancel AutoSuspend alarm");
+            }
+            return;
         }
-        return;
-    }
 
-    let duration = auto_suspend_chrono_duration(minutes);
-    if let Err(error) = alarm_manager.schedule_in(AlarmType::AutoSuspend, duration) {
-        tracing::error!(error = %error, "failed to schedule AutoSuspend alarm");
-    }
+        let duration = secs_to_chrono_duration(minutes * 60.0);
+        if let Err(error) = alarm_manager
+            .schedule_in(AlarmType::AutoSuspend, duration)
+            .await
+        {
+            tracing::error!(error = %error, "failed to schedule AutoSuspend alarm");
+        }
+    })
+    .await;
 }

@@ -10,6 +10,7 @@ use std::io::Read;
 use std::io::Write;
 #[cfg(not(test))]
 use std::path::PathBuf;
+use std::sync::Arc;
 
 #[cfg(not(test))]
 const FRONTLIGHT_INTERFACE: &str = "/sys/class/backlight";
@@ -70,9 +71,9 @@ fn frontlight_dirs(model: Model) -> FxHashMap<LightColor, &'static str> {
 pub struct NaturalFrontlight {
     intensity: LightLevel,
     warmth: LightLevel,
-    values: FxHashMap<LightColor, File>,
-    powers: FxHashMap<LightColor, File>,
-    maxima: FxHashMap<LightColor, i16>,
+    values: Arc<FxHashMap<LightColor, File>>,
+    powers: Arc<FxHashMap<LightColor, File>>,
+    maxima: Arc<FxHashMap<LightColor, i16>>,
 }
 
 impl NaturalFrontlight {
@@ -108,62 +109,88 @@ impl NaturalFrontlight {
         Ok(NaturalFrontlight {
             intensity,
             warmth,
-            maxima,
-            values,
-            powers,
+            maxima: Arc::new(maxima),
+            values: Arc::new(values),
+            powers: Arc::new(powers),
         })
     }
+}
 
-    fn set(&mut self, c: LightColor, percent: f32) -> Result<(), Error> {
-        let max_value = self.maxima[&c] as f32;
-        let value = (percent.clamp(0.0, 100.0) / 100.0 * max_value) as i16;
-        let mut file = &self.values[&c];
-        write!(file, "{}", value)?;
-        let mut file = &self.powers[&c];
-        let power = if value > 0 {
-            FRONTLIGHT_POWER_ON
+fn set(
+    maxima: &FxHashMap<LightColor, i16>,
+    values: &FxHashMap<LightColor, File>,
+    powers: &FxHashMap<LightColor, File>,
+    c: LightColor,
+    percent: f32,
+) -> Result<(), Error> {
+    let max_value = maxima[&c] as f32;
+    let value = (percent.clamp(0.0, 100.0) / 100.0 * max_value) as i16;
+    let mut file = &values[&c];
+    write!(file, "{}", value)?;
+    let mut file = &powers[&c];
+    let power = if value > 0 {
+        FRONTLIGHT_POWER_ON
+    } else {
+        FRONTLIGHT_POWER_OFF
+    };
+    write!(file, "{}", power)?;
+    Ok(())
+}
+
+fn update_levels(
+    maxima: &FxHashMap<LightColor, i16>,
+    values: &FxHashMap<LightColor, File>,
+    powers: &FxHashMap<LightColor, File>,
+    intensity: LightLevel,
+    warmth: LightLevel,
+) -> Result<(), Error> {
+    let i = intensity.as_fraction();
+    let w = warmth.as_fraction();
+    let white = 80.0 * i * (1.0 - w).sqrt();
+    set(maxima, values, powers, LightColor::White, white)?;
+
+    if values.len() == 3 {
+        let green = 64.0 * (w * i).sqrt();
+        let red = if green == 0.0 {
+            0.0
         } else {
-            FRONTLIGHT_POWER_OFF
+            green + 20.0 + 7.0 * (1.0 - green / 64.0) + w * 4.0
         };
-        write!(file, "{}", power)?;
-        Ok(())
+        set(maxima, values, powers, LightColor::Red, red)?;
+        set(maxima, values, powers, LightColor::Green, green)?;
+    } else {
+        let orange = 95.0 * (w * i).sqrt();
+        set(maxima, values, powers, LightColor::Orange, orange)?;
     }
+    Ok(())
+}
 
-    fn update(&mut self, intensity: LightLevel, warmth: LightLevel) -> Result<(), Error> {
-        let i = intensity.as_fraction();
-        let w = warmth.as_fraction();
-        let white = 80.0 * i * (1.0 - w).sqrt();
-        self.set(LightColor::White, white)?;
-
-        if self.values.len() == 3 {
-            let green = 64.0 * (w * i).sqrt();
-            let red = if green == 0.0 {
-                0.0
-            } else {
-                green + 20.0 + 7.0 * (1.0 - green / 64.0) + w * 4.0
-            };
-            self.set(LightColor::Red, red)?;
-            self.set(LightColor::Green, green)?;
-        } else {
-            let orange = 95.0 * (w * i).sqrt();
-            self.set(LightColor::Orange, orange)?;
-        }
-
+impl NaturalFrontlight {
+    async fn update(&mut self, intensity: LightLevel, warmth: LightLevel) -> Result<(), Error> {
+        let values = Arc::clone(&self.values);
+        let powers = Arc::clone(&self.powers);
+        let maxima = Arc::clone(&self.maxima);
+        crate::runtime::spawn_blocking(move || {
+            update_levels(&maxima, &values, &powers, intensity, warmth)
+        })
+        .await
+        .map_err(Error::new)??;
         self.intensity = intensity;
         self.warmth = warmth;
         Ok(())
     }
 }
 
+#[async_trait::async_trait]
 impl Frontlight for NaturalFrontlight {
-    fn set_intensity(&mut self, value: LightLevel) -> Result<(), Error> {
+    async fn set_intensity(&mut self, value: LightLevel) -> Result<(), Error> {
         let warmth = self.warmth;
-        self.update(value, warmth)
+        self.update(value, warmth).await
     }
 
-    fn set_warmth(&mut self, value: LightLevel) -> Result<(), Error> {
+    async fn set_warmth(&mut self, value: LightLevel) -> Result<(), Error> {
         let intensity = self.intensity;
-        self.update(intensity, value)
+        self.update(intensity, value).await
     }
 
     fn levels(&self) -> LightLevels {

@@ -18,6 +18,7 @@ pub struct DitheredKindsSetting;
 /// Default reading font family.
 pub(crate) struct FontFamily;
 
+#[async_trait::async_trait(?Send)]
 impl SettingKind for DitheredKindsSetting {
     fn identity(&self) -> SettingIdentity {
         SettingIdentity::DitheredKinds
@@ -46,7 +47,7 @@ impl SettingKind for DitheredKindsSetting {
         }
     }
 
-    fn handle(
+    async fn handle(
         &self,
         evt: &Event,
         context: &mut AppContext,
@@ -75,6 +76,7 @@ fn kinds_summary(selected: usize) -> String {
     format!("{selected} / {}", FileExtension::all().len())
 }
 
+#[async_trait::async_trait(?Send)]
 impl SettingKind for FontFamily {
     fn identity(&self) -> SettingIdentity {
         SettingIdentity::FontFamily
@@ -109,7 +111,7 @@ impl SettingKind for FontFamily {
         }
     }
 
-    fn handle(
+    async fn handle(
         &self,
         evt: &Event,
         context: &mut AppContext,
@@ -123,6 +125,7 @@ impl SettingKind for FontFamily {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl SettingKind for FinishedActionSetting {
     fn identity(&self) -> SettingIdentity {
         SettingIdentity::FinishedAction
@@ -159,7 +162,7 @@ impl SettingKind for FinishedActionSetting {
         }
     }
 
-    fn handle(
+    async fn handle(
         &self,
         evt: &Event,
         context: &mut AppContext,
@@ -176,6 +179,7 @@ impl SettingKind for FinishedActionSetting {
 /// Shows global refresh rate and opens the RefreshRateByKindEditor on tap.
 pub struct RefreshRateInfo;
 
+#[async_trait::async_trait(?Send)]
 impl SettingKind for RefreshRateInfo {
     fn identity(&self) -> SettingIdentity {
         SettingIdentity::RefreshRate
@@ -200,7 +204,7 @@ impl SettingKind for RefreshRateInfo {
     /// Settings are intentionally not written here. Each input (`RefreshRateRegularInput`,
     /// `RefreshRateInvertedInput`) has its own [`SettingKind`] row (`RefreshRateRegularSetting`,
     /// `RefreshRateInvertedSetting`) that owns the write.
-    fn handle(
+    async fn handle(
         &self,
         evt: &Event,
         context: &mut AppContext,
@@ -281,6 +285,7 @@ impl SettingKind for RefreshRateByKindInfo {
 /// The "regular" field of the global refresh rate pair.
 pub struct RefreshRateRegularSetting;
 
+#[async_trait::async_trait(?Send)]
 impl SettingKind for RefreshRateRegularSetting {
     fn identity(&self) -> SettingIdentity {
         SettingIdentity::RefreshRateRegular
@@ -304,7 +309,7 @@ impl SettingKind for RefreshRateRegularSetting {
         }
     }
 
-    fn handle(
+    async fn handle(
         &self,
         evt: &Event,
         context: &mut AppContext,
@@ -324,6 +329,7 @@ impl SettingKind for RefreshRateRegularSetting {
 /// The "inverted" field of the global refresh rate pair.
 pub struct RefreshRateInvertedSetting;
 
+#[async_trait::async_trait(?Send)]
 impl SettingKind for RefreshRateInvertedSetting {
     fn identity(&self) -> SettingIdentity {
         SettingIdentity::RefreshRateInverted
@@ -359,7 +365,7 @@ impl SettingKind for RefreshRateInvertedSetting {
         }
     }
 
-    fn handle(
+    async fn handle(
         &self,
         evt: &Event,
         context: &mut AppContext,
@@ -379,6 +385,7 @@ impl SettingKind for RefreshRateInvertedSetting {
 /// The "regular" field of a per-kind refresh rate pair.
 pub struct RefreshRateByKindRegular(pub FileExtension);
 
+#[async_trait::async_trait(?Send)]
 impl SettingKind for RefreshRateByKindRegular {
     fn identity(&self) -> SettingIdentity {
         SettingIdentity::RefreshRateByKindRegular(self.0.as_str().to_string())
@@ -412,7 +419,7 @@ impl SettingKind for RefreshRateByKindRegular {
         }
     }
 
-    fn handle(
+    async fn handle(
         &self,
         evt: &Event,
         context: &mut AppContext,
@@ -442,6 +449,7 @@ impl SettingKind for RefreshRateByKindRegular {
 /// The "inverted" field of a per-kind refresh rate pair.
 pub struct RefreshRateByKindInverted(pub FileExtension);
 
+#[async_trait::async_trait(?Send)]
 impl SettingKind for RefreshRateByKindInverted {
     fn identity(&self) -> SettingIdentity {
         SettingIdentity::RefreshRateByKindInverted(self.0.as_str().to_string())
@@ -475,7 +483,7 @@ impl SettingKind for RefreshRateByKindInverted {
         }
     }
 
-    fn handle(
+    async fn handle(
         &self,
         evt: &Event,
         context: &mut AppContext,
@@ -542,7 +550,7 @@ mod tests {
             let mut bus: Bus = VecDeque::new();
             let event = Event::Select(EntryId::SetDefaultFontFamily("Sourcerer".to_string()));
 
-            let result = setting.handle(&event, &mut context, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus).await;
 
             assert_eq!(result.0.as_deref(), Some("Sourcerer"));
             assert!(result.1);
@@ -557,11 +565,13 @@ mod tests {
             let original = context.settings.reader.font_family.clone();
             let mut bus: Bus = VecDeque::new();
 
-            let result = setting.handle(
-                &Event::Select(EntryId::SetFontFamily("Sourcerer".to_string())),
-                &mut context,
-                &mut bus,
-            );
+            let result = setting
+                .handle(
+                    &Event::Select(EntryId::SetFontFamily("Sourcerer".to_string())),
+                    &mut context,
+                    &mut bus,
+                )
+                .await;
 
             assert!(result.0.is_none());
             assert!(!result.1);
@@ -575,7 +585,9 @@ mod tests {
             context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
-            let result = setting.handle(&Event::Select(EntryId::About), &mut context, &mut bus);
+            let result = setting
+                .handle(&Event::Select(EntryId::About), &mut context, &mut bus)
+                .await;
 
             assert!(result.0.is_none());
             assert!(!result.1);
@@ -594,7 +606,7 @@ mod tests {
             let mut bus: Bus = VecDeque::new();
             let event = Event::Select(EntryId::SetFinishedAction(FinishedAction::GoToNext));
 
-            let result = setting.handle(&event, &mut context, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus).await;
 
             assert!(result.0.is_some());
             assert_eq!(context.settings.reader.finished, FinishedAction::GoToNext);
@@ -613,7 +625,7 @@ mod tests {
                 FinishedAction::GoToNext,
             ] {
                 let event = Event::Select(EntryId::SetFinishedAction(action));
-                setting.handle(&event, &mut context, &mut bus);
+                setting.handle(&event, &mut context, &mut bus).await;
                 assert_eq!(context.settings.reader.finished, action);
             }
         }
@@ -660,11 +672,13 @@ mod tests {
                     .remove(&FileExtension::Pdf);
                 let mut bus: Bus = VecDeque::new();
 
-                let add = setting.handle(
-                    &Event::Select(EntryId::ToggleDitheredKind(FileExtension::Pdf)),
-                    &mut context,
-                    &mut bus,
-                );
+                let add = setting
+                    .handle(
+                        &Event::Select(EntryId::ToggleDitheredKind(FileExtension::Pdf)),
+                        &mut context,
+                        &mut bus,
+                    )
+                    .await;
                 assert_eq!(
                     add.0,
                     Some(kinds_summary(context.settings.reader.dithered_kinds.len()))
@@ -677,11 +691,13 @@ mod tests {
                         .contains(&FileExtension::Pdf)
                 );
 
-                let remove = setting.handle(
-                    &Event::Select(EntryId::ToggleDitheredKind(FileExtension::Pdf)),
-                    &mut context,
-                    &mut bus,
-                );
+                let remove = setting
+                    .handle(
+                        &Event::Select(EntryId::ToggleDitheredKind(FileExtension::Pdf)),
+                        &mut context,
+                        &mut bus,
+                    )
+                    .await;
                 assert_eq!(
                     remove.0,
                     Some(kinds_summary(context.settings.reader.dithered_kinds.len()))
@@ -703,7 +719,9 @@ mod tests {
             context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
-            let result = setting.handle(&Event::Select(EntryId::About), &mut context, &mut bus);
+            let result = setting
+                .handle(&Event::Select(EntryId::About), &mut context, &mut bus)
+                .await;
 
             assert!(result.0.is_none());
         }
@@ -716,7 +734,7 @@ mod tests {
             let mut bus: Bus = VecDeque::new();
             let event = Event::Select(EntryId::SetLibraryFinishedAction(0, FinishedAction::Notify));
 
-            let result = setting.handle(&event, &mut context, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus).await;
 
             assert!(result.0.is_none());
         }
@@ -735,7 +753,7 @@ mod tests {
             let mut bus: Bus = VecDeque::new();
 
             let event = Event::Submit(ViewId::RefreshRateRegularInput, "3".to_string());
-            let (display, handled) = setting.handle(&event, &mut context, &mut bus);
+            let (display, handled) = setting.handle(&event, &mut context, &mut bus).await;
 
             assert_eq!(
                 display.as_deref(),
@@ -762,7 +780,7 @@ mod tests {
             let mut bus: Bus = VecDeque::new();
 
             let event = Event::Submit(ViewId::RefreshRateInvertedInput, "7".to_string());
-            let (display, handled) = setting.handle(&event, &mut context, &mut bus);
+            let (display, handled) = setting.handle(&event, &mut context, &mut bus).await;
 
             assert_eq!(
                 display.as_deref(),
@@ -789,7 +807,7 @@ mod tests {
             let mut bus: Bus = VecDeque::new();
 
             let event = Event::Submit(ViewId::RefreshRateRegularInput, "bad".to_string());
-            let (display, _) = setting.handle(&event, &mut context, &mut bus);
+            let (display, _) = setting.handle(&event, &mut context, &mut bus).await;
 
             assert_eq!(
                 display.as_deref(),
@@ -811,8 +829,9 @@ mod tests {
             context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
-            let (display, handled) =
-                setting.handle(&Event::Select(EntryId::About), &mut context, &mut bus);
+            let (display, handled) = setting
+                .handle(&Event::Select(EntryId::About), &mut context, &mut bus)
+                .await;
 
             assert!(display.is_none());
             assert!(!handled);

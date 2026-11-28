@@ -25,14 +25,18 @@
 //! use cadmus_core::device::battery::{Battery, FakeBattery, Status};
 //! use std::sync::Arc;
 //!
+//! # #[tokio::main]
+//! # async fn main() {
 //! let battery = Arc::new(FakeBattery::new());
-//! assert_eq!(battery.capacity().unwrap(), vec![50.0]);
-//! assert_eq!(battery.status().unwrap(), vec![Status::Discharging]);
+//! assert_eq!(battery.capacity().await.unwrap(), vec![50.0]);
+//! assert_eq!(battery.status().await.unwrap(), vec![Status::Discharging]);
+//! # }
 //! ```
 
 mod fake;
 
 use anyhow::Error;
+use async_trait::async_trait;
 use std::sync::Arc;
 
 pub use self::fake::FakeBattery;
@@ -63,28 +67,31 @@ impl Status {
 /// and cheap to call through shared references. Device code stores backends as
 /// `Arc<dyn Battery>` or `Arc<FakeBattery>` and exposes them via
 /// [`DeviceHardware::battery`](crate::device::DeviceHardware::battery).
+#[async_trait]
 pub trait Battery: Send + Sync {
     /// Returns current capacity in percent for each cell: `[main]` or `[main, cover]`.
-    fn capacity(&self) -> Result<Vec<f32>, Error>;
+    async fn capacity(&self) -> Result<Vec<f32>, Error>;
 
     /// Returns charge status for each cell, in the same order as [`Self::capacity`].
-    fn status(&self) -> Result<Vec<Status>, Error>;
+    async fn status(&self) -> Result<Vec<Status>, Error>;
 }
 
+#[async_trait]
 impl<T: Battery + ?Sized> Battery for Box<T> {
-    fn capacity(&self) -> Result<Vec<f32>, Error> {
-        (**self).capacity()
+    async fn capacity(&self) -> Result<Vec<f32>, Error> {
+        (**self).capacity().await
     }
-    fn status(&self) -> Result<Vec<Status>, Error> {
-        (**self).status()
+    async fn status(&self) -> Result<Vec<Status>, Error> {
+        (**self).status().await
     }
 }
 
+#[async_trait]
 impl<T: Battery + ?Sized> Battery for Arc<T> {
-    fn capacity(&self) -> Result<Vec<f32>, Error> {
-        (**self).capacity()
+    async fn capacity(&self) -> Result<Vec<f32>, Error> {
+        (**self).capacity().await
     }
-    fn status(&self) -> Result<Vec<Status>, Error> {
-        (**self).status()
+    async fn status(&self) -> Result<Vec<Status>, Error> {
+        (**self).status().await
     }
 }

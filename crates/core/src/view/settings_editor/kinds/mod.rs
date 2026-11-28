@@ -106,6 +106,10 @@ pub struct SettingsFetchData<'a> {
 /// A self-contained description of a single setting.
 ///
 /// Implementing this trait is sufficient to add a new setting to the editor.
+///
+/// The trait uses `#[async_trait(?Send)]` because views run on a single thread and
+/// handlers may hold non-`Send` context borrows across awaits.
+#[async_trait::async_trait(?Send)]
 pub trait SettingKind {
     /// Unique identity used to route [`SettingsEvent::UpdateValue`](crate::view::settings_editor::SettingsEvent::UpdateValue) to the
     /// correct [`SettingValue`](crate::view::settings_editor::SettingValue) view.
@@ -128,7 +132,7 @@ pub trait SettingKind {
     ///   should stop propagating; `false` to allow further handlers to see it.
     ///
     /// `bus` is available for settings that need to propagate side-effects.
-    fn handle(
+    async fn handle(
         &self,
         _evt: &Event,
         _context: &mut AppContext,
@@ -164,6 +168,7 @@ pub trait SettingKind {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl<T: SettingKind + ?Sized> SettingKind for &T {
     fn identity(&self) -> SettingIdentity {
         (**self).identity()
@@ -177,13 +182,13 @@ impl<T: SettingKind + ?Sized> SettingKind for &T {
         (**self).fetch(data)
     }
 
-    fn handle(
+    async fn handle(
         &self,
         evt: &Event,
         context: &mut AppContext,
         bus: &mut Bus,
     ) -> (Option<String>, bool) {
-        (**self).handle(evt, context, bus)
+        (**self).handle(evt, context, bus).await
     }
 
     fn as_input_kind(&self) -> Option<&dyn InputSettingKind> {
@@ -203,6 +208,7 @@ impl<T: SettingKind + ?Sized> SettingKind for &T {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl<T: SettingKind + ?Sized> SettingKind for Box<T> {
     fn identity(&self) -> SettingIdentity {
         (**self).identity()
@@ -216,13 +222,13 @@ impl<T: SettingKind + ?Sized> SettingKind for Box<T> {
         (**self).fetch(data)
     }
 
-    fn handle(
+    async fn handle(
         &self,
         evt: &Event,
         context: &mut AppContext,
         bus: &mut Bus,
     ) -> (Option<String>, bool) {
-        (**self).handle(evt, context, bus)
+        (**self).handle(evt, context, bus).await
     }
 
     fn as_input_kind(&self) -> Option<&dyn InputSettingKind> {

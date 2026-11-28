@@ -17,6 +17,7 @@ use std::os::unix::io::AsRawFd;
 use std::path::Path;
 use std::ptr;
 use std::slice;
+use std::sync::Arc;
 use tracing::error;
 
 impl From<Rectangle> for AreaInfo {
@@ -32,7 +33,7 @@ impl From<Rectangle> for AreaInfo {
 
 pub struct KoboFramebuffer2 {
     ion: File,
-    display: File,
+    display: Arc<File>,
     fd_data: IonFdData,
     layer: DispLayerConfig2,
     frame: *mut libc::c_void,
@@ -215,7 +216,7 @@ impl KoboFramebuffer2 {
 
         Ok(KoboFramebuffer2 {
             ion,
-            display: display.unwrap(),
+            display: Arc::new(display.unwrap()),
             fd_data: data,
             layer,
             frame,
@@ -247,6 +248,7 @@ impl KoboFramebuffer2 {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl Framebuffer for KoboFramebuffer2 {
     fn set_pixel(&mut self, x: u32, y: u32, color: Color) {
         let mut c = (self.transform)(x, y, color);
@@ -359,11 +361,16 @@ impl Framebuffer for KoboFramebuffer2 {
         }
     }
 
-    // Wait for a specific update to complete.
-    fn wait(&self, token: u32) -> Result<i32, Error> {
-        let marker_data = SunxiDispEinkWaitFrameSyncComplete { frame_id: token };
-        let result = unsafe { wait_for_update(self.display.as_raw_fd(), &marker_data) };
-        result.context("can't wait for framebuffer update")
+    /// Waits for a specific update to complete on a shared driver handle.
+    async fn wait(&self, token: u32) -> Result<i32, Error> {
+        let file = Arc::clone(&self.display);
+        crate::runtime::spawn_blocking(move || {
+            let marker_data = SunxiDispEinkWaitFrameSyncComplete { frame_id: token };
+            let result = unsafe { wait_for_update(file.as_raw_fd(), &marker_data) };
+            result.context("can't wait for framebuffer update")
+        })
+        .await
+        .map_err(Error::new)?
     }
 
     fn save(&self, path: &str) -> Result<(), Error> {

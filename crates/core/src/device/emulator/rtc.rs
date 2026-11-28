@@ -57,7 +57,7 @@ impl Default for EmulatorRtc {
 }
 
 impl Rtc for EmulatorRtc {
-    fn alarm(&self) -> Result<RtcWkalrm, Error> {
+    async fn alarm(&self) -> Result<RtcWkalrm, Error> {
         let state = self
             .state
             .lock()
@@ -66,7 +66,7 @@ impl Rtc for EmulatorRtc {
         Ok(RtcWkalrm::from_parts(state.alarm_enabled, wake_time))
     }
 
-    fn set_alarm(&self, wake_time: DateTime<Utc>) -> Result<i32, Error> {
+    async fn set_alarm(&self, wake_time: DateTime<Utc>) -> Result<i32, Error> {
         let mut state = self
             .state
             .lock()
@@ -77,7 +77,7 @@ impl Rtc for EmulatorRtc {
         Ok(0)
     }
 
-    fn disable_alarm(&self) -> Result<i32, Error> {
+    async fn disable_alarm(&self) -> Result<i32, Error> {
         let mut state = self
             .state
             .lock()
@@ -87,14 +87,14 @@ impl Rtc for EmulatorRtc {
         Ok(0)
     }
 
-    fn read_time(&self) -> Result<DateTime<Utc>, Error> {
+    async fn read_time(&self) -> Result<DateTime<Utc>, Error> {
         self.state
             .lock()
             .map(|state| Utc::now() + state.offset)
             .map_err(|e| anyhow::anyhow!("lock poisoned: {}", e))
     }
 
-    fn set_time(&self, time: DateTime<Utc>) -> Result<(), Error> {
+    async fn set_time(&self, time: DateTime<Utc>) -> Result<(), Error> {
         let system_now = Utc::now();
         let mut state = self
             .state

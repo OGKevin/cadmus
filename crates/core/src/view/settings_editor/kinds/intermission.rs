@@ -90,6 +90,7 @@ fn selected_builtin_intermission(
 /// Suspend screen display setting
 pub struct IntermissionSuspend;
 
+#[async_trait::async_trait(?Send)]
 impl SettingKind for IntermissionSuspend {
     fn identity(&self) -> SettingIdentity {
         SettingIdentity::IntermissionSuspend
@@ -103,7 +104,7 @@ impl SettingKind for IntermissionSuspend {
         fetch_intermission(IntermKind::Suspend, data.settings)
     }
 
-    fn handle(
+    async fn handle(
         &self,
         evt: &Event,
         context: &mut AppContext,
@@ -138,6 +139,7 @@ impl SettingKind for IntermissionSuspend {
 /// Power off screen display setting
 pub struct IntermissionPowerOff;
 
+#[async_trait::async_trait(?Send)]
 impl SettingKind for IntermissionPowerOff {
     fn identity(&self) -> SettingIdentity {
         SettingIdentity::IntermissionPowerOff
@@ -151,7 +153,7 @@ impl SettingKind for IntermissionPowerOff {
         fetch_intermission(IntermKind::PowerOff, data.settings)
     }
 
-    fn handle(
+    async fn handle(
         &self,
         evt: &Event,
         context: &mut AppContext,
@@ -186,6 +188,7 @@ impl SettingKind for IntermissionPowerOff {
 /// Share screen display setting
 pub struct IntermissionShare;
 
+#[async_trait::async_trait(?Send)]
 impl SettingKind for IntermissionShare {
     fn identity(&self) -> SettingIdentity {
         SettingIdentity::IntermissionShare
@@ -199,7 +202,7 @@ impl SettingKind for IntermissionShare {
         fetch_intermission(IntermKind::Share, data.settings)
     }
 
-    fn handle(
+    async fn handle(
         &self,
         evt: &Event,
         context: &mut AppContext,
@@ -242,6 +245,7 @@ fn intermission_fill_color_name(color: Color) -> String {
 /// Global fill color for letterboxed intermission backgrounds.
 pub struct IntermissionFillColor;
 
+#[async_trait::async_trait(?Send)]
 impl SettingKind for IntermissionFillColor {
     fn identity(&self) -> SettingIdentity {
         SettingIdentity::IntermissionFillColor
@@ -275,7 +279,7 @@ impl SettingKind for IntermissionFillColor {
         }
     }
 
-    fn handle(
+    async fn handle(
         &self,
         evt: &Event,
         context: &mut AppContext,
@@ -314,7 +318,7 @@ mod tests {
                 IntermissionDisplay::Cover,
             ));
 
-            let result = setting.handle(&event, &mut context, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus).await;
 
             assert!(result.0.is_some());
             assert_eq!(
@@ -332,7 +336,7 @@ mod tests {
             let path = PathBuf::from("/selected/image.jpg");
             let event = Event::FileChooserClosed(Some(path));
 
-            let result = setting.handle(&event, &mut context, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus).await;
 
             assert!(result.0.is_some());
             assert_eq!(
@@ -352,7 +356,7 @@ mod tests {
                 IntermissionDisplay::Cover,
             ));
 
-            let result = setting.handle(&event, &mut context, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus).await;
 
             assert!(result.0.is_none());
         }
@@ -364,7 +368,9 @@ mod tests {
             context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
-            let result = setting.handle(&Event::FileChooserClosed(None), &mut context, &mut bus);
+            let result = setting
+                .handle(&Event::FileChooserClosed(None), &mut context, &mut bus)
+                .await;
 
             assert!(result.0.is_none());
         }
@@ -452,7 +458,7 @@ mod tests {
                 IntermissionDisplay::Cover,
             ));
 
-            let result = setting.handle(&event, &mut context, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus).await;
 
             assert!(result.0.is_some());
             assert_eq!(
@@ -470,7 +476,7 @@ mod tests {
             let path = PathBuf::from("/selected/poweroff.png");
             let event = Event::FileChooserClosed(Some(path));
 
-            let result = setting.handle(&event, &mut context, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus).await;
 
             assert!(result.0.is_some());
             assert_eq!(
@@ -490,7 +496,7 @@ mod tests {
                 IntermissionDisplay::Logo,
             ));
 
-            let result = setting.handle(&event, &mut context, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus).await;
 
             assert!(result.0.is_none());
         }
@@ -502,7 +508,9 @@ mod tests {
             context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
-            let result = setting.handle(&Event::FileChooserClosed(None), &mut context, &mut bus);
+            let result = setting
+                .handle(&Event::FileChooserClosed(None), &mut context, &mut bus)
+                .await;
 
             assert!(result.0.is_none());
         }
@@ -518,7 +526,7 @@ mod tests {
                 IntermissionDisplay::Calendar,
             ));
 
-            let result = setting.handle(&event, &mut context, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus).await;
 
             assert_eq!(result, (None, true));
             assert_eq!(
@@ -538,7 +546,7 @@ mod tests {
                 IntermissionDisplay::Blank,
             ));
 
-            let result = setting.handle(&event, &mut context, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus).await;
 
             assert_eq!(result, (Some(fl!("settings-intermission-blank")), true));
             assert_eq!(
@@ -591,7 +599,7 @@ mod tests {
                 IntermissionDisplay::Cover,
             ));
 
-            let result = setting.handle(&event, &mut context, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus).await;
 
             assert!(result.0.is_some());
             assert_eq!(
@@ -609,7 +617,7 @@ mod tests {
             let path = PathBuf::from("/selected/share.jpg");
             let event = Event::FileChooserClosed(Some(path));
 
-            let result = setting.handle(&event, &mut context, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus).await;
 
             assert!(result.0.is_some());
             assert_eq!(
@@ -629,7 +637,7 @@ mod tests {
                 IntermissionDisplay::Cover,
             ));
 
-            let result = setting.handle(&event, &mut context, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus).await;
 
             assert!(result.0.is_none());
         }
@@ -641,7 +649,9 @@ mod tests {
             context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
-            let result = setting.handle(&Event::FileChooserClosed(None), &mut context, &mut bus);
+            let result = setting
+                .handle(&Event::FileChooserClosed(None), &mut context, &mut bus)
+                .await;
 
             assert!(result.0.is_none());
         }
@@ -657,7 +667,7 @@ mod tests {
                 IntermissionDisplay::Calendar,
             ));
 
-            let result = setting.handle(&event, &mut context, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus).await;
 
             assert_eq!(result, (None, true));
             assert_eq!(
@@ -677,7 +687,7 @@ mod tests {
                 IntermissionDisplay::BlankInverted,
             ));
 
-            let result = setting.handle(&event, &mut context, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus).await;
 
             assert_eq!(
                 result,
@@ -756,7 +766,7 @@ mod tests {
             let mut bus: Bus = VecDeque::new();
             let event = Event::Select(EntryId::SetIntermissionFillColor(BLACK));
 
-            let result = setting.handle(&event, &mut context, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus).await;
 
             assert_eq!(
                 result,

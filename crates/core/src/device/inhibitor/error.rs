@@ -1,4 +1,4 @@
-//! Errors returned when acquiring an inhibitor guard.
+//! Errors returned by inhibitor operations.
 //!
 //! [`Inhibitor::acquire`](super::Inhibitor::acquire) returns
 //! [`InhibitorError::BatteryTooLow`] for [`super::Kind::Sleep`] and
@@ -8,7 +8,7 @@
 
 use thiserror::Error;
 
-/// Errors returned when acquiring an inhibitor guard.
+/// Errors returned by inhibitor operations.
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum InhibitorError {
     /// Battery capacity is below [`INHIBIT_MIN_CAPACITY_PERCENT`](crate::device::inhibitor::INHIBIT_MIN_CAPACITY_PERCENT)
@@ -20,4 +20,15 @@ pub enum InhibitorError {
     /// retrying without charging; other holders carry on without the lease.
     #[error("battery too low to acquire inhibitor")]
     BatteryTooLow,
+
+    /// The kernel wake lock could not be confirmed during acquisition or shutdown.
+    ///
+    /// Full acquisition fails rather than promising protection the kernel does
+    /// not have. Backend retries may still converge the shared lock later.
+    #[error("kernel wake-lock write failed")]
+    WakeLockWriteFailed,
+
+    /// The wake-lock control worker stopped or dropped its reply.
+    #[error("wake-lock control worker failed")]
+    WorkerFailed,
 }

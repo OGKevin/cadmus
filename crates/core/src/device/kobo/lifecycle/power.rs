@@ -28,8 +28,9 @@ pub(super) async fn handle_event(
             if user_exit_blocked(context) {
                 return EventOutcome::Handled;
             }
-            if is_suspend_active(context, runtime.tasks) {
-                cancel_suspend_if_pending(context, runtime.tasks, runtime.view.as_mut(), hub, rq);
+            if is_suspend_active(context, runtime.tasks).await {
+                cancel_suspend_if_pending(context, runtime.tasks, runtime.view.as_mut(), hub, rq)
+                    .await;
                 return EventOutcome::Handled;
             }
             show_power_off_intermission(
@@ -189,6 +190,7 @@ mod tests {
             .context
             .inhibitor
             .acquire(Kind::Full, "ota")
+            .await
             .unwrap();
         let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
             handle_event(
@@ -210,6 +212,7 @@ mod tests {
             .context
             .inhibitor
             .acquire(Kind::Sleep, "main-menu")
+            .await
             .unwrap();
         let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
             handle_event(
@@ -231,6 +234,7 @@ mod tests {
             .context
             .inhibitor
             .acquire(Kind::Full, "ota")
+            .await
             .unwrap();
         let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
             handle_event(
@@ -252,6 +256,7 @@ mod tests {
             .context
             .inhibitor
             .acquire(Kind::Full, "ota")
+            .await
             .unwrap();
         drop(guard);
         let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
@@ -326,15 +331,10 @@ mod tests {
 
         let mut harness = DeviceRuntimeHarness::new().await;
         {
-            let mut alarms = harness
-                .context
-                .alarm_manager
-                .as_ref()
-                .unwrap()
-                .lock()
-                .unwrap();
+            let mut alarms = harness.context.alarm_manager.as_ref().unwrap().lock().await;
             alarms
                 .schedule_in(AlarmType::Suspend, ChronoDuration::seconds(15))
+                .await
                 .unwrap();
         }
         let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
@@ -348,13 +348,7 @@ mod tests {
             )
         });
         assert_eq!(outcome, EventOutcome::Handled);
-        let alarms = harness
-            .context
-            .alarm_manager
-            .as_ref()
-            .unwrap()
-            .lock()
-            .unwrap();
+        let alarms = harness.context.alarm_manager.as_ref().unwrap().lock().await;
         assert!(!alarms.has_alarm(AlarmType::Suspend));
     }
 
@@ -365,15 +359,10 @@ mod tests {
 
         let mut harness = DeviceRuntimeHarness::new().await;
         {
-            let mut alarms = harness
-                .context
-                .alarm_manager
-                .as_ref()
-                .unwrap()
-                .lock()
-                .unwrap();
+            let mut alarms = harness.context.alarm_manager.as_ref().unwrap().lock().await;
             alarms
                 .schedule_in(AlarmType::WakeDebounce, ChronoDuration::seconds(15))
+                .await
                 .unwrap();
         }
         let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
@@ -387,13 +376,7 @@ mod tests {
             )
         });
         assert_eq!(outcome, EventOutcome::Handled);
-        let alarms = harness
-            .context
-            .alarm_manager
-            .as_ref()
-            .unwrap()
-            .lock()
-            .unwrap();
+        let alarms = harness.context.alarm_manager.as_ref().unwrap().lock().await;
         assert!(!alarms.has_alarm(AlarmType::WakeDebounce));
     }
 

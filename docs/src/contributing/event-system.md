@@ -396,7 +396,7 @@ stops during process teardown, `SIGTERM` and `SIGINT` return to the default
 disposition so a hung teardown can still be killed.
 
 Signals are user intent and are subject to the same rules as the menu commands.
-The Full inhibit (an OTA in progress) blocks Quit and Restart, so a `SIGTERM`
+The Full inhibition lease (an OTA in progress) blocks Quit and Restart, so a `SIGTERM`
 during an OTA is refused. Quit and Restart are also refused while onboard
 storage is exported (USB share): `on_shutdown` does not tear the share down, and
 quitting then would save settings against unmounted storage. A refused signal is

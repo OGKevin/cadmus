@@ -1,7 +1,9 @@
 //! Soft suspend via Linux kernel autosleep and a single [`WAKE_LOCK_NAME`] wake lock.
 //!
 //! Arms `/sys/power/autosleep` and blocks sleep with `/sys/power/wake_lock`
-//! while named leases are held. Missing sysfs nodes are a no-op.
+//! while named leases are held. One writer reconciles hardware writes; a
+//! missing node on this live backend is an error, while unsupported devices
+//! use the NoOp kind instead.
 //!
 //! This module holds the Linux SoftSuspend-kind implementation (wake lock,
 //! autosleep policy, soft-indicate) built by device probe and injected into

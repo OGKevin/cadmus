@@ -156,38 +156,41 @@ impl LightLevels {
     }
 }
 
+#[async_trait::async_trait]
 pub trait Frontlight: Send {
-    // value is a percentage.
-    fn set_intensity(&mut self, value: LightLevel) -> anyhow::Result<()>;
-    fn set_warmth(&mut self, value: LightLevel) -> anyhow::Result<()>;
+    /// Sets intensity as a percentage.
+    async fn set_intensity(&mut self, value: LightLevel) -> anyhow::Result<()>;
+    async fn set_warmth(&mut self, value: LightLevel) -> anyhow::Result<()>;
     fn levels(&self) -> LightLevels;
     /// Turns the FrontLight off by setting everything to [`LightLevel::off()`]
-    fn turn_off(&mut self) -> anyhow::Result<()> {
-        self.set_intensity(LightLevel::off())?;
-        self.set_warmth(LightLevel::off())?;
+    async fn turn_off(&mut self) -> anyhow::Result<()> {
+        self.set_intensity(LightLevel::off()).await?;
+        self.set_warmth(LightLevel::off()).await?;
         Ok(())
     }
 }
 
+#[async_trait::async_trait]
 impl<T: Frontlight + ?Sized> Frontlight for Box<T> {
-    fn set_intensity(&mut self, value: LightLevel) -> anyhow::Result<()> {
-        (**self).set_intensity(value)
+    async fn set_intensity(&mut self, value: LightLevel) -> anyhow::Result<()> {
+        (**self).set_intensity(value).await
     }
-    fn set_warmth(&mut self, value: LightLevel) -> anyhow::Result<()> {
-        (**self).set_warmth(value)
+    async fn set_warmth(&mut self, value: LightLevel) -> anyhow::Result<()> {
+        (**self).set_warmth(value).await
     }
     fn levels(&self) -> LightLevels {
         (**self).levels()
     }
 }
 
+#[async_trait::async_trait]
 impl Frontlight for LightLevels {
-    fn set_intensity(&mut self, value: LightLevel) -> anyhow::Result<()> {
+    async fn set_intensity(&mut self, value: LightLevel) -> anyhow::Result<()> {
         self.intensity = value;
         Ok(())
     }
 
-    fn set_warmth(&mut self, value: LightLevel) -> anyhow::Result<()> {
+    async fn set_warmth(&mut self, value: LightLevel) -> anyhow::Result<()> {
         self.warmth = value;
         Ok(())
     }

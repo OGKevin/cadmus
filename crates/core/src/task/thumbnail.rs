@@ -157,6 +157,7 @@ impl BackgroundTask for ThumbnailExtractionTask {
         let _soft_suspend = match self
             .inhibitor
             .acquire(Kind::SoftSuspend, SoftSuspendName::Thumbnail)
+            .await
         {
             Ok(guard) => Some(guard),
             Err(error) => {

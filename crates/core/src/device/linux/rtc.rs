@@ -39,9 +39,12 @@ const WAKEALARM_PATH: &str = "/sys/class/rtc/rtc0/wakealarm";
 /// ```no_run
 /// # use cadmus_core::device::LinuxRtc;
 /// # use cadmus_core::device::rtc::Rtc;
-/// let rtc = LinuxRtc::new("/dev/rtc0")?;
-/// let now = rtc.read_time()?;
-/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let rtc = LinuxRtc::new("/dev/rtc0").await?;
+/// let now = rtc.read_time().await?;
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Clone)]
 pub struct LinuxRtc {
@@ -91,12 +94,20 @@ impl LinuxRtc {
     ///
     /// ```no_run
     /// # use cadmus_core::device::LinuxRtc;
-    /// let rtc = LinuxRtc::new("/dev/rtc0")?;
-    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let rtc = LinuxRtc::new("/dev/rtc0").await?;
+    /// # Ok(())
+    /// # }
     /// ```
-    pub fn new<P: AsRef<Path>>(path: P) -> Result<LinuxRtc, Error> {
-        let file = OpenOptions::new().read(true).write(true).open(path)?;
-        let wait_fd = fcntl(&file, FcntlArg::F_DUPFD_CLOEXEC(0))?;
+    pub async fn new<P: AsRef<Path>>(path: P) -> Result<LinuxRtc, Error> {
+        let path = path.as_ref().to_owned();
+        let (file, wait_fd) = crate::runtime::spawn_blocking(move || {
+            let file = OpenOptions::new().read(true).write(true).open(path)?;
+            let wait_fd = fcntl(&file, FcntlArg::F_DUPFD_CLOEXEC(0))?;
+            Ok::<_, Error>((file, wait_fd))
+        })
+        .await??;
         let wait_file = unsafe { File::from_raw_fd(wait_fd) };
         let rtc = LinuxRtc {
             file: Arc::new(Mutex::new(Some(file))),
@@ -107,7 +118,7 @@ impl LinuxRtc {
                 pending_step: None,
             })),
         };
-        rtc.refresh_drift_from_hardware()?;
+        rtc.refresh_drift_from_hardware().await?;
         Ok(rtc)
     }
 
@@ -158,8 +169,8 @@ impl LinuxRtc {
             .ok_or_else(|| anyhow::anyhow!("RTC device released"))
     }
 
-    fn refresh_drift_from_hardware(&self) -> Result<(), Error> {
-        match self.read_time() {
+    async fn refresh_drift_from_hardware(&self) -> Result<(), Error> {
+        match self.read_time().await {
             Ok(rtc_now) => {
                 self.clock
                     .lock()
@@ -176,19 +187,32 @@ impl LinuxRtc {
     pub(crate) fn is_released(&self) -> bool {
         self.released.load(Ordering::SeqCst)
     }
+    fn read_time_now(&self) -> Result<DateTime<Utc>, Error> {
+        let mut rt = unsafe { mem::zeroed::<RtcTime>() };
+        let file = self.ioctl_file()?;
+        let file = Self::require_file(&file)?;
+        unsafe {
+            rtc_read_time(file.as_raw_fd(), &mut rt)?;
+        }
+        rt.try_into()
+    }
 }
 
 impl Rtc for LinuxRtc {
     /// Issues `RTC_ALM_READ` on the open device file.
-    fn alarm(&self) -> Result<RtcWkalrm, Error> {
-        let mut rwa = RtcWkalrm::default();
-        let file = self.ioctl_file()?;
-        let file = Self::require_file(&file)?;
-        unsafe {
-            rtc_read_alarm(file.as_raw_fd(), &mut rwa)
-                .map(|_| rwa)
-                .map_err(|e| e.into())
-        }
+    async fn alarm(&self) -> Result<RtcWkalrm, Error> {
+        let this = self.clone();
+        crate::runtime::spawn_blocking(move || {
+            let mut rwa = RtcWkalrm::default();
+            let file = this.ioctl_file()?;
+            let file = Self::require_file(&file)?;
+            unsafe {
+                rtc_read_alarm(file.as_raw_fd(), &mut rwa)
+                    .map(|_| rwa)
+                    .map_err(|e| e.into())
+            }
+        })
+        .await?
     }
 
     /// Reads the RTC's `wakealarm` sysfs node.
@@ -211,47 +235,58 @@ impl Rtc for LinuxRtc {
     }
 
     /// Issues `RTC_ALM_SET` with the alarm enabled and `pending` cleared.
-    fn set_alarm(&self, wake_time: DateTime<Utc>) -> Result<i32, Error> {
-        let rwa = RtcWkalrm::for_wake_time(wake_time);
-        let file = self.ioctl_file()?;
-        let file = Self::require_file(&file)?;
-        unsafe { rtc_write_alarm(file.as_raw_fd(), &rwa).map_err(|e| e.into()) }
+    async fn set_alarm(&self, wake_time: DateTime<Utc>) -> Result<i32, Error> {
+        let this = self.clone();
+        crate::runtime::spawn_blocking(move || {
+            let rwa = RtcWkalrm::for_wake_time(wake_time);
+            let file = this.ioctl_file()?;
+            let file = Self::require_file(&file)?;
+            unsafe { rtc_write_alarm(file.as_raw_fd(), &rwa).map_err(|e| e.into()) }
+        })
+        .await?
     }
 
     /// Issues `RTC_AIE_OFF` to disable alarm interrupts.
-    fn disable_alarm(&self) -> Result<i32, Error> {
-        let file = self.ioctl_file()?;
-        let file = Self::require_file(&file)?;
-        unsafe { rtc_disable_alarm(file.as_raw_fd()).map_err(|e| e.into()) }
+    async fn disable_alarm(&self) -> Result<i32, Error> {
+        let this = self.clone();
+        crate::runtime::spawn_blocking(move || {
+            let file = this.ioctl_file()?;
+            let file = Self::require_file(&file)?;
+            unsafe { rtc_disable_alarm(file.as_raw_fd()).map_err(|e| e.into()) }
+        })
+        .await?
     }
 
     /// Issues `RTC_RD_TIME` and converts the kernel `struct rtc_time` to UTC.
-    fn read_time(&self) -> Result<DateTime<Utc>, Error> {
-        let mut rt = unsafe { mem::zeroed::<RtcTime>() };
-        let file = self.ioctl_file()?;
-        let file = Self::require_file(&file)?;
-        unsafe {
-            rtc_read_time(file.as_raw_fd(), &mut rt)?;
-        }
-        rt.try_into()
+    async fn read_time(&self) -> Result<DateTime<Utc>, Error> {
+        let this = self.clone();
+        crate::runtime::spawn_blocking(move || this.read_time_now()).await?
     }
 
     /// Issues `RTC_SET_TIME`; requires write access to the device node.
-    fn set_time(&self, time: DateTime<Utc>) -> Result<(), Error> {
-        let old_time = self.read_time()?;
-        let rt: RtcTime = time.into();
-        let file = self.ioctl_file()?;
-        let file = Self::require_file(&file)?;
-        unsafe {
-            rtc_set_time(file.as_raw_fd(), &rt)?;
-        }
-        let mut clock = self
-            .clock
-            .lock()
-            .map_err(|e| anyhow::anyhow!("lock poisoned: {e}"))?;
-        clock.drift = time.signed_duration_since(Utc::now());
-        clock.pending_step = Some(time.signed_duration_since(old_time));
-        Ok(())
+    async fn set_time(&self, time: DateTime<Utc>) -> Result<(), Error> {
+        let this = self.clone();
+        crate::runtime::spawn_blocking(move || {
+            let old_time: DateTime<Utc> = {
+                let file = this.ioctl_file()?;
+                let file = Self::require_file(&file)?;
+                let mut rt = unsafe { mem::zeroed::<RtcTime>() };
+                unsafe {
+                    rtc_read_time(file.as_raw_fd(), &mut rt)?;
+                    let old_time = rt.try_into()?;
+                    rtc_set_time(file.as_raw_fd(), &RtcTime::from(time))?;
+                    old_time
+                }
+            };
+            let mut clock = this
+                .clock
+                .lock()
+                .map_err(|e| anyhow::anyhow!("lock poisoned: {e}"))?;
+            clock.drift = time.signed_duration_since(Utc::now());
+            clock.pending_step = Some(time.signed_duration_since(old_time));
+            Ok(())
+        })
+        .await?
     }
 
     fn drift(&self) -> Result<ChronoDuration, Error> {
@@ -344,25 +379,25 @@ mod tests {
         );
     }
 
-    #[test]
-    fn wait_fd_is_close_on_exec() {
+    #[tokio::test]
+    async fn wait_fd_is_close_on_exec() {
         use nix::fcntl::{FcntlArg, FdFlag, fcntl};
 
         let temp = NamedTempFile::new().unwrap();
-        let rtc = LinuxRtc::new(temp.path()).unwrap();
+        let rtc = LinuxRtc::new(temp.path()).await.unwrap();
         let wait_file = rtc.wait_file().unwrap();
         let file = LinuxRtc::require_file(&wait_file).unwrap();
         let flags = FdFlag::from_bits_truncate(fcntl(file, FcntlArg::F_GETFD).unwrap());
         assert!(flags.contains(FdFlag::FD_CLOEXEC));
     }
 
-    #[test]
-    fn release_closes_handles_and_is_idempotent() {
+    #[tokio::test]
+    async fn release_closes_handles_and_is_idempotent() {
         let temp = NamedTempFile::new().unwrap();
-        let rtc = LinuxRtc::new(temp.path()).unwrap();
+        let rtc = LinuxRtc::new(temp.path()).await.unwrap();
         rtc.release().unwrap();
         assert!(rtc.is_released());
-        assert!(rtc.read_time().is_err());
+        assert!(rtc.read_time().await.is_err());
         rtc.release().unwrap();
     }
 }

@@ -2,9 +2,9 @@
 //!
 //! Not Kobo-specific — any platform that drives [`super`] can use these.
 
-use super::orchestrator::{
-    cancel_prepare, cancel_suspend_rtcs, finish_cycle, is_suspend_rtc_pending,
-};
+#[cfg(test)]
+use super::orchestrator::DeferredSuspend;
+use super::orchestrator::{finish_cycle, is_suspend_rtc_pending};
 use crate::device::AppContext;
 use crate::device::{DeviceTask, DeviceTaskId};
 use crate::view::{Hub, RenderQueue, View};
@@ -18,34 +18,28 @@ pub(crate) fn has_task(tasks: &[DeviceTask], id: DeviceTaskId) -> bool {
 ///
 /// True when PrepareSuspend is pending, a Suspend / WakeDebounce RTC is armed in
 /// the map (including past-due), or an explicit [`AppContext::suspend`] cycle is set.
-pub(crate) fn is_suspend_active(context: &AppContext, tasks: &[DeviceTask]) -> bool {
+pub(crate) async fn is_suspend_active(context: &AppContext, tasks: &[DeviceTask]) -> bool {
     has_task(tasks, DeviceTaskId::PrepareSuspend)
-        || is_suspend_rtc_pending(context)
+        || is_suspend_rtc_pending(context).await
         || context.suspend.is_some()
 }
 
-/// Cancels an in-progress suspend when PrepareSuspend or a suspend RTC/cycle is pending.
+/// Cancels an in-progress suspend when PrepareSuspend, a suspend RTC, or a cycle is pending.
 ///
-/// Prefer [`finish_cycle`] whenever a [`AppContext::suspend`] cycle exists — including
-/// DeepIdle reentry while `PrepareSuspend` is pending after teardown already turned
-/// frontlight/WiFi off. [`cancel_prepare`] only covers a PrepareSuspend task with no cycle.
-pub(crate) fn cancel_suspend_if_pending(
+/// [`finish_cycle`] owns the whole teardown for every shape, including a
+/// PrepareSuspend-only cancel after a replacement cycle turned frontlight and
+/// WiFi off.
+pub(crate) async fn cancel_suspend_if_pending(
     context: &mut AppContext,
     tasks: &mut Vec<DeviceTask>,
     view: &mut dyn View,
     hub: &Hub,
     rq: &mut RenderQueue,
 ) {
-    let had_cycle = context.suspend.is_some();
-    let had_suspend_rtc = is_suspend_rtc_pending(context);
-    cancel_suspend_rtcs(context);
-    if had_cycle {
-        finish_cycle(context, tasks, view, hub, rq);
-    } else if has_task(tasks, DeviceTaskId::PrepareSuspend) {
-        cancel_prepare(context, DeviceTaskId::PrepareSuspend, tasks, view, hub, rq);
-    } else if had_suspend_rtc {
-        finish_cycle(context, tasks, view, hub, rq);
+    if !is_suspend_active(context, tasks).await {
+        return;
     }
+    finish_cycle(context, tasks, view, hub, rq).await;
 }
 
 #[cfg(all(test, feature = "kobo"))]
@@ -73,58 +67,51 @@ mod tests {
     async fn is_suspend_active_prepare() {
         let mut harness = DeviceRuntimeHarness::new().await;
         harness.push_task(DeviceTaskId::PrepareSuspend);
-        assert!(is_suspend_active(&harness.context, &harness.tasks));
+        assert!(is_suspend_active(&harness.context, &harness.tasks).await);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn is_suspend_active_suspend_rtc() {
         let harness = DeviceRuntimeHarness::new().await;
         {
-            let mut alarms = harness
-                .context
-                .alarm_manager
-                .as_ref()
-                .unwrap()
-                .lock()
-                .unwrap();
+            let mut alarms = harness.context.alarm_manager.as_ref().unwrap().lock().await;
             alarms
                 .schedule_in(AlarmType::Suspend, ChronoDuration::seconds(15))
+                .await
                 .unwrap();
         }
-        assert!(is_suspend_active(&harness.context, &harness.tasks));
+        assert!(is_suspend_active(&harness.context, &harness.tasks).await);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn is_suspend_active_false() {
         let harness = DeviceRuntimeHarness::new().await;
-        assert!(!is_suspend_active(&harness.context, &harness.tasks));
+        assert!(!is_suspend_active(&harness.context, &harness.tasks).await);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn is_suspend_active_past_due_suspend_rtc() {
         let harness = DeviceRuntimeHarness::new().await;
         {
-            let mut alarms = harness
-                .context
-                .alarm_manager
-                .as_ref()
-                .unwrap()
-                .lock()
-                .unwrap();
+            let mut alarms = harness.context.alarm_manager.as_ref().unwrap().lock().await;
             alarms
                 .schedule_in(AlarmType::Suspend, ChronoDuration::seconds(-1))
+                .await
                 .unwrap();
             assert!(alarms.has_alarm(AlarmType::Suspend));
-            assert!(!alarms.is_alarm_scheduled(AlarmType::Suspend));
+            assert!(!alarms.is_alarm_scheduled(AlarmType::Suspend).await);
         }
-        assert!(is_suspend_active(&harness.context, &harness.tasks));
+        assert!(is_suspend_active(&harness.context, &harness.tasks).await);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn is_suspend_active_cycle_without_rtc() {
         let mut harness = DeviceRuntimeHarness::new().await;
-        harness.context.suspend = Some(SuspendCycle::new(SuspendKind::Classic));
-        assert!(is_suspend_active(&harness.context, &harness.tasks));
+        harness.context.suspend = Some(SuspendCycle::new(
+            SuspendKind::Classic,
+            DeferredSuspend::Explicit,
+        ));
+        assert!(is_suspend_active(&harness.context, &harness.tasks).await);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -137,7 +124,8 @@ mod tests {
             harness.view.as_mut(),
             &harness.hub_tx,
             &mut harness.rq,
-        );
+        )
+        .await;
         assert!(!has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
     }
 
@@ -145,15 +133,10 @@ mod tests {
     async fn cancel_suspend_if_pending_suspend_rtc() {
         let mut harness = DeviceRuntimeHarness::new().await;
         {
-            let mut alarms = harness
-                .context
-                .alarm_manager
-                .as_ref()
-                .unwrap()
-                .lock()
-                .unwrap();
+            let mut alarms = harness.context.alarm_manager.as_ref().unwrap().lock().await;
             alarms
                 .schedule_in(AlarmType::Suspend, ChronoDuration::seconds(15))
+                .await
                 .unwrap();
         }
         cancel_suspend_if_pending(
@@ -162,14 +145,9 @@ mod tests {
             harness.view.as_mut(),
             &harness.hub_tx,
             &mut harness.rq,
-        );
-        let alarms = harness
-            .context
-            .alarm_manager
-            .as_ref()
-            .unwrap()
-            .lock()
-            .unwrap();
+        )
+        .await;
+        let alarms = harness.context.alarm_manager.as_ref().unwrap().lock().await;
         assert!(!alarms.has_alarm(AlarmType::Suspend));
     }
 
@@ -178,15 +156,10 @@ mod tests {
         let mut harness = DeviceRuntimeHarness::new().await;
         harness.context.settings.auto_suspend = 30.0;
         {
-            let mut alarms = harness
-                .context
-                .alarm_manager
-                .as_ref()
-                .unwrap()
-                .lock()
-                .unwrap();
+            let mut alarms = harness.context.alarm_manager.as_ref().unwrap().lock().await;
             alarms
                 .schedule_in(AlarmType::WakeDebounce, ChronoDuration::seconds(15))
+                .await
                 .unwrap();
         }
         cancel_suspend_if_pending(
@@ -195,16 +168,11 @@ mod tests {
             harness.view.as_mut(),
             &harness.hub_tx,
             &mut harness.rq,
-        );
-        let alarms = harness
-            .context
-            .alarm_manager
-            .as_ref()
-            .unwrap()
-            .lock()
-            .unwrap();
+        )
+        .await;
+        let alarms = harness.context.alarm_manager.as_ref().unwrap().lock().await;
         assert!(!alarms.has_alarm(AlarmType::WakeDebounce));
-        assert!(alarms.is_alarm_scheduled(AlarmType::AutoSuspend));
+        assert!(alarms.is_alarm_scheduled(AlarmType::AutoSuspend).await);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -216,7 +184,8 @@ mod tests {
             harness.view.as_mut(),
             &harness.hub_tx,
             &mut harness.rq,
-        );
+        )
+        .await;
         assert!(harness.tasks.is_empty());
     }
 
@@ -224,17 +193,15 @@ mod tests {
     async fn cancel_suspend_if_pending_past_due_suspend_rtc() {
         let mut harness = DeviceRuntimeHarness::new().await;
         harness.context.settings.auto_suspend = 30.0;
-        harness.context.suspend = Some(SuspendCycle::new(SuspendKind::Classic));
+        harness.context.suspend = Some(SuspendCycle::new(
+            SuspendKind::Classic,
+            DeferredSuspend::Explicit,
+        ));
         {
-            let mut alarms = harness
-                .context
-                .alarm_manager
-                .as_ref()
-                .unwrap()
-                .lock()
-                .unwrap();
+            let mut alarms = harness.context.alarm_manager.as_ref().unwrap().lock().await;
             alarms
                 .schedule_in(AlarmType::Suspend, ChronoDuration::seconds(-1))
+                .await
                 .unwrap();
         }
         cancel_suspend_if_pending(
@@ -243,40 +210,33 @@ mod tests {
             harness.view.as_mut(),
             &harness.hub_tx,
             &mut harness.rq,
-        );
-        assert!(!is_suspend_rtc_pending(&harness.context));
+        )
+        .await;
+        assert!(!is_suspend_rtc_pending(&harness.context).await);
         assert!(harness.context.suspend.is_none());
-        let alarms = harness
-            .context
-            .alarm_manager
-            .as_ref()
-            .unwrap()
-            .lock()
-            .unwrap();
-        assert!(alarms.is_alarm_scheduled(AlarmType::AutoSuspend));
+        let alarms = harness.context.alarm_manager.as_ref().unwrap().lock().await;
+        assert!(alarms.is_alarm_scheduled(AlarmType::AutoSuspend).await);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn cancel_suspend_if_pending_after_claim_uses_cycle() {
         let mut harness = DeviceRuntimeHarness::new().await;
         harness.context.settings.auto_suspend = 30.0;
-        harness.context.suspend = Some(SuspendCycle::new(SuspendKind::Classic));
-        assert!(!is_suspend_rtc_pending(&harness.context));
+        harness.context.suspend = Some(SuspendCycle::new(
+            SuspendKind::Classic,
+            DeferredSuspend::Explicit,
+        ));
+        assert!(!is_suspend_rtc_pending(&harness.context).await);
         cancel_suspend_if_pending(
             &mut harness.context,
             &mut harness.tasks,
             harness.view.as_mut(),
             &harness.hub_tx,
             &mut harness.rq,
-        );
+        )
+        .await;
         assert!(harness.context.suspend.is_none());
-        let alarms = harness
-            .context
-            .alarm_manager
-            .as_ref()
-            .unwrap()
-            .lock()
-            .unwrap();
-        assert!(alarms.is_alarm_scheduled(AlarmType::AutoSuspend));
+        let alarms = harness.context.alarm_manager.as_ref().unwrap().lock().await;
+        assert!(alarms.is_alarm_scheduled(AlarmType::AutoSuspend).await);
     }
 }

@@ -30,6 +30,7 @@ pub(crate) struct AutosleepPolicy {
     status_led: Arc<StatusLed>,
     state: Arc<Mutex<PolicyState>>,
     soft_indicate: Mutex<Option<StatusLedGuard>>,
+    available_modes: Vec<AutosleepMode>,
 }
 
 impl AutosleepPolicy {
@@ -42,6 +43,7 @@ impl AutosleepPolicy {
             autosleep = %paths.autosleep.display(),
             "creating soft-suspend autosleep policy"
         );
+        let available_modes = discover_available_modes(&paths.state);
         Self {
             paths,
             wake,
@@ -52,6 +54,7 @@ impl AutosleepPolicy {
                 autosleep_grace: Duration::ZERO,
             })),
             soft_indicate: Mutex::new(None),
+            available_modes,
         }
     }
 
@@ -74,7 +77,7 @@ impl AutosleepPolicy {
     }
 
     pub(crate) fn available_modes(&self) -> Vec<AutosleepMode> {
-        discover_available_modes(&self.paths.state)
+        self.available_modes.clone()
     }
 
     pub(crate) fn sanitize_mode(&self, mode: AutosleepMode) -> AutosleepMode {
@@ -89,14 +92,19 @@ impl AutosleepPolicy {
         }
     }
 
+    /// Writes `/sys/power/autosleep` and updates the cached mode on success.
+    ///
+    /// A failed write returns an error and leaves the previous mode cached, so
+    /// callers never observe a mode the kernel refused. A missing node is an
+    /// error on this live Linux backend; unsupported devices use NoOp instead.
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(skip(self), fields(mode = %mode), level = tracing::Level::TRACE)
     )]
-    pub(crate) fn set_mode(&self, mode: AutosleepMode) {
+    pub(crate) async fn set_mode(&self, mode: AutosleepMode) -> Result<(), std::io::Error> {
         let mode = self.sanitize_mode(mode);
         let value = mode.as_sysfs();
-        match write_sysfs(&self.paths.autosleep, value) {
+        match write_sysfs(&self.paths.autosleep, value).await {
             Ok(SysfsWrite::Written) => {
                 tracing::debug!(
                     path = %self.paths.autosleep.display(),
@@ -105,20 +113,15 @@ impl AutosleepPolicy {
                 );
             }
             Ok(SysfsWrite::Missing) => {
-                tracing::debug!(
-                    path = %self.paths.autosleep.display(),
-                    value,
-                    "soft-suspend sysfs path missing"
-                );
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!(
+                        "soft-suspend sysfs node {} is missing",
+                        self.paths.autosleep.display()
+                    ),
+                ));
             }
-            Err(error) => {
-                tracing::warn!(
-                    error = %error,
-                    mode = %mode,
-                    "soft-suspend autosleep write failed; keeping previous mode"
-                );
-                return;
-            }
+            Err(error) => return Err(std::io::Error::other(error)),
         }
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         let previous = state.mode;
@@ -126,6 +129,7 @@ impl AutosleepPolicy {
         tracing::info!(previous = %previous, mode = %mode, "soft-suspend mode updated");
         drop(state);
         self.sync_soft_indicate();
+        Ok(())
     }
 
     #[cfg_attr(

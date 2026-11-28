@@ -27,7 +27,7 @@ pub mod soft_suspend;
 #[cfg(any(target_os = "linux", docsrs))]
 pub use linux::LinuxRtc;
 #[cfg(any(feature = "kobo", docsrs))]
-pub(crate) mod suspend;
+pub mod suspend;
 pub mod usb;
 pub mod wifi;
 
@@ -57,7 +57,7 @@ pub(crate) mod kobo;
 pub(crate) use auto_suspend::reschedule_auto_suspend_alarm;
 pub use model::Model;
 #[cfg(any(feature = "kobo", docsrs))]
-pub(crate) use tasks::schedule_device_task;
+pub(crate) use tasks::{schedule_device_task, spawn_wifi_reconcile};
 pub use types::{FrontlightKind, Orientation};
 
 #[cfg(any(feature = "emulator", docsrs))]
@@ -136,10 +136,12 @@ pub enum DeviceTaskId {
     PrepareSuspend,
     /// Periodic tick while waiting for soft-suspend deep idle to sleep/wake.
     PollDeepIdleWait,
-    /// Kobo Wi-Fi idle-disable poller ([`kobo::lifecycle::wifi::spawn_wifi_idle_poller`]).
+    /// Owned Classic commit through kernel sleep and peripheral cleanup.
+    ClassicSuspend,
+    /// Kobo Wi-Fi idle-disable poller (`kobo::lifecycle::wifi::spawn_wifi_idle_poller`).
     WifiIdlePoller,
-    /// Startup Wi-Fi reconcile from [`kobo::lifecycle::Device::on_startup`].
-    WifiStartupReconcile,
+    /// Owned radio reconciliation from startup or resume.
+    WifiReconcile,
     Exit,
 }
 
@@ -232,7 +234,14 @@ pub trait InputSource: Send {
     ///
     /// Called from the main loop, on the thread that owns the platform's event
     /// queue. Default: no-op.
-    fn pump(&mut self) {}
+    ///
+    /// Spelled `-> impl Future` rather than `async fn` so the trait states the
+    /// bound instead of leaving it to each impl. No `+ Send`: the platform event
+    /// pump (SDL) and its events must stay on the main thread, so the future
+    /// cannot be `Send`. Impls use `async fn`.
+    fn pump(&mut self) -> impl Future<Output = ()> {
+        std::future::ready(())
+    }
 }
 
 /// Device identity: model, touch protocol, screen dimensions, and mark.

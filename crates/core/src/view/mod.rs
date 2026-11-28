@@ -318,11 +318,17 @@ pub fn handle_event<'a>(
     })
 }
 
+/// Drops every update whose rectangle intersects `rect`, keeping the survivors in their original
+/// order.
+fn retain_updates_outside(updating: &mut Vec<UpdateData>, rect: &Rectangle) {
+    updating.retain(|update| !rect.overlaps(&update.rect));
+}
+
 // We render from bottom to top. For a view to render it has to either appear in `ids` or intersect
 // one of the rectangles in `bgs`. When we're about to render a view, if `wait` is true, we'll wait
 // for all the updates in `updating` that intersect with the view.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(view, ids, rects, bgs, context, updating), fields(wait = wait)))]
-pub fn render(
+pub async fn render(
     view: &dyn View,
     wait: bool,
     ids: &FxHashMap<Id, Vec<Rectangle>>,
@@ -345,20 +351,20 @@ pub fn render(
             let render_rect = view.render_rect(&rect);
 
             if wait {
-                updating.retain(|update| {
-                    let overlaps = render_rect.overlaps(&update.rect);
-                    if overlaps && !update.has_completed() {
+                for update in updating.iter() {
+                    if render_rect.overlaps(&update.rect) && !update.has_completed() {
                         context
                             .device
                             .framebuffer()
                             .wait(update.token)
+                            .await
                             .map_err(|e| {
                                 error!("Can't wait for {}, {}: {:#}", update.token, update.rect, e)
                             })
                             .ok();
                     }
-                    !overlaps
-                });
+                }
+                retain_updates_outside(updating, &render_rect);
             }
 
             view.render(context, rect);
@@ -404,12 +410,21 @@ pub fn render(
     }
 
     for i in 0..view.len() {
-        render(view.child(i), wait, ids, rects, bgs, context, updating);
+        Box::pin(render(
+            view.child(i),
+            wait,
+            ids,
+            rects,
+            bgs,
+            context,
+            updating,
+        ))
+        .await;
     }
 }
 
 #[inline]
-pub fn process_render_queue(
+pub async fn process_render_queue(
     view: &dyn View,
     rq: &mut RenderQueue,
     context: &mut AppContext,
@@ -428,7 +443,7 @@ pub fn process_render_queue(
             }
         }
 
-        render(view, wait, &ids, &mut rects, &mut bgs, context, updating);
+        render(view, wait, &ids, &mut rects, &mut bgs, context, updating).await;
 
         for rect in rects {
             match context.device.framebuffer_mut().update(&rect, mode) {
@@ -448,7 +463,7 @@ pub fn process_render_queue(
 }
 
 #[inline]
-pub fn wait_for_all(updating: &mut Vec<UpdateData>, context: &mut AppContext) {
+pub async fn wait_for_all(updating: &mut Vec<UpdateData>, context: &mut AppContext) {
     for update in updating.drain(..) {
         if update.has_completed() {
             continue;
@@ -457,6 +472,7 @@ pub fn wait_for_all(updating: &mut Vec<UpdateData>, context: &mut AppContext) {
             .device
             .framebuffer()
             .wait(update.token)
+            .await
             .map_err(|e| error!("Can't wait for {}, {}: {:#}", update.token, update.rect, e))
             .ok();
     }
@@ -638,6 +654,12 @@ pub enum Event {
     Suspend,
     /// Advance a non-blocking soft-suspend deep-idle wait (sleep detect / timeout).
     PollDeepIdleWait,
+    /// A synthetic radio reconciliation completed with association, tagged
+    /// with the generation that scheduled it. The Kobo main loop drops stale
+    /// completions and converts current ones to `NetUp` at their original FIFO
+    /// position before delivering them to consumers; genuine `NetUp` events are
+    /// never filtered by this generation.
+    WifiReconciled(u64),
     Share,
     PrepareShare,
     Validate,
@@ -648,7 +670,7 @@ pub enum Event {
     ///
     /// This is **not** user intent. Lifecycles turn it into
     /// [`EventOutcome::Exit`](crate::device::EventOutcome::Exit) without
-    /// consulting the user-exit checks, so a Full lease or a USB share session
+    /// consulting the user-exit checks, so a Full inhibition lease or a USB share session
     /// cannot refuse it. Use [`Event::Select`] with an exit [`EntryId`] for user
     /// intent (menu entries, Unix signals, emulator window close), which stays
     /// refusable. Senders of internal exits should send this event.
@@ -1215,5 +1237,49 @@ impl IdFeeder {
 
     pub fn next(&self) -> Id {
         self.0.fetch_add(1, Ordering::Relaxed)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::geom::Point;
+
+    fn rect(x: i32, y: i32, width: i32, height: i32) -> Rectangle {
+        Rectangle::new(Point::new(x, y), Point::new(x + width, y + height))
+    }
+
+    fn update(token: u32, rect: Rectangle) -> UpdateData {
+        UpdateData {
+            token,
+            time: Instant::now(),
+            rect,
+        }
+    }
+
+    #[test]
+    fn retain_updates_outside_keeps_non_intersecting_updates_in_order() {
+        let mut updating = vec![
+            update(1, rect(20, 20, 5, 5)),
+            update(2, rect(0, 0, 10, 10)),
+            update(3, rect(30, 30, 5, 5)),
+            update(4, rect(5, 5, 10, 10)),
+            update(5, rect(40, 40, 5, 5)),
+        ];
+
+        retain_updates_outside(&mut updating, &rect(0, 0, 10, 10));
+
+        let tokens: Vec<u32> = updating.iter().map(|update| update.token).collect();
+        assert_eq!(tokens, vec![1, 3, 5]);
+    }
+
+    #[test]
+    fn retain_updates_outside_keeps_everything_when_nothing_intersects() {
+        let mut updating = vec![update(1, rect(20, 20, 5, 5)), update(2, rect(30, 30, 5, 5))];
+
+        retain_updates_outside(&mut updating, &rect(0, 0, 10, 10));
+
+        let tokens: Vec<u32> = updating.iter().map(|update| update.token).collect();
+        assert_eq!(tokens, vec![1, 2]);
     }
 }

@@ -2,190 +2,102 @@
 
 # Suspend orchestrator
 
-**Explicit** suspend: intermission UI, prepare teardown, then kernel sleep.
+**Explicit suspend**: intermission UI, prepare teardown, then kernel sleep.
 Shared code in
 <a href="/api/cadmus_core/device/suspend/index.html">`device::suspend`</a>
-(`crates/core/src/device/suspend/`).
+(`crates/core/src/device/suspend/`). This is separate from opportunistic
+[Soft suspend](soft-suspend.md) and from
+[Kobo platform hooks](kobo/suspend.md); the emulator does not drive it.
 
-This is separate from opportunistic [soft suspend](soft-suspend.md) and from
-[Kobo platform hooks](kobo/suspend.md). To **block** starting a cycle, use
-[Inhibitor `Kind::Full`](inhibitor.md). [`Kind::Sleep`](inhibitor.md) defers
-only the Auto Suspend path (`start_cycle_from_auto`). SoftSuspend leases alone
-do not gate `start_cycle`.
-
-The emulator does not drive this module today.
-
-## Workflow
-
-Callers that mean “go to sleep” (power button, Auto Suspend RTC, sleep cover)
+Callers that mean "go to sleep" (power button, Auto Suspend RTC, sleep cover)
 call
 <a href="/api/cadmus_core/device/suspend/orchestrator/fn.start_cycle.html">`start_cycle`</a>,
 **not**
 <a href="/api/cadmus_core/device/suspend/orchestrator/fn.enter_sleep.html">`enter_sleep`</a>.
-
-```mermaid
-flowchart TD
-    interactive["Interactive"]
-    preparing["Preparing<br/>intermission; PrepareSuspend task"]
-    arming["ArmingSleep"]
-    classic["Classic<br/>blocking power.suspend()"]
-    inSleep["InSleep (DeepIdle only)<br/>PollDeepIdleWait"]
-    debounce["PostWakeDebounce"]
-
-    interactive -->|"start_cycle()"| preparing
-    preparing -->|"prepare_for_sleep()"| arming
-    arming -->|"Classic: Suspend RTC"| classic
-    arming -->|"DeepIdle: enter_sleep()"| inSleep
-    classic --> debounce
-    inSleep --> debounce
-    debounce -->|"finish_cycle() / user cancel"| interactive
-    debounce -->|"WakeDebounce / CalendarUpdate"| arming
-```
-
-| Function            | Role                                                    |
-| ------------------- | ------------------------------------------------------- |
-| `start_cycle`       | Begin cycle: UI + schedule prepare                      |
-| `prepare_for_sleep` | Teardown; arm Classic Suspend RTC or enter DeepIdle     |
-| `enter_sleep`       | Kernel sleep (classic block or deep-idle poll)          |
-| `finish_cycle`      | Tear down → interactive                                 |
-| `cancel_prepare`    | Remove a stray PrepareSuspend task when no cycle exists |
-
-<a href="/api/cadmus_core/view/enum.Event.html#variant.Suspend">`Event::Suspend`</a>
-/
-<a href="/api/cadmus_core/device/rtc/enum.AlarmType.html#variant.Suspend">`AlarmType::Suspend`</a>
-mean **enter sleep now** (after prepare), not “start a new cycle”.
-
-Full inhibit defers `start_cycle` as Explicit origin. If a worker acquires Full
-during preparation or the deep-idle wait, the orchestrator aborts the cycle
-before kernel sleep and queues the same Explicit intent. Sleep defers the Auto
-path only. `InhibitCleared(Kind::Full)` flushes Auto through
-`start_cycle_from_auto` and Explicit through `start_cycle`. A start while a
-suspend cycle is in flight is ignored. The last Sleep release flushes a
-deferred Auto through `start_cycle_from_auto`, which re-defers while a Full or
-Sleep lease is held, and leaves a deferred Explicit for the Full release. All
-SoftSuspend holders, including the nested `"sleep-inhibit"` lease, remain
-tracked while the shared `cadmus` wake lock is suppressed for the kernel-sleep
-window; wake restores it when any holder remains. Suppression is refused while
-a Full holder is live. If Full arrives during the window, its nested wake lease
-immediately restores `cadmus` and the cycle aborts before sleep — [Inhibitor § Deferred explicit suspend](inhibitor.md#deferred-explicit-suspend).
+`Event::Suspend` and `AlarmType::Suspend` mean **enter sleep now** after
+prepare, not "start a new cycle". Soft suspend leases alone do not gate
+`start_cycle`; only
+[Full](inhibitor.md) does, while [Sleep](inhibitor.md) defers just the Auto
+Suspend path.
 
 ## Kind and phase
 
-`Option<`<a href="/api/cadmus_core/device/suspend/cycle/struct.SuspendCycle.html">`SuspendCycle`</a>`>`
-on
-<a href="/api/cadmus_core/context/struct.Context.html#structfield.suspend">`Context::suspend`</a>.
-Interactive use is `None`.
+The kind is fixed once at `start_cycle` from Soft suspend armedness: `DeepIdle`
+when armed, otherwise `Classic`. If the DeepIdle cycle lease cannot be acquired,
+`start_cycle` switches the cycle to `Classic` before scheduling prepare. Do not
+re-pick the kind mid-cycle from `is_armed()`; WakeDebounce and CalendarUpdate
+re-entry keep the cycle's kind.
 
-| Field   | Values                                                                                                                                         |
-| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `kind`  | `Classic` or `DeepIdle` — set at `start_cycle`; becomes `Classic` when a deep-idle cycle falls back after three consecutive timed-out attempts |
-| `phase` | `Preparing` → `ArmingSleep` → `PostWakeDebounce`; DeepIdle also uses `InSleep` while polling                                                   |
-
-Do not re-pick Classic vs DeepIdle mid-cycle from
-<a href="/api/cadmus_core/device/soft_suspend/mode/enum.AutosleepMode.html#method.is_armed">`is_armed()`</a>
-alone. WakeDebounce / CalendarUpdate re-enter with the same kind.
+`finish_cycle` is the only teardown path, and it restores the wake lock only
+when the exiting sleep leg still owns suppression, so one leg never restores
+twice. A cancel that lands while only a prepare task is pending still restores
+the frontlight and intended Wi-Fi state.
 
 ## Sleep backends
 
-| Kind       | Entry                                                             |
-| ---------- | ----------------------------------------------------------------- |
-| `Classic`  | Suspend RTC, then blocking `PowerManager::suspend` / `resume`     |
-| `DeepIdle` | Force autosleep `mem`, `arm_deep_idle`, poll until wake / timeout |
+`PowerManager` is async end to end, but its sysfs and `sync()` work runs on the
+runtime's capped blocking pool, not on the reactor workers.
 
-Both share prepare teardown and schedule WakeDebounce after wake. AutoPowerOff
-and CalendarUpdate alarms are scheduled before sleep when their settings
-require them, then checked after wake. Platform details:
-[Kobo suspend](kobo/suspend.md).
+**Classic** runs one owned commit. Cancellation is cooperative only before the
+gate token is acquired; after that, dropping the task or its waiter cannot
+cancel the write, wake-lock restoration, or peripheral cleanup, and cycle
+finish/shutdown drain the commit before further hardware work. A
+preparation failure, unlock failure, or `mem` failure is **not** a wake: only a
+successful `mem` runs post-wake alarm classification. A Classic suspend with no
+cycle is refused while Soft suspend is armed, and Auto Suspend is rescheduled
+instead.
+
+**DeepIdle** sleeps through autosleep rather than the blocking `state=mem`
+write. The pre-sleep alarm state is captured before autosleep is armed; the
+boottime and monotonic anchors are captured after arming and `sync()`
+immediately before the pause, because they drive wake detection, while only the
+wall-clock `sleep_started_at` is used for post-wake RTC alarm claims. The
+suppression epoch ensures a pause ticket from an earlier leg is never current,
+so a Full inhibition lease that arrives and leaves between pause and the next poll still
+aborts the cycle instead of producing a timeout or a synthetic wake.
+
+Event dispatch stays serial: a cover-open queued during Classic preparation
+waits for the current handler, not an interrupt-driven cancel. Last-moment Full
+checks still happen at the DeepIdle pause and the Classic commit boundary; a
+Full acquired mid-cycle aborts the cycle before sleep, or after Classic cleanup
+once the `mem` write is already committed — see
+[Deferred Explicit suspend](inhibitor.md#deferred-explicit-suspend).
 
 ## Deep-idle wake detect
 
-Production: `CLOCK_BOOTTIME` − `CLOCK_MONOTONIC` (~1 s threshold). Tests inject
+Production compares `CLOCK_BOOTTIME` against `CLOCK_MONOTONIC`, so an NTP step
+does not look like a wake; tests inject
 <a href="/api/cadmus_core/device/suspend/wake/enum.PollResult.html">`PollResult`</a>
-via `AppContext::deep_idle_poll_inject`.
+instead.
 
-On timeout, the wait re-arms while soft suspend can re-arm; otherwise
-`finish_cycle`. DeepIdle stops after three consecutive timed-out attempts: the
-cap counts consecutive timeouts on `SuspendCycle`, so a cycle can make more than
-three deep-idle attempts when wakes interleave. A detected wake resets the
-count, and the WakeDebounce re-sleep starts fresh. Past the cap the cycle falls
-back to `Classic` and disarms autosleep (`Off`) for the rest of the cycle,
-because the kernel rejects `state=mem` while autosleep is armed, which would
-turn every attempt into the same guard error; `finish_cycle` restores the
-stashed mode. The cycle then stays on the classic WakeDebounce re-sleep path,
-whose errno is visible, instead of polling autosleep every 30 s.
-
-The first timeout of a failing cycle also emits one `deep idle wait timed out;
-suspend blockers` warning naming the lease holders, `/sys/power/wake_lock`,
-`/sys/power/wakeup_count` (read under a short timeout), the charger/USB state,
-and the IRQ delta. A refused `Classic` suspend adds the same kernel-side fields
-to `Failed to suspend device`.
+On timeout the wait re-arms while Soft suspend can re-arm, otherwise
+`finish_cycle`. After three consecutive timed-out attempts the cycle falls back
+to `Classic` and disarms autosleep for the rest of the cycle, because the kernel
+rejects `state=mem` while autosleep is armed, which would turn every attempt
+into the same guard error; `finish_cycle` restores the stashed mode. The cap
+counts consecutive timeouts, so a detected wake resets it and a cycle can make
+more than three DeepIdle attempts when wakes interleave. The first timeout of a
+failing cycle logs the lease holders and kernel wake state once, because
+autosleep refusals carry no errno.
 
 ## Wake-source telemetry
 
-On Linux,
-<a href="/api/cadmus_core/device/suspend/orchestrator/fn.start_deep_idle_wait.html">`start_deep_idle_wait`</a>
-snapshots the pre-sleep alarm state before
-<a href="/api/cadmus_core/device/power/trait.PowerManager.html#method.arm_deep_idle">`arm_deep_idle`</a>
-and the IRQ counters after it, just before the cycle lease drops, storing both on
-<a href="/api/cadmus_core/device/suspend/cycle/struct.DeepIdleWaitState.html">`DeepIdleWaitState`</a>:
+On Linux, the DeepIdle wait snapshots the pre-sleep hardware and earliest
+logical alarm and the IRQ counters, and each detected wake emits one
+`Primary deep-idle wake` record from
+<a href="/api/cadmus_core/device/suspend/orchestrator/fn.log_wake_source.html">`log_wake_source`</a>.
+What the fields cannot say matters more than what they contain:
 
-| Captured               | Source                                                    |
-| ---------------------- | --------------------------------------------------------- |
-| hardware wake alarm    | `Rtc::wake_alarm` → `/sys/class/rtc/rtc0/wakealarm`       |
-| earliest logical alarm | `AlarmManager::next_scheduled_alarm` (future alarms only) |
-| IRQ counters           | `/proc/interrupts`, sampled before the cycle lease drops  |
-
-Each detected wake then emits one `Primary deep-idle wake` record from
-<a href="/api/cadmus_core/device/suspend/orchestrator/fn.log_wake_source.html">`log_wake_source`</a>,
-carrying `pre_hardware_alarm`, `pre_cadmus_alarm_type`, `pre_cadmus_alarm`,
-`post_hardware_alarm`, `wake_irq`, `wake_irq_name`, `unmanaged_alarm_candidate`,
-`irq_delta_status`, `irq_deltas_json` and `irq_delta_reasons_json`. Sampling
-`/proc/interrupts` after wake, before the other post-wake node reads, also
-supplies the existing `wake_irq_name`; each retry samples a new baseline.
-
-What the fields mean, and what they cannot say:
-
-- `wake_irq` is `/sys/power/pm_wakeup_irq`, read inside the wake path because the
-  kernel clears it on the next suspend. `-ENODATA` means the kernel recorded no
-  IRQ. Other read errors and malformed content also log `wake_irq = None`, so a
-  missing value means "not reported", not that no hardware wake happened.
-- `wake_irq_name` is the owning row in `/proc/interrupts`. A parent controller
-  such as the PMIC (`bd71828_irq`) does not identify its own child, so compare
-  per-IRQ counters before naming a source.
-- `unmanaged_alarm_candidate` is true when the hardware slot and the earliest
-  future logical alarm disagree. The kernel records no writer for the slot, so a
-  mismatch is a candidate for an unmanaged alarm, never proof of who wrote it.
-- `irq_deltas_json` is a JSON-encoded array of `{irq, name, delta}` objects. `irq`
-  is a string; `name` is the post-wake action, or `null` for rows without one.
-  `before_name` is present when the baseline action was present and differs from
-  the post-wake action, including when the post-wake snapshot has no action. Each
-  delta sums
-  increases across the CPUs for one IRQ. Non-numeric summary rows (`IPI*`, `ERR`,
-  `NMI`) are excluded from the comparison. Decode it with
-  `.fields.irq_deltas_json | fromjson`. Parent and child rows appear independently.
-  Changed counters are evidence of activity between the samples, not proof of wake
-  causation; they can also include activity before sleep and after wake.
-- `irq_delta_reasons_json` explains a `partial` status: a JSON array of
-  `{irq, reason}` objects. Reasons are `missing_before`, `missing_after`,
-  `unparseable_before`, `unparseable_after` and `counter_not_monotonic`. It is
-  `[]` for `complete` and `unavailable`.
-- `irq_delta_status` is `complete` for a successful comparison, including no changes,
-  `partial` when unusable rows, rows added, removed, or duplicated, or
-  counter decreases/overflows make the coverage incomplete, or `unavailable` when a
-  snapshot, valid CPU header, or numeric row data cannot support a comparison, including
-  CPU columns that differ between samples. Only positive deltas are emitted; missing or
-  incompatible data does not become a zero.
-- `next_scheduled_alarm` ignores past-due alarms, matching what
-  `update_hardware_alarm_at` programs into the slot.
-
-Non-Linux targets still record the earliest logical alarm, but the hardware slot
-reads `Unavailable` and nothing is emitted.
-
-## Phase-aware Suspend
-
-| Situation                                                  | Action                          |
-| ---------------------------------------------------------- | ------------------------------- |
-| `Suspend` during `InSleep` / `PostWakeDebounce`            | Ignore                          |
-| Interactive + soft armed + classic `Suspend` without cycle | Refuse; reschedule Auto Suspend |
+- `wake_irq` is read inside the wake path because the kernel clears it on the
+  next suspend. A missing value means "not reported", not "no hardware wake".
+- `wake_irq_name` names the owning `/proc/interrupts` row. A parent controller
+  such as the PMIC does not identify its child, so compare per-IRQ counters
+  before naming a source.
+- `unmanaged_alarm_candidate` only reports that the hardware slot and the
+  earliest future logical alarm disagree. The kernel records no writer for the
+  slot, so this is a candidate, never proof of who wrote it.
+- IRQ deltas are evidence of activity between samples, not proof of wake
+  causation; they can also include activity before sleep or after wake. A
+  `partial` status explains which rows could not be compared.
 
 <!-- i18n:skip-end -->
