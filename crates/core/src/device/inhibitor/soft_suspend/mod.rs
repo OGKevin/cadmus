@@ -7,9 +7,11 @@
 
 mod name;
 mod noop;
+mod suppression;
 
 pub use name::SoftSuspendName;
 pub(crate) use noop::NoOpSoftSuspendKind;
+pub(crate) use suppression::Suppression;
 
 use crate::device::inhibitor::InhibitorError;
 use crate::device::soft_suspend::SoftSuspendBackend;

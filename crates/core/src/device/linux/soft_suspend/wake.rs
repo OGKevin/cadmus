@@ -41,7 +41,7 @@ use super::WAKE_LOCK_NAME;
 use super::paths::{SoftSuspendPaths, SysfsWrite, SysfsWriteError, write_sysfs_blocking};
 use crate::device::inhibitor::InhibitorError;
 use crate::device::inhibitor::soft_suspend::{
-    SuppressionEpoch, WakeLockPauseOutcome, WakeLockResumeOutcome,
+    Suppression, SuppressionEpoch, WakeLockPauseOutcome, WakeLockResumeOutcome,
 };
 use crate::lease::{Lease, LeaseName, LeaseObserver, LeaseTracker, WeakLeaseTracker};
 use std::path::Path;
@@ -81,8 +81,8 @@ struct UnlockState {
     due_at: Option<Instant>,
     /// Last kernel state confirmed by a completed write.
     held: bool,
-    suppressed: bool,
-    suppress_epoch: u64,
+    /// The live suppression window and the epoch that identifies it.
+    suppression: Suppression,
     /// While true, another thread owns the sysfs write and only it may clear it.
     writing: bool,
     paths: SoftSuspendPaths,
@@ -109,8 +109,7 @@ impl UnlockInner {
             state: Mutex::new(UnlockState {
                 due_at: None,
                 held: false,
-                suppressed: false,
-                suppress_epoch: 0,
+                suppression: Suppression::default(),
                 writing: false,
                 paths,
                 shutdown: false,
@@ -237,14 +236,11 @@ impl UnlockInner {
             return false;
         }
         if self.has_full_holders() {
-            if state.suppressed {
-                state.suppressed = false;
-                state.suppress_epoch += 1;
-            }
+            state.suppression.end();
             state.due_at = None;
             return true;
         }
-        if state.suppressed {
+        if state.suppression.is_active() {
             state.due_at = None;
             return false;
         }
@@ -377,7 +373,10 @@ impl UnlockInner {
         let zero = grace.is_zero();
         {
             let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            if state.suppressed || (!state.held && !state.writing) || self.has_holders() {
+            if state.suppression.is_active()
+                || (!state.held && !state.writing)
+                || self.has_holders()
+            {
                 state.due_at = None;
                 self.cv.notify_all();
                 return;
@@ -423,13 +422,7 @@ impl UnlockInner {
             if self.has_full_holders() {
                 return WakeLockPauseOutcome::BlockedByFull;
             }
-            if state.suppressed {
-                state.suppress_epoch
-            } else {
-                state.suppressed = true;
-                state.suppress_epoch += 1;
-                state.suppress_epoch
-            }
+            state.suppression.begin()
         };
         {
             let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -440,20 +433,19 @@ impl UnlockInner {
         match self.reconcile() {
             Ok(_) => {
                 let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-                if !state.suppressed || state.suppress_epoch != epoch {
+                if !state.suppression.is_current(epoch) {
                     return WakeLockPauseOutcome::BlockedByFull;
                 }
                 if state.held || state.writing {
                     return WakeLockPauseOutcome::UnlockFailed;
                 }
-                WakeLockPauseOutcome::Paused(SuppressionEpoch(epoch))
+                WakeLockPauseOutcome::Paused(epoch)
             }
             Err(error) => {
                 tracing::warn!(error = %error, "soft-suspend wake-lock unlock failed");
                 let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-                if state.suppressed && state.suppress_epoch == epoch {
-                    state.suppressed = false;
-                    state.suppress_epoch += 1;
+                if state.suppression.is_current(epoch) {
+                    state.suppression.end();
                 }
                 drop(state);
                 self.replenish_recovery();
@@ -465,17 +457,14 @@ impl UnlockInner {
 
     fn wake_lock_epoch_is_current(&self, epoch: SuppressionEpoch) -> bool {
         let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        state.suppressed && state.suppress_epoch == epoch.0
+        state.suppression.is_current(epoch)
     }
 
     fn resume_now(&self, grace: Duration) -> WakeLockResumeOutcome {
         {
             let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            if state.suppressed {
-                state.suppressed = false;
-                state.suppress_epoch += 1;
-            }
-            if !state.suppressed
+            state.suppression.end();
+            if !state.suppression.is_active()
                 && state.held
                 && !self.has_holders()
                 && !grace.is_zero()
@@ -519,7 +508,7 @@ impl UnlockInner {
             let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
             state.shutdown = true;
             state.due_at = None;
-            state.suppressed = false;
+            state.suppression.end();
             self.cv.notify_all();
         }
         match self.reconcile() {

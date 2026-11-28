@@ -4,12 +4,13 @@
 //! Used on the emulator, in unit tests, and when the Linux power sysfs probe
 //! fails.
 
-use super::{SoftSuspendKind, SuppressionEpoch, WakeLockPauseOutcome, WakeLockResumeOutcome};
+use super::{
+    SoftSuspendKind, Suppression, SuppressionEpoch, WakeLockPauseOutcome, WakeLockResumeOutcome,
+};
 use crate::device::soft_suspend::SoftSuspendBackend;
 use crate::device::soft_suspend::mode::AutosleepMode;
 use crate::lease::{Lease, LeaseName, LeaseTracker, WeakLeaseTracker};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 /// Inert SoftSuspend-kind: in-process lease tracking, no sysfs, no unlock worker.
@@ -18,8 +19,8 @@ pub(crate) struct NoOpSoftSuspendKind {
     tracker: LeaseTracker,
     /// Watches Full holders so suppression follows the real backend's gate.
     full_tracker: OnceLock<WeakLeaseTracker>,
-    /// Identifies the simulated suppression window; zero marks it ended.
-    suppress_epoch: AtomicU64,
+    /// Identifies the simulated suppression window.
+    suppression: Mutex<Suppression>,
 }
 
 impl NoOpSoftSuspendKind {
@@ -27,7 +28,7 @@ impl NoOpSoftSuspendKind {
         Arc::new(Self {
             tracker: LeaseTracker::new(),
             full_tracker: OnceLock::new(),
-            suppress_epoch: AtomicU64::new(0),
+            suppression: Mutex::new(Suppression::default()),
         })
     }
 }
@@ -97,13 +98,19 @@ impl SoftSuspendKind for NoOpSoftSuspendKind {
         {
             return WakeLockPauseOutcome::BlockedByFull;
         }
-        WakeLockPauseOutcome::Paused(SuppressionEpoch(
-            self.suppress_epoch.fetch_add(1, Ordering::SeqCst) + 1,
-        ))
+        WakeLockPauseOutcome::Paused(
+            self.suppression
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .begin(),
+        )
     }
 
     async fn resume_wake_lock(&self) -> WakeLockResumeOutcome {
-        self.suppress_epoch.store(0, Ordering::SeqCst);
+        self.suppression
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .end();
         if self.tracker.is_empty() {
             return WakeLockResumeOutcome::Unheld;
         }
@@ -111,6 +118,9 @@ impl SoftSuspendKind for NoOpSoftSuspendKind {
     }
 
     fn wake_lock_epoch_is_current(&self, epoch: SuppressionEpoch) -> bool {
-        epoch.0 != 0 && self.suppress_epoch.load(Ordering::SeqCst) == epoch.0
+        self.suppression
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_current(epoch)
     }
 }

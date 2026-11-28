@@ -425,18 +425,26 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn noop_resume_invalidates_pause_epoch() {
+    async fn noop_second_pause_gets_new_epoch() {
         let inhibitor = Inhibitor::noop();
-        let WakeLockPauseOutcome::Paused(epoch) = inhibitor.pause_soft_suspend_wake_lock().await
+        let WakeLockPauseOutcome::Paused(first) = inhibitor.pause_soft_suspend_wake_lock().await
         else {
             panic!("NoOp pause must produce a suppression epoch")
         };
-        assert!(inhibitor.wake_lock_epoch_is_current(epoch));
+        assert!(inhibitor.wake_lock_epoch_is_current(first));
         assert_eq!(
             inhibitor.resume_soft_suspend_wake_lock().await,
             WakeLockResumeOutcome::Unheld
         );
-        assert!(!inhibitor.wake_lock_epoch_is_current(epoch));
+        assert!(!inhibitor.wake_lock_epoch_is_current(first));
+
+        let WakeLockPauseOutcome::Paused(second) = inhibitor.pause_soft_suspend_wake_lock().await
+        else {
+            panic!("NoOp pause must produce a suppression epoch")
+        };
+        assert_ne!(first, second);
+        assert!(!inhibitor.wake_lock_epoch_is_current(first));
+        assert!(inhibitor.wake_lock_epoch_is_current(second));
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
