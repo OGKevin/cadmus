@@ -23,7 +23,7 @@ inputs:
     required: false
   reviewdog_version:
     description: reviewdog binary version for reviewdog/action-setup.
-    default: "0.21.2"
+    default: "0.21.3"
     required: false
   rumdl_version:
     description: Version of rumdl to install.
@@ -50,7 +50,7 @@ runs:
         reviewdog_version: v${{ inputs.reviewdog_version }}
 
     - name: Install rumdl
-      uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
+      uses: taiki-e/install-action@25f51f6b1bf4e18876107cece836f4f77ac17c8c # v2.90.7
       with:
         tool: rumdl@${{ inputs.rumdl_version }}
 

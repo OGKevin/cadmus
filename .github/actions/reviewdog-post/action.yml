@@ -59,7 +59,7 @@ inputs:
   reviewdog_version:
     description: reviewdog binary version for reviewdog/action-setup.
     required: false
-    default: "0.21.2"
+    default: "0.21.3"
 
 runs:
   using: composite

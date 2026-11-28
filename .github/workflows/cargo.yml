@@ -72,7 +72,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/clone-needed-cargo-submodules
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         id: rust-toolchain
         with:
           toolchain: "1.100.0"
@@ -101,7 +101,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/clone-needed-cargo-submodules
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         id: rust-toolchain
         with:
           toolchain: "1.100.0"
@@ -154,7 +154,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/clone-needed-cargo-submodules
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         id: rust-toolchain
         with:
           toolchain: "1.100.0"
@@ -218,7 +218,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/clone-needed-cargo-submodules
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         id: rust-toolchain
         with:
           toolchain: "1.100.0"
@@ -320,7 +320,7 @@ jobs:
           fetch-tags: true
           persist-credentials: false
       - uses: ./.github/actions/clone-needed-cargo-submodules
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         id: rust-toolchain
         with:
           toolchain: "1.100.0"
@@ -363,7 +363,7 @@ jobs:
           gh-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
+        uses: taiki-e/install-action@25f51f6b1bf4e18876107cece836f4f77ac17c8c # v2.90.7
         with:
           tool: nextest@${{ env.NEXTEST_VERSION }}
 
@@ -485,7 +485,7 @@ jobs:
 
       - *set-build-metadata
 
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         id: rust-toolchain
         with:
           toolchain: "1.100.0"
@@ -592,7 +592,7 @@ jobs:
 
       - *set-build-metadata
 
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         id: rust-toolchain
         with:
           toolchain: "1.100.0"
@@ -677,7 +677,7 @@ jobs:
 
       - *set-build-metadata
 
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         id: rust-toolchain
         with:
           toolchain: "1.100.0"
