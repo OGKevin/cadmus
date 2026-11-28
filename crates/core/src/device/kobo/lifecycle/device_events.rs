@@ -226,11 +226,18 @@ async fn handle_cover_off(
 }
 
 /// Reschedules the Auto Suspend RTC deadline when auto-suspend is enabled.
+///
+/// Ignored while a suspend cycle is active: input during sleep, such as the
+/// touchscreen report that follows a resume, is not User activity and
+/// re-arming the deadline would keep the device awake.
 async fn handle_user_activity(
     context: &mut AppContext,
     runtime: &mut DeviceRuntime<'_>,
 ) -> EventOutcome {
-    let _ = runtime;
+    if is_suspend_active(context, runtime.tasks).await {
+        tracing::debug!("ignoring user activity during a suspend cycle");
+        return EventOutcome::Handled;
+    }
     if context.settings.auto_suspend > 0.0 {
         reschedule_auto_suspend_alarm(context).await;
     }
@@ -295,10 +302,6 @@ async fn handle_plug_host(
         ));
         runtime.view.children_mut().push(Box::new(dialog));
     }
-
-    if context.settings.auto_suspend > 0.0 {
-        reschedule_auto_suspend_alarm(context).await;
-    }
 }
 
 /// Handles charger or USB-host unplug.
@@ -360,7 +363,7 @@ mod tests {
     use crate::device::ExitStatus;
     use crate::device::inhibitor::Kind;
     use crate::device::suspend::has_task;
-    use crate::device::suspend::test_support::lock_alarms;
+    use crate::device::suspend::test_support::{install_armed_soft_suspend, lock_alarms};
     use crate::device::test_harness::DeviceRuntimeHarness;
     use crate::device::wifi::{Essid, NetworkInfo};
     use crate::input::PowerSource;
@@ -571,6 +574,76 @@ mod tests {
                 .await
                 .is_alarm_scheduled(AlarmType::AutoSuspend)
                 .await
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_user_activity_ignored_during_suspend_cycle() {
+        let mut harness = DeviceRuntimeHarness::new().await;
+        let (_dir, _paths) = install_armed_soft_suspend(&mut harness).await;
+        harness.context.settings.auto_suspend = 30.0;
+        crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+        });
+        crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            crate::device::suspend::handle_event(
+                &Event::PrepareSuspend,
+                hub,
+                bus,
+                rq,
+                context,
+                runtime,
+            )
+        });
+        assert!(
+            harness.context.suspend.is_some(),
+            "precondition: a sleep cycle must be active"
+        );
+
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            handle_event(
+                &Event::Device(DeviceEvent::UserActivity),
+                hub,
+                bus,
+                rq,
+                context,
+                runtime,
+            )
+        });
+        assert_eq!(outcome, EventOutcome::Handled);
+        assert!(
+            !lock_alarms(&mut harness)
+                .await
+                .is_alarm_scheduled(AlarmType::AutoSuspend)
+                .await,
+            "input during sleep must not restart the Auto Suspend delay"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_plug_host_does_not_restart_auto_suspend() {
+        let mut harness = DeviceRuntimeHarness::new().await;
+        harness.context.settings.auto_suspend = 30.0;
+        harness.context.settings.auto_share = true;
+        {
+            let mut alarms = lock_alarms(&mut harness).await;
+            alarms
+                .schedule_in(AlarmType::AutoSuspend, crate::chrono::Duration::hours(2))
+                .await
+                .unwrap();
+        }
+        let outcome = crate::poll_parts!(harness, |hub, _bus, rq, context, runtime| {
+            handle_plug(PowerSource::Host, hub, rq, context, runtime)
+        });
+        assert_eq!(outcome, EventOutcome::Handled);
+        let until = lock_alarms(&mut harness)
+            .await
+            .time_until_alarm(AlarmType::AutoSuspend)
+            .await
+            .unwrap();
+        assert!(
+            until > 60 * 60,
+            "plugging a cable is not User activity and must not restart the Auto Suspend delay, got {until}s"
         );
     }
 

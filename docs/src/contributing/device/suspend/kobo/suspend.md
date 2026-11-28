@@ -48,6 +48,16 @@ If the `deep-idle` lease cannot be acquired, `start_cycle` changes the cycle to
 Opportunistic naps between events still use Soft suspend leases; DeepIdle is
 the **explicit** path after Auto Suspend fires.
 
+## User activity
+
+The decoder in <a href="/api/cadmus_core/input/index.html">`input`</a> decides
+what counts as User activity before the lifecycle sees it: a finger down or
+move, a decoded button press, opening the sleep cover, and a gyroscope rotation
+to another orientation while the device is awake. An empty touchscreen frame
+reports nothing (the controller sends one per resume), and neither does
+plugging in a cable. A host plug still cancels a pending suspend and may start
+USB sharing; it is just not User activity.
+
 ## `state-extended`
 
 Kobo power code writes `1` when arming sleep and `0` when disarming it. Writing

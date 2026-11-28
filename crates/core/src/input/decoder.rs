@@ -102,8 +102,8 @@ fn gsensor_rotation_from_raw(value: i32, transform: GyroRotationTransform) -> Op
 /// is indistinguishable from a dead decoder.
 const DECODER_HEARTBEAT_EVERY: Duration = Duration::from_secs(60);
 
-/// How long a device may go without a report before [`DeviceEvent::UserActivity`]
-/// is emitted again.
+/// How long a device may go without User activity before
+/// [`DeviceEvent::UserActivity`] is emitted again.
 const ACTIVITY_REPORT_INTERVAL_SECS: libc::time_t = 60;
 
 /// Returns the decoder heartbeat timer.
@@ -123,9 +123,13 @@ fn heartbeat_interval() -> tokio::time::Interval {
 /// Emits [`DeviceEvent::UserActivity`] when the device clock passed the
 /// activity interval since the last report, and records the new reference time.
 ///
+/// Only call this for input that is User activity. A frame with no touch,
+/// button or cover change must not report it, or the Auto Suspend delay never
+/// settles.
+///
 /// The difference is taken as an absolute value because `tv_sec` wraps on
 /// kernels whose `time_t` cannot grow forever, which would otherwise suppress
-/// the heartbeat for the rest of the session.
+/// the report for the rest of the session.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(ty, time), fields(secs = time.tv_sec)))]
 fn report_user_activity(
     last_activity: &mut libc::time_t,
@@ -267,8 +271,17 @@ struct Keyboards {
 }
 
 impl Keyboards {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, ty)))]
-    fn apply(&mut self, source: SourceId, evt: &InputEvent, ty: &UnboundedSender<DeviceEvent>) {
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self, last_activity, ty))
+    )]
+    fn apply(
+        &mut self,
+        source: SourceId,
+        evt: &InputEvent,
+        last_activity: &mut libc::time_t,
+        ty: &UnboundedSender<DeviceEvent>,
+    ) {
         let modifiers = self.modifiers.entry(source).or_default();
         if let Some(modifier) = Modifier::from_evdev_code(evt.code) {
             modifiers.set_depressed(modifier, evt.value != 0);
@@ -280,6 +293,9 @@ impl Keyboards {
                 "keyboard modifier state change"
             );
         } else if let Some(button_status) = ButtonStatus::try_from_raw(evt.value) {
+            if button_status == ButtonStatus::Pressed {
+                report_user_activity(last_activity, evt.time, ty);
+            }
             ty.send(DeviceEvent::Button {
                 time: seconds(evt.time),
                 code: ButtonCode::Keyboard(KeyEvent {
@@ -392,10 +408,11 @@ async fn parse_device_events(
                 &mut keyboards,
                 &mut mapping,
                 &mut button_scheme,
+                &mut last_activity,
                 ty,
             );
         } else if evt.kind == EV_MSC && evt.code == MSC_RAW {
-            handle_gyro(&evt, &mapping, gyro_rotation_transform, ty);
+            handle_gyro(&evt, &mapping, gyro_rotation_transform, &mut last_activity, ty);
         }
             }
             _ = heartbeat.tick() => {
@@ -498,7 +515,6 @@ fn handle_syn_report(
     let proto = decoders.proto;
     if evt.code == SYN_REPORT {
         counters.syn += 1;
-        report_user_activity(last_activity, evt.time, ty);
 
         let Some(source) = device else {
             return;
@@ -538,6 +554,7 @@ fn handle_syn_report(
             if let Some(&pos) = pipeline.fingers.get(&id) {
                 if state.pressure > 0 {
                     if state.position != pos {
+                        report_user_activity(last_activity, evt.time, ty);
                         ty.send(DeviceEvent::Finger {
                             id,
                             time: seconds(evt.time),
@@ -568,6 +585,7 @@ fn handle_syn_report(
                     dims = ?mapping.dims,
                     "finger down"
                 );
+                report_user_activity(last_activity, evt.time, ty);
                 ty.send(DeviceEvent::Finger {
                     id,
                     time: seconds(evt.time),
@@ -609,7 +627,7 @@ fn handle_syn_report(
 ///
 /// `BTN_TOUCH` is skipped: it is the touch-contact signal from a touch/pen
 /// device, not a button.
-#[cfg_attr(feature = "tracing", tracing::instrument(skip(keyboards, mapping, ty), level = tracing::Level::TRACE))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(keyboards, mapping, last_activity, ty), level = tracing::Level::TRACE))]
 fn handle_key(
     evt: &InputEvent,
     profile: DeviceProfile,
@@ -617,6 +635,7 @@ fn handle_key(
     keyboards: &mut Keyboards,
     mapping: &mut TouchMapping,
     button_scheme: &mut ButtonScheme,
+    last_activity: &mut libc::time_t,
     ty: &UnboundedSender<DeviceEvent>,
 ) {
     if evt.code == BTN_TOUCH {
@@ -626,16 +645,16 @@ fn handle_key(
         Some(
             action @ (KeyAction::SleepCover | KeyAction::ButtonScheme | KeyAction::RotateDisplay),
         ) => {
-            handle_control_action(action, evt, mapping, button_scheme, ty);
+            handle_control_action(action, evt, mapping, button_scheme, last_activity, ty);
         }
         Some(action) => {
-            handle_mapped_key(action, evt, mapping, *button_scheme, ty);
+            handle_mapped_key(action, evt, mapping, *button_scheme, last_activity, ty);
         }
         None => {
             if profile.tracks_modifiers
                 && let Some(source) = device
             {
-                handle_tracked_key(keyboards, source, evt, ty);
+                handle_tracked_key(keyboards, source, evt, last_activity, ty);
             } else if let Some(button_status) = ButtonStatus::try_from_raw(evt.value) {
                 send_button(
                     ty,
@@ -643,18 +662,27 @@ fn handle_key(
                     ButtonCode::Raw(evt.code),
                     button_status,
                     evt,
+                    last_activity,
                 );
             }
         }
     }
 }
 
-#[cfg_attr(feature = "tracing", tracing::instrument(skip(mapping, ty)))]
+/// Dispatches the synthetic controls and the sleep-cover signal.
+///
+/// Only a cover-open is User activity: closing the cover starts a sleep cycle,
+/// and the rotation and button-scheme controls are synthetic.
+#[cfg_attr(
+    feature = "tracing",
+    tracing::instrument(skip(mapping, last_activity, ty))
+)]
 fn handle_control_action(
     action: KeyAction,
     evt: &InputEvent,
     mapping: &mut TouchMapping,
     button_scheme: &mut ButtonScheme,
+    last_activity: &mut libc::time_t,
     ty: &UnboundedSender<DeviceEvent>,
 ) {
     match action {
@@ -662,6 +690,7 @@ fn handle_control_action(
             if evt.value == VAL_PRESS || evt.value == VAL_REPEAT {
                 ty.send(DeviceEvent::CoverOn).ok();
             } else if evt.value == VAL_RELEASE {
+                report_user_activity(last_activity, evt.time, ty);
                 ty.send(DeviceEvent::CoverOff).ok();
             }
         }
@@ -697,12 +726,16 @@ fn handle_control_action(
     }
 }
 
-#[cfg_attr(feature = "tracing", tracing::instrument(skip(mapping, ty)))]
+#[cfg_attr(
+    feature = "tracing",
+    tracing::instrument(skip(mapping, last_activity, ty))
+)]
 fn handle_mapped_key(
     action: KeyAction,
     evt: &InputEvent,
     mapping: &TouchMapping,
     button_scheme: ButtonScheme,
+    last_activity: &mut libc::time_t,
     ty: &UnboundedSender<DeviceEvent>,
 ) {
     if let Some(button_status) = ButtonStatus::try_from_raw(evt.value) {
@@ -713,7 +746,7 @@ fn handle_mapped_key(
             mapping.startup_rotation,
             mapping.dir,
         );
-        send_button(ty, time, code, button_status, evt);
+        send_button(ty, time, code, button_status, evt, last_activity);
     }
 }
 
@@ -721,18 +754,20 @@ fn handle_tracked_key(
     keyboards: &mut Keyboards,
     source: SourceId,
     evt: &InputEvent,
+    last_activity: &mut libc::time_t,
     ty: &UnboundedSender<DeviceEvent>,
 ) {
-    keyboards.apply(source, evt, ty);
+    keyboards.apply(source, evt, last_activity, ty);
 }
 
-#[cfg_attr(feature = "tracing", tracing::instrument(skip(ty)))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(last_activity, ty)))]
 fn send_button(
     ty: &UnboundedSender<DeviceEvent>,
     time: f64,
     code: ButtonCode,
     status: ButtonStatus,
     evt: &InputEvent,
+    last_activity: &mut libc::time_t,
 ) {
     tracing::debug!(
         code = ?code,
@@ -742,14 +777,21 @@ fn send_button(
         raw_value = evt.value,
         "decoded button event"
     );
+    if status == ButtonStatus::Pressed {
+        report_user_activity(last_activity, evt.time, ty);
+    }
     ty.send(DeviceEvent::Button { time, code, status }).ok();
 }
 
-#[cfg_attr(feature = "tracing", tracing::instrument(skip(mapping, transform, ty)))]
+#[cfg_attr(
+    feature = "tracing",
+    tracing::instrument(skip(mapping, transform, last_activity, ty))
+)]
 fn handle_gyro(
     evt: &InputEvent,
     mapping: &TouchMapping,
     transform: GyroRotationTransform,
+    last_activity: &mut libc::time_t,
     ty: &UnboundedSender<DeviceEvent>,
 ) {
     if let Some(next_rotation) = gsensor_rotation_from_raw(evt.value, transform) {
@@ -759,6 +801,7 @@ fn handle_gyro(
             current_rotation = mapping.rotation,
             "gyroscope rotation event"
         );
+        report_user_activity(last_activity, evt.time, ty);
         ty.send(DeviceEvent::RotateScreen(next_rotation)).ok();
     }
 }
@@ -773,7 +816,7 @@ mod tests {
 
     use crate::input::codes::{
         ABS_MT_POSITION_X, ABS_MT_POSITION_Y, ABS_MT_PRESSURE, KEY_LEFTSHIFT, KEY_POWER,
-        KEY_ROTATE_DISPLAY, KEY_SPACE,
+        KEY_ROTATE_DISPLAY, KEY_SPACE, MSC_RAW_GSENSOR_LANDSCAPE_RIGHT,
     };
     use crate::input::event::InputEvent;
 
@@ -844,8 +887,8 @@ mod tests {
 
         assert_eq!(finger, Point { x: 1620, y: 85 });
     }
-    /// Receives the next device event, skipping the `UserActivity` heartbeat
-    /// triggered by the first `SYN_REPORT` after a 60 s idle window.
+    /// Receives the next device event, skipping the `UserActivity` report
+    /// triggered by the first real input after a 60 s idle window.
     async fn next_input_event(
         ry: &mut tokio::sync::mpsc::UnboundedReceiver<DeviceEvent>,
     ) -> DeviceEvent {
@@ -1110,11 +1153,11 @@ mod tests {
             .send(keyboard(b, KEY_SPACE, VAL_PRESS))
             .expect("send space press");
 
-        match ry.recv().await {
-            Some(DeviceEvent::Button {
+        match next_input_event(&mut ry).await {
+            DeviceEvent::Button {
                 code: ButtonCode::Keyboard(key),
                 ..
-            }) => {
+            } => {
                 assert_eq!(key.keycode, KEY_SPACE as u32);
                 assert_eq!(
                     key.modifiers,
@@ -1143,5 +1186,134 @@ mod tests {
             "inside the interval must stay quiet"
         );
         assert_eq!(last_activity, 60, "reference time only moves on a report");
+    }
+    /// The touch controller sends one empty frame as it resumes, and a frame
+    /// with no touch must not count as User activity: it would restart the Auto
+    /// Suspend delay during sleep. A frame with a finger down still must.
+    #[tokio::test]
+    async fn empty_touch_frame_does_not_report_user_activity() {
+        let (raw_tx, raw_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (ty, mut ry) = tokio::sync::mpsc::unbounded_channel();
+        let info = DeviceInputInfo {
+            proto: TouchProto::MultiB,
+            mark: 13,
+            mirroring_scheme: (0, 0),
+            swapping_scheme: 0,
+            startup_rotation: 0,
+            gyro_rotation_transform: GyroRotationTransform::default(),
+        };
+        crate::runtime::spawn(async move {
+            let mut rx = raw_rx;
+            parse_device_events(
+                &mut rx,
+                &ty,
+                Display {
+                    dims: (100, 100),
+                    rotation: 0,
+                },
+                ButtonScheme::Natural,
+                info,
+            )
+            .await;
+        });
+
+        let event = |kind, code, value| InputEvent {
+            time: libc::timeval {
+                tv_sec: 1,
+                tv_usec: 0,
+            },
+            kind,
+            code,
+            value,
+        };
+        let tagged = |kind, code, value| TaggedInputEvent {
+            event: event(kind, code, value),
+            profile: DeviceProfile::built_in(),
+            source: EventSource::Device(SourceId(0)),
+        };
+
+        raw_tx
+            .send(tagged(EV_SYN, SYN_REPORT, 0))
+            .expect("send empty frame");
+        assert!(
+            tokio::time::timeout(Duration::from_millis(200), ry.recv())
+                .await
+                .is_err(),
+            "an empty touch frame must not report UserActivity"
+        );
+
+        for evt in [
+            tagged(EV_ABS, ABS_MT_TRACKING_ID, 0),
+            tagged(EV_ABS, ABS_MT_POSITION_X, 10),
+            tagged(EV_ABS, ABS_MT_POSITION_Y, 20),
+            tagged(EV_ABS, ABS_MT_PRESSURE, 200),
+            tagged(EV_SYN, SYN_REPORT, 0),
+        ] {
+            raw_tx.send(evt).expect("send raw event");
+        }
+        assert!(
+            matches!(
+                tokio::time::timeout(Duration::from_secs(2), ry.recv())
+                    .await
+                    .expect("timed out waiting for activity"),
+                Some(DeviceEvent::UserActivity)
+            ),
+            "a finger down must report UserActivity"
+        );
+    }
+    /// Turning the device while awake is User activity, so a gyroscope rotation
+    /// must restart the Auto Suspend delay like a touch does.
+    #[tokio::test]
+    async fn gyro_rotation_reports_user_activity() {
+        let (raw_tx, raw_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (ty, mut ry) = tokio::sync::mpsc::unbounded_channel();
+        let info = DeviceInputInfo {
+            proto: TouchProto::MultiB,
+            mark: 13,
+            mirroring_scheme: (0, 0),
+            swapping_scheme: 0,
+            startup_rotation: 0,
+            gyro_rotation_transform: GyroRotationTransform::default(),
+        };
+        crate::runtime::spawn(async move {
+            let mut rx = raw_rx;
+            parse_device_events(
+                &mut rx,
+                &ty,
+                Display {
+                    dims: (100, 100),
+                    rotation: 0,
+                },
+                ButtonScheme::Natural,
+                info,
+            )
+            .await;
+        });
+
+        raw_tx
+            .send(TaggedInputEvent {
+                event: InputEvent {
+                    time: libc::timeval {
+                        tv_sec: 1,
+                        tv_usec: 0,
+                    },
+                    kind: EV_MSC,
+                    code: MSC_RAW,
+                    value: MSC_RAW_GSENSOR_LANDSCAPE_RIGHT,
+                },
+                profile: DeviceProfile::built_in(),
+                source: EventSource::Device(SourceId(0)),
+            })
+            .expect("send rotation");
+
+        assert!(
+            matches!(
+                tokio::time::timeout(Duration::from_secs(2), ry.recv())
+                    .await
+                    .expect("timed out waiting for activity"),
+                Some(DeviceEvent::UserActivity)
+            ),
+            "turning the device must report UserActivity"
+        );
     }
 }
