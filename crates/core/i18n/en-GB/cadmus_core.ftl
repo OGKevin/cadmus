@@ -41,6 +41,7 @@ notification-refresh-rate-invalid = Refresh rate must be a number between 0 and 
 notification-time-sync-failed = Time sync failed
 notification-time-unsynchronised = The clock is unsynchronised.
 notification-timezone-detection-failed = Timezone detection failed
+soft-suspend-mode-failed = The Soft suspend mode could not be changed.
 
 # Common
 cancel = Cancel

@@ -11,7 +11,7 @@ use crate::device::soft_suspend::mode::AutosleepMode;
 use crate::fl;
 use crate::i18n::I18nDisplay;
 use crate::settings::Settings;
-use crate::view::{Bus, EntryId, EntryKind, Event, ToggleEvent, ViewId};
+use crate::view::{Bus, EntryId, EntryKind, Event, NotificationEvent, ToggleEvent, ViewId};
 use std::time::Duration;
 
 /// Auto suspend timeout setting
@@ -224,9 +224,10 @@ fn resolve_autosleep_mode(saved: AutosleepMode, available: &[AutosleepMode]) -> 
 
 /// Pushes the current autosleep settings to the soft-suspend backend.
 ///
-/// A failed write leaves the backend on its previous configuration; the setting is
-/// still saved so the user's choice persists, hence the error is only logged.
-async fn apply_autosleep_settings(context: &mut AppContext) {
+/// A failed write leaves the backend on its previous configuration. The setting is
+/// reverted to the mode actually in effect and the failure is reported, so the
+/// screen never shows a mode the device refused.
+async fn apply_autosleep_settings(context: &mut AppContext, bus: &mut Bus) {
     let result = context
         .inhibitor
         .apply_settings(
@@ -238,6 +239,10 @@ async fn apply_autosleep_settings(context: &mut AppContext) {
 
     if let Err(error) = result {
         tracing::warn!(error = %error, "Failed to apply soft-suspend settings");
+        context.settings.autosleep_mode = context.inhibitor.mode();
+        bus.push_back(Event::Notification(NotificationEvent::Show(fl!(
+            "soft-suspend-mode-failed"
+        ))));
     }
 }
 
@@ -276,12 +281,12 @@ impl SettingKind for AutosleepModeSetting {
         &self,
         evt: &Event,
         context: &mut AppContext,
-        _bus: &mut Bus,
+        bus: &mut Bus,
     ) -> (Option<String>, bool) {
         if let Event::Select(EntryId::SetAutosleepMode(mode)) = evt {
             context.settings.autosleep_mode = *mode;
-            apply_autosleep_settings(context).await;
-            return (Some(mode.to_i18n_string()), true);
+            apply_autosleep_settings(context, bus).await;
+            return (Some(context.settings.autosleep_mode.to_i18n_string()), true);
         }
         (None, false)
     }
@@ -318,11 +323,11 @@ impl SettingKind for IndicateAutosleepLed {
         &self,
         evt: &Event,
         context: &mut AppContext,
-        _bus: &mut Bus,
+        bus: &mut Bus,
     ) -> (Option<String>, bool) {
         if let Event::Toggle(ToggleEvent::Setting(ToggleSettings::IndicateAutosleepLed)) = evt {
             context.settings.indicate_autosleep_led = !context.settings.indicate_autosleep_led;
-            apply_autosleep_settings(context).await;
+            apply_autosleep_settings(context, bus).await;
             return (
                 Some(context.settings.indicate_autosleep_led.to_string()),
                 true,
@@ -356,11 +361,11 @@ impl SettingKind for AutosleepGrace {
         &self,
         evt: &Event,
         context: &mut AppContext,
-        _bus: &mut Bus,
+        bus: &mut Bus,
     ) -> (Option<String>, bool) {
         if let Event::Submit(ViewId::AutosleepGraceInput, text) = evt {
             let display = self.apply_text(text, &mut context.settings);
-            apply_autosleep_settings(context).await;
+            apply_autosleep_settings(context, bus).await;
             return (Some(display), true);
         }
         (None, false)
@@ -723,7 +728,7 @@ mod tests {
 
         #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         #[cfg(target_os = "linux")]
-        async fn handle_select_keeps_requested_mode_when_backend_write_fails() {
+        async fn handle_select_reverts_mode_and_notifies_when_backend_write_fails() {
             let setting = AutosleepModeSetting::new(vec![
                 AutosleepMode::Off,
                 AutosleepMode::Freeze,
@@ -744,12 +749,18 @@ mod tests {
 
             let result = setting.handle(&event, &mut context, &mut bus).await;
 
-            assert_eq!(result.0, Some(AutosleepMode::Mem.to_i18n_string()));
+            assert_eq!(result.0, Some(AutosleepMode::Freeze.to_i18n_string()));
             assert!(result.1);
-            assert_eq!(context.settings.autosleep_mode, AutosleepMode::Mem);
+            assert_eq!(context.settings.autosleep_mode, AutosleepMode::Freeze);
             assert_eq!(context.inhibitor.mode(), AutosleepMode::Freeze);
             assert!(!autosleep_node.exists());
-            assert!(bus.is_empty());
+            assert_eq!(bus.len(), 1);
+            match bus.pop_front() {
+                Some(Event::Notification(NotificationEvent::Show(msg))) => {
+                    assert_eq!(msg, fl!("soft-suspend-mode-failed"));
+                }
+                other => panic!("expected mode failure notification, got {other:?}"),
+            }
         }
 
         #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
